@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
@@ -12,7 +12,6 @@ import {
   RefreshCcw,
   Search,
   Settings,
-  SlidersHorizontal,
   Trash2,
   XCircle
 } from "lucide-react";
@@ -99,6 +98,7 @@ function Dashboard({
 }) {
   const derived = useMemo(() => deriveSections(snapshot), [snapshot]);
   const selectedTab = snapshot.selectedTab;
+  const [toolbarSearchOpen, setToolbarSearchOpen] = useState(Boolean(snapshot.searchText));
 
   if (compact) {
     const compactTitle = selectedTabTitle(selectedTab);
@@ -157,6 +157,12 @@ function Dashboard({
           </div>
           <div className="topbar-actions">
             {snapshot.isRefreshing && <Loader2 className="spin" size={17} />}
+            <ToolbarSearch
+              open={toolbarSearchOpen}
+              snapshot={snapshot}
+              selectedTab={selectedTab}
+              onToggle={() => setToolbarSearchOpen((open) => !open)}
+            />
             <button
               className="toolbar-button"
               onClick={() => void window.baseline.refresh(false)}
@@ -164,13 +170,8 @@ function Dashboard({
             >
               <RefreshCcw size={16} />
             </button>
-            <button className="toolbar-button" onClick={onOpenSettings} title="Settings">
-              <Settings size={16} />
-            </button>
           </div>
         </header>
-
-        <CommandBar snapshot={snapshot} selectedTab={selectedTab} />
 
         {snapshot.refreshErrorMessage && (
           <div className="notice danger">
@@ -242,19 +243,58 @@ function Sidebar({
           <span>Homebrew</span>
           <strong>{derived.homebrewOutdated.length}</strong>
         </button>
+      </nav>
+      <div className="sidebar-footer">
         <button
           className={route === "settings" ? "selected" : ""}
           onClick={() => (window.location.hash = "/settings")}
         >
-          <SlidersHorizontal size={16} />
+          <Settings size={16} />
           <span>Settings</span>
         </button>
-      </nav>
-      <div className="sidebar-footer">
-        <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
-        <Readiness label="mas" ready={snapshot.isMasInstalled} />
       </div>
     </aside>
+  );
+}
+
+function ToolbarSearch({
+  open,
+  snapshot,
+  selectedTab,
+  onToggle
+}: {
+  open: boolean;
+  snapshot: BaselineSnapshot;
+  selectedTab: MenuTab;
+  onToggle: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [open]);
+
+  return (
+    <div className={open ? "toolbar-search open" : "toolbar-search"}>
+      {open && (
+        <input
+          ref={inputRef}
+          value={snapshot.searchText}
+          onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
+          placeholder={searchPlaceholder(selectedTab)}
+        />
+      )}
+      <button
+        className="toolbar-button"
+        onClick={onToggle}
+        title={open ? "Close Search" : "Search"}
+      >
+        <Search size={16} />
+      </button>
+    </div>
   );
 }
 

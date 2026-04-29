@@ -102,7 +102,8 @@ button:disabled {
   -webkit-app-region: no-drag;
 }
 
-.source-list button {
+.source-list button,
+.sidebar-footer button {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
@@ -117,12 +118,14 @@ button:disabled {
   text-align: left;
 }
 
-.source-list button.selected {
+.source-list button.selected,
+.sidebar-footer button.selected {
   background: rgba(0, 122, 255, 0.16);
   color: #0057c2;
 }
 
-.source-list span {
+.source-list span,
+.sidebar-footer span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -146,7 +149,6 @@ button:disabled {
 
 .sidebar-footer {
   display: grid;
-  gap: 4px;
   margin-top: auto;
   -webkit-app-region: no-drag;
 }
@@ -205,6 +207,44 @@ button:disabled {
   align-items: center;
   gap: 7px;
   -webkit-app-region: no-drag;
+}
+
+.toolbar-search {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition:
+    width 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.toolbar-search.open {
+  width: 184px;
+  border-color: rgba(60, 60, 67, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.toolbar-search input {
+  width: 144px;
+  min-width: 0;
+  padding: 0 2px 0 10px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0d0d0d;
+  font-size: 13px;
+}
+
+.toolbar-search .toolbar-button {
+  flex: 0 0 auto;
+  border-color: transparent;
+  background: transparent;
 }
 
 .command-row {
@@ -734,6 +774,7 @@ button:disabled {
 
   .sidebar-title,
   .source-list button,
+  .sidebar-footer button,
   .row-title strong,
   .toolbar-button,
   .icon-button,
@@ -743,7 +784,8 @@ button:disabled {
     color: #fcfcfc;
   }
 
-  .source-list button.selected {
+  .source-list button.selected,
+  .sidebar-footer button.selected {
     background: rgba(10, 132, 255, 0.24);
     color: #9dccff;
   }
@@ -780,6 +822,7 @@ button:disabled {
   }
 
   .search-box,
+  .toolbar-search.open,
   .field input {
     border-color: rgba(235, 235, 245, 0.18);
     background: rgba(255, 255, 255, 0.08);
@@ -787,11 +830,13 @@ button:disabled {
   }
 
   .search-box input,
+  .toolbar-search input,
   .field input {
     color: #fcfcfc;
   }
 
-  .search-box input::placeholder {
+  .search-box input::placeholder,
+  .toolbar-search input::placeholder {
     color: rgba(235, 235, 245, 0.42);
   }
 
@@ -852,6 +897,11 @@ button:disabled {
   .ghost-button {
     border-color: rgba(235, 235, 245, 0.16);
     background: rgba(255, 255, 255, 0.08);
+  }
+
+  .toolbar-search .toolbar-button {
+    border-color: transparent;
+    background: transparent;
   }
 
   .primary-button {
