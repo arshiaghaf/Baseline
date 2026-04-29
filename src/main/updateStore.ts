@@ -885,10 +885,7 @@ function reconcileHomebrewInventory(
     return {
       ...item,
       iconDataURL,
-      latestVersion:
-        item.latestVersion && compareVersions(item.latestVersion, update.remoteVersion) > 0
-          ? item.latestVersion
-          : update.remoteVersion,
+      latestVersion: update.remoteVersion,
       isOutdated: true
     };
   });

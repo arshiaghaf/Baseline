@@ -59,4 +59,24 @@ describe("ported clients", () => {
     expect(inventory.find((item) => item.token === "ripgrep")?.isOutdated).toBe(true);
     expect(inventory.find((item) => item.token === "notion")?.latestVersion?.raw).toBe("4.1.0");
   });
+
+  it("strips cask build metadata from Homebrew inventory versions", () => {
+    const inventory = new HomebrewInventoryParser().buildInventory(
+      "",
+      "cursor 3.2.11,e9ee1339915a927dfb2df4a836dd9c8337e17cc2\n",
+      "{}",
+      JSON.stringify({
+        casks: [
+          {
+            token: "cursor",
+            current_version: "3.2.16,3e548838cf824b70851dd3ef27d0c6aae371b3f6"
+          }
+        ]
+      })
+    );
+
+    const cursor = inventory.find((item) => item.token === "cursor");
+    expect(cursor?.installedVersion.raw).toBe("3.2.11");
+    expect(cursor?.latestVersion?.raw).toBe("3.2.16");
+  });
 });

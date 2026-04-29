@@ -36,7 +36,7 @@ export class HomebrewInventoryParser {
     caskOutdatedJSON: string
   ): HomebrewManagedItem[] {
     const formulaInstalled = this.parseInstalledVersions(formulaVersionsOutput);
-    const caskInstalled = this.parseInstalledVersions(caskVersionsOutput);
+    const caskInstalled = this.parseInstalledVersions(caskVersionsOutput, "cask");
     const formulaOutdated = this.parseOutdatedMetadata(formulaOutdatedJSON);
     const caskOutdated = this.parseOutdatedMetadata(caskOutdatedJSON);
     const items: HomebrewManagedItem[] = [];
@@ -74,7 +74,10 @@ export class HomebrewInventoryParser {
     );
   }
 
-  parseInstalledVersions(output: string): Map<string, ReturnType<typeof version>> {
+  parseInstalledVersions(
+    output: string,
+    kindValue: HomebrewManagedItemKind = "formula"
+  ): Map<string, ReturnType<typeof version>> {
     const result = new Map<string, ReturnType<typeof version>>();
     for (const line of output.split(/\r?\n/u)) {
       const trimmed = line.trim();
@@ -83,7 +86,7 @@ export class HomebrewInventoryParser {
       }
       const [token, ...versions] = trimmed.split(/\s+/u);
       if (token) {
-        result.set(token, version(versions.at(-1)));
+        result.set(token, version(displayVersion(versions.at(-1), kindValue)));
       }
     }
     return result;
@@ -114,7 +117,7 @@ export class HomebrewInventoryParser {
         continue;
       }
       result.set(key(kindValue, token), {
-        latestVersion: version(currentVersion(item)),
+        latestVersion: version(currentVersion(item, kindValue)),
         releaseDate: parseReleaseDate(item)
       });
     }
@@ -125,9 +128,19 @@ function key(kindValue: HomebrewManagedItemKind, token: string): string {
   return `${kindValue}:${token.toLowerCase()}`;
 }
 
-function currentVersion(item: any): string {
+function currentVersion(item: any, kindValue: HomebrewManagedItemKind): string {
   const current = item?.current_version ?? item?.current_versions?.[0];
-  return typeof current === "string" ? current : "";
+  return displayVersion(current, kindValue);
+}
+
+function displayVersion(raw: unknown, kindValue: HomebrewManagedItemKind): string {
+  if (typeof raw !== "string") {
+    return "";
+  }
+  if (kindValue !== "cask") {
+    return raw;
+  }
+  return raw.split(",")[0]?.trim() ?? "";
 }
 
 function parseReleaseDate(item: any): string | undefined {
