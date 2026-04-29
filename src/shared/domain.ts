@@ -115,6 +115,7 @@ export type HomebrewManagedItem = {
   latestVersion?: VersionValue;
   isOutdated: boolean;
   releaseDate?: string;
+  iconDataURL?: string;
 };
 
 export type PersistedSnapshot = {

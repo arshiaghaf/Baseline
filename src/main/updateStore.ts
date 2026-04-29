@@ -519,7 +519,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({
         apps,
         updates,
-        homebrewItems: reconcileHomebrewInventory(homebrewItems, updates),
+        homebrewItems: reconcileHomebrewInventory(homebrewItems, updates, apps),
         recentlyUpdated,
         lastRefreshDate: now,
         isRefreshing: false,
@@ -859,7 +859,8 @@ function removeFromArray<T>(values: T[], value: T): T[] {
 
 function reconcileHomebrewInventory(
   items: HomebrewManagedItem[],
-  updates: UpdateRecord[]
+  updates: UpdateRecord[],
+  apps: AppRecord[] = []
 ): HomebrewManagedItem[] {
   const updatesByToken = new Map<string, UpdateRecord>();
   for (const update of updates) {
@@ -871,16 +872,19 @@ function reconcileHomebrewInventory(
       }
     }
   }
+  const appsByID = new Map(apps.map((app) => [app.id, app]));
   return items.map((item) => {
     if (item.kind !== "cask") {
       return item;
     }
+    const iconDataURL = matchingHomebrewAppIcon(item, updatesByToken, appsByID, apps);
     const update = updatesByToken.get(item.token.toLowerCase());
     if (!update || !isVersionGreater(update.remoteVersion, item.installedVersion)) {
-      return item;
+      return iconDataURL ? { ...item, iconDataURL } : item;
     }
     return {
       ...item,
+      iconDataURL,
       latestVersion:
         item.latestVersion && compareVersions(item.latestVersion, update.remoteVersion) > 0
           ? item.latestVersion
@@ -888,6 +892,41 @@ function reconcileHomebrewInventory(
       isOutdated: true
     };
   });
+}
+
+function matchingHomebrewAppIcon(
+  item: HomebrewManagedItem,
+  updatesByToken: Map<string, UpdateRecord>,
+  appsByID: Map<string, AppRecord>,
+  apps: AppRecord[]
+): string | undefined {
+  const update = updatesByToken.get(item.token.toLowerCase());
+  const appFromUpdate = update ? appsByID.get(update.appID) : undefined;
+  if (appFromUpdate?.iconDataURL) {
+    return appFromUpdate.iconDataURL;
+  }
+
+  const token = normalizedName(item.token);
+  const name = normalizedName(item.name);
+  return apps.find((app) => {
+    const candidates = normalizedAppCandidates(app);
+    return candidates.has(token) || candidates.has(name);
+  })?.iconDataURL;
+}
+
+function normalizedAppCandidates(app: AppRecord): Set<string> {
+  const fileName = app.bundlePath
+    .split("/")
+    .pop()
+    ?.replace(/\.app$/iu, "");
+  const candidates = [app.displayName, app.bundleIdentifier, fileName]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizedName);
+  return new Set(candidates.flatMap((value) => [value, value.replace(/^com/u, "")]));
+}
+
+function normalizedName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
 }
 
 function detectLaggingHomebrewCaskTokens(

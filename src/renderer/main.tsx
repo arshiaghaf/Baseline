@@ -727,7 +727,7 @@ function HomebrewRow({
 
   return (
     <article className="row">
-      <div className="app-icon brew">{item.kind === "cask" ? "C" : "F"}</div>
+      <HomebrewItemIcon item={item} snapshot={snapshot} />
       <div className="row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
@@ -778,9 +778,21 @@ function HomebrewItemIcon({
   item,
   snapshot
 }: {
-  item: Pick<HomebrewManagedItem, "kind" | "token">;
+  item: Pick<HomebrewManagedItem, "kind" | "token"> &
+    Partial<
+      Pick<HomebrewManagedItem, "name" | "iconDataURL"> &
+        Pick<HomebrewCaskDiscoveryItem, "displayName">
+    >;
   snapshot: BaselineSnapshot;
 }) {
+  if (item.iconDataURL) {
+    return (
+      <div className="app-icon app-icon-image">
+        <img src={item.iconDataURL} alt="" draggable={false} />
+      </div>
+    );
+  }
+
   const app = matchingAppForHomebrewItem(item, snapshot);
   if (app?.iconDataURL) {
     return (
@@ -790,7 +802,7 @@ function HomebrewItemIcon({
     );
   }
 
-  return <div className="app-icon brew">{item.kind === "cask" ? "C" : "F"}</div>;
+  return <div className="app-icon brew">{isCask(item.kind) ? "C" : "F"}</div>;
 }
 
 function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
@@ -1099,7 +1111,7 @@ function homebrewItemHasAppUpdate(
   apps: AppRecord[],
   updatesByAppID: Map<string, UpdateRecord>
 ): boolean {
-  if (item.kind !== "cask") {
+  if (!isCask(item.kind)) {
     return false;
   }
 
@@ -1116,16 +1128,17 @@ function homebrewItemHasAppUpdate(
 }
 
 function matchingAppForHomebrewItem(
-  item: Pick<HomebrewManagedItem, "kind" | "token">,
+  item: Pick<HomebrewManagedItem, "kind" | "token"> &
+    Partial<Pick<HomebrewManagedItem, "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">>,
   snapshot: BaselineSnapshot
 ): AppRecord | undefined {
-  if (item.kind !== "cask") {
+  if (!isCask(item.kind)) {
     return undefined;
   }
 
-  const normalizedToken = normalizedName(item.token);
+  const identifiers = homebrewItemIdentifiers(item);
   const matchingUpdate = snapshot.updates.find(
-    (update) => update.homebrewToken && normalizedName(update.homebrewToken) === normalizedToken
+    (update) => update.homebrewToken && identifiers.has(normalizedName(update.homebrewToken))
   );
   const appFromUpdate = matchingUpdate
     ? snapshot.apps.find((app) => app.id === matchingUpdate.appID)
@@ -1134,7 +1147,20 @@ function matchingAppForHomebrewItem(
     return appFromUpdate;
   }
 
-  return snapshot.apps.find((app) => normalizedAppCandidates(app).has(normalizedToken));
+  return snapshot.apps.find((app) =>
+    [...identifiers].some((identifier) => normalizedAppCandidates(app).has(identifier))
+  );
+}
+
+function homebrewItemIdentifiers(
+  item: Pick<HomebrewManagedItem, "token"> &
+    Partial<Pick<HomebrewManagedItem, "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">>
+): Set<string> {
+  return new Set(
+    [item.token, item.name, item.displayName]
+      .filter((value): value is string => Boolean(value))
+      .map(normalizedName)
+  );
 }
 
 function normalizedAppCandidates(app: AppRecord): Set<string> {
@@ -1142,15 +1168,18 @@ function normalizedAppCandidates(app: AppRecord): Set<string> {
     .split("/")
     .pop()
     ?.replace(/\.app$/iu, "");
-  return new Set(
-    [app.displayName, app.bundleIdentifier, fileName]
-      .filter((value): value is string => Boolean(value))
-      .map(normalizedName)
-  );
+  const candidates = [app.displayName, app.bundleIdentifier, fileName]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizedName);
+  return new Set(candidates.flatMap((value) => [value, value.replace(/^com/u, "")]));
 }
 
 function normalizedName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
+}
+
+function isCask(kind: string): boolean {
+  return kind.toLowerCase() === "cask";
 }
 
 function sortByName(lhs: AppRecord, rhs: AppRecord): number {
