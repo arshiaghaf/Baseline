@@ -2,14 +2,17 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
+  AppWindow,
+  Beer,
   CheckCircle2,
   ExternalLink,
   FolderPlus,
-  Home,
   Loader2,
+  Package,
   RefreshCcw,
   Search,
   Settings,
+  SlidersHorizontal,
   Trash2,
   XCircle
 } from "lucide-react";
@@ -97,68 +100,177 @@ function Dashboard({
   const derived = useMemo(() => deriveSections(snapshot), [snapshot]);
   const selectedTab = snapshot.selectedTab;
 
+  if (compact) {
+    return (
+      <main className="app-shell compact">
+        <header className="popover-titlebar">
+          <div>
+            <h1>Baseline</h1>
+            <p>
+              {snapshot.isRefreshing
+                ? "Checking updates"
+                : `${derived.availableApps.length} apps, ${derived.homebrewOutdated.length} brew`}
+            </p>
+          </div>
+          <div className="topbar-actions">
+            {snapshot.isRefreshing && <Loader2 className="spin" size={16} />}
+            <button
+              className="toolbar-button"
+              onClick={() => void window.baseline.refresh(false)}
+              title="Refresh"
+            >
+              <RefreshCcw size={15} />
+            </button>
+            <button className="toolbar-button" onClick={onOpenSettings} title="Settings">
+              <Settings size={15} />
+            </button>
+          </div>
+        </header>
+        <CommandBar snapshot={snapshot} selectedTab={selectedTab} />
+        <section className="content single">
+          {selectedTab === "apps" ? (
+            <AppsTab snapshot={snapshot} derived={derived} compact={compact} />
+          ) : (
+            <HomebrewTab snapshot={snapshot} derived={derived} compact={compact} />
+          )}
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <main className={compact ? "app-shell compact" : "app-shell"}>
-      <header className="topbar">
-        <div>
-          <h1>Baseline</h1>
-          <p>
-            {snapshot.isRefreshing
-              ? "Checking installed apps and Homebrew metadata"
-              : `${derived.availableApps.length} app updates, ${derived.homebrewOutdated.length} Homebrew updates`}
-          </p>
-        </div>
-        <div className="topbar-actions">
-          {snapshot.isRefreshing && <Loader2 className="spin" size={18} />}
-          <button
-            className="icon-button"
-            onClick={() => void window.baseline.refresh(false)}
-            title="Refresh"
-          >
-            <RefreshCcw size={17} />
-          </button>
-          <button className="icon-button" onClick={onOpenSettings} title="Settings">
-            <Settings size={17} />
-          </button>
-        </div>
-      </header>
+    <main className="app-shell">
+      <Sidebar snapshot={snapshot} derived={derived} route="main" />
+      <section className="workspace">
+        <header className="topbar">
+          <div>
+            <h1>{selectedTab === "apps" ? "Applications" : "Homebrew"}</h1>
+            <p>
+              {snapshot.isRefreshing
+                ? "Checking installed apps and Homebrew metadata"
+                : selectedTab === "apps"
+                  ? `${derived.availableApps.length} available updates`
+                  : `${derived.homebrewOutdated.length} outdated items`}
+            </p>
+          </div>
+          <div className="topbar-actions">
+            {snapshot.isRefreshing && <Loader2 className="spin" size={17} />}
+            <button
+              className="toolbar-button"
+              onClick={() => void window.baseline.refresh(false)}
+              title="Refresh"
+            >
+              <RefreshCcw size={16} />
+            </button>
+            <button className="toolbar-button" onClick={onOpenSettings} title="Settings">
+              <Settings size={16} />
+            </button>
+          </div>
+        </header>
 
-      {snapshot.refreshErrorMessage && (
-        <div className="notice danger">
-          <AlertTriangle size={16} />
-          <span>{snapshot.refreshErrorMessage}</span>
-        </div>
-      )}
-      {snapshot.lastRefreshNoticeMessage && !snapshot.refreshErrorMessage && (
-        <div className="notice">
-          <AlertTriangle size={16} />
-          <span>{snapshot.lastRefreshNoticeMessage}</span>
-        </div>
-      )}
+        <CommandBar snapshot={snapshot} selectedTab={selectedTab} />
 
-      <section className="command-row">
-        <label className="search-box">
-          <Search size={16} />
-          <input
-            value={snapshot.searchText}
-            onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
-            placeholder={
-              selectedTab === "homebrew" ? "Search installed or discover Homebrew" : "Search apps"
-            }
-          />
-        </label>
-        <SegmentedTabs selectedTab={selectedTab} />
-      </section>
-
-      <section className={compact ? "content single" : "content"}>
-        {selectedTab === "apps" ? (
-          <AppsTab snapshot={snapshot} derived={derived} compact={compact} />
-        ) : (
-          <HomebrewTab snapshot={snapshot} derived={derived} compact={compact} />
+        {snapshot.refreshErrorMessage && (
+          <div className="notice danger">
+            <AlertTriangle size={15} />
+            <span>{snapshot.refreshErrorMessage}</span>
+          </div>
         )}
-        {!compact && <Inspector snapshot={snapshot} derived={derived} />}
+        {snapshot.lastRefreshNoticeMessage && !snapshot.refreshErrorMessage && (
+          <div className="notice">
+            <AlertTriangle size={15} />
+            <span>{snapshot.lastRefreshNoticeMessage}</span>
+          </div>
+        )}
+
+        <section className="content">
+          {selectedTab === "apps" ? (
+            <AppsTab snapshot={snapshot} derived={derived} compact={compact} />
+          ) : (
+            <HomebrewTab snapshot={snapshot} derived={derived} compact={compact} />
+          )}
+          <Inspector snapshot={snapshot} derived={derived} />
+        </section>
       </section>
     </main>
+  );
+}
+
+function Sidebar({
+  snapshot,
+  derived,
+  route
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+  route: "main" | "settings";
+}) {
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-title">
+        <AppWindow size={20} />
+        <strong>Baseline</strong>
+      </div>
+      <nav className="source-list">
+        <button
+          className={route === "main" && snapshot.selectedTab === "apps" ? "selected" : ""}
+          onClick={() => {
+            window.location.hash = "/main";
+            void window.baseline.setSelectedTab("apps");
+          }}
+        >
+          <Package size={16} />
+          <span>Applications</span>
+          <strong>{derived.availableApps.length}</strong>
+        </button>
+        <button
+          className={route === "main" && snapshot.selectedTab === "homebrew" ? "selected" : ""}
+          onClick={() => {
+            window.location.hash = "/main";
+            void window.baseline.setSelectedTab("homebrew");
+          }}
+        >
+          <Beer size={16} />
+          <span>Homebrew</span>
+          <strong>{derived.homebrewOutdated.length}</strong>
+        </button>
+        <button
+          className={route === "settings" ? "selected" : ""}
+          onClick={() => (window.location.hash = "/settings")}
+        >
+          <SlidersHorizontal size={16} />
+          <span>Settings</span>
+        </button>
+      </nav>
+      <div className="sidebar-footer">
+        <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
+        <Readiness label="mas" ready={snapshot.isMasInstalled} />
+      </div>
+    </aside>
+  );
+}
+
+function CommandBar({
+  snapshot,
+  selectedTab
+}: {
+  snapshot: BaselineSnapshot;
+  selectedTab: MenuTab;
+}) {
+  return (
+    <section className="command-row">
+      <label className="search-box">
+        <Search size={15} />
+        <input
+          value={snapshot.searchText}
+          onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
+          placeholder={
+            selectedTab === "homebrew" ? "Search installed or discover Homebrew" : "Search apps"
+          }
+        />
+      </label>
+      <SegmentedTabs selectedTab={selectedTab} />
+    </section>
   );
 }
 
@@ -583,141 +695,151 @@ function Inspector({
 
 function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const derived = useMemo(() => deriveSections(snapshot), [snapshot]);
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <h1>Settings</h1>
-          <p>Customize sections, scan paths, optional tools, and refresh behavior.</p>
-        </div>
-        <button
-          className="icon-button"
-          onClick={() => (window.location.hash = "/main")}
-          title="Back to app"
-        >
-          <Home size={17} />
-        </button>
-      </header>
-
-      <section className="settings-grid">
-        <section className="panel">
-          <PanelTitle title="Readiness" />
-          <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
-          <Readiness label="mas" ready={snapshot.isMasInstalled} />
-          <button className="ghost-button wide" onClick={() => void window.baseline.refresh(true)}>
-            Check Again
+      <Sidebar snapshot={snapshot} derived={derived} route="settings" />
+      <section className="workspace">
+        <header className="topbar">
+          <div>
+            <h1>Settings</h1>
+            <p>Sections, scan paths, optional tools, and refresh behavior</p>
+          </div>
+          <button
+            className="toolbar-button text-button"
+            onClick={() => (window.location.hash = "/main")}
+          >
+            Done
           </button>
-        </section>
+        </header>
 
-        <section className="panel">
-          <PanelTitle title="Sections" />
-          <Toggle
-            label="Installed apps"
-            value={snapshot.showInstalledAppsSection}
-            patch="showInstalledAppsSection"
-          />
-          <Toggle
-            label="Recently updated apps"
-            value={snapshot.showRecentlyUpdatedAppsSection}
-            patch="showRecentlyUpdatedAppsSection"
-          />
-          <Toggle
-            label="Ignored apps"
-            value={snapshot.showIgnoredAppsSection}
-            patch="showIgnoredAppsSection"
-          />
-          <Toggle
-            label="Recently updated Homebrew"
-            value={snapshot.showRecentlyUpdatedHomebrewSection}
-            patch="showRecentlyUpdatedHomebrewSection"
-          />
-          <Toggle
-            label="Installed Homebrew"
-            value={snapshot.showInstalledHomebrewSection}
-            patch="showInstalledHomebrewSection"
-          />
-          <Toggle
-            label="Ignored Homebrew"
-            value={snapshot.showIgnoredHomebrewSection}
-            patch="showIgnoredHomebrewSection"
-          />
-        </section>
+        <section className="settings-grid">
+          <section className="panel">
+            <PanelTitle title="Readiness" />
+            <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
+            <Readiness label="mas" ready={snapshot.isMasInstalled} />
+            <div className="settings-action">
+              <button
+                className="ghost-button wide"
+                onClick={() => void window.baseline.refresh(true)}
+              >
+                Check Again
+              </button>
+            </div>
+          </section>
 
-        <section className="panel">
-          <PanelTitle title="Refresh" />
-          <Toggle
-            label="Auto refresh"
-            value={snapshot.autoRefreshEnabled}
-            patch="autoRefreshEnabled"
-          />
-          <label className="field">
-            <span>Interval minutes</span>
-            <input
-              type="number"
-              min={5}
-              max={1440}
-              value={snapshot.refreshIntervalMinutes}
-              onChange={(event) =>
-                void window.baseline.updatePreferences({
-                  refreshIntervalMinutes: Number(event.currentTarget.value)
-                })
+          <section className="panel">
+            <PanelTitle title="Sections" />
+            <Toggle
+              label="Installed apps"
+              value={snapshot.showInstalledAppsSection}
+              patch="showInstalledAppsSection"
+            />
+            <Toggle
+              label="Recently updated apps"
+              value={snapshot.showRecentlyUpdatedAppsSection}
+              patch="showRecentlyUpdatedAppsSection"
+            />
+            <Toggle
+              label="Ignored apps"
+              value={snapshot.showIgnoredAppsSection}
+              patch="showIgnoredAppsSection"
+            />
+            <Toggle
+              label="Recently updated Homebrew"
+              value={snapshot.showRecentlyUpdatedHomebrewSection}
+              patch="showRecentlyUpdatedHomebrewSection"
+            />
+            <Toggle
+              label="Installed Homebrew"
+              value={snapshot.showInstalledHomebrewSection}
+              patch="showInstalledHomebrewSection"
+            />
+            <Toggle
+              label="Ignored Homebrew"
+              value={snapshot.showIgnoredHomebrewSection}
+              patch="showIgnoredHomebrewSection"
+            />
+          </section>
+
+          <section className="panel">
+            <PanelTitle title="Refresh" />
+            <Toggle
+              label="Auto refresh"
+              value={snapshot.autoRefreshEnabled}
+              patch="autoRefreshEnabled"
+            />
+            <label className="field">
+              <span>Interval minutes</span>
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={snapshot.refreshIntervalMinutes}
+                onChange={(event) =>
+                  void window.baseline.updatePreferences({
+                    refreshIntervalMinutes: Number(event.currentTarget.value)
+                  })
+                }
+              />
+            </label>
+            <Toggle
+              label="Use mas for App Store updates"
+              value={snapshot.useMasForAppStoreUpdates}
+              patch="useMasForAppStoreUpdates"
+            />
+          </section>
+
+          <section className="panel wide-panel">
+            <PanelTitle
+              title="Scan Directories"
+              action={
+                <button
+                  className="toolbar-button"
+                  onClick={() => void window.baseline.chooseDirectory()}
+                  title="Add directory"
+                >
+                  <FolderPlus size={15} />
+                </button>
               }
             />
-          </label>
-          <Toggle
-            label="Use mas for App Store updates"
-            value={snapshot.useMasForAppStoreUpdates}
-            patch="useMasForAppStoreUpdates"
-          />
-        </section>
+            <div className="directory-list">
+              {snapshot.additionalDirectories.length === 0 && (
+                <Empty text="Using default Applications folders." />
+              )}
+              {snapshot.additionalDirectories.map((directory) => (
+                <div className="directory-row" key={directory}>
+                  <span>{directory}</span>
+                  <button
+                    className="toolbar-button"
+                    onClick={() => void window.baseline.removeDirectory(directory)}
+                    title="Remove"
+                  >
+                    <XCircle size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
 
-        <section className="panel">
-          <PanelTitle
-            title="Scan Directories"
-            action={
+          <section className="panel">
+            <PanelTitle title="Diagnostics" />
+            <p className="muted panel-copy">
+              Copy a local report with counts, tool status, scan paths, and the latest non-sensitive
+              refresh message.
+            </p>
+            <div className="settings-action">
               <button
-                className="icon-button"
-                onClick={() => void window.baseline.chooseDirectory()}
-                title="Add directory"
+                className="primary-button wide"
+                onClick={() => {
+                  void window.baseline.copyDiagnostics().then(() => setDiagnosticsCopied(true));
+                }}
               >
-                <FolderPlus size={16} />
+                {diagnosticsCopied ? "Copied" : "Copy Report"}
               </button>
-            }
-          />
-          <div className="directory-list">
-            {snapshot.additionalDirectories.length === 0 && (
-              <Empty text="Using default Applications folders." />
-            )}
-            {snapshot.additionalDirectories.map((directory) => (
-              <div className="directory-row" key={directory}>
-                <span>{directory}</span>
-                <button
-                  className="icon-button"
-                  onClick={() => void window.baseline.removeDirectory(directory)}
-                  title="Remove"
-                >
-                  <XCircle size={15} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel">
-          <PanelTitle title="Diagnostics" />
-          <p className="muted">
-            Copy a local report with counts, tool status, scan paths, and the latest non-sensitive
-            refresh message.
-          </p>
-          <button
-            className="primary-button wide"
-            onClick={() => {
-              void window.baseline.copyDiagnostics().then(() => setDiagnosticsCopied(true));
-            }}
-          >
-            {diagnosticsCopied ? "Copied" : "Copy Report"}
-          </button>
+            </div>
+          </section>
         </section>
       </section>
     </main>
