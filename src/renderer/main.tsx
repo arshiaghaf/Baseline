@@ -270,11 +270,15 @@ function AppRow({
   return (
     <article className="row">
       <button
-        className="app-icon"
+        className={app.iconDataURL ? "app-icon app-icon-image" : "app-icon"}
         onClick={() => void window.baseline.openApp(app.id)}
         title="Open app"
       >
-        {app.displayName.slice(0, 1).toUpperCase()}
+        {app.iconDataURL ? (
+          <img src={app.iconDataURL} alt="" draggable={false} />
+        ) : (
+          app.displayName.slice(0, 1).toUpperCase()
+        )}
       </button>
       <div className="row-main">
         <div className="row-title">

@@ -32,42 +32,56 @@ if (process.env.BASELINE_USER_DATA_DIR) {
   app.setPath("userData", process.env.BASELINE_USER_DATA_DIR);
 }
 
-void app.whenReady().then(async () => {
-  const persistence = new SnapshotPersistence(app.getPath("userData"));
-  const persisted = await persistence.load();
-  store = new UpdateStore({
-    persistence,
-    persisted,
-    openExternalURL: async (url) => {
-      if (!isAllowedExternalURL(url)) {
-        return false;
-      }
-      await shell.openExternal(url);
-      return true;
-    },
-    openAppBundle: async (bundlePath) => {
-      await shell.openPath(bundlePath);
-    }
-  });
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
-  createTray();
-  createMainWindow("main");
-  wireStoreEvents();
-  wireIpc();
-  if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
-    store.emit("snapshot", store.getSnapshot());
-  } else {
-    await store.start();
-  }
-
-  app.on("activate", () => {
-    if (!mainWindow) {
-      createMainWindow("main");
-    } else {
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
       showWindow(mainWindow);
     }
   });
-});
+}
+
+if (hasSingleInstanceLock) {
+  void app.whenReady().then(async () => {
+    const persistence = new SnapshotPersistence(app.getPath("userData"));
+    const persisted = await persistence.load();
+    store = new UpdateStore({
+      persistence,
+      persisted,
+      openExternalURL: async (url) => {
+        if (!isAllowedExternalURL(url)) {
+          return false;
+        }
+        await shell.openExternal(url);
+        return true;
+      },
+      openAppBundle: async (bundlePath) => {
+        await shell.openPath(bundlePath);
+      }
+    });
+
+    createTray();
+    createMainWindow("main");
+    wireStoreEvents();
+    wireIpc();
+    if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
+      store.emit("snapshot", store.getSnapshot());
+    } else {
+      await store.start();
+    }
+
+    app.on("activate", () => {
+      if (!mainWindow) {
+        createMainWindow("main");
+      } else {
+        showWindow(mainWindow);
+      }
+    });
+  });
+}
 
 app.on("window-all-closed", () => undefined);
 

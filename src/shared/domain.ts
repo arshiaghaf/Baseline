@@ -13,6 +13,7 @@ export type AppRecord = {
   localVersion: VersionValue;
   sourceHint: UpdateSource;
   sparkleFeedURL?: string;
+  iconDataURL?: string;
 };
 
 export type AppStoreLookupResult = {

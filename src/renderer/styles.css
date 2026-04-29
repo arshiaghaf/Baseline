@@ -229,6 +229,19 @@ button:disabled {
   background: linear-gradient(135deg, #0f766e, #2563eb);
 }
 
+.app-icon.app-icon-image {
+  border-radius: 10px;
+  background: transparent;
+  overflow: hidden;
+}
+
+.app-icon img {
+  width: 38px;
+  height: 38px;
+  object-fit: cover;
+  pointer-events: none;
+}
+
 .row-main {
   min-width: 0;
 }

@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
-import { readdir, stat } from "node:fs/promises";
+import { app as electronApp, nativeImage, type NativeImage } from "electron";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { AppRecord, UpdateSource } from "../shared/domain";
@@ -72,7 +74,8 @@ export class BundleScannerClient {
       bundleIdentifier,
       localVersion: version(rawVersion),
       sourceHint,
-      sparkleFeedURL
+      sparkleFeedURL,
+      iconDataURL: await this.appIconDataURL(appPath)
     };
   }
 
@@ -109,8 +112,109 @@ export class BundleScannerClient {
       stringValue(info.DevMateKitUpdateFeedURL);
     return feed && isAllowedFeedURL(feed) ? feed : undefined;
   }
+
+  private async appIconDataURL(appPath: string): Promise<string | undefined> {
+    const bundleIcon = await this.bundleIconDataURL(appPath);
+    if (bundleIcon) {
+      return bundleIcon;
+    }
+
+    try {
+      const image = await electronApp.getFileIcon(appPath, { size: "normal" });
+      if (image.isEmpty()) {
+        return undefined;
+      }
+      return resizedIconDataURL(image);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async bundleIconDataURL(appPath: string): Promise<string | undefined> {
+    const info = await this.readInfoPlist(appPath);
+    if (!info) {
+      return undefined;
+    }
+
+    for (const iconPath of iconCandidatePaths(appPath, info)) {
+      const dataURL = await loadIconFileDataURL(iconPath);
+      if (dataURL) {
+        return dataURL;
+      }
+    }
+
+    return undefined;
+  }
 }
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function iconCandidatePaths(appPath: string, info: InfoPlist): string[] {
+  const resourcesPath = path.join(appPath, "Contents", "Resources");
+  const names = new Set<string>();
+  const add = (value: string | undefined) => {
+    if (value) {
+      names.add(value);
+    }
+  };
+
+  add(stringValue(info.CFBundleIconFile));
+  add(stringValue(info.CFBundleIconName));
+  for (const value of stringArrayValue(info.CFBundleIconFiles)) {
+    add(value);
+  }
+
+  const icons = recordValue(info.CFBundleIcons);
+  const primaryIcon = recordValue(icons?.CFBundlePrimaryIcon);
+  for (const value of stringArrayValue(primaryIcon?.CFBundleIconFiles)) {
+    add(value);
+  }
+  add(stringValue(primaryIcon?.CFBundleIconName));
+
+  return [...names].flatMap((name) => {
+    const withExtension = path.extname(name) ? name : `${name}.icns`;
+    return [path.join(resourcesPath, withExtension), path.join(resourcesPath, name)];
+  });
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function resizedIconDataURL(image: NativeImage): string {
+  return image.resize({ width: 64, height: 64, quality: "best" }).toDataURL();
+}
+
+async function loadIconFileDataURL(iconPath: string): Promise<string | undefined> {
+  if (path.extname(iconPath).toLowerCase() !== ".icns") {
+    const image = nativeImage.createFromPath(iconPath);
+    return image.isEmpty() ? undefined : resizedIconDataURL(image);
+  }
+
+  let tempDirectory: string | undefined;
+  try {
+    tempDirectory = await mkdtemp(path.join(os.tmpdir(), "baseline-icon-"));
+    const pngPath = path.join(tempDirectory, "icon.png");
+    await execFileAsync("/usr/bin/sips", ["-s", "format", "png", iconPath, "--out", pngPath], {
+      maxBuffer: 4 * 1024 * 1024
+    });
+    const image = nativeImage.createFromPath(pngPath);
+    return image.isEmpty() ? undefined : resizedIconDataURL(image);
+  } catch {
+    return undefined;
+  } finally {
+    if (tempDirectory) {
+      await rm(tempDirectory, { recursive: true, force: true });
+    }
+  }
 }
