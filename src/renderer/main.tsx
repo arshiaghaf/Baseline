@@ -145,15 +145,6 @@ function Dashboard({
         <header className="topbar">
           <div>
             <h1>{title}</h1>
-            <p>
-              {snapshot.isRefreshing
-                ? "Checking installed apps and Homebrew metadata"
-                : selectedTab === "all"
-                  ? `${combinedAvailableCount(derived)} total available updates`
-                  : selectedTab === "apps"
-                    ? `${derived.availableApps.length} available updates`
-                    : `${derived.homebrewOutdated.length} outdated items`}
-            </p>
           </div>
           <div className="topbar-actions">
             {snapshot.isRefreshing && <Loader2 className="spin" size={17} />}
