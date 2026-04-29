@@ -205,10 +205,6 @@ function Sidebar({
 }) {
   return (
     <aside className="sidebar">
-      <div className="sidebar-title">
-        <AppWindow size={20} />
-        <strong>Baseline</strong>
-      </div>
       <nav className="source-list">
         <button
           className={route === "main" && snapshot.selectedTab === "all" ? "selected" : ""}
