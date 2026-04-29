@@ -1,17 +1,7 @@
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  dialog,
-  ipcMain,
-  nativeImage,
-  shell,
-  Tray,
-  Menu
-} from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell, Tray } from "electron";
 import path from "node:path";
 import { renderDiagnostics } from "../shared/diagnostics";
-import type { HomebrewCaskDiscoveryItem } from "../shared/domain";
+import type { BaselineSnapshot, HomebrewCaskDiscoveryItem, MenuTab } from "../shared/domain";
 import { ipcChannels, type PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL } from "../shared/security";
 import { SnapshotPersistence } from "./persistence";
@@ -84,6 +74,9 @@ if (hasSingleInstanceLock) {
 }
 
 app.on("window-all-closed", () => undefined);
+app.on("before-quit", () => {
+  isQuitting = true;
+});
 
 function createMainWindow(route: "main" | "settings"): BrowserWindow {
   mainWindow =
@@ -98,7 +91,8 @@ function createMainWindow(route: "main" | "settings"): BrowserWindow {
       trafficLightPosition: { x: 14, y: 14 },
       vibrancy: "sidebar",
       visualEffectState: "active",
-      backgroundColor: "#ececec",
+      transparent: true,
+      backgroundColor: "#00000000",
       show: false,
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
@@ -179,22 +173,6 @@ function createTray(): void {
   tray = new Tray(icon);
   tray.setToolTip("Baseline");
   tray.on("click", toggleMenuWindow);
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Show Baseline", click: () => showMainWindow("main") },
-      { label: "Settings", click: () => showMainWindow("settings") },
-      { type: "separator" },
-      { label: "Refresh", click: () => void store.refresh(false) },
-      { type: "separator" },
-      {
-        label: "Quit",
-        click: () => {
-          isQuitting = true;
-          app.quit();
-        }
-      }
-    ])
-  );
 }
 
 function toggleMenuWindow(): void {
@@ -232,7 +210,7 @@ function showWindow(window?: BrowserWindow): void {
 
 function wireStoreEvents(): void {
   store.on("snapshot", (snapshot) => {
-    tray?.setTitle(snapshot.isRefreshing ? "…" : String(snapshot.updates.length));
+    tray?.setTitle(snapshot.isRefreshing ? "…" : trayUpdateTitle(snapshot));
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send(ipcChannels.snapshotChanged, snapshot);
       window.webContents.send(ipcChannels.refreshStateChanged, {
@@ -257,6 +235,12 @@ function wireStoreEvents(): void {
   });
 }
 
+function trayUpdateTitle(snapshot: BaselineSnapshot): string {
+  const ignored = new Set(snapshot.ignoredIDs);
+  const visibleUpdates = snapshot.updates.filter((update) => !ignored.has(update.appID)).length;
+  return `${visibleUpdates}\u2009↓`;
+}
+
 function wireIpc(): void {
   ipcMain.handle(ipcChannels.getSnapshot, () => store.getSnapshot());
   ipcMain.handle(ipcChannels.getDiagnostics, () =>
@@ -278,9 +262,7 @@ function wireIpc(): void {
   ipcMain.handle(ipcChannels.setSearchText, (_event, value: string) =>
     store.setSearchText(String(value))
   );
-  ipcMain.handle(ipcChannels.setSelectedTab, (_event, tab: "apps" | "homebrew") =>
-    store.setSelectedTab(tab)
-  );
+  ipcMain.handle(ipcChannels.setSelectedTab, (_event, tab: MenuTab) => store.setSelectedTab(tab));
   ipcMain.handle(ipcChannels.updatePreferences, (_event, patch: PreferencePatch) =>
     store.updatePreferences(patch)
   );

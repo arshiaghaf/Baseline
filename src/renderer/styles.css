@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 :root {
-  color: #1d1d1f;
+  color: #0d0d0d;
   background: transparent;
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
@@ -41,7 +41,8 @@ button:disabled {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: rgba(242, 242, 247, 0.72);
+  border-radius: 18px;
+  background: transparent;
 }
 
 .app-shell.compact {
@@ -52,18 +53,33 @@ button:disabled {
   padding: 12px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 12px;
-  background: rgba(246, 246, 246, 0.86);
+  background: rgba(255, 255, 255, 0.86);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
 }
 
 .sidebar {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   padding: 54px 10px 12px;
-  border-right: 1px solid rgba(0, 0, 0, 0.12);
-  background: rgba(232, 232, 237, 0.58);
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.01)),
+    rgba(246, 246, 246, 0.025);
   -webkit-app-region: drag;
+  backdrop-filter: blur(14px) saturate(1.18);
+}
+
+.sidebar::after {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.008)),
+    rgba(118, 118, 128, 0.012);
+  pointer-events: none;
 }
 
 .sidebar-title {
@@ -140,7 +156,7 @@ button:disabled {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: rgba(246, 246, 246, 0.9);
+  background: #ffffff;
 }
 
 .topbar,
@@ -152,7 +168,7 @@ button:disabled {
   min-height: 54px;
   padding: 10px 16px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.11);
-  background: rgba(248, 248, 248, 0.72);
+  background: rgba(255, 255, 255, 0.88);
   -webkit-app-region: drag;
 }
 
@@ -197,7 +213,11 @@ button:disabled {
   gap: 10px;
   padding: 10px 16px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  background: rgba(246, 246, 246, 0.78);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.command-row.search-only {
+  grid-template-columns: minmax(230px, 520px);
 }
 
 .compact .command-row {
@@ -226,14 +246,14 @@ button:disabled {
   border: 0;
   outline: 0;
   background: transparent;
-  color: #1d1d1f;
+  color: #0d0d0d;
   font-size: 13px;
 }
 
 .segmented {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  width: 220px;
+  grid-template-columns: repeat(3, 1fr);
+  width: 260px;
   height: 28px;
   padding: 2px;
   border-radius: 7px;
@@ -261,9 +281,7 @@ button:disabled {
 }
 
 .content {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 246px;
-  gap: 16px;
+  display: block;
   min-height: 0;
   padding: 16px;
   overflow: auto;
@@ -388,7 +406,7 @@ button:disabled {
 
 .row-title strong {
   overflow: hidden;
-  color: #1d1d1f;
+  color: #0d0d0d;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
@@ -433,7 +451,6 @@ button:disabled {
   justify-content: center;
   gap: 5px;
   min-height: 26px;
-  border-radius: 6px;
   font-size: 12px;
   font-weight: 590;
   letter-spacing: 0;
@@ -442,9 +459,11 @@ button:disabled {
 .toolbar-button,
 .icon-button {
   width: 28px;
+  height: 28px;
   border: 1px solid rgba(60, 60, 67, 0.16);
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
-  color: #1d1d1f;
+  color: #0d0d0d;
 }
 
 .toolbar-button.text-button {
@@ -455,8 +474,9 @@ button:disabled {
 .ghost-button {
   padding: 0 10px;
   border: 1px solid rgba(60, 60, 67, 0.16);
+  border-radius: 6px;
   background: rgba(255, 255, 255, 0.72);
-  color: #1d1d1f;
+  color: #0d0d0d;
 }
 
 .primary-button,
@@ -464,6 +484,7 @@ button:disabled {
   min-width: 68px;
   padding: 0 12px;
   border: 0;
+  border-radius: 6px;
   background: #007aff;
   color: white;
 }
@@ -546,7 +567,7 @@ button:disabled {
 
 .stats dd {
   margin: 0;
-  color: #1d1d1f;
+  color: #0d0d0d;
   font-size: 13px;
   font-weight: 650;
 }
@@ -564,7 +585,7 @@ button:disabled {
   min-height: 30px;
   padding: 0 10px;
   border-top: 1px solid rgba(60, 60, 67, 0.08);
-  color: #1d1d1f;
+  color: #0d0d0d;
   font-size: 12px;
 }
 
@@ -683,5 +704,193 @@ button:disabled {
 
   .inspector {
     display: none;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #fcfcfc;
+    color-scheme: dark;
+  }
+
+  .app-shell.compact {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(25, 25, 25, 0.9);
+    box-shadow: 0 18px 70px rgba(0, 0, 0, 0.5);
+  }
+
+  .sidebar {
+    border-right-color: rgba(255, 255, 255, 0.12);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008)),
+      rgba(25, 25, 25, 0.045);
+  }
+
+  .sidebar::after {
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.006)),
+      rgba(0, 0, 0, 0.04);
+  }
+
+  .sidebar-title,
+  .source-list button,
+  .row-title strong,
+  .toolbar-button,
+  .icon-button,
+  .ghost-button,
+  .stats dd,
+  .ready-row {
+    color: #fcfcfc;
+  }
+
+  .source-list button.selected {
+    background: rgba(10, 132, 255, 0.24);
+    color: #9dccff;
+  }
+
+  .source-list strong {
+    background: rgba(235, 235, 245, 0.14);
+    color: rgba(235, 235, 245, 0.74);
+  }
+
+  .source-list button.selected strong {
+    background: rgba(10, 132, 255, 0.26);
+    color: #d6eaff;
+  }
+
+  .workspace {
+    background: #191919;
+  }
+
+  .topbar,
+  .command-row {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(25, 25, 25, 0.88);
+  }
+
+  .topbar p,
+  .popover-titlebar p,
+  .row-title span,
+  .row-main p,
+  .muted,
+  .empty,
+  .stats dt,
+  .ready-row strong {
+    color: rgba(235, 235, 245, 0.64);
+  }
+
+  .search-box,
+  .field input {
+    border-color: rgba(235, 235, 245, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(235, 235, 245, 0.58);
+  }
+
+  .search-box input,
+  .field input {
+    color: #fcfcfc;
+  }
+
+  .search-box input::placeholder {
+    color: rgba(235, 235, 245, 0.42);
+  }
+
+  .segmented {
+    background: rgba(118, 118, 128, 0.28);
+  }
+
+  .segmented button {
+    color: rgba(235, 235, 245, 0.78);
+  }
+
+  .segmented button.selected {
+    background: rgba(99, 99, 102, 0.78);
+    box-shadow:
+      0 0 0 0.5px rgba(255, 255, 255, 0.14),
+      0 1px 3px rgba(0, 0, 0, 0.4);
+    color: #ffffff;
+  }
+
+  .panel {
+    border-color: rgba(235, 235, 245, 0.12);
+    background: rgba(25, 25, 25, 0.82);
+  }
+
+  .compact .panel {
+    background: rgba(25, 25, 25, 0.72);
+  }
+
+  .panel-title {
+    border-bottom-color: rgba(235, 235, 245, 0.1);
+    background: rgba(58, 58, 60, 0.42);
+  }
+
+  .panel-title h2 {
+    color: rgba(235, 235, 245, 0.78);
+  }
+
+  .row,
+  .stats div,
+  .readiness,
+  .ready-row,
+  .toggle,
+  .field,
+  .directory-row {
+    border-color: rgba(235, 235, 245, 0.1);
+  }
+
+  .app-icon {
+    background: linear-gradient(180deg, #77777d, #3a3a3c);
+  }
+
+  .app-icon.brew {
+    background: linear-gradient(180deg, #6f6148, #332a1e);
+  }
+
+  .toolbar-button,
+  .icon-button,
+  .ghost-button {
+    border-color: rgba(235, 235, 245, 0.16);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .primary-button {
+    background: #0a84ff;
+  }
+
+  .danger-button {
+    background: #ff453a;
+  }
+
+  .notice {
+    border-color: rgba(255, 159, 10, 0.32);
+    background: rgba(255, 159, 10, 0.13);
+    color: #ffd28a;
+  }
+
+  .notice.danger {
+    border-color: rgba(255, 69, 58, 0.32);
+    background: rgba(255, 69, 58, 0.13);
+    color: #ffb4ae;
+  }
+
+  .progress {
+    background: rgba(118, 118, 128, 0.3);
+  }
+
+  .progress span {
+    background: #0a84ff;
+  }
+
+  .sidebar-footer .ready-row {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .good {
+    color: #30d158;
+  }
+
+  .muted-icon {
+    color: rgba(235, 235, 245, 0.42);
   }
 }

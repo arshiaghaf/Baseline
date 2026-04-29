@@ -101,6 +101,7 @@ function Dashboard({
   const selectedTab = snapshot.selectedTab;
 
   if (compact) {
+    const compactTitle = selectedTabTitle(selectedTab);
     return (
       <main className="app-shell compact">
         <header className="popover-titlebar">
@@ -109,7 +110,9 @@ function Dashboard({
             <p>
               {snapshot.isRefreshing
                 ? "Checking updates"
-                : `${derived.availableApps.length} apps, ${derived.homebrewOutdated.length} brew`}
+                : selectedTab === "all"
+                  ? `${combinedAvailableCount(derived)} available`
+                  : `${compactTitle} updates`}
             </p>
           </div>
           <div className="topbar-actions">
@@ -126,31 +129,30 @@ function Dashboard({
             </button>
           </div>
         </header>
-        <CommandBar snapshot={snapshot} selectedTab={selectedTab} />
+        <CommandBar snapshot={snapshot} selectedTab={selectedTab} showTabs />
         <section className="content single">
-          {selectedTab === "apps" ? (
-            <AppsTab snapshot={snapshot} derived={derived} compact={compact} />
-          ) : (
-            <HomebrewTab snapshot={snapshot} derived={derived} compact={compact} />
-          )}
+          <SelectedTabContent snapshot={snapshot} derived={derived} compact={compact} />
         </section>
       </main>
     );
   }
 
+  const title = selectedTabTitle(selectedTab);
   return (
     <main className="app-shell">
       <Sidebar snapshot={snapshot} derived={derived} route="main" />
       <section className="workspace">
         <header className="topbar">
           <div>
-            <h1>{selectedTab === "apps" ? "Applications" : "Homebrew"}</h1>
+            <h1>{title}</h1>
             <p>
               {snapshot.isRefreshing
                 ? "Checking installed apps and Homebrew metadata"
-                : selectedTab === "apps"
-                  ? `${derived.availableApps.length} available updates`
-                  : `${derived.homebrewOutdated.length} outdated items`}
+                : selectedTab === "all"
+                  ? `${combinedAvailableCount(derived)} total available updates`
+                  : selectedTab === "apps"
+                    ? `${derived.availableApps.length} available updates`
+                    : `${derived.homebrewOutdated.length} outdated items`}
             </p>
           </div>
           <div className="topbar-actions">
@@ -184,12 +186,7 @@ function Dashboard({
         )}
 
         <section className="content">
-          {selectedTab === "apps" ? (
-            <AppsTab snapshot={snapshot} derived={derived} compact={compact} />
-          ) : (
-            <HomebrewTab snapshot={snapshot} derived={derived} compact={compact} />
-          )}
-          <Inspector snapshot={snapshot} derived={derived} />
+          <SelectedTabContent snapshot={snapshot} derived={derived} compact={compact} />
         </section>
       </section>
     </main>
@@ -212,6 +209,17 @@ function Sidebar({
         <strong>Baseline</strong>
       </div>
       <nav className="source-list">
+        <button
+          className={route === "main" && snapshot.selectedTab === "all" ? "selected" : ""}
+          onClick={() => {
+            window.location.hash = "/main";
+            void window.baseline.setSelectedTab("all");
+          }}
+        >
+          <AppWindow size={16} />
+          <span>All</span>
+          <strong>{combinedAvailableCount(derived)}</strong>
+        </button>
         <button
           className={route === "main" && snapshot.selectedTab === "apps" ? "selected" : ""}
           onClick={() => {
@@ -252,24 +260,24 @@ function Sidebar({
 
 function CommandBar({
   snapshot,
-  selectedTab
+  selectedTab,
+  showTabs = false
 }: {
   snapshot: BaselineSnapshot;
   selectedTab: MenuTab;
+  showTabs?: boolean;
 }) {
   return (
-    <section className="command-row">
+    <section className={showTabs ? "command-row" : "command-row search-only"}>
       <label className="search-box">
         <Search size={15} />
         <input
           value={snapshot.searchText}
           onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
-          placeholder={
-            selectedTab === "homebrew" ? "Search installed or discover Homebrew" : "Search apps"
-          }
+          placeholder={searchPlaceholder(selectedTab)}
         />
       </label>
-      <SegmentedTabs selectedTab={selectedTab} />
+      {showTabs && <SegmentedTabs selectedTab={selectedTab} />}
     </section>
   );
 }
@@ -277,15 +285,95 @@ function CommandBar({
 function SegmentedTabs({ selectedTab }: { selectedTab: MenuTab }) {
   return (
     <div className="segmented" role="tablist">
-      {(["apps", "homebrew"] as MenuTab[]).map((tab) => (
+      {(["all", "apps", "homebrew"] as MenuTab[]).map((tab) => (
         <button
           key={tab}
           className={selectedTab === tab ? "selected" : ""}
           onClick={() => void window.baseline.setSelectedTab(tab)}
         >
-          {tab === "apps" ? "Apps" : "Homebrew"}
+          {tab === "all" ? "All" : tab === "apps" ? "Apps" : "Homebrew"}
         </button>
       ))}
+    </div>
+  );
+}
+
+function SelectedTabContent({
+  snapshot,
+  derived,
+  compact
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+  compact: boolean;
+}) {
+  if (snapshot.selectedTab === "all") {
+    return <AllTab snapshot={snapshot} derived={derived} compact={compact} />;
+  }
+  if (snapshot.selectedTab === "apps") {
+    return <AppsTab snapshot={snapshot} derived={derived} compact={compact} />;
+  }
+  return <HomebrewTab snapshot={snapshot} derived={derived} compact={compact} />;
+}
+
+function AllTab({
+  snapshot,
+  derived,
+  compact
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+  compact: boolean;
+}) {
+  return (
+    <div className="stack">
+      <AppSection
+        title={`App Updates (${derived.availableApps.length})`}
+        apps={derived.availableApps}
+        snapshot={snapshot}
+        empty="All your apps are up to date."
+      />
+      <HomebrewSection
+        title={`Homebrew Updates (${derived.allHomebrewOutdated.length})`}
+        items={derived.allHomebrewOutdated}
+        snapshot={snapshot}
+        empty="All your Homebrew items are up to date."
+        showUpdateAll
+      />
+      {snapshot.searchText.trim() && <DiscoverSection snapshot={snapshot} />}
+      {snapshot.showRecentlyUpdatedAppsSection && (
+        <AppSection
+          title="Recently Updated Apps"
+          apps={derived.recentlyUpdatedApps}
+          snapshot={snapshot}
+          empty="No recently updated apps yet."
+          recentlyUpdated
+        />
+      )}
+      {snapshot.showRecentlyUpdatedHomebrewSection && (
+        <HomebrewSection
+          title="Recently Updated Homebrew"
+          items={derived.homebrewRecentlyUpdated}
+          snapshot={snapshot}
+          empty="No recently updated Homebrew items yet."
+        />
+      )}
+      {!compact && snapshot.showInstalledAppsSection && (
+        <AppSection
+          title={`Installed Apps (${derived.installedApps.length})`}
+          apps={derived.installedApps}
+          snapshot={snapshot}
+          empty="No installed apps found."
+        />
+      )}
+      {!compact && snapshot.showInstalledHomebrewSection && (
+        <HomebrewSection
+          title={`Installed Homebrew (${derived.homebrewInstalled.length})`}
+          items={derived.homebrewInstalled}
+          snapshot={snapshot}
+          empty="No installed Homebrew items found."
+        />
+      )}
     </div>
   );
 }
@@ -502,7 +590,7 @@ function DiscoverRow({
 
   return (
     <article className="row">
-      <div className="app-icon brew">{item.kind === "cask" ? "C" : "F"}</div>
+      <HomebrewItemIcon item={item} snapshot={snapshot} />
       <div className="row-main">
         <div className="row-title">
           <strong>{item.displayName}</strong>
@@ -646,51 +734,23 @@ function HomebrewRow({
   );
 }
 
-function Inspector({
-  snapshot,
-  derived
+function HomebrewItemIcon({
+  item,
+  snapshot
 }: {
+  item: Pick<HomebrewManagedItem, "kind" | "token">;
   snapshot: BaselineSnapshot;
-  derived: DerivedSections;
 }) {
-  return (
-    <aside className="inspector">
-      <section className="panel">
-        <PanelTitle title="Status" />
-        <dl className="stats">
-          <div>
-            <dt>Apps</dt>
-            <dd>{snapshot.apps.length}</dd>
-          </div>
-          <div>
-            <dt>Available</dt>
-            <dd>{derived.availableApps.length}</dd>
-          </div>
-          <div>
-            <dt>Homebrew</dt>
-            <dd>{snapshot.homebrewItems.length}</dd>
-          </div>
-          <div>
-            <dt>Outdated</dt>
-            <dd>{derived.homebrewOutdated.length}</dd>
-          </div>
-        </dl>
-        <div className="readiness">
-          <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
-          <Readiness label="mas" ready={snapshot.isMasInstalled} />
-        </div>
-      </section>
-      <section className="panel">
-        <PanelTitle title="Last Refresh" />
-        <p className="muted">
-          {snapshot.lastRefreshDate ? new Date(snapshot.lastRefreshDate).toLocaleString() : "Never"}
-        </p>
-        <button className="primary-button wide" onClick={() => void window.baseline.refresh(false)}>
-          Refresh Now
-        </button>
-      </section>
-    </aside>
-  );
+  const app = matchingAppForHomebrewItem(item, snapshot);
+  if (app?.iconDataURL) {
+    return (
+      <div className="app-icon app-icon-image">
+        <img src={app.iconDataURL} alt="" draggable={false} />
+      </div>
+    );
+  }
+
+  return <div className="app-icon brew">{item.kind === "cask" ? "C" : "F"}</div>;
 }
 
 function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
@@ -908,6 +968,22 @@ function sourceLabel(update: UpdateRecord): string {
   return "Update";
 }
 
+function selectedTabTitle(tab: MenuTab): string {
+  if (tab === "all") return "All";
+  if (tab === "apps") return "Applications";
+  return "Homebrew";
+}
+
+function searchPlaceholder(tab: MenuTab): string {
+  if (tab === "all") return "Search apps and Homebrew";
+  if (tab === "homebrew") return "Search installed or discover Homebrew";
+  return "Search apps";
+}
+
+function combinedAvailableCount(derived: DerivedSections): number {
+  return derived.availableApps.length + derived.allHomebrewOutdated.length;
+}
+
 type DerivedSections = ReturnType<typeof deriveSections>;
 
 function deriveSections(snapshot: BaselineSnapshot) {
@@ -951,6 +1027,9 @@ function deriveSections(snapshot: BaselineSnapshot) {
     .filter((item) => item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
     .filter(homebrewFilter)
     .sort(sortHomebrewOutdated);
+  const allHomebrewOutdated = homebrewOutdated.filter(
+    (item) => !homebrewItemHasAppUpdate(item, availableApps, updatesByAppID)
+  );
   const homebrewInstalled = snapshot.homebrewItems
     .filter((item) => !item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
     .filter(homebrewFilter)
@@ -968,10 +1047,70 @@ function deriveSections(snapshot: BaselineSnapshot) {
     ignoredApps,
     recentlyUpdatedApps,
     homebrewOutdated,
+    allHomebrewOutdated,
     homebrewInstalled,
     homebrewIgnored,
     homebrewRecentlyUpdated
   };
+}
+
+function homebrewItemHasAppUpdate(
+  item: HomebrewManagedItem,
+  apps: AppRecord[],
+  updatesByAppID: Map<string, UpdateRecord>
+): boolean {
+  if (item.kind !== "cask") {
+    return false;
+  }
+
+  return apps.some((app) => {
+    const update = updatesByAppID.get(app.id);
+    if (
+      update?.homebrewToken &&
+      normalizedName(update.homebrewToken) === normalizedName(item.token)
+    ) {
+      return true;
+    }
+    return normalizedAppCandidates(app).has(normalizedName(item.token));
+  });
+}
+
+function matchingAppForHomebrewItem(
+  item: Pick<HomebrewManagedItem, "kind" | "token">,
+  snapshot: BaselineSnapshot
+): AppRecord | undefined {
+  if (item.kind !== "cask") {
+    return undefined;
+  }
+
+  const normalizedToken = normalizedName(item.token);
+  const matchingUpdate = snapshot.updates.find(
+    (update) => update.homebrewToken && normalizedName(update.homebrewToken) === normalizedToken
+  );
+  const appFromUpdate = matchingUpdate
+    ? snapshot.apps.find((app) => app.id === matchingUpdate.appID)
+    : undefined;
+  if (appFromUpdate?.iconDataURL) {
+    return appFromUpdate;
+  }
+
+  return snapshot.apps.find((app) => normalizedAppCandidates(app).has(normalizedToken));
+}
+
+function normalizedAppCandidates(app: AppRecord): Set<string> {
+  const fileName = app.bundlePath
+    .split("/")
+    .pop()
+    ?.replace(/\.app$/iu, "");
+  return new Set(
+    [app.displayName, app.bundleIdentifier, fileName]
+      .filter((value): value is string => Boolean(value))
+      .map(normalizedName)
+  );
+}
+
+function normalizedName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
 }
 
 function sortByName(lhs: AppRecord, rhs: AppRecord): number {
