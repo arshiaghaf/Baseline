@@ -2,23 +2,26 @@
 
 This repository uses GitHub Actions for pull request and `main` branch validation.
 
-Baseline targets macOS 26, so CI runs on GitHub's `macos-26` hosted runner.
+Baseline is now an Electron app that still targets macOS first, so CI runs on GitHub's `macos-26` hosted runner.
 
 The CI workflow:
-- Installs Tuist with Homebrew.
+- Installs Node dependencies with `npm ci`.
 - Lints release scripts with `bash -n`.
-- Generates the Xcode project.
-- Builds the Debug app with code signing disabled.
-- Runs unit tests on `platform=macOS`.
+- Typechecks the Electron main/preload/renderer TypeScript.
+- Runs Vitest unit tests.
+- Packages the unsigned Electron app.
+- Runs a Playwright Electron smoke test with initial refresh disabled.
 
-CI intentionally does not launch the menubar app. Installed-app smoke validation still requires the local desktop session.
+CI intentionally does not launch the app or interact with the tray. Installed-app smoke validation still requires the local desktop session.
 
 The local equivalent for build and test validation is:
 
 ```bash
-TUIST_SKIP_UPDATE_CHECK=1 tuist generate --no-open
-TUIST_SKIP_UPDATE_CHECK=1 tuist xcodebuild -project Baseline.xcodeproj -scheme Baseline -configuration Debug -destination 'platform=macOS' -derivedDataPath .DerivedData build
-xcodebuild -project Baseline.xcodeproj -scheme Baseline -destination 'platform=macOS' -derivedDataPath .DerivedData test
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run test:electron
 ```
 
 For full preview validation, run:

@@ -1,8 +1,8 @@
 # Baseline
 
-Baseline is a standalone macOS menubar app for finding app updates through public update sources.
+Baseline is a standalone macOS Electron app for finding app updates through public update sources.
 
-It scans installed apps, checks App Store, Sparkle/DevMate appcast, and Homebrew metadata, then shows update actions from the menu bar.
+It scans installed apps, checks App Store, Sparkle/DevMate appcast, and Homebrew metadata, then shows update actions in a full app window and from the menu bar.
 
 ## Project Status
 
@@ -12,7 +12,7 @@ Unsigned builds are not notarized by Apple. macOS Gatekeeper may warn when openi
 
 ## Features
 
-- Menubar-first UX (`LSUIElement=true`)
+- Full Electron app plus menu bar tray window
 - Installed app scanning from system, user, and custom app directories
 - Update detection through:
   - App Store lookup API
@@ -56,32 +56,24 @@ Because the app is unsigned, macOS may show an unidentified-developer warning. T
 ## Build From Source
 
 Requirements:
-- macOS 26 or newer
-- Xcode with Swift 6 support
-- Tuist
-
-Install Tuist:
-
-```bash
-brew install tuist
-```
-
-Generate the Xcode project:
-
-```bash
-TUIST_SKIP_UPDATE_CHECK=1 tuist generate
-```
-
-Open `Baseline.xcworkspace` in Xcode and run the `Baseline` scheme.
-
-Generated Xcode projects and workspaces are intentionally not committed. Tuist is the source of truth for project generation.
+- macOS
+- Node.js 25 or newer
+- npm
 
 ## Build And Test
 
 ```bash
-TUIST_SKIP_UPDATE_CHECK=1 tuist generate --no-open
-TUIST_SKIP_UPDATE_CHECK=1 tuist xcodebuild -project Baseline.xcodeproj -scheme Baseline -configuration Debug -destination 'platform=macOS' -derivedDataPath .DerivedData build
-xcodebuild -project Baseline.xcodeproj -scheme Baseline -destination 'platform=macOS' -derivedDataPath .DerivedData test
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run test:electron
+```
+
+Run the app during development:
+
+```bash
+npm start
 ```
 
 For a fuller preview handoff, run:
@@ -113,13 +105,14 @@ scripts/prepare-unsigned-release.sh 0.1.0
 
 ## Architecture
 
-Baseline keeps update logic outside SwiftUI views:
+Baseline keeps update logic outside React views:
 
-- `Sources/Models` defines domain contracts and persistence snapshots.
-- `Sources/Clients` contains source-specific IO, parsing, and mapping.
-- `Sources/Store` coordinates refresh lifecycle, policy, persistence, and actions.
-- `Sources/Views` renders state and dispatches user intents.
-- `Tests` covers parsers, version logic, store policy, security checks, and fixtures.
+- `src/shared` defines domain contracts, persistence snapshots, security policy, and shared parsers.
+- `src/main` contains Electron lifecycle, privileged IO, scanning, network lookup, subprocess execution, persistence, and IPC.
+- `src/renderer` renders React state and dispatches user intents through the preload API.
+- `tests` covers parsers, version logic, security checks, and fixtures.
+
+The legacy Swift/Tuist source remains in the repository during the migration as a behavior reference until Electron parity is fully reviewed.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for more detail.
 See [docs/VALIDATION.md](docs/VALIDATION.md) for preview validation.

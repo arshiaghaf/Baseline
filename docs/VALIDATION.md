@@ -8,7 +8,7 @@ Use this checklist before handing off a preview build or opening a release PR.
 scripts/validate-preview.sh 0.0.0-preview
 ```
 
-The script checks ignored generated artifacts, lints release scripts, generates the project, builds Debug, runs unit tests, creates an unsigned DMG, installs the Debug app to `/Applications/Baseline.app`, and smoke-launches the installed app.
+The script checks ignored generated artifacts, lints release scripts, typechecks Electron code, runs Vitest and Playwright Electron tests, packages the app, creates an unsigned DMG, installs the packaged app to `/Applications/Baseline.app`, and smoke-launches the installed app.
 
 ## Manual Smoke Matrix
 
