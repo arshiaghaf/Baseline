@@ -1301,8 +1301,8 @@ function PanelTitle({
           onClick={onToggleCollapse}
           title={collapsed ? `Expand ${title}` : `Collapse ${title}`}
         >
-          <ChevronRight size={13} className={collapsed ? "" : "expanded"} />
           <span>{title}</span>
+          <ChevronRight size={13} className={collapsed ? "" : "expanded"} />
         </button>
       ) : (
         <h2>{title}</h2>
