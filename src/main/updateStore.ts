@@ -8,6 +8,7 @@ import type {
   HomebrewCaskIndex,
   HomebrewFormulaIndex,
   HomebrewManagedItem,
+  HomebrewRecentlyUpdatedRecord,
   MenuTab,
   PersistedSnapshot,
   UpdateRecord
@@ -515,12 +516,21 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       }
 
       const previousUpdates = new Map(this.state.updates.map((update) => [update.appID, update]));
+      const previousHomebrewItems = this.state.homebrewItems;
+      const reconciledHomebrewItems = reconcileHomebrewInventory(homebrewItems, updates, apps);
       const recentlyUpdated = this.mergeRecentlyUpdated(apps, updates, previousUpdates, now);
+      const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
+        this.state.homebrewRecentlyUpdated,
+        previousHomebrewItems,
+        reconciledHomebrewItems,
+        now
+      );
       this.patch({
         apps,
         updates,
-        homebrewItems: reconcileHomebrewInventory(homebrewItems, updates, apps),
+        homebrewItems: reconciledHomebrewItems,
         recentlyUpdated,
+        homebrewRecentlyUpdated,
         lastRefreshDate: now,
         isRefreshing: false,
         appUpdatedPendingRefreshIDs: [],
@@ -891,6 +901,46 @@ function reconcileHomebrewInventory(
       isOutdated: true
     };
   });
+}
+
+export function mergeHomebrewRecentlyUpdatedRecords(
+  existingRecords: HomebrewRecentlyUpdatedRecord[],
+  previousItems: HomebrewManagedItem[],
+  currentItems: HomebrewManagedItem[],
+  now: string
+): HomebrewRecentlyUpdatedRecord[] {
+  const records = [...existingRecords];
+  const previousByID = new Map(previousItems.map((item) => [item.id, item]));
+
+  for (const currentItem of currentItems) {
+    const previousItem = previousByID.get(currentItem.id);
+    if (!previousItem) {
+      continue;
+    }
+    if (compareVersions(currentItem.installedVersion, previousItem.installedVersion) <= 0) {
+      continue;
+    }
+    records.unshift({
+      id: currentItem.id,
+      itemID: currentItem.id,
+      token: currentItem.token,
+      kind: currentItem.kind,
+      displayName: currentItem.name,
+      fromVersion: previousItem.installedVersion,
+      toVersion: currentItem.installedVersion,
+      updatedAt: now
+    });
+  }
+
+  const retentionMs = 14 * 24 * 60 * 60 * 1000;
+  const cutoff = Date.now() - retentionMs;
+  const deduped = new Map<string, HomebrewRecentlyUpdatedRecord>();
+  for (const record of records) {
+    if (new Date(record.updatedAt).getTime() >= cutoff && !deduped.has(record.itemID)) {
+      deduped.set(record.itemID, record);
+    }
+  }
+  return [...deduped.values()].slice(0, 40);
 }
 
 function matchingHomebrewAppIcon(
