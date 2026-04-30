@@ -132,19 +132,60 @@ describe("renderer button parity", () => {
   });
 
   it("orders row actions as update, ignore, uninstall", () => {
-    const { rerender } = render(<AppRow app={app} snapshot={snapshot()} recentlyUpdated={false} />);
+    const { container, rerender } = render(
+      <AppRow app={app} snapshot={snapshot()} recentlyUpdated={false} />
+    );
     expect(
-      screen
+      within(container.querySelector(".row-actions") as HTMLElement)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label") ?? button.textContent)
-    ).toEqual(["Open app", "Update", "Ignore", `Uninstall ${app.displayName}`]);
+    ).toEqual(["Update", "Ignore", `Uninstall ${app.displayName}`]);
 
     rerender(<HomebrewRow item={cask} snapshot={snapshot()} />);
     expect(
-      screen
+      within(container.querySelector(".row-actions") as HTMLElement)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label") ?? button.textContent)
     ).toEqual(["Update", "Ignore", `Uninstall ${cask.name}`]);
+  });
+
+  it("shows global search results regardless of the selected tab", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:obsidian-cli",
+      token: "obsidian-cli",
+      name: "obsidian-cli",
+      kind: "formula",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("1.1.0"),
+      isOutdated: true
+    };
+    const discoverItem: HomebrewCaskDiscoveryItem = {
+      id: "cask:obsidian",
+      token: "obsidian",
+      displayName: "Obsidian",
+      kind: "cask",
+      version: version("1.6.0")
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          searchText: "obsidian",
+          apps: [],
+          updates: [],
+          homebrewItems: [formula],
+          homebrewDiscoverItems: [discoverItem]
+        })}
+      />
+    );
+
+    expect(screen.getByText("Homebrew Updates")).toBeInTheDocument();
+    expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
+    expect(screen.getByText("Discover")).toBeInTheDocument();
+    expect(screen.getByText("Obsidian")).toBeInTheDocument();
   });
 
   it("does not render an app open action button when no update exists", () => {
@@ -158,8 +199,31 @@ describe("renderer button parity", () => {
 
     expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open app" }));
+    const openButton = screen.getByRole("button", { name: "Open app" });
+    expect(openButton).toHaveClass("clickable-app-icon");
+    fireEvent.click(openButton);
     expect(window.baseline.openApp).toHaveBeenCalledWith(app.id);
+  });
+
+  it("makes matching cask icons open apps but leaves formula icons static", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:example",
+      token: "example",
+      name: "Example",
+      kind: "formula",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("2.0.0"),
+      isOutdated: true
+    };
+    const { rerender } = render(<HomebrewRow item={cask} snapshot={snapshot()} />);
+
+    const caskOpenButton = screen.getByRole("button", { name: "Open app" });
+    expect(caskOpenButton).toHaveClass("clickable-app-icon");
+    fireEvent.click(caskOpenButton);
+    expect(window.baseline.openApp).toHaveBeenCalledWith(app.id);
+
+    rerender(<HomebrewRow item={formula} snapshot={snapshot()} />);
+    expect(screen.queryByRole("button", { name: "Open app" })).not.toBeInTheDocument();
   });
 
   it("keeps ignore enabled while a Homebrew cask is updating and disables uninstall", () => {

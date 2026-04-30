@@ -382,6 +382,9 @@ function SelectedTabContent({
   derived: DerivedSections;
   compact: boolean;
 }) {
+  if (snapshot.searchText.trim()) {
+    return <AllTab snapshot={snapshot} derived={derived} compact={compact} />;
+  }
   if (snapshot.selectedTab === "all") {
     return <AllTab snapshot={snapshot} derived={derived} compact={compact} />;
   }
@@ -591,7 +594,11 @@ export function AppRow({
   return (
     <article className={isIgnored ? "row ignored-row" : "row"}>
       <button
-        className={app.iconDataURL ? "app-icon app-icon-image" : "app-icon"}
+        className={
+          app.iconDataURL
+            ? "app-icon app-icon-image clickable-app-icon"
+            : "app-icon clickable-app-icon"
+        }
         onClick={() => void window.baseline.openApp(app.id)}
         title="Open app"
         aria-label="Open app"
@@ -899,24 +906,36 @@ function HomebrewItemIcon({
     >;
   snapshot: BaselineSnapshot;
 }) {
-  if (item.iconDataURL) {
-    return (
-      <div className="app-icon app-icon-image">
-        <img src={item.iconDataURL} alt="" draggable={false} />
-      </div>
-    );
-  }
-
   const app = matchingAppForHomebrewItem(item, snapshot);
-  if (app?.iconDataURL) {
+  const iconDataURL = item.iconDataURL ?? app?.iconDataURL;
+  const label = isCask(item.kind) ? "C" : "F";
+
+  if (app) {
+    return (
+      <button
+        className={
+          iconDataURL
+            ? "app-icon app-icon-image clickable-app-icon"
+            : "app-icon brew clickable-app-icon"
+        }
+        onClick={() => void window.baseline.openApp(app.id)}
+        title="Open app"
+        aria-label="Open app"
+      >
+        {iconDataURL ? <img src={iconDataURL} alt="" draggable={false} /> : label}
+      </button>
+    );
+  }
+
+  if (iconDataURL) {
     return (
       <div className="app-icon app-icon-image">
-        <img src={app.iconDataURL} alt="" draggable={false} />
+        <img src={iconDataURL} alt="" draggable={false} />
       </div>
     );
   }
 
-  return <div className="app-icon brew">{isCask(item.kind) ? "C" : "F"}</div>;
+  return <div className="app-icon brew">{label}</div>;
 }
 
 export function UpdateActionButton({
