@@ -302,8 +302,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    const installedToggle = screen.getByRole("button", { name: "Installed (1)" });
+    const installedToggle = screen.getByRole("button", { name: "Installed" });
     expect(installedToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("1")).not.toBeInTheDocument();
     expect(screen.queryByText("1.0.0 installed")).not.toBeInTheDocument();
 
     fireEvent.click(installedToggle);

@@ -1292,6 +1292,7 @@ function PanelTitle({
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }) {
+  const label = sectionTitleLabel(title);
   return (
     <div className="panel-title">
       {canCollapse ? (
@@ -1299,17 +1300,22 @@ function PanelTitle({
           className="section-toggle"
           aria-expanded={!collapsed}
           onClick={onToggleCollapse}
-          title={collapsed ? `Expand ${title}` : `Collapse ${title}`}
+          title={collapsed ? `Expand ${label}` : `Collapse ${label}`}
         >
-          <span>{title}</span>
+          <span>{label}</span>
           <ChevronRight size={13} className={collapsed ? "" : "expanded"} />
         </button>
       ) : (
-        <h2>{title}</h2>
+        <h2>{label}</h2>
       )}
       {action}
     </div>
   );
+}
+
+function sectionTitleLabel(title: string): string {
+  const match = /^(?<label>.+?)\s+\((?<count>\d+)\)$/u.exec(title);
+  return match?.groups?.label ?? title;
 }
 
 function Empty({ text }: { text: string }) {
