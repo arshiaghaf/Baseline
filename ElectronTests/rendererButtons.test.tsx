@@ -177,15 +177,46 @@ describe("renderer button parity", () => {
           apps: [],
           updates: [],
           homebrewItems: [formula],
-          homebrewDiscoverItems: [discoverItem]
+          homebrewDiscoverItems: [discoverItem],
+          collapsedHomebrewSectionIDs: ["discover"]
         })}
       />
     );
 
-    expect(screen.getByText("Homebrew Updates")).toBeInTheDocument();
+    const discoverHeading = screen.getByText("Discover");
+    const homebrewHeading = screen.getByText("Homebrew Updates");
+    expect(
+      discoverHeading.compareDocumentPosition(homebrewHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(screen.queryByTitle("Collapse Discover")).not.toBeInTheDocument();
     expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
-    expect(screen.getByText("Discover")).toBeInTheDocument();
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
+  });
+
+  it("uses the same short search placeholder on every tab", () => {
+    const { rerender } = render(
+      <Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />
+    );
+
+    expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ selectedTab: "apps" })}
+      />
+    );
+    expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ selectedTab: "homebrew" })}
+      />
+    );
+    expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
   });
 
   it("does not render an app open action button when no update exists", () => {

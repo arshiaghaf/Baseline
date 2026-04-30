@@ -180,7 +180,6 @@ export function Dashboard({
               <ToolbarSearch
                 open={toolbarSearchOpen}
                 snapshot={snapshot}
-                selectedTab={selectedTab}
                 onToggle={() => setToolbarSearchOpen((open) => !open)}
               />
               <button
@@ -295,12 +294,10 @@ function Sidebar({
 function ToolbarSearch({
   open,
   snapshot,
-  selectedTab,
   onToggle
 }: {
   open: boolean;
   snapshot: BaselineSnapshot;
-  selectedTab: MenuTab;
   onToggle: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -319,7 +316,7 @@ function ToolbarSearch({
           ref={inputRef}
           value={snapshot.searchText}
           onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
-          placeholder={searchPlaceholder(selectedTab)}
+          placeholder={searchPlaceholder()}
         />
       )}
       <button
@@ -349,7 +346,7 @@ function CommandBar({
         <input
           value={snapshot.searchText}
           onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
-          placeholder={searchPlaceholder(selectedTab)}
+          placeholder={searchPlaceholder()}
         />
       </label>
       {showTabs && <SegmentedTabs selectedTab={selectedTab} />}
@@ -403,8 +400,10 @@ function AllTab({
   derived: DerivedSections;
   compact: boolean;
 }) {
+  const isSearching = Boolean(snapshot.searchText.trim());
   return (
     <div className="stack">
+      {isSearching && <DiscoverSection snapshot={snapshot} />}
       <AppSection
         sectionID="available"
         title={`App Updates (${derived.availableApps.length})`}
@@ -420,7 +419,6 @@ function AllTab({
         empty="All your Homebrew items are up to date."
         showUpdateAll
       />
-      {snapshot.searchText.trim() && <DiscoverSection snapshot={snapshot} />}
       {snapshot.showRecentlyUpdatedAppsSection && (
         <AppSection
           sectionID="recentlyUpdated"
@@ -708,26 +706,18 @@ function HomebrewTab({
 }
 
 function DiscoverSection({ snapshot }: { snapshot: BaselineSnapshot }) {
-  const sectionID = "discover";
-  const collapsed = snapshot.collapsedHomebrewSectionIDs.includes(sectionID);
   return (
     <section className="panel">
-      <PanelTitle
-        title={`Discover (${snapshot.homebrewDiscoverItems.length})`}
-        collapsed={collapsed}
-        canCollapse
-        onToggleCollapse={() => toggleCollapsedSection("homebrew", sectionID, snapshot)}
-      />
-      {!collapsed &&
-        (snapshot.homebrewDiscoverItems.length === 0 ? (
-          <Empty text="No installable Homebrew matches found." />
-        ) : (
-          <div className="rows">
-            {snapshot.homebrewDiscoverItems.map((item) => (
-              <DiscoverRow key={item.id} item={item} snapshot={snapshot} />
-            ))}
-          </div>
-        ))}
+      <PanelTitle title={`Discover (${snapshot.homebrewDiscoverItems.length})`} />
+      {snapshot.homebrewDiscoverItems.length === 0 ? (
+        <Empty text="No installable Homebrew matches found." />
+      ) : (
+        <div className="rows">
+          {snapshot.homebrewDiscoverItems.map((item) => (
+            <DiscoverRow key={item.id} item={item} snapshot={snapshot} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -1368,10 +1358,8 @@ function selectedTabTitle(tab: MenuTab): string {
   return "Homebrew";
 }
 
-function searchPlaceholder(tab: MenuTab): string {
-  if (tab === "all") return "Search apps and Homebrew";
-  if (tab === "homebrew") return "Search installed or discover Homebrew";
-  return "Search apps";
+function searchPlaceholder(): string {
+  return "Search";
 }
 
 function combinedAvailableCount(derived: DerivedSections): number {
