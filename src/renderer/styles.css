@@ -83,7 +83,7 @@ button:disabled {
 
 .source-list {
   display: grid;
-  gap: 2px;
+  gap: 7px;
   -webkit-app-region: no-drag;
 }
 
