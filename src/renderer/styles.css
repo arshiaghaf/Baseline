@@ -237,7 +237,7 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(230px, 1fr) auto;
   gap: 10px;
-  padding: 10px 28px;
+  padding: 10px 60px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   background: rgba(255, 255, 255, 0.88);
 }
@@ -309,7 +309,7 @@ button:disabled {
 .content {
   display: block;
   min-height: 0;
-  padding: 18px 28px;
+  padding: 18px 60px;
   overflow: auto;
 }
 
@@ -471,14 +471,14 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
-  font-weight: 590;
+  font-weight: 500;
 }
 
 .row-title span {
   flex: 0 0 auto;
-  color: rgba(60, 60, 67, 0.64);
+  color: rgba(60, 60, 67, 0.5);
   font-size: 11px;
-  font-weight: 590;
+  font-weight: 400;
   text-transform: capitalize;
 }
 
