@@ -16,9 +16,9 @@ test("launches the Electron shell and renders the dashboard", async () => {
 
   const window = await app.firstWindow();
   await expect(window).toHaveTitle("Baseline");
-  await expect(window.locator("h1")).toContainText("Baseline");
-  await expect(window.getByRole("tablist")).toBeVisible();
-  await expect(window.getByRole("button", { name: "Apps" })).toBeVisible();
+  await expect(window.locator("h1")).toContainText("All");
+  await expect(window.getByRole("button", { name: "All" })).toBeVisible();
+  await expect(window.getByRole("button", { name: "Applications" })).toBeVisible();
   await expect(window.getByRole("button", { name: "Homebrew" })).toBeVisible();
 
   await app.evaluate(async ({ app }) => {

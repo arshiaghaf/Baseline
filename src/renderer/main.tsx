@@ -4,7 +4,10 @@ import {
   AlertTriangle,
   AppWindow,
   Beer,
+  Check,
   CheckCircle2,
+  Eye,
+  EyeOff,
   ExternalLink,
   FolderPlus,
   Loader2,
@@ -27,6 +30,17 @@ import { defaultPersistedSnapshot } from "../shared/domain";
 import "./styles.css";
 
 type Route = "main" | "menubar" | "settings";
+type ActionState =
+  | { type: "ready" }
+  | { type: "updating"; progress?: number }
+  | { type: "done" }
+  | { type: "failed" };
+type ActionConfirmation =
+  | { type: "install"; item: HomebrewCaskDiscoveryItem }
+  | { type: "uninstall"; item: HomebrewManagedItem };
+type RequestActionConfirmation = (confirmation: ActionConfirmation) => void;
+
+const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 
 const initialSnapshot: BaselineSnapshot = {
   ...defaultPersistedSnapshot(),
@@ -87,7 +101,7 @@ function App() {
   );
 }
 
-function Dashboard({
+export function Dashboard({
   snapshot,
   compact,
   onOpenSettings
@@ -99,10 +113,25 @@ function Dashboard({
   const derived = useMemo(() => deriveSections(snapshot), [snapshot]);
   const selectedTab = snapshot.selectedTab;
   const [toolbarSearchOpen, setToolbarSearchOpen] = useState(Boolean(snapshot.searchText));
+  const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
 
+  const confirmAction = () => {
+    if (!actionConfirmation) {
+      return;
+    }
+    const confirmation = actionConfirmation;
+    setActionConfirmation(undefined);
+    if (confirmation.type === "install") {
+      void window.baseline.installHomebrewItem(confirmation.item);
+      return;
+    }
+    void window.baseline.uninstallHomebrewItem(confirmation.item.id);
+  };
+
+  let shell: React.ReactNode;
   if (compact) {
     const compactTitle = selectedTabTitle(selectedTab);
-    return (
+    shell = (
       <main className="app-shell compact">
         <header className="popover-titlebar">
           <div>
@@ -135,53 +164,71 @@ function Dashboard({
         </section>
       </main>
     );
+  } else {
+    const title = selectedTabTitle(selectedTab);
+    shell = (
+      <main className="app-shell">
+        <Sidebar snapshot={snapshot} derived={derived} route="main" />
+        <section className="workspace">
+          <header className="topbar">
+            <div>
+              <h1>{title}</h1>
+            </div>
+            <div className="topbar-actions">
+              {snapshot.isRefreshing && <Loader2 className="spin" size={17} />}
+              <ToolbarSearch
+                open={toolbarSearchOpen}
+                snapshot={snapshot}
+                selectedTab={selectedTab}
+                onToggle={() => setToolbarSearchOpen((open) => !open)}
+              />
+              <button
+                className="toolbar-button"
+                onClick={() => void window.baseline.refresh(false)}
+                title="Refresh"
+              >
+                <RefreshCcw size={16} />
+              </button>
+            </div>
+          </header>
+
+          {snapshot.refreshErrorMessage && (
+            <div className="notice danger">
+              <AlertTriangle size={15} />
+              <span>{snapshot.refreshErrorMessage}</span>
+            </div>
+          )}
+          {snapshot.lastRefreshNoticeMessage && !snapshot.refreshErrorMessage && (
+            <div className="notice">
+              <AlertTriangle size={15} />
+              <span>{snapshot.lastRefreshNoticeMessage}</span>
+            </div>
+          )}
+
+          <section className="content">
+            <SelectedTabContent snapshot={snapshot} derived={derived} compact={compact} />
+          </section>
+        </section>
+      </main>
+    );
   }
 
-  const title = selectedTabTitle(selectedTab);
   return (
-    <main className="app-shell">
-      <Sidebar snapshot={snapshot} derived={derived} route="main" />
-      <section className="workspace">
-        <header className="topbar">
-          <div>
-            <h1>{title}</h1>
-          </div>
-          <div className="topbar-actions">
-            {snapshot.isRefreshing && <Loader2 className="spin" size={17} />}
-            <ToolbarSearch
-              open={toolbarSearchOpen}
-              snapshot={snapshot}
-              selectedTab={selectedTab}
-              onToggle={() => setToolbarSearchOpen((open) => !open)}
-            />
-            <button
-              className="toolbar-button"
-              onClick={() => void window.baseline.refresh(false)}
-              title="Refresh"
-            >
-              <RefreshCcw size={16} />
-            </button>
-          </div>
-        </header>
-
-        {snapshot.refreshErrorMessage && (
-          <div className="notice danger">
-            <AlertTriangle size={15} />
-            <span>{snapshot.refreshErrorMessage}</span>
-          </div>
-        )}
-        {snapshot.lastRefreshNoticeMessage && !snapshot.refreshErrorMessage && (
-          <div className="notice">
-            <AlertTriangle size={15} />
-            <span>{snapshot.lastRefreshNoticeMessage}</span>
-          </div>
-        )}
-
-        <section className="content">
-          <SelectedTabContent snapshot={snapshot} derived={derived} compact={compact} />
-        </section>
-      </section>
-    </main>
+    <ActionConfirmationContext.Provider value={setActionConfirmation}>
+      <div
+        className={actionConfirmation ? "action-surface action-surface-disabled" : "action-surface"}
+        aria-hidden={actionConfirmation ? true : undefined}
+      >
+        {shell}
+      </div>
+      {actionConfirmation && (
+        <ActionConfirmationOverlay
+          confirmation={actionConfirmation}
+          onCancel={() => setActionConfirmation(undefined)}
+          onConfirm={confirmAction}
+        />
+      )}
+    </ActionConfirmationContext.Provider>
   );
 }
 
@@ -480,7 +527,7 @@ function AppSection({
   );
 }
 
-function AppRow({
+export function AppRow({
   app,
   snapshot,
   recentlyUpdated
@@ -489,17 +536,31 @@ function AppRow({
   snapshot: BaselineSnapshot;
   recentlyUpdated: boolean;
 }) {
+  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
   const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
   const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
+  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
+  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
+  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  const isUninstalling = uninstallableItem
+    ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
+    : false;
+  const actionState = actionStateFromFlags({
+    failed,
+    updating: isUpdating,
+    progress,
+    done
+  });
 
   return (
-    <article className="row">
+    <article className={isIgnored ? "row ignored-row" : "row"}>
       <button
         className={app.iconDataURL ? "app-icon app-icon-image" : "app-icon"}
         onClick={() => void window.baseline.openApp(app.id)}
         title="Open app"
+        aria-label="Open app"
       >
         {app.iconDataURL ? (
           <img src={app.iconDataURL} alt="" draggable={false} />
@@ -519,22 +580,33 @@ function AppRow({
               ? "Updated recently"
               : `${app.localVersion.raw || "unknown"} installed`}
         </p>
-        {progress !== undefined && <Progress value={progress} />}
       </div>
       <div className="row-actions">
-        <button
-          className="ghost-button"
-          onClick={() => void window.baseline.toggleIgnoredApp(app.id)}
-        >
-          {isIgnored ? "Unignore" : "Ignore"}
-        </button>
-        <button
-          className="primary-button"
-          disabled={isUpdating}
-          onClick={() => void window.baseline.performAppUpdate(app.id)}
-        >
-          {isUpdating ? <Loader2 className="spin" size={14} /> : update ? "Update" : "Open"}
-        </button>
+        {uninstallableItem && (
+          <button
+            className="destructive-icon-button"
+            disabled={isUpdating || isUninstalling}
+            onClick={() =>
+              requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
+            }
+            title={`Uninstall ${app.displayName}`}
+            aria-label={`Uninstall ${app.displayName}`}
+          >
+            {isUninstalling ? <UninstallActionGlyph /> : <Trash2 size={15} />}
+          </button>
+        )}
+        <IgnoreActionIconButton
+          isIgnored={isIgnored}
+          disabled={isUninstalling}
+          onToggle={() => void window.baseline.toggleIgnoredApp(app.id)}
+        />
+        {update && (
+          <UpdateActionButton
+            state={actionState}
+            disabled={isUninstalling}
+            onAction={() => void window.baseline.performAppUpdate(app.id)}
+          />
+        )}
       </div>
     </article>
   );
@@ -604,16 +676,18 @@ function DiscoverSection({ snapshot }: { snapshot: BaselineSnapshot }) {
   );
 }
 
-function DiscoverRow({
+export function DiscoverRow({
   item,
   snapshot
 }: {
   item: HomebrewCaskDiscoveryItem;
   snapshot: BaselineSnapshot;
 }) {
+  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const installing = snapshot.homebrewDiscoverInstallingItemIDs.includes(item.id);
   const failed = snapshot.homebrewDiscoverFailedItemIDs.includes(item.id);
   const done = snapshot.homebrewDiscoverInstalledPendingRefreshItemIDs.includes(item.id);
+  const progress = snapshot.homebrewDiscoverProgressByItemID[item.id];
 
   return (
     <article className="row">
@@ -624,9 +698,6 @@ function DiscoverRow({
           <span>{item.kind}</span>
         </div>
         <p>{item.version.raw || item.token}</p>
-        {snapshot.homebrewDiscoverProgressByItemID[item.id] !== undefined && (
-          <Progress value={snapshot.homebrewDiscoverProgressByItemID[item.id] ?? 0} />
-        )}
       </div>
       <div className="row-actions">
         {item.homepageURL && (
@@ -638,27 +709,17 @@ function DiscoverRow({
             <ExternalLink size={15} />
           </button>
         )}
-        <button
-          className={failed ? "danger-button" : "primary-button"}
-          disabled={installing || done}
-          onClick={() => void window.baseline.installHomebrewItem(item)}
-        >
-          {installing ? (
-            <Loader2 className="spin" size={14} />
-          ) : done ? (
-            "Done"
-          ) : failed ? (
-            "Retry"
-          ) : (
-            "Install"
-          )}
-        </button>
+        <UpdateActionButton
+          state={actionStateFromFlags({ failed, updating: installing, progress, done })}
+          readyLabel="Install"
+          onAction={() => requestActionConfirmation({ type: "install", item })}
+        />
       </div>
     </article>
   );
 }
 
-function HomebrewSection({
+export function HomebrewSection({
   title,
   items,
   snapshot,
@@ -676,13 +737,20 @@ function HomebrewSection({
       <PanelTitle
         title={title}
         action={
-          showUpdateAll && items.length > 0 ? (
-            <button
-              className="ghost-button"
-              onClick={() => void window.baseline.performHomebrewUpdateAll()}
-            >
-              {snapshot.isRunningHomebrewMaintenance ? "Running" : "Update All"}
-            </button>
+          showUpdateAll && items.length > 1 ? (
+            <UpdateActionButton
+              state={
+                snapshot.isRunningHomebrewMaintenance
+                  ? { type: "updating" }
+                  : items.every((item) =>
+                        snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id)
+                      )
+                    ? { type: "done" }
+                    : { type: "ready" }
+              }
+              readyLabel="Update All"
+              onAction={() => void window.baseline.performHomebrewUpdateAll()}
+            />
           ) : undefined
         }
       />
@@ -699,21 +767,29 @@ function HomebrewSection({
   );
 }
 
-function HomebrewRow({
+export function HomebrewRow({
   item,
   snapshot
 }: {
   item: HomebrewManagedItem;
   snapshot: BaselineSnapshot;
 }) {
+  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
   const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
   const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
   const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
+  const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
   const progress = snapshot.homebrewBatchProgressByItemID[item.id];
+  const updateState = actionStateFromFlags({
+    failed,
+    updating: isUpdating,
+    progress,
+    done
+  });
 
   return (
-    <article className="row">
+    <article className={isIgnored ? "row ignored-row" : "row"}>
       <HomebrewItemIcon item={item} snapshot={snapshot} />
       <div className="row-main">
         <div className="row-title">
@@ -724,38 +800,31 @@ function HomebrewRow({
           {item.installedVersion.raw || "unknown"}
           {item.latestVersion ? ` -> ${item.latestVersion.raw}` : ""}
         </p>
-        {progress !== undefined && <Progress value={progress} />}
       </div>
       <div className="row-actions">
-        <button
-          className="ghost-button"
-          onClick={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
-        >
-          {isIgnored ? "Unignore" : "Ignore"}
-        </button>
         {item.kind === "cask" && (
           <button
-            className="icon-button"
-            disabled={isUninstalling}
-            onClick={() => void window.baseline.uninstallHomebrewItem(item.id)}
-            title="Uninstall"
+            className="destructive-icon-button"
+            disabled={isUpdating || isUninstalling}
+            onClick={() => requestActionConfirmation({ type: "uninstall", item })}
+            title={`Uninstall ${item.name}`}
+            aria-label={`Uninstall ${item.name}`}
           >
-            {isUninstalling ? <Loader2 className="spin" size={14} /> : <Trash2 size={15} />}
+            {isUninstalling ? <UninstallActionGlyph /> : <Trash2 size={15} />}
           </button>
         )}
-        <button
-          className={failed ? "danger-button" : "primary-button"}
-          disabled={!item.isOutdated || isUpdating}
-          onClick={() => void window.baseline.performHomebrewUpdate(item.id)}
-        >
-          {isUpdating ? (
-            <Loader2 className="spin" size={14} />
-          ) : item.isOutdated ? (
-            "Update"
-          ) : (
-            "Current"
-          )}
-        </button>
+        <IgnoreActionIconButton
+          isIgnored={isIgnored}
+          disabled={isUninstalling}
+          onToggle={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
+        />
+        {item.isOutdated && (
+          <UpdateActionButton
+            state={updateState}
+            disabled={isUninstalling}
+            onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
+          />
+        )}
       </div>
     </article>
   );
@@ -790,6 +859,193 @@ function HomebrewItemIcon({
   }
 
   return <div className="app-icon brew">{isCask(item.kind) ? "C" : "F"}</div>;
+}
+
+export function UpdateActionButton({
+  state,
+  onAction,
+  readyLabel = "Update",
+  disabled = false
+}: {
+  state: ActionState;
+  onAction: () => void;
+  readyLabel?: string;
+  disabled?: boolean;
+}) {
+  if (state.type === "ready") {
+    return (
+      <button className="primary-button" disabled={disabled} onClick={onAction}>
+        {readyLabel}
+      </button>
+    );
+  }
+
+  const isFailure = state.type === "failed";
+  return (
+    <button
+      className={isFailure ? "destructive-icon-button" : "update-icon-button"}
+      aria-label={actionStateLabel(state)}
+      title={actionStateLabel(state)}
+      disabled={disabled}
+      onClick={(event) => event.preventDefault()}
+      tabIndex={-1}
+      type="button"
+    >
+      {state.type === "updating" ? (
+        state.progress === undefined ? (
+          <RefreshCcw className="spin" size={14} />
+        ) : (
+          <ProgressRing value={state.progress} />
+        )
+      ) : state.type === "done" ? (
+        <DoneTransitionGlyph />
+      ) : (
+        <span className="failure-glyph">!</span>
+      )}
+    </button>
+  );
+}
+
+function IgnoreActionIconButton({
+  isIgnored,
+  disabled,
+  onToggle
+}: {
+  isIgnored: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  const label = isIgnored ? "Unignore" : "Ignore";
+  return (
+    <button
+      className="secondary-icon-button"
+      disabled={disabled}
+      onClick={onToggle}
+      title={label}
+      aria-label={label}
+    >
+      {isIgnored ? <EyeOff size={15} /> : <Eye size={15} />}
+    </button>
+  );
+}
+
+function ProgressRing({ value }: { value: number }) {
+  const radius = 6;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(value, 1));
+  return (
+    <svg className="progress-ring" viewBox="0 0 16 16" aria-hidden="true">
+      <circle className="progress-ring-track" cx="8" cy="8" r={radius} />
+      <circle
+        className="progress-ring-value"
+        cx="8"
+        cy="8"
+        r={radius}
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - clamped)}
+      />
+    </svg>
+  );
+}
+
+function DoneTransitionGlyph() {
+  const [showCheckmark, setShowCheckmark] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowCheckmark(true), 320);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return showCheckmark ? <Check size={15} /> : <ProgressRing value={1} />;
+}
+
+function UninstallActionGlyph() {
+  return <Trash2 className="uninstall-glyph" size={15} />;
+}
+
+function ActionConfirmationOverlay({
+  confirmation,
+  onCancel,
+  onConfirm
+}: {
+  confirmation: ActionConfirmation;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const isDestructive = confirmation.type === "uninstall";
+  const title =
+    confirmation.type === "install"
+      ? `Install ${confirmation.item.displayName}?`
+      : `Uninstall ${confirmation.item.name}?`;
+  const message =
+    confirmation.type === "install"
+      ? `This will run Homebrew and install ${confirmation.item.displayName} (${confirmation.item.kind} ${confirmation.item.token}) on your Mac.`
+      : `This will fully delete ${confirmation.item.name} from your Mac. Do you want to proceed?`;
+  const actionTitle =
+    confirmation.type === "install"
+      ? `Install ${confirmation.item.displayName}`
+      : `Uninstall ${confirmation.item.name}`;
+
+  return (
+    <div className="confirmation-backdrop" role="presentation" onClick={onCancel}>
+      <section
+        className="confirmation-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmation-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div>
+          <h2 id="confirmation-title">{title}</h2>
+          <p>{message}</p>
+        </div>
+        <div className="confirmation-actions">
+          <button
+            className={isDestructive ? "destructive-text-button" : "primary-button wide"}
+            onClick={onConfirm}
+          >
+            {actionTitle}
+          </button>
+          <button className="ghost-button wide" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function actionStateFromFlags({
+  failed,
+  updating,
+  progress,
+  done
+}: {
+  failed: boolean;
+  updating: boolean;
+  progress?: number;
+  done: boolean;
+}): ActionState {
+  if (failed) {
+    return { type: "failed" };
+  }
+  if (updating) {
+    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
+  }
+  if (done) {
+    return { type: "done" };
+  }
+  return { type: "ready" };
+}
+
+function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): string {
+  if (state.type === "updating") {
+    return "Updating";
+  }
+  if (state.type === "done") {
+    return "Updated";
+  }
+  return "Update failed";
 }
 
 function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
@@ -978,14 +1234,6 @@ function Empty({ text }: { text: string }) {
   return <p className="empty">{text}</p>;
 }
 
-function Progress({ value }: { value: number }) {
-  return (
-    <div className="progress">
-      <span style={{ width: `${Math.round(Math.max(0, Math.min(value, 1)) * 100)}%` }} />
-    </div>
-  );
-}
-
 function Readiness({ label, ready }: { label: string; ready: boolean }) {
   return (
     <div className="ready-row">
@@ -1139,6 +1387,31 @@ function matchingAppForHomebrewItem(
   );
 }
 
+function uninstallableHomebrewItemForApp(
+  app: AppRecord,
+  snapshot: BaselineSnapshot
+): HomebrewManagedItem | undefined {
+  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
+  if (update?.homebrewToken) {
+    const token = normalizedName(update.homebrewToken);
+    const matchedByUpdate = snapshot.homebrewItems.find(
+      (item) => item.kind === "cask" && normalizedName(item.token) === token
+    );
+    if (matchedByUpdate) {
+      return matchedByUpdate;
+    }
+  }
+
+  const appCandidates = normalizedAppCandidates(app);
+  return snapshot.homebrewItems.find((item) => {
+    if (item.kind !== "cask") {
+      return false;
+    }
+    const identifiers = homebrewItemIdentifiers(item);
+    return [...identifiers].some((identifier) => appCandidates.has(identifier));
+  });
+}
+
 function homebrewItemIdentifiers(
   item: Pick<HomebrewManagedItem, "token"> &
     Partial<Pick<HomebrewManagedItem, "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">>
@@ -1208,4 +1481,10 @@ function currentRoute(): Route {
   return "main";
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+const root = document.getElementById("root");
+if (root) {
+  createRoot(root).render(<App />);
+}
+
+export { ActionConfirmationContext, actionStateFromFlags, uninstallableHomebrewItemForApp };
+export type { ActionConfirmation, ActionState };
