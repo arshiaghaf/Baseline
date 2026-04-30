@@ -131,6 +131,22 @@ describe("renderer button parity", () => {
     expect(window.baseline.performAppUpdate).not.toHaveBeenCalled();
   });
 
+  it("orders row actions as update, ignore, uninstall", () => {
+    const { rerender } = render(<AppRow app={app} snapshot={snapshot()} recentlyUpdated={false} />);
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label") ?? button.textContent)
+    ).toEqual(["Open app", "Update", "Ignore", `Uninstall ${app.displayName}`]);
+
+    rerender(<HomebrewRow item={cask} snapshot={snapshot()} />);
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label") ?? button.textContent)
+    ).toEqual(["Update", "Ignore", `Uninstall ${cask.name}`]);
+  });
+
   it("does not render an app open action button when no update exists", () => {
     render(
       <AppRow

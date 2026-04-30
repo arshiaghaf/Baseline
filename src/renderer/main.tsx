@@ -616,6 +616,18 @@ export function AppRow({
         </p>
       </div>
       <div className="row-actions">
+        {update && (
+          <UpdateActionButton
+            state={actionState}
+            disabled={isUninstalling}
+            onAction={() => void window.baseline.performAppUpdate(app.id)}
+          />
+        )}
+        <IgnoreActionIconButton
+          isIgnored={isIgnored}
+          disabled={isUninstalling}
+          onToggle={() => void window.baseline.toggleIgnoredApp(app.id)}
+        />
         {uninstallableItem && (
           <button
             className="destructive-icon-button"
@@ -628,18 +640,6 @@ export function AppRow({
           >
             {isUninstalling ? <UninstallActionGlyph /> : <Trash2 size={15} />}
           </button>
-        )}
-        <IgnoreActionIconButton
-          isIgnored={isIgnored}
-          disabled={isUninstalling}
-          onToggle={() => void window.baseline.toggleIgnoredApp(app.id)}
-        />
-        {update && (
-          <UpdateActionButton
-            state={actionState}
-            disabled={isUninstalling}
-            onAction={() => void window.baseline.performAppUpdate(app.id)}
-          />
         )}
       </div>
     </article>
@@ -860,6 +860,18 @@ export function HomebrewRow({
         </p>
       </div>
       <div className="row-actions">
+        {item.isOutdated && (
+          <UpdateActionButton
+            state={updateState}
+            disabled={isUninstalling}
+            onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
+          />
+        )}
+        <IgnoreActionIconButton
+          isIgnored={isIgnored}
+          disabled={isUninstalling}
+          onToggle={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
+        />
         {item.kind === "cask" && (
           <button
             className="destructive-icon-button"
@@ -870,18 +882,6 @@ export function HomebrewRow({
           >
             {isUninstalling ? <UninstallActionGlyph /> : <Trash2 size={15} />}
           </button>
-        )}
-        <IgnoreActionIconButton
-          isIgnored={isIgnored}
-          disabled={isUninstalling}
-          onToggle={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
-        />
-        {item.isOutdated && (
-          <UpdateActionButton
-            state={updateState}
-            disabled={isUninstalling}
-            onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
-          />
         )}
       </div>
     </article>
