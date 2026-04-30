@@ -155,8 +155,8 @@ button:disabled {
   justify-content: space-between;
   gap: 14px;
   min-height: 54px;
-  padding: 10px 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.11);
+  padding: 10px 28px;
+  border-bottom: 0;
   background: rgba(255, 255, 255, 0.88);
   -webkit-app-region: drag;
 }
@@ -164,7 +164,6 @@ button:disabled {
 .popover-titlebar {
   min-height: 42px;
   padding: 0 2px 10px;
-  border-bottom: 0;
   background: transparent;
 }
 
@@ -238,7 +237,7 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(230px, 1fr) auto;
   gap: 10px;
-  padding: 10px 16px;
+  padding: 10px 28px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   background: rgba(255, 255, 255, 0.88);
 }
@@ -310,7 +309,7 @@ button:disabled {
 .content {
   display: block;
   min-height: 0;
-  padding: 16px;
+  padding: 18px 28px;
   overflow: auto;
 }
 
@@ -333,15 +332,11 @@ button:disabled {
 }
 
 .panel {
-  overflow: hidden;
-  border: 1px solid rgba(60, 60, 67, 0.14);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.82);
+  overflow: visible;
 }
 
 .compact .panel {
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.7);
+  overflow: visible;
 }
 
 .panel-title {
@@ -349,9 +344,8 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   min-height: 34px;
-  padding: 7px 12px;
+  padding: 0 2px 7px;
   border-bottom: 1px solid rgba(60, 60, 67, 0.12);
-  background: rgba(249, 249, 249, 0.72);
 }
 
 .panel-title h2 {
@@ -397,18 +391,15 @@ button:disabled {
 
 .row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 50px minmax(0, 1fr) auto;
+  gap: 14px;
   align-items: center;
-  min-height: 54px;
-  padding: 7px 10px 7px 12px;
+  min-height: 70px;
+  padding: 10px 0;
   border-top: 1px solid rgba(60, 60, 67, 0.1);
 }
 
 .ignored-row {
-  border-radius: 8px;
-  background: rgba(118, 118, 128, 0.13);
-  box-shadow: inset 0 0 0 1px rgba(118, 118, 128, 0.2);
   opacity: 0.9;
   filter: saturate(0.45);
 }
@@ -418,8 +409,14 @@ button:disabled {
 }
 
 .compact .row {
-  grid-template-columns: 32px minmax(0, 1fr);
-  min-height: 52px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  min-height: 68px;
+}
+
+.compact .app-icon,
+.compact .app-icon img {
+  width: 48px;
+  height: 48px;
 }
 
 .compact .row-actions {
@@ -430,13 +427,13 @@ button:disabled {
 .app-icon {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 50px;
+  height: 50px;
   border: 0;
-  border-radius: 8px;
+  border-radius: 12px;
   background: linear-gradient(180deg, #85858c, #595961);
   color: white;
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 700;
   overflow: hidden;
 }
@@ -446,13 +443,13 @@ button:disabled {
 }
 
 .app-icon.app-icon-image {
-  border-radius: 8px;
+  border-radius: 12px;
   background: transparent;
 }
 
 .app-icon img {
-  width: 34px;
-  height: 34px;
+  width: 50px;
+  height: 50px;
   object-fit: cover;
   pointer-events: none;
 }
@@ -992,18 +989,8 @@ button:disabled {
     color: #ffffff;
   }
 
-  .panel {
-    border-color: rgba(235, 235, 245, 0.12);
-    background: rgba(25, 25, 25, 0.82);
-  }
-
-  .compact .panel {
-    background: rgba(25, 25, 25, 0.72);
-  }
-
   .panel-title {
     border-bottom-color: rgba(235, 235, 245, 0.1);
-    background: rgba(58, 58, 60, 0.42);
   }
 
   .panel-title h2 {
@@ -1039,11 +1026,6 @@ button:disabled {
   .ghost-button {
     border-color: rgba(235, 235, 245, 0.16);
     background: rgba(255, 255, 255, 0.08);
-  }
-
-  .ignored-row {
-    background: rgba(235, 235, 245, 0.1);
-    box-shadow: inset 0 0 0 1px rgba(235, 235, 245, 0.16);
   }
 
   .update-icon-button {
