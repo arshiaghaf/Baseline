@@ -43,6 +43,8 @@ export type PreferencePatch = Partial<{
   showRecentlyUpdatedHomebrewSection: boolean;
   showInstalledHomebrewSection: boolean;
   showIgnoredHomebrewSection: boolean;
+  collapsedAppSectionIDs: string[];
+  collapsedHomebrewSectionIDs: string[];
   autoRefreshEnabled: boolean;
   refreshIntervalMinutes: number;
   useMasForAppStoreUpdates: boolean;

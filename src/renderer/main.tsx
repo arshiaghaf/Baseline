@@ -6,6 +6,7 @@ import {
   Beer,
   Check,
   CheckCircle2,
+  ChevronRight,
   Eye,
   EyeOff,
   ExternalLink,
@@ -402,12 +403,14 @@ function AllTab({
   return (
     <div className="stack">
       <AppSection
+        sectionID="available"
         title={`App Updates (${derived.availableApps.length})`}
         apps={derived.availableApps}
         snapshot={snapshot}
         empty="All your apps are up to date."
       />
       <HomebrewSection
+        sectionID="outdated"
         title={`Homebrew Updates (${derived.allHomebrewOutdated.length})`}
         items={derived.allHomebrewOutdated}
         snapshot={snapshot}
@@ -417,6 +420,8 @@ function AllTab({
       {snapshot.searchText.trim() && <DiscoverSection snapshot={snapshot} />}
       {snapshot.showRecentlyUpdatedAppsSection && (
         <AppSection
+          sectionID="recentlyUpdated"
+          collapsible
           title="Recently Updated Apps"
           apps={derived.recentlyUpdatedApps}
           snapshot={snapshot}
@@ -426,6 +431,8 @@ function AllTab({
       )}
       {snapshot.showRecentlyUpdatedHomebrewSection && (
         <HomebrewSection
+          sectionID="recentlyUpdated"
+          collapsible
           title="Recently Updated Homebrew"
           items={derived.homebrewRecentlyUpdated}
           snapshot={snapshot}
@@ -434,6 +441,8 @@ function AllTab({
       )}
       {!compact && snapshot.showInstalledAppsSection && (
         <AppSection
+          sectionID="installed"
+          collapsible
           title={`Installed Apps (${derived.installedApps.length})`}
           apps={derived.installedApps}
           snapshot={snapshot}
@@ -442,6 +451,8 @@ function AllTab({
       )}
       {!compact && snapshot.showInstalledHomebrewSection && (
         <HomebrewSection
+          sectionID="installed"
+          collapsible
           title={`Installed Homebrew (${derived.homebrewInstalled.length})`}
           items={derived.homebrewInstalled}
           snapshot={snapshot}
@@ -464,6 +475,7 @@ function AppsTab({
   return (
     <div className="stack">
       <AppSection
+        sectionID="available"
         title={`Available (${derived.availableApps.length})`}
         apps={derived.availableApps}
         snapshot={snapshot}
@@ -471,6 +483,8 @@ function AppsTab({
       />
       {snapshot.showRecentlyUpdatedAppsSection && (
         <AppSection
+          sectionID="recentlyUpdated"
+          collapsible
           title="Recently Updated"
           apps={derived.recentlyUpdatedApps}
           snapshot={snapshot}
@@ -480,6 +494,8 @@ function AppsTab({
       )}
       {!compact && snapshot.showInstalledAppsSection && (
         <AppSection
+          sectionID="installed"
+          collapsible
           title={`Installed (${derived.installedApps.length})`}
           apps={derived.installedApps}
           snapshot={snapshot}
@@ -488,6 +504,8 @@ function AppsTab({
       )}
       {snapshot.showIgnoredAppsSection && (
         <AppSection
+          sectionID="ignored"
+          collapsible
           title={`Ignored (${derived.ignoredApps.length})`}
           apps={derived.ignoredApps}
           snapshot={snapshot}
@@ -499,30 +517,46 @@ function AppsTab({
 }
 
 function AppSection({
+  sectionID,
   title,
   apps,
   snapshot,
   empty,
-  recentlyUpdated = false
+  recentlyUpdated = false,
+  collapsible = false
 }: {
+  sectionID: string;
   title: string;
   apps: AppRecord[];
   snapshot: BaselineSnapshot;
   empty: string;
   recentlyUpdated?: boolean;
+  collapsible?: boolean;
 }) {
+  const collapsed = collapsible && snapshot.collapsedAppSectionIDs.includes(sectionID);
   return (
     <section className="panel">
-      <PanelTitle title={title} />
-      {apps.length === 0 ? (
-        <Empty text={empty} />
-      ) : (
-        <div className="rows">
-          {apps.map((app) => (
-            <AppRow key={app.id} app={app} snapshot={snapshot} recentlyUpdated={recentlyUpdated} />
-          ))}
-        </div>
-      )}
+      <PanelTitle
+        title={title}
+        collapsed={collapsed}
+        canCollapse={collapsible}
+        onToggleCollapse={() => toggleCollapsedSection("app", sectionID, snapshot)}
+      />
+      {!collapsed &&
+        (apps.length === 0 ? (
+          <Empty text={empty} />
+        ) : (
+          <div className="rows">
+            {apps.map((app) => (
+              <AppRow
+                key={app.id}
+                app={app}
+                snapshot={snapshot}
+                recentlyUpdated={recentlyUpdated}
+              />
+            ))}
+          </div>
+        ))}
     </section>
   );
 }
@@ -625,6 +659,7 @@ function HomebrewTab({
     <div className="stack">
       {snapshot.searchText.trim() && <DiscoverSection snapshot={snapshot} />}
       <HomebrewSection
+        sectionID="outdated"
         title={`Outdated (${derived.homebrewOutdated.length})`}
         items={derived.homebrewOutdated}
         snapshot={snapshot}
@@ -633,6 +668,8 @@ function HomebrewTab({
       />
       {snapshot.showRecentlyUpdatedHomebrewSection && (
         <HomebrewSection
+          sectionID="recentlyUpdated"
+          collapsible
           title="Recently Updated"
           items={derived.homebrewRecentlyUpdated}
           snapshot={snapshot}
@@ -641,6 +678,8 @@ function HomebrewTab({
       )}
       {!compact && snapshot.showInstalledHomebrewSection && (
         <HomebrewSection
+          sectionID="installed"
+          collapsible
           title={`Installed (${derived.homebrewInstalled.length})`}
           items={derived.homebrewInstalled}
           snapshot={snapshot}
@@ -649,6 +688,8 @@ function HomebrewTab({
       )}
       {snapshot.showIgnoredHomebrewSection && (
         <HomebrewSection
+          sectionID="ignored"
+          collapsible
           title={`Ignored (${derived.homebrewIgnored.length})`}
           items={derived.homebrewIgnored}
           snapshot={snapshot}
@@ -660,18 +701,26 @@ function HomebrewTab({
 }
 
 function DiscoverSection({ snapshot }: { snapshot: BaselineSnapshot }) {
+  const sectionID = "discover";
+  const collapsed = snapshot.collapsedHomebrewSectionIDs.includes(sectionID);
   return (
     <section className="panel">
-      <PanelTitle title={`Discover (${snapshot.homebrewDiscoverItems.length})`} />
-      {snapshot.homebrewDiscoverItems.length === 0 ? (
-        <Empty text="No installable Homebrew matches found." />
-      ) : (
-        <div className="rows">
-          {snapshot.homebrewDiscoverItems.map((item) => (
-            <DiscoverRow key={item.id} item={item} snapshot={snapshot} />
-          ))}
-        </div>
-      )}
+      <PanelTitle
+        title={`Discover (${snapshot.homebrewDiscoverItems.length})`}
+        collapsed={collapsed}
+        canCollapse
+        onToggleCollapse={() => toggleCollapsedSection("homebrew", sectionID, snapshot)}
+      />
+      {!collapsed &&
+        (snapshot.homebrewDiscoverItems.length === 0 ? (
+          <Empty text="No installable Homebrew matches found." />
+        ) : (
+          <div className="rows">
+            {snapshot.homebrewDiscoverItems.map((item) => (
+              <DiscoverRow key={item.id} item={item} snapshot={snapshot} />
+            ))}
+          </div>
+        ))}
     </section>
   );
 }
@@ -720,22 +769,30 @@ export function DiscoverRow({
 }
 
 export function HomebrewSection({
+  sectionID,
   title,
   items,
   snapshot,
   empty,
-  showUpdateAll = false
+  showUpdateAll = false,
+  collapsible = false
 }: {
+  sectionID: string;
   title: string;
   items: HomebrewManagedItem[];
   snapshot: BaselineSnapshot;
   empty: string;
   showUpdateAll?: boolean;
+  collapsible?: boolean;
 }) {
+  const collapsed = collapsible && snapshot.collapsedHomebrewSectionIDs.includes(sectionID);
   return (
     <section className="panel">
       <PanelTitle
         title={title}
+        collapsed={collapsed}
+        canCollapse={collapsible}
+        onToggleCollapse={() => toggleCollapsedSection("homebrew", sectionID, snapshot)}
         action={
           showUpdateAll && items.length > 1 ? (
             <UpdateActionButton
@@ -754,15 +811,16 @@ export function HomebrewSection({
           ) : undefined
         }
       />
-      {items.length === 0 ? (
-        <Empty text={empty} />
-      ) : (
-        <div className="rows">
-          {items.map((item) => (
-            <HomebrewRow key={item.id} item={item} snapshot={snapshot} />
-          ))}
-        </div>
-      )}
+      {!collapsed &&
+        (items.length === 0 ? (
+          <Empty text={empty} />
+        ) : (
+          <div className="rows">
+            {items.map((item) => (
+              <HomebrewRow key={item.id} item={item} snapshot={snapshot} />
+            ))}
+          </div>
+        ))}
     </section>
   );
 }
@@ -1221,10 +1279,34 @@ function Toggle({ label, value, patch }: { label: string; value: boolean; patch:
   );
 }
 
-function PanelTitle({ title, action }: { title: string; action?: React.ReactNode }) {
+function PanelTitle({
+  title,
+  action,
+  canCollapse = false,
+  collapsed = false,
+  onToggleCollapse
+}: {
+  title: string;
+  action?: React.ReactNode;
+  canCollapse?: boolean;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+}) {
   return (
     <div className="panel-title">
-      <h2>{title}</h2>
+      {canCollapse ? (
+        <button
+          className="section-toggle"
+          aria-expanded={!collapsed}
+          onClick={onToggleCollapse}
+          title={collapsed ? `Expand ${title}` : `Collapse ${title}`}
+        >
+          <ChevronRight size={13} className={collapsed ? "" : "expanded"} />
+          <span>{title}</span>
+        </button>
+      ) : (
+        <h2>{title}</h2>
+      )}
       {action}
     </div>
   );
@@ -1269,6 +1351,21 @@ function searchPlaceholder(tab: MenuTab): string {
 
 function combinedAvailableCount(derived: DerivedSections): number {
   return derived.availableApps.length + derived.allHomebrewOutdated.length;
+}
+
+function toggleCollapsedSection(
+  kind: "app" | "homebrew",
+  sectionID: string,
+  snapshot: BaselineSnapshot
+): void {
+  const key = kind === "app" ? "collapsedAppSectionIDs" : "collapsedHomebrewSectionIDs";
+  const values = new Set(snapshot[key]);
+  if (values.has(sectionID)) {
+    values.delete(sectionID);
+  } else {
+    values.add(sectionID);
+  }
+  void window.baseline.updatePreferences({ [key]: [...values].sort() });
 }
 
 type DerivedSections = ReturnType<typeof deriveSections>;

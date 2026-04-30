@@ -362,6 +362,35 @@ button:disabled {
   letter-spacing: 0;
 }
 
+.section-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(60, 60, 67, 0.78);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.section-toggle svg {
+  flex: 0 0 auto;
+  margin-right: 4px;
+  transition: transform 160ms ease;
+}
+
+.section-toggle svg.expanded {
+  transform: rotate(90deg);
+}
+
+.section-toggle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rows {
   display: grid;
 }
@@ -978,6 +1007,10 @@ button:disabled {
   }
 
   .panel-title h2 {
+    color: rgba(235, 235, 245, 0.78);
+  }
+
+  .section-toggle {
     color: rgba(235, 235, 245, 0.78);
   }
 

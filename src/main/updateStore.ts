@@ -834,6 +834,8 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     showRecentlyUpdatedHomebrewSection: snapshot.showRecentlyUpdatedHomebrewSection,
     showInstalledHomebrewSection: snapshot.showInstalledHomebrewSection,
     showIgnoredHomebrewSection: snapshot.showIgnoredHomebrewSection,
+    collapsedAppSectionIDs: snapshot.collapsedAppSectionIDs,
+    collapsedHomebrewSectionIDs: snapshot.collapsedHomebrewSectionIDs,
     autoRefreshEnabled: snapshot.autoRefreshEnabled,
     refreshIntervalMinutes: snapshot.refreshIntervalMinutes,
     useMasForAppStoreUpdates: snapshot.useMasForAppStoreUpdates,

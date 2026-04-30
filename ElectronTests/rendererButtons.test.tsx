@@ -249,6 +249,7 @@ describe("renderer button parity", () => {
     };
     const { rerender } = render(
       <HomebrewSection
+        sectionID="outdated"
         title="Outdated"
         items={[cask]}
         snapshot={snapshot()}
@@ -260,6 +261,7 @@ describe("renderer button parity", () => {
 
     rerender(
       <HomebrewSection
+        sectionID="outdated"
         title="Outdated"
         items={[cask, second]}
         snapshot={snapshot({ homebrewItems: [cask, second] })}
@@ -268,5 +270,29 @@ describe("renderer button parity", () => {
       />
     );
     expect(screen.getByRole("button", { name: "Update All" })).toBeInTheDocument();
+  });
+
+  it("collapses persisted secondary sections and toggles them through preferences", () => {
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          updates: [],
+          homebrewItems: [],
+          collapsedAppSectionIDs: ["installed"]
+        })}
+      />
+    );
+
+    const installedToggle = screen.getByRole("button", { name: "Installed (1)" });
+    expect(installedToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("1.0.0 installed")).not.toBeInTheDocument();
+
+    fireEvent.click(installedToggle);
+    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
+      collapsedAppSectionIDs: []
+    });
   });
 });

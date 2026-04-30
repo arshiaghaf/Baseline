@@ -134,6 +134,8 @@ export type PersistedSnapshot = {
   showRecentlyUpdatedHomebrewSection: boolean;
   showInstalledHomebrewSection: boolean;
   showIgnoredHomebrewSection: boolean;
+  collapsedAppSectionIDs: string[];
+  collapsedHomebrewSectionIDs: string[];
   autoRefreshEnabled: boolean;
   refreshIntervalMinutes: number;
   useMasForAppStoreUpdates: boolean;
@@ -203,6 +205,8 @@ export function defaultPersistedSnapshot(): PersistedSnapshot {
     showRecentlyUpdatedHomebrewSection: true,
     showInstalledHomebrewSection: true,
     showIgnoredHomebrewSection: true,
+    collapsedAppSectionIDs: [],
+    collapsedHomebrewSectionIDs: [],
     autoRefreshEnabled: true,
     refreshIntervalMinutes: 60,
     useMasForAppStoreUpdates: true
