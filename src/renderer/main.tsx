@@ -148,7 +148,7 @@ export function Dashboard({
           <div className="topbar-actions">
             {snapshot.isRefreshing && <Loader2 className="spin" size={16} />}
             <button
-              className="toolbar-button"
+              className="toolbar-button refresh-button"
               onClick={() => void window.baseline.refresh(false)}
               title="Refresh"
             >
@@ -184,7 +184,7 @@ export function Dashboard({
                 onToggle={() => setToolbarSearchOpen((open) => !open)}
               />
               <button
-                className="toolbar-button"
+                className="toolbar-button refresh-button"
                 onClick={() => void window.baseline.refresh(false)}
                 title="Refresh"
               >

@@ -555,6 +555,11 @@ button:disabled {
   padding: 0 12px;
 }
 
+.toolbar-button.refresh-button {
+  border-color: transparent;
+  background: transparent;
+}
+
 .ghost-button {
   padding: 0 10px;
   border: 1px solid rgba(60, 60, 67, 0.16);
