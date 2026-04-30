@@ -395,7 +395,7 @@ button:disabled {
   align-items: center;
   min-height: 70px;
   padding: 10px 0;
-  border-top: 1px solid rgba(60, 60, 67, 0.1);
+  border-top: 1px solid rgba(60, 60, 67, 0.06);
 }
 
 .ignored-row {
@@ -996,8 +996,6 @@ button:disabled {
     color: rgba(235, 235, 245, 0.78);
   }
 
-  .row,
-  .ignored-row,
   .stats div,
   .readiness,
   .ready-row,
@@ -1005,6 +1003,11 @@ button:disabled {
   .field,
   .directory-row {
     border-color: rgba(235, 235, 245, 0.1);
+  }
+
+  .row,
+  .ignored-row {
+    border-color: rgba(235, 235, 245, 0.06);
   }
 
   .app-icon {
