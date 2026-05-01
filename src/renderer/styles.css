@@ -530,7 +530,7 @@ button:disabled {
 
 .row-title span {
   flex: 0 0 auto;
-  color: rgba(60, 60, 67, 0.5);
+  color: rgba(60, 60, 67, 0.36);
   font-size: 11px;
   font-weight: 300;
   text-transform: capitalize;
@@ -540,7 +540,7 @@ button:disabled {
 .muted,
 .empty {
   margin: 2px 0 0;
-  color: rgba(60, 60, 67, 0.66);
+  color: rgba(60, 60, 67, 0.5);
   font-size: 12px;
   font-weight: 300;
   line-height: 1.3;
@@ -1148,13 +1148,16 @@ button:disabled {
 
   .topbar p,
   .popover-titlebar p,
-  .row-title span,
   .row-main p,
   .muted,
   .empty,
   .stats dt,
   .ready-row strong {
-    color: rgba(235, 235, 245, 0.64);
+    color: rgba(235, 235, 245, 0.5);
+  }
+
+  .row-title span {
+    color: rgba(235, 235, 245, 0.36);
   }
 
   .search-box,
