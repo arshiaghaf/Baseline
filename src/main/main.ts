@@ -262,7 +262,12 @@ function updateTrayStatus(snapshot: BaselineSnapshot): void {
 
 function trayUpdateTitle(snapshot: BaselineSnapshot): string {
   const ignored = new Set(snapshot.ignoredIDs);
-  const visibleUpdates = snapshot.updates.filter((update) => !ignored.has(update.appID)).length;
+  const ignoredHomebrew = new Set(snapshot.ignoredHomebrewItemIDs);
+  const visibleAppUpdates = snapshot.updates.filter((update) => !ignored.has(update.appID)).length;
+  const visibleHomebrewUpdates = snapshot.homebrewItems.filter(
+    (item) => item.isOutdated && !ignoredHomebrew.has(item.id)
+  ).length;
+  const visibleUpdates = visibleAppUpdates + visibleHomebrewUpdates;
   if (visibleUpdates === 0) {
     return "✓";
   }
