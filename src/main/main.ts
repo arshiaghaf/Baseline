@@ -84,7 +84,7 @@ function createMainWindow(route: "main" | "settings"): BrowserWindow {
     new BrowserWindow({
       width: 1160,
       height: 760,
-      minWidth: 760,
+      minWidth: 660,
       minHeight: 620,
       title: "Baseline",
       titleBarStyle: "hiddenInset",
