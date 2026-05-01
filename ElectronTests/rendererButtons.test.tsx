@@ -515,6 +515,102 @@ describe("renderer button parity", () => {
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
   });
 
+  it("renders compact menu bar as all updates without tabs or recent sections", () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "homebrew",
+          recentlyUpdated: [
+            {
+              id: "recent:example",
+              appID: app.id,
+              displayName: app.displayName,
+              fromVersion: version("0.9.0"),
+              toVersion: version("1.0.0"),
+              updatedAt: "2026-04-30T12:00:00.000Z"
+            }
+          ],
+          homebrewRecentlyUpdated: [
+            {
+              id: "recent:cask:example",
+              itemID: cask.id,
+              token: cask.token,
+              kind: cask.kind,
+              displayName: cask.name,
+              fromVersion: version("0.9.0"),
+              toVersion: version("1.0.0"),
+              updatedAt: "2026-04-30T12:00:00.000Z"
+            }
+          ]
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "App Updates" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Homebrew Updates" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Recently Updated Apps" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Recently Updated Homebrew" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("unifies app and Homebrew recently updated rows in the All tab", () => {
+    const currentCask: HomebrewManagedItem = {
+      ...cask,
+      latestVersion: version("2.0.0"),
+      isOutdated: false
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "all",
+          updates: [],
+          homebrewItems: [currentCask],
+          recentlyUpdated: [
+            {
+              id: "recent:app",
+              appID: app.id,
+              displayName: app.displayName,
+              fromVersion: version("1.0.0"),
+              toVersion: version("2.0.0"),
+              updatedAt: "2026-04-29T12:00:00.000Z"
+            }
+          ],
+          homebrewRecentlyUpdated: [
+            {
+              id: "recent:cask",
+              itemID: currentCask.id,
+              token: currentCask.token,
+              kind: currentCask.kind,
+              displayName: currentCask.name,
+              fromVersion: version("1.0.0"),
+              toVersion: version("2.0.0"),
+              updatedAt: "2026-04-30T12:00:00.000Z"
+            }
+          ]
+        })}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Recently Updated" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Recently Updated Apps" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Recently Updated Homebrew" })
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("Example")).toHaveLength(2);
+  });
+
   it("search includes installed items and hides empty result sections", () => {
     const installedApp: AppRecord = {
       ...app,

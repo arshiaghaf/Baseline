@@ -349,6 +349,10 @@ button:disabled {
   overflow: auto;
 }
 
+.compact .content.single {
+  padding: 0 10px 10px;
+}
+
 .stack {
   display: grid;
   align-content: start;
@@ -437,8 +441,9 @@ button:disabled {
 }
 
 .compact .row {
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr) auto;
   min-height: 68px;
+  gap: 10px;
 }
 
 .compact .app-icon,
@@ -448,8 +453,8 @@ button:disabled {
 }
 
 .compact .row-actions {
-  grid-column: 2;
-  justify-content: flex-start;
+  justify-content: flex-end;
+  gap: 5px;
 }
 
 .app-icon {
@@ -536,6 +541,14 @@ button:disabled {
 
 .empty {
   padding: 14px 12px;
+}
+
+.version-token {
+  letter-spacing: 0.05em;
+}
+
+.version-arrow {
+  margin: 0 0.5em;
 }
 
 .row-actions {

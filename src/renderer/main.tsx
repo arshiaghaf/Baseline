@@ -131,7 +131,6 @@ export function Dashboard({
 
   let shell: React.ReactNode;
   if (compact) {
-    const compactTitle = selectedTabTitle(selectedTab);
     shell = (
       <main className="app-shell compact">
         <header className="popover-titlebar">
@@ -140,14 +139,15 @@ export function Dashboard({
             <p>
               {snapshot.isRefreshing
                 ? "Checking updates"
-                : selectedTab === "all"
-                  ? `${combinedAvailableCount(derived)} available`
-                  : selectedTab === "installed"
-                    ? `${combinedInstalledCount(derived)} installed`
-                    : `${compactTitle} updates`}
+                : `${combinedAvailableCount(derived)} available`}
             </p>
           </div>
           <div className="topbar-actions">
+            <ToolbarSearch
+              open={toolbarSearchOpen}
+              snapshot={snapshot}
+              onToggle={() => setToolbarSearchOpen((open) => !open)}
+            />
             <button
               className="toolbar-button refresh-button"
               onClick={() => void window.baseline.refresh(false)}
@@ -160,7 +160,6 @@ export function Dashboard({
             </button>
           </div>
         </header>
-        <CommandBar snapshot={snapshot} selectedTab={selectedTab} showTabs />
         <section className="content single">
           <SelectedTabContent snapshot={snapshot} derived={derived} compact={compact} />
         </section>
@@ -343,52 +342,6 @@ function ToolbarSearch({
   );
 }
 
-function CommandBar({
-  snapshot,
-  selectedTab,
-  showTabs = false
-}: {
-  snapshot: BaselineSnapshot;
-  selectedTab: MenuTab;
-  showTabs?: boolean;
-}) {
-  return (
-    <section className={showTabs ? "command-row" : "command-row search-only"}>
-      <label className="search-box">
-        <Search size={15} />
-        <input
-          value={snapshot.searchText}
-          onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
-          placeholder={searchPlaceholder()}
-        />
-      </label>
-      {showTabs && <SegmentedTabs selectedTab={selectedTab} />}
-    </section>
-  );
-}
-
-function SegmentedTabs({ selectedTab }: { selectedTab: MenuTab }) {
-  return (
-    <div className="segmented" role="tablist">
-      {(["all", "apps", "homebrew", "installed"] as MenuTab[]).map((tab) => (
-        <button
-          key={tab}
-          className={selectedTab === tab ? "selected" : ""}
-          onClick={() => void window.baseline.setSelectedTab(tab)}
-        >
-          {tab === "all"
-            ? "All"
-            : tab === "apps"
-              ? "Apps"
-              : tab === "homebrew"
-                ? "Homebrew"
-                : "Installed"}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function SelectedTabContent({
   snapshot,
   derived,
@@ -400,6 +353,9 @@ function SelectedTabContent({
 }) {
   if (snapshot.searchText.trim()) {
     return <SearchResults snapshot={snapshot} derived={derived} />;
+  }
+  if (compact) {
+    return <AllTab snapshot={snapshot} derived={derived} compact />;
   }
   if (snapshot.selectedTab === "all") {
     return <AllTab snapshot={snapshot} derived={derived} />;
@@ -475,7 +431,15 @@ function SearchResults({
   );
 }
 
-function AllTab({ snapshot, derived }: { snapshot: BaselineSnapshot; derived: DerivedSections }) {
+function AllTab({
+  snapshot,
+  derived,
+  compact = false
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+  compact?: boolean;
+}) {
   return (
     <div className="stack">
       <AppSection
@@ -493,29 +457,73 @@ function AllTab({ snapshot, derived }: { snapshot: BaselineSnapshot; derived: De
         empty="All your Homebrew items are up to date."
         showUpdateAll
       />
-      {snapshot.showRecentlyUpdatedAppsSection && (
-        <AppSection
-          sectionID="recentlyUpdated"
-          collapsible
-          title="Recently Updated Apps"
-          apps={derived.recentlyUpdatedApps}
-          snapshot={snapshot}
-          empty="No recently updated apps yet."
-          recentlyUpdated
-        />
-      )}
-      {snapshot.showRecentlyUpdatedHomebrewSection && (
-        <HomebrewSection
-          sectionID="recentlyUpdated"
-          collapsible
-          title="Recently Updated Homebrew"
-          items={derived.homebrewRecentlyUpdated}
-          snapshot={snapshot}
-          empty="No recently updated Homebrew items yet."
-          recentlyUpdated
-        />
-      )}
+      {!compact && <AllRecentlyUpdatedSection snapshot={snapshot} derived={derived} />}
     </div>
+  );
+}
+
+function AllRecentlyUpdatedSection({
+  snapshot,
+  derived
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+}) {
+  const appUpdatedAt = new Map(
+    snapshot.recentlyUpdated.map((record) => [record.appID, record.updatedAt])
+  );
+  const homebrewUpdatedAt = new Map(
+    snapshot.homebrewRecentlyUpdated.map((record) => [record.itemID, record.updatedAt])
+  );
+  const rows = [
+    ...(snapshot.showRecentlyUpdatedAppsSection
+      ? derived.recentlyUpdatedApps.map((app) => ({
+          type: "app" as const,
+          id: app.id,
+          updatedAt: appUpdatedAt.get(app.id) ?? "",
+          item: app
+        }))
+      : []),
+    ...(snapshot.showRecentlyUpdatedHomebrewSection
+      ? derived.homebrewRecentlyUpdated.map((item) => ({
+          type: "homebrew" as const,
+          id: item.id,
+          updatedAt: homebrewUpdatedAt.get(item.id) ?? "",
+          item
+        }))
+      : [])
+  ].sort((lhs, rhs) => compareRecentRows(lhs, rhs));
+
+  const collapsed = snapshot.collapsedAppSectionIDs.includes("recentlyUpdated");
+
+  return (
+    <section className="panel">
+      <PanelTitle
+        title="Recently Updated"
+        collapsed={collapsed}
+        canCollapse
+        onToggleCollapse={() => toggleCollapsedSection("app", "recentlyUpdated", snapshot)}
+      />
+      {!collapsed &&
+        (rows.length === 0 ? (
+          <Empty text="No recently updated items yet." />
+        ) : (
+          <div className="rows">
+            {rows.map((row) =>
+              row.type === "app" ? (
+                <AppRow key={`app:${row.id}`} app={row.item} snapshot={snapshot} recentlyUpdated />
+              ) : (
+                <HomebrewRow
+                  key={`homebrew:${row.id}`}
+                  item={row.item}
+                  snapshot={snapshot}
+                  recentlyUpdated
+                />
+              )
+            )}
+          </div>
+        ))}
+    </section>
   );
 }
 
@@ -653,11 +661,16 @@ export function AppRow({
           {update && <span>{sourceLabel(update)}</span>}
         </div>
         <p>
-          {update
-            ? `${app.localVersion.raw || "unknown"}   →   ${update.remoteVersion.raw || "unknown"}`
-            : recentlyUpdatedAt
-              ? updatedRelativeLabel(recentlyUpdatedAt)
-              : app.localVersion.raw || "unknown"}
+          {update ? (
+            <VersionChange
+              from={app.localVersion.raw || "unknown"}
+              to={update.remoteVersion.raw || "unknown"}
+            />
+          ) : recentlyUpdatedAt ? (
+            updatedRelativeLabel(recentlyUpdatedAt)
+          ) : (
+            app.localVersion.raw || "unknown"
+          )}
         </p>
       </div>
       <div className="row-actions">
@@ -930,11 +943,16 @@ export function HomebrewRow({
           <span>{item.kind}</span>
         </div>
         <p>
-          {recentlyUpdatedAt
-            ? updatedRelativeLabel(recentlyUpdatedAt)
-            : `${item.installedVersion.raw || "unknown"}${
-                item.latestVersion ? `   →   ${item.latestVersion.raw}` : ""
-              }`}
+          {recentlyUpdatedAt ? (
+            updatedRelativeLabel(recentlyUpdatedAt)
+          ) : item.latestVersion ? (
+            <VersionChange
+              from={item.installedVersion.raw || "unknown"}
+              to={item.latestVersion.raw}
+            />
+          ) : (
+            item.installedVersion.raw || "unknown"
+          )}
         </p>
       </div>
       <div className="row-actions">
@@ -1414,6 +1432,16 @@ function Empty({ text }: { text: string }) {
   return <p className="empty">{text}</p>;
 }
 
+function VersionChange({ from, to }: { from: string; to: string }) {
+  return (
+    <>
+      <span className="version-token">{from}</span>
+      <span className="version-arrow">→</span>
+      <span className="version-token">{to}</span>
+    </>
+  );
+}
+
 function Readiness({ label, ready }: { label: string; ready: boolean }) {
   return (
     <div className="ready-row">
@@ -1457,6 +1485,20 @@ function updatedRelativeLabel(updatedAt: string, now = Date.now()): string {
     return "Updated today";
   }
   return `Updated ${days} ${days === 1 ? "day" : "days"} ago`;
+}
+
+function compareRecentRows(
+  lhs: { updatedAt: string; id: string },
+  rhs: { updatedAt: string; id: string }
+): number {
+  const lhsTime = new Date(lhs.updatedAt).getTime();
+  const rhsTime = new Date(rhs.updatedAt).getTime();
+  const lhsSafeTime = Number.isFinite(lhsTime) ? lhsTime : 0;
+  const rhsSafeTime = Number.isFinite(rhsTime) ? rhsTime : 0;
+  if (lhsSafeTime !== rhsSafeTime) {
+    return rhsSafeTime - lhsSafeTime;
+  }
+  return lhs.id.localeCompare(rhs.id);
 }
 
 function combinedAvailableCount(derived: DerivedSections): number {

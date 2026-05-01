@@ -190,8 +190,8 @@ function toggleMenuWindow(): void {
       false
     );
   }
-  window.show();
-  window.focus();
+  window.setAlwaysOnTop(true, "pop-up-menu");
+  window.showInactive();
 }
 
 function showMainWindow(route: "main" | "settings"): void {
