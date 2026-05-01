@@ -196,39 +196,55 @@ button:disabled {
 }
 
 .toolbar-search {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
+  position: relative;
   width: 28px;
   height: 28px;
-  overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  transition:
-    width 160ms ease,
-    background-color 160ms ease,
-    border-color 160ms ease;
+  overflow: visible;
+  transition: width 180ms cubic-bezier(0.2, 0, 0.2, 1);
 }
 
 .toolbar-search.open {
   width: 184px;
-  border-color: rgba(60, 60, 67, 0.16);
-  background: rgba(255, 255, 255, 0.72);
+}
+
+.toolbar-search-field {
+  position: absolute;
+  top: 0;
+  right: 34px;
+  width: 150px;
+  height: 28px;
+  transform: translateX(6px) scaleX(0.84);
+  transform-origin: right center;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 180ms cubic-bezier(0.2, 0, 0.2, 1),
+    opacity 120ms ease;
+}
+
+.toolbar-search.open .toolbar-search-field {
+  transform: translateX(0) scaleX(1);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .toolbar-search input {
-  width: 144px;
+  width: 100%;
   min-width: 0;
-  padding: 0 2px 0 10px;
-  border: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(60, 60, 67, 0.16);
+  border-radius: 999px;
   outline: 0;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.72);
   color: #0d0d0d;
   font-size: 13px;
 }
 
 .toolbar-search .toolbar-button {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 0;
+  right: 0;
   border-color: transparent;
   background: transparent;
 }
@@ -657,8 +673,14 @@ button:disabled {
   .danger-button,
   .destructive-text-button,
   .segmented button,
-  .section-toggle {
+  .section-toggle,
+  .toolbar-search,
+  .toolbar-search-field {
     transition: none;
+  }
+
+  .toolbar-search-field {
+    transform: none;
   }
 
   .toolbar-button:not(:disabled):hover,
@@ -1091,8 +1113,13 @@ button:disabled {
   }
 
   .search-box,
-  .toolbar-search.open,
   .field input {
+    border-color: rgba(235, 235, 245, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(235, 235, 245, 0.58);
+  }
+
+  .toolbar-search input {
     border-color: rgba(235, 235, 245, 0.18);
     background: rgba(255, 255, 255, 0.08);
     color: rgba(235, 235, 245, 0.58);

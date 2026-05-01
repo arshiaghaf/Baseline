@@ -11,7 +11,6 @@ import {
   EyeOff,
   ExternalLink,
   FolderPlus,
-  Loader2,
   Package,
   RefreshCcw,
   Search,
@@ -146,13 +145,12 @@ export function Dashboard({
             </p>
           </div>
           <div className="topbar-actions">
-            {snapshot.isRefreshing && <Loader2 className="spin" size={16} />}
             <button
               className="toolbar-button refresh-button"
               onClick={() => void window.baseline.refresh(false)}
               title="Refresh"
             >
-              <RefreshCcw size={15} />
+              <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={15} />
             </button>
             <button className="toolbar-button" onClick={onOpenSettings} title="Settings">
               <Settings size={15} />
@@ -176,7 +174,6 @@ export function Dashboard({
               <h1>{title}</h1>
             </div>
             <div className="topbar-actions">
-              {snapshot.isRefreshing && <Loader2 className="spin" size={17} />}
               <ToolbarSearch
                 open={toolbarSearchOpen}
                 snapshot={snapshot}
@@ -187,7 +184,7 @@ export function Dashboard({
                 onClick={() => void window.baseline.refresh(false)}
                 title="Refresh"
               >
-                <RefreshCcw size={16} />
+                <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
               </button>
             </div>
           </header>
@@ -311,14 +308,16 @@ function ToolbarSearch({
 
   return (
     <div className={open ? "toolbar-search open" : "toolbar-search"}>
-      {open && (
+      <div className="toolbar-search-field">
         <input
           ref={inputRef}
           value={snapshot.searchText}
           onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
           placeholder={searchPlaceholder()}
+          tabIndex={open ? 0 : -1}
+          aria-hidden={!open}
         />
-      )}
+      </div>
       <button
         className="toolbar-button"
         onClick={onToggle}
