@@ -1114,10 +1114,15 @@ button:disabled {
     color: #fcfcfc;
   }
 
+  .source-list button,
+  .sidebar-footer button {
+    color: rgba(252, 252, 252, 0.7);
+  }
+
   .source-list button.selected,
   .sidebar-footer button.selected {
     background: rgba(235, 235, 245, 0.13);
-    color: #ffffff;
+    color: rgba(255, 255, 255, 0.7);
   }
 
   .source-list strong {
