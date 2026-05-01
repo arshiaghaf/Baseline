@@ -495,6 +495,52 @@ describe("renderer button parity", () => {
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
   });
 
+  it("search includes installed items and hides empty result sections", () => {
+    const installedApp: AppRecord = {
+      ...app,
+      id: "app:notion",
+      displayName: "Notion"
+    };
+    const installedFormula: HomebrewManagedItem = {
+      ...cask,
+      id: "formula:notion-cli",
+      token: "notion-cli",
+      name: "notion-cli",
+      kind: "formula",
+      latestVersion: version("1.0.0"),
+      isOutdated: false
+    };
+    const discoverItem: HomebrewCaskDiscoveryItem = {
+      id: "cask:notion-calendar",
+      token: "notion-calendar",
+      displayName: "Notion Calendar",
+      kind: "cask",
+      version: version("1.0.0")
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          searchText: "notion",
+          apps: [installedApp],
+          updates: [],
+          homebrewItems: [installedFormula],
+          homebrewDiscoverItems: [discoverItem]
+        })}
+      />
+    );
+
+    expect(screen.getByText("Notion")).toBeInTheDocument();
+    expect(screen.getByText("notion-cli")).toBeInTheDocument();
+    expect(screen.getByText("Notion Calendar")).toBeInTheDocument();
+    expect(screen.queryByText("All your apps are up to date.")).not.toBeInTheDocument();
+    expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 2 })[0]).toHaveTextContent("Discover");
+  });
+
   it("collapses persisted secondary sections and toggles them through preferences", () => {
     render(
       <Dashboard

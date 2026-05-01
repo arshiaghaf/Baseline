@@ -398,11 +398,7 @@ function SelectedTabContent({
   compact: boolean;
 }) {
   if (snapshot.searchText.trim()) {
-    return snapshot.selectedTab === "installed" ? (
-      <InstalledTab snapshot={snapshot} derived={derived} compact={compact} />
-    ) : (
-      <AllTab snapshot={snapshot} derived={derived} />
-    );
+    return <SearchResults snapshot={snapshot} derived={derived} />;
   }
   if (snapshot.selectedTab === "all") {
     return <AllTab snapshot={snapshot} derived={derived} />;
@@ -416,11 +412,68 @@ function SelectedTabContent({
   return <InstalledTab snapshot={snapshot} derived={derived} compact={compact} />;
 }
 
-function AllTab({ snapshot, derived }: { snapshot: BaselineSnapshot; derived: DerivedSections }) {
-  const isSearching = Boolean(snapshot.searchText.trim());
+function SearchResults({
+  snapshot,
+  derived
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+}) {
+  const hasResults =
+    snapshot.homebrewDiscoverItems.length > 0 ||
+    derived.availableApps.length > 0 ||
+    derived.allHomebrewOutdated.length > 0 ||
+    derived.installedApps.length > 0 ||
+    derived.homebrewInstalled.length > 0;
+
   return (
     <div className="stack">
-      {isSearching && <DiscoverSection snapshot={snapshot} />}
+      {snapshot.homebrewDiscoverItems.length > 0 && <DiscoverSection snapshot={snapshot} />}
+      {derived.availableApps.length > 0 && (
+        <AppSection
+          sectionID="available"
+          title="App Updates"
+          apps={derived.availableApps}
+          snapshot={snapshot}
+          empty="All your apps are up to date."
+        />
+      )}
+      {derived.allHomebrewOutdated.length > 0 && (
+        <HomebrewSection
+          sectionID="outdated"
+          title="Homebrew Updates"
+          items={derived.allHomebrewOutdated}
+          snapshot={snapshot}
+          empty="All your Homebrew items are up to date."
+          showUpdateAll
+        />
+      )}
+      {derived.installedApps.length > 0 && (
+        <AppSection
+          sectionID="installed"
+          title="Installed Apps"
+          apps={derived.installedApps}
+          snapshot={snapshot}
+          empty="No installed apps found."
+        />
+      )}
+      {derived.homebrewInstalled.length > 0 && (
+        <HomebrewSection
+          sectionID="installed"
+          title="Installed Homebrew"
+          items={derived.homebrewInstalled}
+          snapshot={snapshot}
+          empty="No installed Homebrew items found."
+        />
+      )}
+      {!hasResults && <Empty text="No matches found." />}
+    </div>
+  );
+}
+
+function AllTab({ snapshot, derived }: { snapshot: BaselineSnapshot; derived: DerivedSections }) {
+  return (
+    <div className="stack">
       <AppSection
         sectionID="available"
         title={`App Updates (${derived.availableApps.length})`}
