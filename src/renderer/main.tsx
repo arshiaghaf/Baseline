@@ -600,7 +600,7 @@ export function AppRow({
             ? `${app.localVersion.raw || "unknown"}   →   ${update.remoteVersion.raw || "unknown"}`
             : recentlyUpdatedAt
               ? updatedRelativeLabel(recentlyUpdatedAt)
-              : `${app.localVersion.raw || "unknown"} installed`}
+              : app.localVersion.raw || "unknown"}
         </p>
       </div>
       <div className="row-actions">
