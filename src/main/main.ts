@@ -13,8 +13,14 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 let mainWindow: BrowserWindow | undefined;
 let menuWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
+let trayBaseIcon: Electron.NativeImage | undefined;
+let trayRefreshIcon: Electron.NativeImage | undefined;
 let store: UpdateStore;
 let isQuitting = false;
+
+const trayRefreshIconDataURL =
+  "data:image/png;base64," +
+  "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABIklEQVQ4EaWSP2pCQRCHTUidAySkCgErb5DSVBZapfIeOY6FjVYWgeANklIFCYiNSPAMFonf99wF9+3zD+QH3467+2acnZla7Z+6Cv6vwQ6CbWBb8Bj2C+wIvsM+M0NO5B7e4Q/W8BH4wf5CH24hk85j2MAcmnAoM+2AgSaQBdF5C1PowjNU6YFDg5hJoi92ph1ZJbfpxkx8Tj09vnznc8ziTZdrF2QXYieKgxOLWVqHJ7+5cUEvcAexjZ6dUq98aTqmFeeifH92b0EsjAU6Jgsbi6z9LH9oa8zCVlXJ1nZhBrbc1idyOCyOQdpQfo7D5ZA5bDo7fJkMYiY+x0BxlNf8Nm3H3HGPo5/9C3eFrIlZFK3CLkFnJ1XFll/atb1X1boDYBs/6p2bHjwAAAAASUVORK5CYII=";
 
 const isDevelopment = !app.isPackaged;
 
@@ -163,14 +169,16 @@ async function loadRenderer(
 }
 
 function createTray(): void {
-  const icon = nativeImage.createFromDataURL(
+  trayBaseIcon = nativeImage.createFromDataURL(
     "data:image/svg+xml;charset=utf-8," +
       encodeURIComponent(
         `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path fill="black" d="M9 1.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Zm0 2.2 4.7 8.1H4.3L9 3.7Z"/></svg>`
       )
   );
-  icon.setTemplateImage(true);
-  tray = new Tray(icon);
+  trayBaseIcon.setTemplateImage(true);
+  trayRefreshIcon = nativeImage.createFromDataURL(trayRefreshIconDataURL);
+  trayRefreshIcon.setTemplateImage(true);
+  tray = new Tray(trayBaseIcon);
   tray.setToolTip("Baseline");
   tray.on("click", toggleMenuWindow);
 }
@@ -210,7 +218,7 @@ function showWindow(window?: BrowserWindow): void {
 
 function wireStoreEvents(): void {
   store.on("snapshot", (snapshot) => {
-    tray?.setTitle(snapshot.isRefreshing ? "…" : trayUpdateTitle(snapshot));
+    updateTrayStatus(snapshot);
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send(ipcChannels.snapshotChanged, snapshot);
       window.webContents.send(ipcChannels.refreshStateChanged, {
@@ -233,6 +241,23 @@ function wireStoreEvents(): void {
       window.webContents.send(ipcChannels.homebrewCommandEvent, event);
     }
   });
+}
+
+function updateTrayStatus(snapshot: BaselineSnapshot): void {
+  if (!tray) {
+    return;
+  }
+  if (snapshot.isRefreshing) {
+    if (trayRefreshIcon && !trayRefreshIcon.isEmpty()) {
+      tray.setImage(trayRefreshIcon);
+    }
+    tray.setTitle("");
+    return;
+  }
+  if (trayBaseIcon) {
+    tray.setImage(trayBaseIcon);
+  }
+  tray.setTitle(trayUpdateTitle(snapshot));
 }
 
 function trayUpdateTitle(snapshot: BaselineSnapshot): string {
