@@ -585,6 +585,11 @@ button:disabled {
 .toolbar-button.refresh-button {
   border-color: transparent;
   background: transparent;
+  color: #8e8e93;
+}
+
+.toolbar-search .toolbar-button {
+  color: #8e8e93;
 }
 
 .segmented button,
@@ -1189,6 +1194,11 @@ button:disabled {
   .ghost-button {
     border-color: rgba(235, 235, 245, 0.16);
     background: rgba(255, 255, 255, 0.08);
+  }
+
+  .toolbar-button.refresh-button,
+  .toolbar-search .toolbar-button {
+    color: #8e8e93;
   }
 
   .update-icon-button {
