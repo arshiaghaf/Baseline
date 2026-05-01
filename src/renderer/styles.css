@@ -568,8 +568,7 @@ button:disabled {
 }
 
 .segmented button,
-.section-toggle,
-.clickable-app-icon {
+.section-toggle {
   transition:
     transform 150ms ease,
     background-color 150ms ease,
@@ -589,8 +588,7 @@ button:disabled {
   .danger-button:not(:disabled):hover,
   .destructive-text-button:not(:disabled):hover,
   .segmented button:not(:disabled):hover,
-  .section-toggle:not(:disabled):hover,
-  .clickable-app-icon:not(:disabled):hover {
+  .section-toggle:not(:disabled):hover {
     transform: translateY(-1px) scale(1.035);
   }
 
@@ -605,23 +603,23 @@ button:disabled {
 
   .toolbar-button.refresh-button:not(:disabled):hover,
   .toolbar-search .toolbar-button:not(:disabled):hover {
-    border-color: transparent;
-    background: transparent;
+    border-color: rgba(60, 60, 67, 0.1);
+    background: rgba(60, 60, 67, 0.08);
     box-shadow: none;
-    color: #007aff;
+    color: #0d0d0d;
   }
 
   .update-icon-button:not(:disabled):hover,
   .primary-button:not(:disabled):hover {
     background: #0a84ff;
-    box-shadow: 0 4px 10px rgba(0, 122, 255, 0.22);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
   }
 
   .destructive-icon-button:not(:disabled):hover,
   .destructive-text-button:not(:disabled):hover,
   .danger-button:not(:disabled):hover {
     background: rgba(255, 59, 48, 0.2);
-    box-shadow: 0 4px 10px rgba(255, 59, 48, 0.16);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
   }
 
   .danger-button:not(:disabled):hover {
@@ -631,10 +629,6 @@ button:disabled {
   .segmented button:not(:disabled):hover,
   .section-toggle:not(:disabled):hover {
     color: #007aff;
-  }
-
-  .clickable-app-icon:not(:disabled):hover {
-    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.14);
   }
 }
 
@@ -648,8 +642,7 @@ button:disabled {
 .danger-button:not(:disabled):active,
 .destructive-text-button:not(:disabled):active,
 .segmented button:not(:disabled):active,
-.section-toggle:not(:disabled):active,
-.clickable-app-icon:not(:disabled):active {
+.section-toggle:not(:disabled):active {
   transform: translateY(0) scale(0.97);
 }
 
@@ -664,8 +657,7 @@ button:disabled {
   .danger-button,
   .destructive-text-button,
   .segmented button,
-  .section-toggle,
-  .clickable-app-icon {
+  .section-toggle {
     transition: none;
   }
 
@@ -680,7 +672,6 @@ button:disabled {
   .destructive-text-button:not(:disabled):hover,
   .segmented button:not(:disabled):hover,
   .section-toggle:not(:disabled):hover,
-  .clickable-app-icon:not(:disabled):hover,
   .toolbar-button:not(:disabled):active,
   .icon-button:not(:disabled):active,
   .secondary-icon-button:not(:disabled):active,
@@ -691,8 +682,7 @@ button:disabled {
   .danger-button:not(:disabled):active,
   .destructive-text-button:not(:disabled):active,
   .segmented button:not(:disabled):active,
-  .section-toggle:not(:disabled):active,
-  .clickable-app-icon:not(:disabled):active {
+  .section-toggle:not(:disabled):active {
     transform: none;
   }
 }
@@ -1182,6 +1172,30 @@ button:disabled {
     border-color: rgba(255, 69, 58, 0.32);
     background: rgba(255, 69, 58, 0.14);
     color: #ff453a;
+  }
+
+  @media (hover: hover) {
+    .toolbar-button:not(:disabled):hover,
+    .icon-button:not(:disabled):hover,
+    .ghost-button:not(:disabled):hover {
+      border-color: rgba(235, 235, 245, 0.2);
+      background: rgba(255, 255, 255, 0.12);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18);
+    }
+
+    .secondary-icon-button:not(:disabled):hover {
+      border-color: rgba(235, 235, 245, 0.18);
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.14);
+    }
+
+    .toolbar-button.refresh-button:not(:disabled):hover,
+    .toolbar-search .toolbar-button:not(:disabled):hover {
+      border-color: rgba(235, 235, 245, 0.14);
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: none;
+      color: #fcfcfc;
+    }
   }
 
   .confirmation-card {
