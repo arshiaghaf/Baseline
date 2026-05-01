@@ -258,7 +258,7 @@ function Sidebar({
           }}
         >
           <Package size={16} />
-          <span>Applications</span>
+          <span>Apps</span>
           <strong>{derived.availableApps.length}</strong>
         </button>
         <button
@@ -1478,7 +1478,7 @@ function sourceLabel(update: UpdateRecord): string {
 
 function selectedTabTitle(tab: MenuTab): string {
   if (tab === "all") return "All";
-  if (tab === "apps") return "Applications";
+  if (tab === "apps") return "Apps";
   if (tab === "installed") return "Installed";
   return "Homebrew";
 }
