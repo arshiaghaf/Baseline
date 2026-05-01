@@ -263,15 +263,57 @@ function updateTrayStatus(snapshot: BaselineSnapshot): void {
 function trayUpdateTitle(snapshot: BaselineSnapshot): string {
   const ignored = new Set(snapshot.ignoredIDs);
   const ignoredHomebrew = new Set(snapshot.ignoredHomebrewItemIDs);
-  const visibleAppUpdates = snapshot.updates.filter((update) => !ignored.has(update.appID)).length;
+  const visibleAppUpdates = snapshot.updates.filter((update) => !ignored.has(update.appID));
+  const visibleAppUpdateIDs = new Set(visibleAppUpdates.map((update) => update.appID));
+  const visibleAppsWithUpdates = snapshot.apps.filter((app) => visibleAppUpdateIDs.has(app.id));
+  const updatesByAppID = new Map(visibleAppUpdates.map((update) => [update.appID, update]));
   const visibleHomebrewUpdates = snapshot.homebrewItems.filter(
-    (item) => item.isOutdated && !ignoredHomebrew.has(item.id)
-  ).length;
-  const visibleUpdates = visibleAppUpdates + visibleHomebrewUpdates;
+    (item) =>
+      item.isOutdated &&
+      !ignoredHomebrew.has(item.id) &&
+      !homebrewItemHasTrayAppUpdate(item, visibleAppsWithUpdates, updatesByAppID)
+  );
+  const visibleUpdates = visibleAppUpdates.length + visibleHomebrewUpdates.length;
   if (visibleUpdates === 0) {
     return "✓";
   }
   return `${visibleUpdates}\u2009↓`;
+}
+
+function homebrewItemHasTrayAppUpdate(
+  item: BaselineSnapshot["homebrewItems"][number],
+  apps: BaselineSnapshot["apps"],
+  updatesByAppID: Map<string, BaselineSnapshot["updates"][number]>
+): boolean {
+  if (item.kind !== "cask") {
+    return false;
+  }
+
+  return apps.some((app) => {
+    const update = updatesByAppID.get(app.id);
+    if (
+      update?.homebrewToken &&
+      normalizedTrayName(update.homebrewToken) === normalizedTrayName(item.token)
+    ) {
+      return true;
+    }
+    return normalizedTrayAppCandidates(app).has(normalizedTrayName(item.token));
+  });
+}
+
+function normalizedTrayAppCandidates(app: BaselineSnapshot["apps"][number]): Set<string> {
+  const fileName = app.bundlePath
+    .split("/")
+    .pop()
+    ?.replace(/\.app$/iu, "");
+  const candidates = [app.displayName, app.bundleIdentifier, fileName]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizedTrayName);
+  return new Set(candidates.flatMap((value) => [value, value.replace(/^com/u, "")]));
+}
+
+function normalizedTrayName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
 }
 
 function wireIpc(): void {
