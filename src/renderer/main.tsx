@@ -17,6 +17,7 @@ import {
   Settings,
   Terminal,
   Trash2,
+  X,
   XCircle
 } from "lucide-react";
 import type {
@@ -314,6 +315,11 @@ function ToolbarSearch({
     }
   }, [open]);
 
+  const clearSearch = () => {
+    void window.baseline.setSearchText("");
+    inputRef.current?.focus();
+  };
+
   return (
     <div className={open ? "toolbar-search open" : "toolbar-search"}>
       <div className="toolbar-search-field">
@@ -325,6 +331,18 @@ function ToolbarSearch({
           tabIndex={open ? 0 : -1}
           aria-hidden={!open}
         />
+        {snapshot.searchText ? (
+          <button
+            className="search-clear-button"
+            onClick={clearSearch}
+            onMouseDown={(event) => event.preventDefault()}
+            title="Clear Search"
+            aria-label="Clear Search"
+            tabIndex={open ? 0 : -1}
+          >
+            <X size={12} />
+          </button>
+        ) : null}
       </div>
       <button
         className="toolbar-button"

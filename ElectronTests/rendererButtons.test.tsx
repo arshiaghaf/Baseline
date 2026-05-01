@@ -219,6 +219,30 @@ describe("renderer button parity", () => {
     expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
   });
 
+  it("clears toolbar search from compact and main layouts", () => {
+    const { rerender } = render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ searchText: "obsidian" })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
+    expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ searchText: "notion" })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
+    expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
+  });
+
   it("does not render an app open action button when no update exists", () => {
     render(
       <AppRow
