@@ -373,6 +373,26 @@ describe("renderer button parity", () => {
     expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
   });
 
+  it("orders discover actions as install then open page", () => {
+    const item: HomebrewCaskDiscoveryItem = {
+      id: "cask:raycast",
+      token: "raycast",
+      displayName: "Raycast",
+      kind: "cask",
+      version: version("1.2.3"),
+      homepageURL: "https://www.raycast.com"
+    };
+    const { container } = render(
+      <DiscoverRow item={item} snapshot={snapshot({ homebrewDiscoverItems: [item] })} />
+    );
+
+    expect(
+      within(container.querySelector(".row-actions") as HTMLElement)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label") ?? button.textContent)
+    ).toEqual(["Install", "Open Homebrew page"]);
+  });
+
   it("confirms install in the dashboard overlay before invoking install", () => {
     const item: HomebrewCaskDiscoveryItem = {
       id: "cask:raycast",
@@ -498,8 +518,8 @@ describe("renderer button parity", () => {
   it("search includes installed items and hides empty result sections", () => {
     const installedApp: AppRecord = {
       ...app,
-      id: "app:notion",
-      displayName: "Notion"
+      id: "app:notion-notes",
+      displayName: "Notion Notes"
     };
     const installedFormula: HomebrewManagedItem = {
       ...cask,
@@ -533,12 +553,60 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByText("Notion")).toBeInTheDocument();
+    expect(screen.getByText("Notion Notes")).toBeInTheDocument();
     expect(screen.getByText("notion-cli")).toBeInTheDocument();
     expect(screen.getByText("Notion Calendar")).toBeInTheDocument();
     expect(screen.queryByText("All your apps are up to date.")).not.toBeInTheDocument();
     expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 2 })[0]).toHaveTextContent("Discover");
+  });
+
+  it("search hides cask-backed apps from Installed Apps", () => {
+    const caskBackedApp: AppRecord = {
+      ...app,
+      id: "app:notion",
+      displayName: "Notion"
+    };
+    const nonCaskApp: AppRecord = {
+      ...app,
+      id: "app:notion-notes",
+      displayName: "Notion Notes"
+    };
+    const installedCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:notion",
+      token: "notion",
+      name: "Notion",
+      latestVersion: version("1.0.0"),
+      isOutdated: false
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          searchText: "notion",
+          apps: [caskBackedApp, nonCaskApp],
+          updates: [],
+          homebrewItems: [installedCask],
+          homebrewDiscoverItems: []
+        })}
+      />
+    );
+
+    const installedApps = screen
+      .getByRole("heading", { name: "Installed Apps" })
+      .closest("section");
+    const installedHomebrew = screen
+      .getByRole("heading", { name: "Installed Homebrew" })
+      .closest("section");
+    expect(installedApps).not.toBeNull();
+    expect(installedHomebrew).not.toBeNull();
+    expect(within(installedApps as HTMLElement).queryByText("Notion")).not.toBeInTheDocument();
+    expect(within(installedApps as HTMLElement).getByText("Notion Notes")).toBeInTheDocument();
+    expect(within(installedHomebrew as HTMLElement).getByText("Notion")).toBeInTheDocument();
   });
 
   it("collapses persisted secondary sections and toggles them through preferences", () => {

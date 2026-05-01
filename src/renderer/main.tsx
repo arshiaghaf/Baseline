@@ -15,6 +15,7 @@ import {
   RefreshCcw,
   Search,
   Settings,
+  Terminal,
   Trash2,
   XCircle
 } from "lucide-react";
@@ -419,11 +420,14 @@ function SearchResults({
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
 }) {
+  const searchInstalledApps = derived.installedApps.filter(
+    (app) => !uninstallableHomebrewItemForApp(app, snapshot)
+  );
   const hasResults =
     snapshot.homebrewDiscoverItems.length > 0 ||
     derived.availableApps.length > 0 ||
     derived.allHomebrewOutdated.length > 0 ||
-    derived.installedApps.length > 0 ||
+    searchInstalledApps.length > 0 ||
     derived.homebrewInstalled.length > 0;
 
   return (
@@ -448,11 +452,11 @@ function SearchResults({
           showUpdateAll
         />
       )}
-      {derived.installedApps.length > 0 && (
+      {searchInstalledApps.length > 0 && (
         <AppSection
           sectionID="installed"
           title="Installed Apps"
-          apps={derived.installedApps}
+          apps={searchInstalledApps}
           snapshot={snapshot}
           empty="No installed apps found."
         />
@@ -807,20 +811,21 @@ export function DiscoverRow({
         <p>{item.version.raw || item.token}</p>
       </div>
       <div className="row-actions">
-        {item.homepageURL && (
-          <button
-            className="icon-button"
-            onClick={() => void window.baseline.openExternal(item.homepageURL!)}
-            title="Open Homebrew page"
-          >
-            <ExternalLink size={15} />
-          </button>
-        )}
         <UpdateActionButton
           state={actionStateFromFlags({ failed, updating: installing, progress, done })}
           readyLabel="Install"
           onAction={() => requestActionConfirmation({ type: "install", item })}
         />
+        {item.homepageURL && (
+          <button
+            className="icon-button"
+            onClick={() => void window.baseline.openExternal(item.homepageURL!)}
+            title="Open Homebrew page"
+            aria-label="Open Homebrew page"
+          >
+            <ExternalLink size={15} />
+          </button>
+        )}
       </div>
     </article>
   );
@@ -974,7 +979,9 @@ function HomebrewItemIcon({
 }) {
   const app = matchingAppForHomebrewItem(item, snapshot);
   const iconDataURL = item.iconDataURL ?? app?.iconDataURL;
-  const label = isCask(item.kind) ? "C" : "F";
+  const isCaskItem = isCask(item.kind);
+  const fallbackIcon = isCaskItem ? <Package size={26} /> : <Terminal size={26} />;
+  const fallbackClassName = isCaskItem ? "app-icon brew cask" : "app-icon brew formula";
 
   if (app) {
     return (
@@ -982,13 +989,13 @@ function HomebrewItemIcon({
         className={
           iconDataURL
             ? "app-icon app-icon-image clickable-app-icon"
-            : "app-icon brew clickable-app-icon"
+            : `${fallbackClassName} clickable-app-icon`
         }
         onClick={() => void window.baseline.openApp(app.id)}
         title="Open app"
         aria-label="Open app"
       >
-        {iconDataURL ? <img src={iconDataURL} alt="" draggable={false} /> : label}
+        {iconDataURL ? <img src={iconDataURL} alt="" draggable={false} /> : fallbackIcon}
       </button>
     );
   }
@@ -1001,7 +1008,7 @@ function HomebrewItemIcon({
     );
   }
 
-  return <div className="app-icon brew">{label}</div>;
+  return <div className={fallbackClassName}>{fallbackIcon}</div>;
 }
 
 export function UpdateActionButton({

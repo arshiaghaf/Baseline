@@ -472,7 +472,16 @@ button:disabled {
 }
 
 .app-icon.brew {
-  background: linear-gradient(180deg, #7b6b50, #4d412f);
+  background: #efeff4;
+  color: rgba(60, 60, 67, 0.7);
+}
+
+.app-icon.brew.formula {
+  background: #e8eaee;
+}
+
+.app-icon.brew svg {
+  stroke-width: 1.8;
 }
 
 .app-icon.app-icon-image {
@@ -1195,7 +1204,12 @@ button:disabled {
   }
 
   .app-icon.brew {
-    background: linear-gradient(180deg, #6f6148, #332a1e);
+    background: #2c2c2e;
+    color: rgba(235, 235, 245, 0.74);
+  }
+
+  .app-icon.brew.formula {
+    background: #242427;
   }
 
   .toolbar-button,
