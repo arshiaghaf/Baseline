@@ -55,7 +55,7 @@ button:disabled {
   padding: 12px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.5);
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
 }
 
@@ -67,22 +67,8 @@ button:disabled {
   min-width: var(--sidebar-width);
   max-width: var(--sidebar-width);
   padding: 54px 10px 12px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.01)),
-    rgba(246, 246, 246, 0.025);
+  background: rgba(255, 255, 255, 0.5);
   -webkit-app-region: drag;
-  backdrop-filter: blur(14px) saturate(1.18);
-}
-
-.sidebar::after {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  content: "";
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.008)),
-    rgba(118, 118, 128, 0.012);
-  pointer-events: none;
 }
 
 .source-list {
@@ -1113,15 +1099,7 @@ button:disabled {
   }
 
   .sidebar {
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.008)),
-      rgba(25, 25, 25, 0.045);
-  }
-
-  .sidebar::after {
-    background:
-      linear-gradient(90deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.006)),
-      rgba(0, 0, 0, 0.04);
+    background: rgba(25, 25, 25, 0.2);
   }
 
   .source-list button,
