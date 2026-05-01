@@ -815,13 +815,14 @@ button:disabled {
   color: #0d0d0d;
   font-size: 15px;
   line-height: 1.25;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .confirmation-card p {
   margin: 6px 0 0;
   color: rgba(60, 60, 67, 0.72);
   font-size: 13px;
+  font-weight: 400;
   line-height: 1.35;
 }
 
