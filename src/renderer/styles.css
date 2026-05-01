@@ -523,6 +523,13 @@ button:disabled {
   font-size: 12px;
   font-weight: 590;
   letter-spacing: 0;
+  transition:
+    transform 150ms ease,
+    border-color 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    opacity 150ms ease;
 }
 
 .toolbar-button,
@@ -558,6 +565,136 @@ button:disabled {
 .toolbar-button.refresh-button {
   border-color: transparent;
   background: transparent;
+}
+
+.segmented button,
+.section-toggle,
+.clickable-app-icon {
+  transition:
+    transform 150ms ease,
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    opacity 150ms ease;
+}
+
+@media (hover: hover) {
+  .toolbar-button:not(:disabled):hover,
+  .icon-button:not(:disabled):hover,
+  .secondary-icon-button:not(:disabled):hover,
+  .update-icon-button:not(:disabled):hover,
+  .destructive-icon-button:not(:disabled):hover,
+  .ghost-button:not(:disabled):hover,
+  .primary-button:not(:disabled):hover,
+  .danger-button:not(:disabled):hover,
+  .destructive-text-button:not(:disabled):hover,
+  .segmented button:not(:disabled):hover,
+  .section-toggle:not(:disabled):hover,
+  .clickable-app-icon:not(:disabled):hover {
+    transform: translateY(-1px) scale(1.035);
+  }
+
+  .toolbar-button:not(:disabled):hover,
+  .icon-button:not(:disabled):hover,
+  .secondary-icon-button:not(:disabled):hover,
+  .ghost-button:not(:disabled):hover {
+    border-color: rgba(60, 60, 67, 0.22);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .toolbar-button.refresh-button:not(:disabled):hover,
+  .toolbar-search .toolbar-button:not(:disabled):hover {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    color: #007aff;
+  }
+
+  .update-icon-button:not(:disabled):hover,
+  .primary-button:not(:disabled):hover {
+    background: #0a84ff;
+    box-shadow: 0 4px 10px rgba(0, 122, 255, 0.22);
+  }
+
+  .destructive-icon-button:not(:disabled):hover,
+  .destructive-text-button:not(:disabled):hover,
+  .danger-button:not(:disabled):hover {
+    background: rgba(255, 59, 48, 0.2);
+    box-shadow: 0 4px 10px rgba(255, 59, 48, 0.16);
+  }
+
+  .danger-button:not(:disabled):hover {
+    background: #ff453a;
+  }
+
+  .segmented button:not(:disabled):hover,
+  .section-toggle:not(:disabled):hover {
+    color: #007aff;
+  }
+
+  .clickable-app-icon:not(:disabled):hover {
+    box-shadow: 0 5px 12px rgba(0, 0, 0, 0.14);
+  }
+}
+
+.toolbar-button:not(:disabled):active,
+.icon-button:not(:disabled):active,
+.secondary-icon-button:not(:disabled):active,
+.update-icon-button:not(:disabled):active,
+.destructive-icon-button:not(:disabled):active,
+.ghost-button:not(:disabled):active,
+.primary-button:not(:disabled):active,
+.danger-button:not(:disabled):active,
+.destructive-text-button:not(:disabled):active,
+.segmented button:not(:disabled):active,
+.section-toggle:not(:disabled):active,
+.clickable-app-icon:not(:disabled):active {
+  transform: translateY(0) scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbar-button,
+  .icon-button,
+  .secondary-icon-button,
+  .update-icon-button,
+  .destructive-icon-button,
+  .ghost-button,
+  .primary-button,
+  .danger-button,
+  .destructive-text-button,
+  .segmented button,
+  .section-toggle,
+  .clickable-app-icon {
+    transition: none;
+  }
+
+  .toolbar-button:not(:disabled):hover,
+  .icon-button:not(:disabled):hover,
+  .secondary-icon-button:not(:disabled):hover,
+  .update-icon-button:not(:disabled):hover,
+  .destructive-icon-button:not(:disabled):hover,
+  .ghost-button:not(:disabled):hover,
+  .primary-button:not(:disabled):hover,
+  .danger-button:not(:disabled):hover,
+  .destructive-text-button:not(:disabled):hover,
+  .segmented button:not(:disabled):hover,
+  .section-toggle:not(:disabled):hover,
+  .clickable-app-icon:not(:disabled):hover,
+  .toolbar-button:not(:disabled):active,
+  .icon-button:not(:disabled):active,
+  .secondary-icon-button:not(:disabled):active,
+  .update-icon-button:not(:disabled):active,
+  .destructive-icon-button:not(:disabled):active,
+  .ghost-button:not(:disabled):active,
+  .primary-button:not(:disabled):active,
+  .danger-button:not(:disabled):active,
+  .destructive-text-button:not(:disabled):active,
+  .segmented button:not(:disabled):active,
+  .section-toggle:not(:disabled):active,
+  .clickable-app-icon:not(:disabled):active {
+    transform: none;
+  }
 }
 
 .ghost-button {
