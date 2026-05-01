@@ -435,13 +435,73 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Update All" })).toBeInTheDocument();
   });
 
+  it("moves installed apps and Homebrew into the Installed sidebar item", () => {
+    const installedApp: AppRecord = {
+      ...app,
+      id: "app:stable",
+      displayName: "Stable App"
+    };
+    const installedFormula: HomebrewManagedItem = {
+      ...cask,
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      latestVersion: version("1.0.0"),
+      isOutdated: false
+    };
+    const installedSnapshot = snapshot({
+      apps: [installedApp],
+      updates: [],
+      homebrewItems: [installedFormula]
+    });
+    const { rerender } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={{ ...installedSnapshot, selectedTab: "all" }}
+      />
+    );
+
+    expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
+    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={{ ...installedSnapshot, selectedTab: "apps" }}
+      />
+    );
+    expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={{ ...installedSnapshot, selectedTab: "homebrew" }}
+      />
+    );
+    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={{ ...installedSnapshot, selectedTab: "installed" }}
+      />
+    );
+    expect(screen.getByText("Stable App")).toBeInTheDocument();
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
+  });
+
   it("collapses persisted secondary sections and toggles them through preferences", () => {
     render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
         snapshot={snapshot({
-          selectedTab: "apps",
+          selectedTab: "installed",
           updates: [],
           homebrewItems: [],
           collapsedAppSectionIDs: ["installed"]
@@ -449,9 +509,8 @@ describe("renderer button parity", () => {
       />
     );
 
-    const installedToggle = screen.getByRole("button", { name: "Installed" });
+    const installedToggle = screen.getByRole("button", { name: "Installed Apps" });
     expect(installedToggle).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("1")).not.toBeInTheDocument();
     expect(screen.queryByText("1.0.0 installed")).not.toBeInTheDocument();
 
     fireEvent.click(installedToggle);

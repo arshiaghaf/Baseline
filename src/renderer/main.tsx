@@ -141,7 +141,9 @@ export function Dashboard({
                 ? "Checking updates"
                 : selectedTab === "all"
                   ? `${combinedAvailableCount(derived)} available`
-                  : `${compactTitle} updates`}
+                  : selectedTab === "installed"
+                    ? `${combinedInstalledCount(derived)} installed`
+                    : `${compactTitle} updates`}
             </p>
           </div>
           <div className="topbar-actions">
@@ -274,6 +276,17 @@ function Sidebar({
           <span>Homebrew</span>
           <strong>{derived.homebrewOutdated.length}</strong>
         </button>
+        <button
+          className={route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}
+          onClick={() => {
+            window.location.hash = "/main";
+            void window.baseline.setSelectedTab("installed");
+          }}
+        >
+          <CheckCircle2 size={16} />
+          <span>Installed</span>
+          <strong>{combinedInstalledCount(derived)}</strong>
+        </button>
       </nav>
       <div className="sidebar-footer">
         <button
@@ -356,13 +369,19 @@ function CommandBar({
 function SegmentedTabs({ selectedTab }: { selectedTab: MenuTab }) {
   return (
     <div className="segmented" role="tablist">
-      {(["all", "apps", "homebrew"] as MenuTab[]).map((tab) => (
+      {(["all", "apps", "homebrew", "installed"] as MenuTab[]).map((tab) => (
         <button
           key={tab}
           className={selectedTab === tab ? "selected" : ""}
           onClick={() => void window.baseline.setSelectedTab(tab)}
         >
-          {tab === "all" ? "All" : tab === "apps" ? "Apps" : "Homebrew"}
+          {tab === "all"
+            ? "All"
+            : tab === "apps"
+              ? "Apps"
+              : tab === "homebrew"
+                ? "Homebrew"
+                : "Installed"}
         </button>
       ))}
     </div>
@@ -379,26 +398,25 @@ function SelectedTabContent({
   compact: boolean;
 }) {
   if (snapshot.searchText.trim()) {
-    return <AllTab snapshot={snapshot} derived={derived} compact={compact} />;
+    return snapshot.selectedTab === "installed" ? (
+      <InstalledTab snapshot={snapshot} derived={derived} compact={compact} />
+    ) : (
+      <AllTab snapshot={snapshot} derived={derived} />
+    );
   }
   if (snapshot.selectedTab === "all") {
-    return <AllTab snapshot={snapshot} derived={derived} compact={compact} />;
+    return <AllTab snapshot={snapshot} derived={derived} />;
   }
   if (snapshot.selectedTab === "apps") {
-    return <AppsTab snapshot={snapshot} derived={derived} compact={compact} />;
+    return <AppsTab snapshot={snapshot} derived={derived} />;
   }
-  return <HomebrewTab snapshot={snapshot} derived={derived} compact={compact} />;
+  if (snapshot.selectedTab === "homebrew") {
+    return <HomebrewTab snapshot={snapshot} derived={derived} />;
+  }
+  return <InstalledTab snapshot={snapshot} derived={derived} compact={compact} />;
 }
 
-function AllTab({
-  snapshot,
-  derived,
-  compact
-}: {
-  snapshot: BaselineSnapshot;
-  derived: DerivedSections;
-  compact: boolean;
-}) {
+function AllTab({ snapshot, derived }: { snapshot: BaselineSnapshot; derived: DerivedSections }) {
   const isSearching = Boolean(snapshot.searchText.trim());
   return (
     <div className="stack">
@@ -440,39 +458,11 @@ function AllTab({
           recentlyUpdated
         />
       )}
-      {!compact && snapshot.showInstalledAppsSection && (
-        <AppSection
-          sectionID="installed"
-          collapsible
-          title={`Installed Apps (${derived.installedApps.length})`}
-          apps={derived.installedApps}
-          snapshot={snapshot}
-          empty="No installed apps found."
-        />
-      )}
-      {!compact && snapshot.showInstalledHomebrewSection && (
-        <HomebrewSection
-          sectionID="installed"
-          collapsible
-          title={`Installed Homebrew (${derived.homebrewInstalled.length})`}
-          items={derived.homebrewInstalled}
-          snapshot={snapshot}
-          empty="No installed Homebrew items found."
-        />
-      )}
     </div>
   );
 }
 
-function AppsTab({
-  snapshot,
-  derived,
-  compact
-}: {
-  snapshot: BaselineSnapshot;
-  derived: DerivedSections;
-  compact: boolean;
-}) {
+function AppsTab({ snapshot, derived }: { snapshot: BaselineSnapshot; derived: DerivedSections }) {
   return (
     <div className="stack">
       <AppSection
@@ -491,16 +481,6 @@ function AppsTab({
           snapshot={snapshot}
           empty="No recently updated apps yet."
           recentlyUpdated
-        />
-      )}
-      {!compact && snapshot.showInstalledAppsSection && (
-        <AppSection
-          sectionID="installed"
-          collapsible
-          title={`Installed (${derived.installedApps.length})`}
-          apps={derived.installedApps}
-          snapshot={snapshot}
-          empty="No installed apps found."
         />
       )}
       {snapshot.showIgnoredAppsSection && (
@@ -656,12 +636,10 @@ export function AppRow({
 
 function HomebrewTab({
   snapshot,
-  derived,
-  compact
+  derived
 }: {
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
-  compact: boolean;
 }) {
   return (
     <div className="stack">
@@ -685,16 +663,6 @@ function HomebrewTab({
           recentlyUpdated
         />
       )}
-      {!compact && snapshot.showInstalledHomebrewSection && (
-        <HomebrewSection
-          sectionID="installed"
-          collapsible
-          title={`Installed (${derived.homebrewInstalled.length})`}
-          items={derived.homebrewInstalled}
-          snapshot={snapshot}
-          empty="No installed Homebrew items found."
-        />
-      )}
       {snapshot.showIgnoredHomebrewSection && (
         <HomebrewSection
           sectionID="ignored"
@@ -705,6 +673,42 @@ function HomebrewTab({
           empty="No ignored Homebrew items."
         />
       )}
+    </div>
+  );
+}
+
+function InstalledTab({
+  snapshot,
+  derived,
+  compact
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+  compact: boolean;
+}) {
+  return (
+    <div className="stack">
+      {!compact && snapshot.showInstalledAppsSection && (
+        <AppSection
+          sectionID="installed"
+          collapsible
+          title="Installed Apps"
+          apps={derived.installedApps}
+          snapshot={snapshot}
+          empty="No installed apps found."
+        />
+      )}
+      {!compact && snapshot.showInstalledHomebrewSection && (
+        <HomebrewSection
+          sectionID="installed"
+          collapsible
+          title="Installed Homebrew"
+          items={derived.homebrewInstalled}
+          snapshot={snapshot}
+          empty="No installed Homebrew items found."
+        />
+      )}
+      {compact && <Empty text="Open Baseline to view installed items." />}
     </div>
   );
 }
@@ -1374,6 +1378,7 @@ function sourceLabel(update: UpdateRecord): string {
 function selectedTabTitle(tab: MenuTab): string {
   if (tab === "all") return "All";
   if (tab === "apps") return "Applications";
+  if (tab === "installed") return "Installed";
   return "Homebrew";
 }
 
@@ -1396,6 +1401,10 @@ function updatedRelativeLabel(updatedAt: string, now = Date.now()): string {
 
 function combinedAvailableCount(derived: DerivedSections): number {
   return derived.availableApps.length + derived.allHomebrewOutdated.length;
+}
+
+function combinedInstalledCount(derived: DerivedSections): number {
+  return derived.installedApps.length + derived.homebrewInstalled.length;
 }
 
 function toggleCollapsedSection(

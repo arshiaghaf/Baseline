@@ -2,7 +2,7 @@ import type { VersionValue } from "./version";
 
 export type UpdateSource = "appStore" | "sparkle" | "homebrew" | "web" | "unknown";
 export type SupportLevel = "supported" | "limited" | "unsupported";
-export type MenuTab = "all" | "apps" | "homebrew";
+export type MenuTab = "all" | "apps" | "homebrew" | "installed";
 export type HomebrewManagedItemKind = "formula" | "cask";
 
 export type AppRecord = {

@@ -100,18 +100,19 @@ button:disabled {
   min-height: 28px;
   padding: 0 9px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 12px;
   background: transparent;
   color: #2c2c2e;
   font-size: 13px;
   font-weight: 300;
   text-align: left;
+  transition: none;
 }
 
 .source-list button.selected,
 .sidebar-footer button.selected {
-  background: rgba(0, 122, 255, 0.16);
-  color: #0057c2;
+  background: rgba(60, 60, 67, 0.12);
+  color: #1c1c1e;
 }
 
 .source-list span,
@@ -133,8 +134,15 @@ button:disabled {
 }
 
 .source-list button.selected strong {
-  background: rgba(0, 122, 255, 0.18);
-  color: #0057c2;
+  background: rgba(60, 60, 67, 0.16);
+  color: #1c1c1e;
+}
+
+@media (hover: hover) {
+  .source-list button:not(.selected):hover,
+  .sidebar-footer button:not(.selected):hover {
+    background: rgba(60, 60, 67, 0.08);
+  }
 }
 
 .sidebar-footer {
@@ -1078,8 +1086,8 @@ button:disabled {
 
   .source-list button.selected,
   .sidebar-footer button.selected {
-    background: rgba(10, 132, 255, 0.24);
-    color: #9dccff;
+    background: rgba(235, 235, 245, 0.13);
+    color: #ffffff;
   }
 
   .source-list strong {
@@ -1088,8 +1096,15 @@ button:disabled {
   }
 
   .source-list button.selected strong {
-    background: rgba(10, 132, 255, 0.26);
-    color: #d6eaff;
+    background: rgba(235, 235, 245, 0.17);
+    color: #ffffff;
+  }
+
+  @media (hover: hover) {
+    .source-list button:not(.selected):hover,
+    .sidebar-footer button:not(.selected):hover {
+      background: rgba(235, 235, 245, 0.09);
+    }
   }
 
   .workspace {
