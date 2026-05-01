@@ -104,6 +104,7 @@ button:disabled {
   background: transparent;
   color: #2c2c2e;
   font-size: 13px;
+  font-weight: 300;
   text-align: left;
 }
 
@@ -127,7 +128,7 @@ button:disabled {
   background: rgba(60, 60, 67, 0.15);
   color: #3a3a3c;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   text-align: center;
 }
 
@@ -502,7 +503,7 @@ button:disabled {
   flex: 0 0 auto;
   color: rgba(60, 60, 67, 0.5);
   font-size: 11px;
-  font-weight: 400;
+  font-weight: 300;
   text-transform: capitalize;
 }
 
@@ -512,6 +513,7 @@ button:disabled {
   margin: 2px 0 0;
   color: rgba(60, 60, 67, 0.66);
   font-size: 12px;
+  font-weight: 300;
   line-height: 1.3;
 }
 
@@ -592,8 +594,7 @@ button:disabled {
   color: #8e8e93;
 }
 
-.segmented button,
-.section-toggle {
+.segmented button {
   transition:
     transform 150ms ease,
     background-color 150ms ease,
@@ -612,8 +613,7 @@ button:disabled {
   .primary-button:not(:disabled):hover,
   .danger-button:not(:disabled):hover,
   .destructive-text-button:not(:disabled):hover,
-  .segmented button:not(:disabled):hover,
-  .section-toggle:not(:disabled):hover {
+  .segmented button:not(:disabled):hover {
     transform: translateY(-1px) scale(1.035);
   }
 
@@ -651,8 +651,7 @@ button:disabled {
     background: #ff453a;
   }
 
-  .segmented button:not(:disabled):hover,
-  .section-toggle:not(:disabled):hover {
+  .segmented button:not(:disabled):hover {
     color: #007aff;
   }
 }
@@ -666,8 +665,7 @@ button:disabled {
 .primary-button:not(:disabled):active,
 .danger-button:not(:disabled):active,
 .destructive-text-button:not(:disabled):active,
-.segmented button:not(:disabled):active,
-.section-toggle:not(:disabled):active {
+.segmented button:not(:disabled):active {
   transform: translateY(0) scale(0.97);
 }
 
@@ -682,7 +680,6 @@ button:disabled {
   .danger-button,
   .destructive-text-button,
   .segmented button,
-  .section-toggle,
   .toolbar-search,
   .toolbar-search-field {
     transition: none;
@@ -702,7 +699,6 @@ button:disabled {
   .danger-button:not(:disabled):hover,
   .destructive-text-button:not(:disabled):hover,
   .segmented button:not(:disabled):hover,
-  .section-toggle:not(:disabled):hover,
   .toolbar-button:not(:disabled):active,
   .icon-button:not(:disabled):active,
   .secondary-icon-button:not(:disabled):active,
@@ -712,8 +708,7 @@ button:disabled {
   .primary-button:not(:disabled):active,
   .danger-button:not(:disabled):active,
   .destructive-text-button:not(:disabled):active,
-  .segmented button:not(:disabled):active,
-  .section-toggle:not(:disabled):active {
+  .segmented button:not(:disabled):active {
     transform: none;
   }
 }
