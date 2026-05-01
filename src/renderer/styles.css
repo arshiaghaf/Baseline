@@ -180,6 +180,12 @@ button:disabled {
   background: transparent;
 }
 
+.popover-title {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+}
+
 .topbar h1,
 .popover-titlebar h1 {
   margin: 0;
@@ -260,6 +266,14 @@ button:disabled {
   right: 0;
   border-color: transparent;
   background: transparent;
+}
+
+.compact .toolbar-button,
+.compact .toolbar-button.refresh-button,
+.compact .toolbar-search .toolbar-button {
+  border-color: rgba(60, 60, 67, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  color: #8e8e93;
 }
 
 .command-row {
@@ -665,6 +679,15 @@ button:disabled {
 
   .toolbar-button.refresh-button:not(:disabled):hover,
   .toolbar-search .toolbar-button:not(:disabled):hover {
+    border-color: rgba(60, 60, 67, 0.1);
+    background: rgba(60, 60, 67, 0.08);
+    box-shadow: none;
+    color: #0d0d0d;
+  }
+
+  .compact .toolbar-button:not(:disabled):hover,
+  .compact .toolbar-button.refresh-button:not(:disabled):hover,
+  .compact .toolbar-search .toolbar-button:not(:disabled):hover {
     border-color: rgba(60, 60, 67, 0.1);
     background: rgba(60, 60, 67, 0.08);
     box-shadow: none;
@@ -1248,6 +1271,14 @@ button:disabled {
     color: #8e8e93;
   }
 
+  .compact .toolbar-button,
+  .compact .toolbar-button.refresh-button,
+  .compact .toolbar-search .toolbar-button {
+    border-color: rgba(235, 235, 245, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    color: #8e8e93;
+  }
+
   .update-icon-button {
     background: #0a84ff;
   }
@@ -1276,6 +1307,15 @@ button:disabled {
 
     .toolbar-button.refresh-button:not(:disabled):hover,
     .toolbar-search .toolbar-button:not(:disabled):hover {
+      border-color: rgba(235, 235, 245, 0.14);
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: none;
+      color: #fcfcfc;
+    }
+
+    .compact .toolbar-button:not(:disabled):hover,
+    .compact .toolbar-button.refresh-button:not(:disabled):hover,
+    .compact .toolbar-search .toolbar-button:not(:disabled):hover {
       border-color: rgba(235, 235, 245, 0.14);
       background: rgba(255, 255, 255, 0.1);
       box-shadow: none;

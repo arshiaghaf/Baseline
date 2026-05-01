@@ -549,7 +549,10 @@ describe("renderer button parity", () => {
     );
 
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByText("2 available")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveClass("toolbar-button");
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveClass("toolbar-button");
     expect(screen.getByRole("heading", { name: "App Updates" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Homebrew Updates" })).toBeInTheDocument();
     expect(

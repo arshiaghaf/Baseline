@@ -134,13 +134,8 @@ export function Dashboard({
     shell = (
       <main className="app-shell compact">
         <header className="popover-titlebar">
-          <div>
+          <div className="popover-title">
             <h1>Baseline</h1>
-            <p>
-              {snapshot.isRefreshing
-                ? "Checking updates"
-                : `${combinedAvailableCount(derived)} available`}
-            </p>
           </div>
           <div className="topbar-actions">
             <ToolbarSearch
@@ -153,10 +148,10 @@ export function Dashboard({
               onClick={() => void window.baseline.refresh(false)}
               title="Refresh"
             >
-              <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={15} />
+              <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
             </button>
             <button className="toolbar-button" onClick={onOpenSettings} title="Settings">
-              <Settings size={15} />
+              <Settings size={16} />
             </button>
           </div>
         </header>
