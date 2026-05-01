@@ -257,8 +257,8 @@ button:disabled {
 .compact .toolbar-button,
 .compact .toolbar-button.refresh-button,
 .compact .toolbar-search .toolbar-button {
-  border-color: rgba(60, 60, 67, 0.16);
-  background: rgba(255, 255, 255, 0.72);
+  border-color: transparent;
+  background: transparent;
   color: #8e8e93;
 }
 
@@ -1252,8 +1252,8 @@ button:disabled {
   .compact .toolbar-button,
   .compact .toolbar-button.refresh-button,
   .compact .toolbar-search .toolbar-button {
-    border-color: rgba(235, 235, 245, 0.18);
-    background: rgba(255, 255, 255, 0.08);
+    border-color: transparent;
+    background: transparent;
     color: #8e8e93;
   }
 
