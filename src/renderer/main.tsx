@@ -597,7 +597,7 @@ export function AppRow({
         </div>
         <p>
           {update
-            ? `${app.localVersion.raw || "unknown"} -> ${update.remoteVersion.raw || "unknown"}`
+            ? `${app.localVersion.raw || "unknown"}  →  ${update.remoteVersion.raw || "unknown"}`
             : recentlyUpdatedAt
               ? updatedRelativeLabel(recentlyUpdatedAt)
               : `${app.localVersion.raw || "unknown"} installed`}
@@ -875,7 +875,7 @@ export function HomebrewRow({
           {recentlyUpdatedAt
             ? updatedRelativeLabel(recentlyUpdatedAt)
             : `${item.installedVersion.raw || "unknown"}${
-                item.latestVersion ? ` -> ${item.latestVersion.raw}` : ""
+                item.latestVersion ? `  →  ${item.latestVersion.raw}` : ""
               }`}
         </p>
       </div>
