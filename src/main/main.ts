@@ -82,7 +82,7 @@ function createMainWindow(route: "main" | "settings"): BrowserWindow {
   mainWindow =
     mainWindow ??
     new BrowserWindow({
-      width: 1160,
+      width: 1020,
       height: 760,
       minWidth: 660,
       minHeight: 620,
