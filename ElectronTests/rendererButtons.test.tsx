@@ -236,6 +236,58 @@ describe("renderer button parity", () => {
     expect(window.baseline.openApp).toHaveBeenCalledWith(app.id);
   });
 
+  it("shows relative timestamps for recently updated rows", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-01T12:00:00.000Z"));
+
+    try {
+      render(
+        <>
+          <AppRow
+            app={app}
+            snapshot={snapshot({
+              updates: [],
+              recentlyUpdated: [
+                {
+                  id: "recent:app",
+                  appID: app.id,
+                  displayName: app.displayName,
+                  fromVersion: version("1.0.0"),
+                  toVersion: version("2.0.0"),
+                  updatedAt: "2026-04-29T12:00:00.000Z"
+                }
+              ]
+            })}
+            recentlyUpdated
+          />
+          <HomebrewRow
+            item={cask}
+            snapshot={snapshot({
+              homebrewRecentlyUpdated: [
+                {
+                  id: "recent:cask",
+                  itemID: cask.id,
+                  token: cask.token,
+                  kind: cask.kind,
+                  displayName: cask.name,
+                  fromVersion: version("1.0.0"),
+                  toVersion: version("2.0.0"),
+                  updatedAt: "2026-04-30T12:00:00.000Z"
+                }
+              ]
+            })}
+            recentlyUpdated
+          />
+        </>
+      );
+
+      expect(screen.getByText("Updated 2 days ago")).toBeInTheDocument();
+      expect(screen.getByText("Updated 1 day ago")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("makes matching cask icons open apps but leaves formula icons static", () => {
     const formula: HomebrewManagedItem = {
       id: "formula:example",

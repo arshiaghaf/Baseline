@@ -437,6 +437,7 @@ function AllTab({
           items={derived.homebrewRecentlyUpdated}
           snapshot={snapshot}
           empty="No recently updated Homebrew items yet."
+          recentlyUpdated
         />
       )}
       {!compact && snapshot.showInstalledAppsSection && (
@@ -587,6 +588,9 @@ export function AppRow({
     progress,
     done
   });
+  const recentlyUpdatedAt = recentlyUpdated
+    ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)?.updatedAt
+    : undefined;
 
   return (
     <article className={isIgnored ? "row ignored-row" : "row"}>
@@ -614,8 +618,8 @@ export function AppRow({
         <p>
           {update
             ? `${app.localVersion.raw || "unknown"} -> ${update.remoteVersion.raw || "unknown"}`
-            : recentlyUpdated
-              ? "Updated recently"
+            : recentlyUpdatedAt
+              ? updatedRelativeLabel(recentlyUpdatedAt)
               : `${app.localVersion.raw || "unknown"} installed`}
         </p>
       </div>
@@ -678,6 +682,7 @@ function HomebrewTab({
           items={derived.homebrewRecentlyUpdated}
           snapshot={snapshot}
           empty="No recently updated Homebrew items yet."
+          recentlyUpdated
         />
       )}
       {!compact && snapshot.showInstalledHomebrewSection && (
@@ -771,7 +776,8 @@ export function HomebrewSection({
   snapshot,
   empty,
   showUpdateAll = false,
-  collapsible = false
+  collapsible = false,
+  recentlyUpdated = false
 }: {
   sectionID: string;
   title: string;
@@ -780,6 +786,7 @@ export function HomebrewSection({
   empty: string;
   showUpdateAll?: boolean;
   collapsible?: boolean;
+  recentlyUpdated?: boolean;
 }) {
   const collapsed = collapsible && snapshot.collapsedHomebrewSectionIDs.includes(sectionID);
   return (
@@ -813,7 +820,12 @@ export function HomebrewSection({
         ) : (
           <div className="rows">
             {items.map((item) => (
-              <HomebrewRow key={item.id} item={item} snapshot={snapshot} />
+              <HomebrewRow
+                key={item.id}
+                item={item}
+                snapshot={snapshot}
+                recentlyUpdated={recentlyUpdated}
+              />
             ))}
           </div>
         ))}
@@ -823,10 +835,12 @@ export function HomebrewSection({
 
 export function HomebrewRow({
   item,
-  snapshot
+  snapshot,
+  recentlyUpdated = false
 }: {
   item: HomebrewManagedItem;
   snapshot: BaselineSnapshot;
+  recentlyUpdated?: boolean;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
@@ -841,6 +855,9 @@ export function HomebrewRow({
     progress,
     done
   });
+  const recentlyUpdatedAt = recentlyUpdated
+    ? snapshot.homebrewRecentlyUpdated.find((record) => record.itemID === item.id)?.updatedAt
+    : undefined;
 
   return (
     <article className={isIgnored ? "row ignored-row" : "row"}>
@@ -851,8 +868,11 @@ export function HomebrewRow({
           <span>{item.kind}</span>
         </div>
         <p>
-          {item.installedVersion.raw || "unknown"}
-          {item.latestVersion ? ` -> ${item.latestVersion.raw}` : ""}
+          {recentlyUpdatedAt
+            ? updatedRelativeLabel(recentlyUpdatedAt)
+            : `${item.installedVersion.raw || "unknown"}${
+                item.latestVersion ? ` -> ${item.latestVersion.raw}` : ""
+              }`}
         </p>
       </div>
       <div className="row-actions">
@@ -1359,6 +1379,19 @@ function selectedTabTitle(tab: MenuTab): string {
 
 function searchPlaceholder(): string {
   return "Search";
+}
+
+function updatedRelativeLabel(updatedAt: string, now = Date.now()): string {
+  const updatedTime = new Date(updatedAt).getTime();
+  if (!Number.isFinite(updatedTime)) {
+    return "Updated recently";
+  }
+
+  const days = Math.max(0, Math.floor((now - updatedTime) / 86_400_000));
+  if (days === 0) {
+    return "Updated today";
+  }
+  return `Updated ${days} ${days === 1 ? "day" : "days"} ago`;
 }
 
 function combinedAvailableCount(derived: DerivedSections): number {

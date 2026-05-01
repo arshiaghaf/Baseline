@@ -372,7 +372,7 @@ button:disabled {
   margin: 0;
   color: rgba(60, 60, 67, 0.78);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0;
 }
 
@@ -385,7 +385,7 @@ button:disabled {
   background: transparent;
   color: rgba(60, 60, 67, 0.78);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
   letter-spacing: 0;
 }
 
