@@ -263,6 +263,9 @@ function updateTrayStatus(snapshot: BaselineSnapshot): void {
 function trayUpdateTitle(snapshot: BaselineSnapshot): string {
   const ignored = new Set(snapshot.ignoredIDs);
   const visibleUpdates = snapshot.updates.filter((update) => !ignored.has(update.appID)).length;
+  if (visibleUpdates === 0) {
+    return "✓";
+  }
   return `${visibleUpdates}\u2009↓`;
 }
 
