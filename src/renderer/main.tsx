@@ -1046,7 +1046,7 @@ function ActionConfirmationOverlay({
   const message =
     confirmation.type === "install"
       ? `This will run Homebrew and install ${confirmation.item.displayName} (${confirmation.item.kind} ${confirmation.item.token}) on your Mac.`
-      : `This will fully delete ${confirmation.item.name} from your Mac. Do you want to proceed?`;
+      : "This will fully delete the item from your Mac. Do you want to proceed?";
   const actionTitle =
     confirmation.type === "install"
       ? `Install ${confirmation.item.displayName}`
