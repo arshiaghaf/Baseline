@@ -11,6 +11,7 @@ import {
   EyeOff,
   ExternalLink,
   FolderPlus,
+  MoreHorizontal,
   Package,
   RefreshCcw,
   Search,
@@ -281,7 +282,6 @@ function Sidebar({
         >
           <CheckCircle2 size={16} />
           <span>Installed</span>
-          <strong>{combinedInstalledCount(derived)}</strong>
         </button>
       </nav>
       <div className="sidebar-footer">
@@ -694,24 +694,19 @@ export function AppRow({
             onAction={() => void window.baseline.performAppUpdate(app.id)}
           />
         )}
-        <IgnoreActionIconButton
+        <RowMoreActionButton
           isIgnored={isIgnored}
           disabled={isUninstalling}
-          onToggle={() => void window.baseline.toggleIgnoredApp(app.id)}
+          onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
+          uninstallLabel={`Uninstall ${app.displayName}`}
+          canUninstall={Boolean(uninstallableItem)}
+          uninstalling={isUninstalling}
+          uninstallDisabled={isUpdating || isUninstalling}
+          onUninstall={() =>
+            uninstallableItem &&
+            requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
+          }
         />
-        {uninstallableItem && (
-          <button
-            className="destructive-icon-button"
-            disabled={isUpdating || isUninstalling}
-            onClick={() =>
-              requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
-            }
-            title={`Uninstall ${app.displayName}`}
-            aria-label={`Uninstall ${app.displayName}`}
-          >
-            {isUninstalling ? <UninstallActionGlyph /> : <Trash2 size={15} />}
-          </button>
-        )}
       </div>
     </article>
   );
@@ -976,22 +971,16 @@ export function HomebrewRow({
             onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
           />
         )}
-        <IgnoreActionIconButton
+        <RowMoreActionButton
           isIgnored={isIgnored}
           disabled={isUninstalling}
-          onToggle={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
+          onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
+          uninstallLabel={`Uninstall ${item.name}`}
+          canUninstall={item.kind === "cask"}
+          uninstalling={isUninstalling}
+          uninstallDisabled={isUpdating || isUninstalling}
+          onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
         />
-        {item.kind === "cask" && (
-          <button
-            className="destructive-icon-button"
-            disabled={isUpdating || isUninstalling}
-            onClick={() => requestActionConfirmation({ type: "uninstall", item })}
-            title={`Uninstall ${item.name}`}
-            aria-label={`Uninstall ${item.name}`}
-          >
-            {isUninstalling ? <UninstallActionGlyph /> : <Trash2 size={15} />}
-          </button>
-        )}
       </div>
     </article>
   );
@@ -1087,26 +1076,96 @@ export function UpdateActionButton({
   );
 }
 
-function IgnoreActionIconButton({
+function RowMoreActionButton({
   isIgnored,
   disabled,
-  onToggle
+  onToggleIgnore,
+  uninstallLabel,
+  canUninstall = false,
+  uninstalling = false,
+  uninstallDisabled = false,
+  onUninstall
 }: {
   isIgnored: boolean;
   disabled?: boolean;
-  onToggle: () => void;
+  onToggleIgnore: () => void;
+  uninstallLabel: string;
+  canUninstall?: boolean;
+  uninstalling?: boolean;
+  uninstallDisabled?: boolean;
+  onUninstall: () => void;
 }) {
-  const label = isIgnored ? "Unignore" : "Ignore";
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const ignoreLabel = isIgnored ? "Unignore" : "Ignore";
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  const invokeIgnore = () => {
+    setOpen(false);
+    onToggleIgnore();
+  };
+
+  const invokeUninstall = () => {
+    setOpen(false);
+    onUninstall();
+  };
+
   return (
-    <button
-      className="secondary-icon-button"
-      disabled={disabled}
-      onClick={onToggle}
-      title={label}
-      aria-label={label}
-    >
-      {isIgnored ? <EyeOff size={15} /> : <Eye size={15} />}
-    </button>
+    <div className="row-action-menu" ref={menuRef}>
+      <button
+        className="secondary-icon-button"
+        disabled={disabled}
+        onClick={() => setOpen((isOpen) => !isOpen)}
+        title="Actions"
+        aria-label="Actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {uninstalling ? <UninstallActionGlyph /> : <MoreHorizontal size={15} />}
+      </button>
+      {open && (
+        <div className="row-action-menu-popover" role="menu">
+          <button onClick={invokeIgnore} role="menuitem" disabled={disabled}>
+            {isIgnored ? <EyeOff size={14} /> : <Eye size={14} />}
+            <span>{ignoreLabel}</span>
+          </button>
+          {canUninstall && (
+            <button
+              className="danger-menu-item"
+              onClick={invokeUninstall}
+              role="menuitem"
+              disabled={uninstallDisabled}
+            >
+              {uninstalling ? <UninstallActionGlyph /> : <Trash2 size={14} />}
+              <span>{uninstallLabel}</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1516,10 +1575,6 @@ function compareRecentRows(
 
 function combinedAvailableCount(derived: DerivedSections): number {
   return derived.availableApps.length + derived.allHomebrewOutdated.length;
-}
-
-function combinedInstalledCount(derived: DerivedSections): number {
-  return derived.installedApps.length + derived.homebrewInstalled.length;
 }
 
 function toggleCollapsedSection(

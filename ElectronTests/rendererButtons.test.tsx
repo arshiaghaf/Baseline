@@ -125,13 +125,14 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "Ignore" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeEnabled();
     const updateGlyph = screen.getByRole("button", { name: "Updating" });
     fireEvent.click(updateGlyph);
     expect(window.baseline.performAppUpdate).not.toHaveBeenCalled();
   });
 
-  it("orders row actions as update, ignore, uninstall", () => {
+  it("groups ignore and uninstall under row actions menu", () => {
     const { container, rerender } = render(
       <AppRow app={app} snapshot={snapshot()} recentlyUpdated={false} />
     );
@@ -139,14 +140,22 @@ describe("renderer button parity", () => {
       within(container.querySelector(".row-actions") as HTMLElement)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label") ?? button.textContent)
-    ).toEqual(["Update", "Ignore", `Uninstall ${app.displayName}`]);
+    ).toEqual(["Update", "Actions"]);
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: `Uninstall ${app.displayName}` })
+    ).toBeInTheDocument();
 
     rerender(<HomebrewRow item={cask} snapshot={snapshot()} />);
     expect(
       within(container.querySelector(".row-actions") as HTMLElement)
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label") ?? button.textContent)
-    ).toEqual(["Update", "Ignore", `Uninstall ${cask.name}`]);
+    ).toEqual(["Update", "Actions"]);
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: `Uninstall ${cask.name}` })).toBeInTheDocument();
   });
 
   it("shows global search results regardless of the selected tab", () => {
@@ -344,8 +353,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: `Uninstall ${cask.name}` })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Ignore" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("menuitem", { name: `Uninstall ${cask.name}` })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Updating" }));
     expect(window.baseline.performHomebrewUpdate).not.toHaveBeenCalled();
   });
@@ -355,8 +365,7 @@ describe("renderer button parity", () => {
       <HomebrewRow item={cask} snapshot={snapshot({ homebrewUninstallingItemIDs: [cask.id] })} />
     );
 
-    expect(screen.getByRole("button", { name: `Uninstall ${cask.name}` })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Ignore" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Actions" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Update" })).toBeDisabled();
   });
 
@@ -507,6 +516,7 @@ describe("renderer button parity", () => {
       />
     );
 
+    expect(screen.getByRole("button", { name: "Installed" })).toBeInTheDocument();
     expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
 
