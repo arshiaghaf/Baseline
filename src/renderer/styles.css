@@ -594,7 +594,7 @@ button:disabled {
   display: grid;
   min-width: 142px;
   padding: 5px;
-  border: 1px solid rgba(60, 60, 67, 0.14);
+  border: 0;
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
@@ -923,7 +923,7 @@ button:disabled {
   gap: 14px;
   width: 270px;
   padding: 16px;
-  border: 1px solid rgba(60, 60, 67, 0.18);
+  border: 0;
   border-radius: 18px;
   background: rgba(246, 246, 246, 0.9);
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
@@ -1352,7 +1352,6 @@ button:disabled {
   }
 
   .row-action-menu-popover {
-    border-color: rgba(235, 235, 245, 0.14);
     background: rgba(44, 44, 46, 0.96);
     box-shadow: 0 10px 28px rgba(0, 0, 0, 0.34);
   }
@@ -1403,7 +1402,6 @@ button:disabled {
   }
 
   .confirmation-card {
-    border-color: rgba(235, 235, 245, 0.14);
     background: rgba(36, 36, 38, 0.9);
   }
 
