@@ -698,7 +698,7 @@ export function AppRow({
           isIgnored={isIgnored}
           disabled={isUninstalling}
           onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
-          uninstallLabel={`Uninstall ${app.displayName}`}
+          uninstallLabel="Uninstall"
           canUninstall={Boolean(uninstallableItem)}
           uninstalling={isUninstalling}
           uninstallDisabled={isUpdating || isUninstalling}
@@ -975,7 +975,7 @@ export function HomebrewRow({
           isIgnored={isIgnored}
           disabled={isUninstalling}
           onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
-          uninstallLabel={`Uninstall ${item.name}`}
+          uninstallLabel="Uninstall"
           canUninstall={item.kind === "cask"}
           uninstalling={isUninstalling}
           uninstallDisabled={isUpdating || isUninstalling}
