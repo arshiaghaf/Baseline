@@ -745,6 +745,11 @@ button:disabled {
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
   }
 
+  .primary-button.outline-button:not(:disabled):hover {
+    background: rgba(0, 122, 255, 0.1);
+    color: #0a84ff;
+  }
+
   .destructive-icon-button:not(:disabled):hover,
   .destructive-text-button:not(:disabled):hover,
   .danger-button:not(:disabled):hover {
@@ -838,6 +843,12 @@ button:disabled {
   border-radius: 999px;
   background: #007aff;
   color: white;
+}
+
+.primary-button.outline-button {
+  border: 0;
+  background: transparent;
+  color: #007aff;
 }
 
 .danger-button {
@@ -1411,6 +1422,11 @@ button:disabled {
 
   .primary-button {
     background: #0a84ff;
+  }
+
+  .primary-button.outline-button {
+    background: transparent;
+    color: #0a84ff;
   }
 
   .danger-button {

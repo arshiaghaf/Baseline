@@ -892,6 +892,7 @@ export function HomebrewSection({
                     : { type: "ready" }
               }
               readyLabel="Update All"
+              readyVariant="outline"
               onAction={() => void window.baseline.performHomebrewUpdateAll()}
             />
           ) : undefined
@@ -1035,16 +1036,22 @@ export function UpdateActionButton({
   state,
   onAction,
   readyLabel = "Update",
-  disabled = false
+  disabled = false,
+  readyVariant = "filled"
 }: {
   state: ActionState;
   onAction: () => void;
   readyLabel?: string;
   disabled?: boolean;
+  readyVariant?: "filled" | "outline";
 }) {
   if (state.type === "ready") {
     return (
-      <button className="primary-button" disabled={disabled} onClick={onAction}>
+      <button
+        className={readyVariant === "outline" ? "primary-button outline-button" : "primary-button"}
+        disabled={disabled}
+        onClick={onAction}
+      >
         {readyLabel}
       </button>
     );
