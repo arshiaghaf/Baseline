@@ -10,8 +10,9 @@ Use GitHub Issues for:
 
 Before opening an issue, include:
 - macOS version.
-- Xcode version.
-- Tuist version.
+- Install path or build path used to run Baseline.
+- Whether Homebrew and/or `mas` is installed, if the issue involves updates.
+- Node.js and npm versions, if the issue involves building from source.
 - Baseline version or commit.
 - Relevant logs or screenshots.
 
