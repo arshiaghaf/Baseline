@@ -1295,7 +1295,7 @@ function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): strin
   return "Update failed";
 }
 
-function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
+export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const derived = useMemo(() => deriveSections(snapshot), [snapshot]);
 
@@ -1324,7 +1324,7 @@ function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
             <div className="settings-action">
               <button
                 className="ghost-button wide"
-                onClick={() => void window.baseline.refresh(true)}
+                onClick={() => void window.baseline.refreshToolStatus()}
               >
                 Check Again
               </button>

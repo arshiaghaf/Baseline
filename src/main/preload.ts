@@ -7,6 +7,7 @@ const api: BaselineAPI = {
   getSnapshot: () => ipcRenderer.invoke(ipcChannels.getSnapshot),
   getDiagnostics: () => ipcRenderer.invoke(ipcChannels.getDiagnostics),
   getToolStatus: () => ipcRenderer.invoke(ipcChannels.getToolStatus),
+  refreshToolStatus: () => ipcRenderer.invoke(ipcChannels.refreshToolStatus),
   refresh: (lightweight?: boolean) => ipcRenderer.invoke(ipcChannels.refresh, lightweight),
   setSearchText: (searchText: string) => ipcRenderer.invoke(ipcChannels.setSearchText, searchText),
   setSelectedTab: (tab) => ipcRenderer.invoke(ipcChannels.setSelectedTab, tab),

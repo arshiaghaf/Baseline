@@ -7,7 +7,8 @@ import {
   Dashboard,
   DiscoverRow,
   HomebrewRow,
-  HomebrewSection
+  HomebrewSection,
+  SettingsView
 } from "../src/renderer/main";
 import type {
   AppRecord,
@@ -85,6 +86,7 @@ function installBaselineMock() {
     getSnapshot: vi.fn(),
     getDiagnostics: vi.fn(),
     getToolStatus: vi.fn(),
+    refreshToolStatus: vi.fn(),
     refresh: vi.fn(),
     setSearchText: vi.fn(),
     setSelectedTab: vi.fn(),
@@ -762,5 +764,14 @@ describe("renderer button parity", () => {
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
       collapsedAppSectionIDs: []
     });
+  });
+
+  it("rechecks tool readiness from settings without running a refresh", () => {
+    render(<SettingsView snapshot={snapshot()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Check Again" }));
+
+    expect(window.baseline.refreshToolStatus).toHaveBeenCalledTimes(1);
+    expect(window.baseline.refresh).not.toHaveBeenCalled();
   });
 });

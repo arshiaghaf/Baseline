@@ -39,9 +39,19 @@ export class BundleScannerClient {
   private async findApps(directory: string): Promise<string[]> {
     try {
       const entries = await readdir(directory, { withFileTypes: true });
-      return entries
-        .filter((entry) => entry.isDirectory() && entry.name.endsWith(".app"))
-        .map((entry) => path.join(directory, entry.name));
+      const apps: string[] = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+        const entryPath = path.join(directory, entry.name);
+        if (entry.name.endsWith(".app")) {
+          apps.push(entryPath);
+          continue;
+        }
+        apps.push(...(await this.findApps(entryPath)));
+      }
+      return apps;
     } catch {
       return [];
     }
