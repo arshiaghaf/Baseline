@@ -331,6 +331,7 @@ function wireIpc(): void {
       masTestSucceeded: snapshot.masTestSucceeded
     };
   });
+  ipcMain.handle(ipcChannels.refreshToolStatus, () => store.refreshToolStatus());
   ipcMain.handle(ipcChannels.refresh, (_event, lightweight?: boolean) =>
     store.refresh(Boolean(lightweight))
   );
