@@ -1,7 +1,7 @@
 {
   "name": "baseline",
   "version": "0.1.0",
-  "description": "Baseline is a standalone macOS menubar app for finding app updates through public update sources.",
+  "description": "Baseline is a standalone macOS Electron app for finding app updates through public update sources.",
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",

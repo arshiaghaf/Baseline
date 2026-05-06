@@ -2,7 +2,9 @@
 
 Baseline is a standalone macOS Electron app for finding app updates through public update sources.
 
-It scans installed apps, checks App Store, Sparkle/DevMate appcast, and Homebrew metadata, then shows update actions in a full app window and from the menu bar.
+It scans installed apps, checks App Store, Sparkle/DevMate appcast, and Homebrew metadata, then shows update actions in a full app window and a compact menu bar tray window.
+
+![Baseline full app window showing app and Homebrew updates](docs/images/app.png)
 
 ## Project Status
 
@@ -12,31 +14,31 @@ Unsigned builds are not notarized by Apple. macOS Gatekeeper may warn when openi
 
 ## Features
 
-- Full Electron app plus menu bar tray window
+- Full Electron app window plus compact menu bar tray window
 - Installed app scanning from system, user, and custom app directories
 - Update detection through:
   - App Store lookup API
   - Sparkle/DevMate appcasts
-  - Homebrew cask metadata
-- View installed and recently updated apps from the `Apps` tab
+  - Homebrew cask and formula metadata
+- Unified update lists for apps, Homebrew casks, and Homebrew formulae
 
-  ![Baseline Apps tab showing available and recently updated apps](docs/images/apps.png)
+  ![Baseline menu bar tray showing app and Homebrew updates](docs/images/menubar.png)
 
-- View installed and recently updated Homebrew casks/formulae from the `Homebrew` tab
+- Dedicated `Apps`, `Homebrew`, and `Installed` views in the full app
 
-  ![Baseline Homebrew tab showing Homebrew-managed items](docs/images/homebrew.png)
+- Recently updated and ignored sections for keeping update lists manageable
+- Ignore specific apps or Homebrew items so they stay out of the main update list
+- Uninstall Homebrew-managed casks and formulae from the row actions menu
 
-- Search Homebrew from the menu bar search field to discover installable casks/formulae
+  ![Baseline Apps tab showing actions, recently updated apps, and ignored updates](docs/images/app-ignore.png)
 
-  ![Baseline search on the Homebrew tab showing cask discovery and install](docs/images/search.png)
+- Search from the main window or menu bar tray to filter updates and discover installable Homebrew casks and formulae
 
-- Ignore items you do not want to update yet, and keep them separated in dedicated ignored sections
-
-  ![Baseline ignored items section for apps updates](docs/images/ignore.png)
+  ![Baseline menu bar Homebrew search showing an installable cask](docs/images/menubar-search.png)
 
 - Best-effort App Store updates through `mas upgrade <appId>` when `mas` is installed
-- Homebrew-managed app inventory and update actions for installed casks and formulae when Homebrew is installed
-- Search-driven Homebrew discovery from the menu bar search button:
+- Homebrew-managed inventory and update actions for installed casks and formulae when Homebrew is installed
+- Search-driven Homebrew discovery:
   - Search installable casks and formulae
   - Install casks with `brew install --cask <token>` when `brew` is installed
   - Install formulae with `brew install <token>` when `brew` is installed
@@ -110,7 +112,8 @@ Baseline keeps update logic outside React views:
 - `src/shared` defines domain contracts, persistence snapshots, security policy, and shared parsers.
 - `src/main` contains Electron lifecycle, privileged IO, scanning, network lookup, subprocess execution, persistence, and IPC.
 - `src/renderer` renders React state and dispatches user intents through the preload API.
-- `tests` covers parsers, version logic, security checks, and fixtures.
+- `ElectronTests` covers parsers, version logic, security checks, renderer behavior, persistence, store behavior, and source-client fixtures.
+- `e2e` covers Electron launch smoke tests.
 
 The legacy Swift/Tuist source remains in the repository during the migration as a behavior reference until Electron parity is fully reviewed.
 
