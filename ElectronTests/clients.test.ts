@@ -60,6 +60,32 @@ describe("ported clients", () => {
     expect(inventory.find((item) => item.token === "notion")?.latestVersion?.raw).toBe("4.1.0");
   });
 
+  it("flags invalid Homebrew outdated JSON instead of treating everything as current", () => {
+    const result = new HomebrewInventoryParser().buildInventoryWithStatus(
+      "ripgrep 14.0.0\n",
+      "notion 4.0.0\n",
+      "not-json",
+      JSON.stringify({ casks: [{ token: "notion", current_version: "4.1.0" }] })
+    );
+
+    expect(result.outdatedDetectionSucceeded).toBe(false);
+    expect(result.outdatedDetectionSucceededByKind).toEqual({ formula: false, cask: true });
+    expect(result.items.find((item) => item.token === "notion")?.isOutdated).toBe(true);
+    expect(result.items.find((item) => item.token === "ripgrep")?.isOutdated).toBe(false);
+  });
+
+  it("uses the highest comparable installed Homebrew version", () => {
+    const inventory = new HomebrewInventoryParser().buildInventory(
+      "ripgrep 14.0.2 14.1.0 13.9.0\n",
+      "cursor 3.2.11,e9ee1339915a927dfb2df4a836dd9c8337e17cc2 3.2.9,older\n",
+      "{}",
+      "{}"
+    );
+
+    expect(inventory.find((item) => item.token === "ripgrep")?.installedVersion.raw).toBe("14.1.0");
+    expect(inventory.find((item) => item.token === "cursor")?.installedVersion.raw).toBe("3.2.11");
+  });
+
   it("strips cask build metadata from Homebrew inventory versions", () => {
     const inventory = new HomebrewInventoryParser().buildInventory(
       "",
