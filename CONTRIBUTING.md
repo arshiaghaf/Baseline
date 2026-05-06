@@ -1,27 +1,27 @@
 # Contributing to Baseline
 
-Thanks for helping improve Baseline. This project is a macOS menubar app built with SwiftUI and Tuist.
+Thanks for helping improve Baseline. This project is a macOS Electron app built
+with Vite, React, TypeScript, and Tailwind.
 
 ## Development Setup
 
 Requirements:
-- macOS 26 or newer
-- Xcode with Swift 6 support
-- Tuist
 
-Install Tuist:
+- macOS
+- Node.js 25 or newer
+- npm
 
-```bash
-brew install tuist
-```
-
-Generate the project:
+Install dependencies:
 
 ```bash
-TUIST_SKIP_UPDATE_CHECK=1 tuist generate
+npm ci
 ```
 
-Open `Baseline.xcworkspace` in Xcode and run the `Baseline` scheme.
+Run the app during development:
+
+```bash
+npm start
+```
 
 ## Branches And Pull Requests
 
@@ -29,30 +29,45 @@ Open `Baseline.xcworkspace` in Xcode and run the `Baseline` scheme.
 - Keep pull requests small enough to review.
 - Include tests for behavior changes.
 - Update docs when user-facing behavior, setup, or release steps change.
-- Do not commit generated Xcode/Tuist artifacts.
+- Do not commit generated outputs such as `node_modules/`, `out/`, `.vite/`,
+  `dist/`, `coverage/`, `test-results/`, or `playwright-report/`.
 
 ## Architecture Guidelines
 
 Baseline is intentionally layered:
 
-- Models define stable domain contracts.
-- Clients perform source-specific IO and mapping.
-- Store code coordinates refresh lifecycle, policy, persistence, and actions.
-- SwiftUI views render state and dispatch intents only.
+- `src/shared` defines stable domain contracts, IPC types, security policy,
+  version logic, and shared parsers.
+- `src/main` owns Electron lifecycle, windows/tray, persistence, filesystem
+  access, network clients, subprocess execution, and update policy.
+- `src/main/preload.ts` exposes the narrow typed `window.baseline` API.
+- `src/renderer` renders React state and dispatches user intents only.
+- `ElectronTests` and `e2e` cover unit and Electron smoke behavior.
 
-Avoid adding networking, filesystem scanning, subprocess execution, or business-policy decisions directly inside SwiftUI view bodies.
+Avoid adding networking, filesystem scanning, subprocess execution, shell access,
+or update-source policy directly inside React components.
 
 ## Validation
 
 Run these before opening a pull request:
 
 ```bash
-TUIST_SKIP_UPDATE_CHECK=1 tuist generate --no-open
-TUIST_SKIP_UPDATE_CHECK=1 tuist xcodebuild -project Baseline.xcodeproj -scheme Baseline -configuration Debug -destination 'platform=macOS' -derivedDataPath .DerivedData build
-xcodebuild -project Baseline.xcodeproj -scheme Baseline -destination 'platform=macOS' -derivedDataPath .DerivedData test
+npm run typecheck
+npm test
+npm run lint
+npm run format
+npm run build
+npm run test:electron
 ```
 
-If a command cannot run in your environment, mention that in the PR and include the failure output.
+Production dependency audit:
+
+```bash
+npm audit --omit=dev --audit-level=high
+```
+
+If a command cannot run in your environment, mention that in the PR and include
+the failure output.
 
 For preview or release-candidate handoff, run:
 
@@ -60,14 +75,15 @@ For preview or release-candidate handoff, run:
 scripts/validate-preview.sh 0.0.0-preview
 ```
 
-Generated Tuist/Xcode artifacts, DerivedData, DMGs, and `dist/` output are intentionally ignored and should not be committed.
-
 ## Security-Sensitive Changes
 
 Be careful with code that:
+
 - Runs `brew`, `mas`, or other local executables.
 - Parses remote update metadata.
 - Opens external URLs.
 - Writes persisted app state.
+- Expands the preload/IPC API.
 
-Prefer typed inputs, allowlisted executable resolution, and conservative fallback behavior.
+Prefer typed inputs, validated executable resolution, argument arrays,
+allowlisted external URLs, and conservative fallback behavior.
