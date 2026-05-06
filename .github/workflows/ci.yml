@@ -18,8 +18,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Install Tuist
-        run: brew install tuist
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Lint shell scripts
         run: |
@@ -27,32 +33,14 @@ jobs:
           bash -n scripts/prepare-unsigned-release.sh
           bash -n scripts/validate-preview.sh
 
-      - name: Generate Xcode project
-        run: TUIST_SKIP_UPDATE_CHECK=1 tuist generate --no-open
-
-      - name: Build Debug app
-        run: |
-          xcodebuild \
-            -project Baseline.xcodeproj \
-            -scheme Baseline \
-            -configuration Debug \
-            -destination "platform=macOS" \
-            -derivedDataPath .DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY= \
-            DEVELOPMENT_TEAM= \
-            build
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Run unit tests
-        run: |
-          xcodebuild \
-            -project Baseline.xcodeproj \
-            -scheme Baseline \
-            -destination "platform=macOS" \
-            -derivedDataPath .DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY= \
-            DEVELOPMENT_TEAM= \
-            test
+        run: npm test
+
+      - name: Package Electron app
+        run: npm run build
+
+      - name: Electron smoke test
+        run: npm run test:electron

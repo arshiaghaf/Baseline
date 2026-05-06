@@ -15,3 +15,11 @@ xcuserdata/
 # Release packaging output
 dist/
 *.dmg
+
+# Node/Electron generated artifacts
+node_modules/
+out/
+.vite/
+coverage/
+playwright-report/
+test-results/

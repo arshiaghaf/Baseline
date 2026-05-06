@@ -1,6 +1,6 @@
 # Releasing Baseline
 
-Baseline currently supports source builds and optional unsigned preview DMGs.
+Baseline currently supports Electron source builds and optional unsigned preview DMGs.
 
 Unsigned DMGs are not notarized by Apple. macOS Gatekeeper may warn users before opening the app. Do not describe unsigned builds as signed, notarized, or production-grade.
 
@@ -11,9 +11,11 @@ Unsigned DMGs are not notarized by Apple. macOS Gatekeeper may warn users before
 3. Run local validation:
 
 ```bash
-TUIST_SKIP_UPDATE_CHECK=1 tuist generate --no-open
-TUIST_SKIP_UPDATE_CHECK=1 tuist xcodebuild -project Baseline.xcodeproj -scheme Baseline -configuration Debug -destination 'platform=macOS' -derivedDataPath .DerivedData build
-xcodebuild -project Baseline.xcodeproj -scheme Baseline -destination 'platform=macOS' -derivedDataPath .DerivedData test
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run test:electron
 ```
 
 4. Optionally preview the unsigned release artifacts locally:
@@ -31,7 +33,7 @@ git tag v0.1.0
 git push baseline v0.1.0
 ```
 
-8. The GitHub Actions release workflow builds the unsigned DMG, writes `dist/Baseline-0.1.0-unsigned.dmg.sha256`, creates the GitHub Release, and uploads both files.
+8. The GitHub Actions release workflow builds the Electron unsigned DMG, writes `dist/Baseline-0.1.0-unsigned.dmg.sha256`, creates the GitHub Release, and uploads both files.
 9. Verify the GitHub Release contains:
    - `Baseline-0.1.0-unsigned.dmg`
    - `Baseline-0.1.0-unsigned.dmg.sha256`

@@ -1,0 +1,8 @@
+node_modules
+out
+.vite
+coverage
+dist
+Baseline.xcodeproj
+Baseline.xcworkspace
+.DerivedData

@@ -30,9 +30,6 @@ jobs:
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Install Tuist
-        run: brew install tuist
-
       - name: Prepare unsigned release artifacts
         run: scripts/prepare-unsigned-release.sh "${{ steps.version.outputs.version }}"
 
