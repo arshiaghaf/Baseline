@@ -115,8 +115,6 @@ Baseline keeps update logic outside React views:
 - `ElectronTests` covers parsers, version logic, security checks, renderer behavior, persistence, store behavior, and source-client fixtures.
 - `e2e` covers Electron launch smoke tests.
 
-The legacy Swift/Tuist source remains in the repository during the migration as a behavior reference until Electron parity is fully reviewed.
-
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for more detail.
 See [docs/VALIDATION.md](docs/VALIDATION.md) for preview validation.
 

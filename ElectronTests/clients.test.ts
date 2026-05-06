@@ -8,7 +8,7 @@ import { HomebrewInventoryParser } from "../src/main/homebrewInventoryClient";
 import { SparkleAppcastClient } from "../src/main/sparkleAppcastClient";
 import { version } from "../src/shared/version";
 
-const fixtures = path.join(process.cwd(), "Tests", "Fixtures");
+const fixtures = path.join(process.cwd(), "ElectronTests", "Fixtures");
 
 describe("ported clients", () => {
   it("parses App Store lookup fixtures", () => {
