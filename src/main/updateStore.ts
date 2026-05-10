@@ -313,7 +313,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (result) {
         this.patch({
           refreshErrorMessage: undefined,
-          homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID),
+          homebrewBatchFailedItemIDs: removeFromArray(
+            this.state.homebrewBatchFailedItemIDs,
+            itemID
+          ),
           homebrewUpdatedPendingRefreshItemIDs: addToArray(
             this.state.homebrewUpdatedPendingRefreshItemIDs,
             itemID
