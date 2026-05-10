@@ -144,6 +144,7 @@ export function Dashboard({
               open={toolbarSearchOpen}
               snapshot={snapshot}
               onToggle={() => setToolbarSearchOpen((open) => !open)}
+              onClose={() => setToolbarSearchOpen(false)}
             />
             <button
               className="toolbar-button refresh-button"
@@ -177,6 +178,7 @@ export function Dashboard({
                 open={toolbarSearchOpen}
                 snapshot={snapshot}
                 onToggle={() => setToolbarSearchOpen((open) => !open)}
+                onClose={() => setToolbarSearchOpen(false)}
               />
               <button
                 className="toolbar-button refresh-button"
@@ -300,12 +302,15 @@ function Sidebar({
 function ToolbarSearch({
   open,
   snapshot,
-  onToggle
+  onToggle,
+  onClose
 }: {
   open: boolean;
   snapshot: BaselineSnapshot;
   onToggle: () => void;
+  onClose: () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -315,13 +320,29 @@ function ToolbarSearch({
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !rootRef.current?.contains(target)) {
+        onClose();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [onClose, open]);
+
   const clearSearch = () => {
     void window.baseline.setSearchText("");
     inputRef.current?.focus();
   };
 
   return (
-    <div className={open ? "toolbar-search open" : "toolbar-search"}>
+    <div ref={rootRef} className={open ? "toolbar-search open" : "toolbar-search"}>
       <div className="toolbar-search-field">
         <input
           ref={inputRef}

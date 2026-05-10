@@ -252,6 +252,45 @@ describe("renderer button parity", () => {
     expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
   });
 
+  it("opens toolbar search and collapses it on outside click without clearing text", () => {
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ searchText: "obsidian" })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Search" }));
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(window.baseline.setSearchText).not.toHaveBeenCalled();
+  });
+
+  it("keeps toolbar search open for clicks inside the search controls", () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ searchText: "raycast" })}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByPlaceholderText("Search"));
+    expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
+
+    expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
+    expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
+  });
+
   it("does not render an app open action button when no update exists", () => {
     render(
       <AppRow
