@@ -325,6 +325,65 @@ describe("update store helpers", () => {
     expect(runBrewCommand).not.toHaveBeenCalled();
     expect(store.getSnapshot().refreshErrorMessage).toContain("Blocked unsafe Homebrew token");
   });
+
+  it("clears Homebrew failed marker after a successful retry", async () => {
+    const itemID = "formula:libgpg-error";
+    const runBrewCommand = vi.fn(
+      async (_args: string[], onOutputLine: (line: string) => void = () => undefined) => {
+        if (runBrewCommand.mock.calls.length === 1) {
+          onOutputLine("Error: libgpg-error failed");
+          return { success: false, status: 1, output: "Error: libgpg-error failed" };
+        }
+        onOutputLine("Pouring libgpg-error--1.61.arm64_tahoe.bottle.tar.gz");
+        onOutputLine("🍺  /opt/homebrew/Cellar/libgpg-error/1.61: 50 files, 1.9MB");
+        return { success: true, status: 0, output: "" };
+      }
+    );
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: itemID,
+            token: "libgpg-error",
+            name: "libgpg-error",
+            kind: "formula",
+            installedVersion: version("1.60"),
+            latestVersion: version("1.61"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand,
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: itemID,
+                token: "libgpg-error",
+                name: "libgpg-error",
+                kind: "formula",
+                installedVersion: version("1.60"),
+                latestVersion: version("1.61"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.performHomebrewUpdate(itemID);
+    expect(store.getSnapshot().homebrewBatchFailedItemIDs).toContain(itemID);
+
+    await store.performHomebrewUpdate(itemID);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.homebrewBatchFailedItemIDs).not.toContain(itemID);
+    expect(snapshot.refreshErrorMessage).toBeUndefined();
+  });
 });
 
 async function makeStore({

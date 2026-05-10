@@ -312,6 +312,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       });
       if (result) {
         this.patch({
+          refreshErrorMessage: undefined,
+          homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID),
           homebrewUpdatedPendingRefreshItemIDs: addToArray(
             this.state.homebrewUpdatedPendingRefreshItemIDs,
             itemID
@@ -392,6 +394,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       homebrewUpdatingItemIDs: this.state.homebrewUpdatingItemIDs.filter(
         (id) => !affectedIDs.includes(id)
       ),
+      homebrewBatchFailedItemIDs: success
+        ? this.state.homebrewBatchFailedItemIDs.filter((id) => !affectedIDs.includes(id))
+        : this.state.homebrewBatchFailedItemIDs,
       homebrewUpdatedPendingRefreshItemIDs: success
         ? [...new Set([...this.state.homebrewUpdatedPendingRefreshItemIDs, ...affectedIDs])]
         : this.state.homebrewUpdatedPendingRefreshItemIDs,
