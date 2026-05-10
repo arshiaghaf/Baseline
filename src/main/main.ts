@@ -1,10 +1,21 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell, Tray } from "electron";
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  nativeImage,
+  screen,
+  shell,
+  Tray
+} from "electron";
 import path from "node:path";
 import { renderDiagnostics } from "../shared/diagnostics";
 import type { BaselineSnapshot, HomebrewCaskDiscoveryItem, MenuTab } from "../shared/domain";
 import { ipcChannels, type PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL } from "../shared/security";
 import { SnapshotPersistence } from "./persistence";
+import { calculateTrayWindowPosition } from "./trayWindowPosition";
 import { UpdateStore } from "./updateStore";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -83,6 +94,7 @@ app.on("window-all-closed", () => undefined);
 app.on("before-quit", () => {
   isQuitting = true;
 });
+app.on("did-resign-active", hideMenuWindowForNativeDismissal);
 
 function createMainWindow(route: "main" | "settings"): BrowserWindow {
   mainWindow =
@@ -145,11 +157,7 @@ function createMenuWindow(): BrowserWindow {
       }
     });
 
-  menuWindow.on("blur", () => {
-    if (!isDevelopment) {
-      menuWindow?.hide();
-    }
-  });
+  menuWindow.on("blur", hideMenuWindowForNativeDismissal);
 
   void loadRenderer(menuWindow, "menubar");
   return menuWindow;
@@ -192,14 +200,18 @@ function toggleMenuWindow(): void {
   if (tray) {
     const bounds = tray.getBounds();
     const windowBounds = window.getBounds();
-    window.setPosition(
-      Math.round(bounds.x + bounds.width / 2 - windowBounds.width / 2),
-      Math.round(bounds.y + bounds.height + 6),
-      false
-    );
+    const display = screen.getDisplayMatching(bounds);
+    const position = calculateTrayWindowPosition(bounds, windowBounds, display);
+    window.setPosition(position.x, position.y, false);
   }
   window.setAlwaysOnTop(true, "pop-up-menu");
-  window.showInactive();
+  window.show();
+}
+
+function hideMenuWindowForNativeDismissal(): void {
+  if (!isDevelopment) {
+    menuWindow?.hide();
+  }
 }
 
 function showMainWindow(route: "main" | "settings"): void {
