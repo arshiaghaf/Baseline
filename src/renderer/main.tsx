@@ -325,15 +325,15 @@ function ToolbarSearch({
       return undefined;
     }
 
-    const handlePointerDown = (event: PointerEvent) => {
+    const handleClick = (event: MouseEvent) => {
       const target = event.target;
       if (target instanceof Node && !rootRef.current?.contains(target)) {
-        onClose();
+        window.setTimeout(onClose, 0);
       }
     };
 
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
   }, [onClose, open]);
 
   const clearSearch = () => {
@@ -342,7 +342,11 @@ function ToolbarSearch({
   };
 
   return (
-    <div ref={rootRef} className={open ? "toolbar-search open" : "toolbar-search"}>
+    <div
+      ref={rootRef}
+      className={open ? "toolbar-search open" : "toolbar-search"}
+      onClick={(event) => event.stopPropagation()}
+    >
       <div className="toolbar-search-field">
         <input
           ref={inputRef}

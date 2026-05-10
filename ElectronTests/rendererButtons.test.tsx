@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -252,7 +252,7 @@ describe("renderer button parity", () => {
     expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
   });
 
-  it("opens toolbar search and collapses it on outside click without clearing text", () => {
+  it("opens toolbar search and collapses it on outside click without clearing text", async () => {
     render(
       <Dashboard
         compact={false}
@@ -267,9 +267,9 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
 
-    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
 
-    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument());
     expect(window.baseline.setSearchText).not.toHaveBeenCalled();
   });
 
@@ -282,13 +282,28 @@ describe("renderer button parity", () => {
       />
     );
 
-    fireEvent.pointerDown(screen.getByPlaceholderText("Search"));
+    fireEvent.click(screen.getByPlaceholderText("Search"));
     expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
 
     expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
     expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
+  });
+
+  it("runs adjacent toolbar actions before collapsing open search", async () => {
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ searchText: "raycast" })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+
+    expect(window.baseline.refresh).toHaveBeenCalledWith(false);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument());
   });
 
   it("does not render an app open action button when no update exists", () => {
