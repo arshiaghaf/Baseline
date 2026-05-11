@@ -86,6 +86,7 @@ export class HomebrewCaskClient {
     }
 
     const raw = JSON.parse(data.toString("utf8")) as any[];
+    const byToken: Record<string, HomebrewCaskEntry> = {};
     const byBundleIdentifier: Record<string, HomebrewCaskEntry> = {};
     const byAppBundleName: Record<string, HomebrewCaskEntry[]> = {};
 
@@ -102,6 +103,7 @@ export class HomebrewCaskClient {
         bundleIdentifiers: extractBundleIdentifiers(item),
         appBundleNames: extractAppBundleNames(item)
       };
+      byToken[token.toLowerCase()] = entry;
 
       for (const identifier of entry.bundleIdentifiers) {
         const key = identifier.toLowerCase();
@@ -124,7 +126,7 @@ export class HomebrewCaskClient {
       byAppBundleName[key] = [...deduped.values()].sort(compareEntries);
     }
 
-    return { byBundleIdentifier, byAppBundleName };
+    return { byToken, byBundleIdentifier, byAppBundleName };
   }
 
   private lookupResult(entry: HomebrewCaskEntry): HomebrewLookupResult {

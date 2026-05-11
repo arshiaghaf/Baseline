@@ -55,6 +55,7 @@ export type HomebrewCaskDiscoveryItem = {
 };
 
 export type HomebrewCaskIndex = {
+  byToken: Record<string, HomebrewCaskEntry>;
   byBundleIdentifier: Record<string, HomebrewCaskEntry>;
   byAppBundleName: Record<string, HomebrewCaskEntry[]>;
 };
@@ -180,6 +181,7 @@ export type BaselineSnapshot = PersistedSnapshot &
   };
 
 export const emptyHomebrewCaskIndex: HomebrewCaskIndex = {
+  byToken: {},
   byBundleIdentifier: {},
   byAppBundleName: {}
 };

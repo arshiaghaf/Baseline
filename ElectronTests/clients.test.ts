@@ -28,6 +28,7 @@ describe("ported clients", () => {
   it("parses Homebrew cask schema drift fixtures", () => {
     const data = readFileSync(path.join(fixtures, "homebrew_cask_drift.json"));
     const index = new HomebrewCaskClient().parseIndex(data);
+    expect(index.byToken["example-app"]?.token).toBe("example-app");
     expect(index.byBundleIdentifier["com.example.app"]?.token).toBe("example-app");
     expect(index.byAppBundleName["example.app"]?.[0]?.token).toBe("example-app");
   });

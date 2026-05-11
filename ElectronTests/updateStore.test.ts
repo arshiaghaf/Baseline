@@ -13,7 +13,12 @@ import {
   preservePreviousHomebrewOutdatedState,
   UpdateStore
 } from "../src/main/updateStore";
-import type { HomebrewManagedItem, PersistedSnapshot } from "../src/shared/domain";
+import type {
+  AppRecord,
+  HomebrewCaskIndex,
+  HomebrewManagedItem,
+  PersistedSnapshot
+} from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
 let tempDirs: string[] = [];
@@ -31,6 +36,30 @@ function homebrewItem(
     installedVersion: version("1.0.0"),
     isOutdated: false,
     ...patch
+  };
+}
+
+function appRecord(
+  patch: Pick<AppRecord, "bundlePath" | "displayName" | "localVersion"> & Partial<AppRecord>
+): AppRecord {
+  return {
+    id: patch.bundlePath,
+    sourceHint: "unknown",
+    ...patch
+  };
+}
+
+function caskIndexForSelfUpdatingApp(latestVersion: ReturnType<typeof version>): HomebrewCaskIndex {
+  const entry = {
+    token: "self-updating-app",
+    version: latestVersion,
+    bundleIdentifiers: ["com.example.selfupdating"],
+    appBundleNames: ["self updating app.app"]
+  };
+  return {
+    byToken: { "self-updating-app": entry },
+    byBundleIdentifier: { "com.example.selfupdating": entry },
+    byAppBundleName: { "self updating app.app": [entry] }
   };
 }
 
@@ -258,6 +287,245 @@ describe("update store helpers", () => {
       isOutdated: true
     });
     expect(snapshot.lastRefreshNoticeMessage).toContain("could not be read reliably");
+  });
+
+  it("clears stale cask updates when the installed app self-updated to the latest version", async () => {
+    const selfUpdatingApp = appRecord({
+      bundlePath: "/Applications/Self Updating App.app",
+      displayName: "Self Updating App",
+      bundleIdentifier: "com.example.selfupdating",
+      localVersion: version("1.2026.119.1")
+    });
+    const store = await makeStore({
+      clients: {
+        scanner: { scanApplications: async () => [selfUpdatingApp] },
+        homebrew: {
+          fetchIndex: async () => caskIndexForSelfUpdatingApp(version("1.2026.119.1")),
+          lookupUpdate: () => undefined,
+          searchCasks: () => []
+        },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:self-updating-app",
+                token: "self-updating-app",
+                name: "self-updating-app",
+                kind: "cask",
+                installedVersion: version("1.2026.98.2"),
+                latestVersion: version("1.2026.119.1"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.refresh(false);
+
+    const item = store
+      .getSnapshot()
+      .homebrewItems.find((candidate) => candidate.id === "cask:self-updating-app");
+    expect(item).toMatchObject({
+      installedVersion: version("1.2026.119.1"),
+      isOutdated: false
+    });
+    expect(item?.latestVersion).toBeUndefined();
+  });
+
+  it("uses the app bundle version for self-updated casks that still have a newer cask release", async () => {
+    const selfUpdatingApp = appRecord({
+      bundlePath: "/Applications/Self Updating App.app",
+      displayName: "Self Updating App",
+      bundleIdentifier: "com.example.selfupdating",
+      localVersion: version("1.2026.119.1")
+    });
+    const store = await makeStore({
+      clients: {
+        scanner: { scanApplications: async () => [selfUpdatingApp] },
+        homebrew: {
+          fetchIndex: async () => caskIndexForSelfUpdatingApp(version("1.2026.130.1")),
+          lookupUpdate: () => undefined,
+          searchCasks: () => []
+        },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:self-updating-app",
+                token: "self-updating-app",
+                name: "self-updating-app",
+                kind: "cask",
+                installedVersion: version("1.2026.98.2"),
+                latestVersion: version("1.2026.130.1"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.refresh(false);
+
+    const item = store
+      .getSnapshot()
+      .homebrewItems.find((candidate) => candidate.id === "cask:self-updating-app");
+    expect(item).toMatchObject({
+      installedVersion: version("1.2026.119.1"),
+      latestVersion: version("1.2026.130.1"),
+      isOutdated: true
+    });
+  });
+
+  it("does not use loose name matches to change cask installed versions", async () => {
+    const sameNameApp = appRecord({
+      bundlePath: "/Applications/Self Updating App.app",
+      displayName: "Self Updating App",
+      bundleIdentifier: "com.example.unrelated",
+      localVersion: version("1.2026.119.1"),
+      iconDataURL: "data:image/png;base64,icon"
+    });
+    const store = await makeStore({
+      clients: {
+        scanner: { scanApplications: async () => [sameNameApp] },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:self-updating-app",
+                token: "self-updating-app",
+                name: "self-updating-app",
+                kind: "cask",
+                installedVersion: version("1.2026.98.2"),
+                latestVersion: version("1.2026.119.1"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.refresh(false);
+
+    const item = store
+      .getSnapshot()
+      .homebrewItems.find((candidate) => candidate.id === "cask:self-updating-app");
+    expect(item).toMatchObject({
+      installedVersion: version("1.2026.98.2"),
+      latestVersion: version("1.2026.119.1"),
+      isOutdated: true,
+      iconDataURL: "data:image/png;base64,icon"
+    });
+  });
+
+  it("does not use app bundle-name matches when cask and app bundle identifiers conflict", async () => {
+    const sameNameApp = appRecord({
+      bundlePath: "/Applications/Self Updating App.app",
+      displayName: "Self Updating App",
+      bundleIdentifier: "com.example.unrelated",
+      localVersion: version("1.2026.119.1"),
+      iconDataURL: "data:image/png;base64,icon"
+    });
+    const store = await makeStore({
+      clients: {
+        scanner: { scanApplications: async () => [sameNameApp] },
+        homebrew: {
+          fetchIndex: async () => caskIndexForSelfUpdatingApp(version("1.2026.119.1")),
+          lookupUpdate: () => undefined,
+          searchCasks: () => []
+        },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:self-updating-app",
+                token: "self-updating-app",
+                name: "self-updating-app",
+                kind: "cask",
+                installedVersion: version("1.2026.98.2"),
+                latestVersion: version("1.2026.119.1"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.refresh(false);
+
+    const item = store
+      .getSnapshot()
+      .homebrewItems.find((candidate) => candidate.id === "cask:self-updating-app");
+    expect(item).toMatchObject({
+      installedVersion: version("1.2026.98.2"),
+      latestVersion: version("1.2026.119.1"),
+      isOutdated: true,
+      iconDataURL: "data:image/png;base64,icon"
+    });
+  });
+
+  it("validates update-matched apps against cask metadata before changing cask versions", async () => {
+    const sameNameApp = appRecord({
+      bundlePath: "/Applications/Self Updating App.app",
+      displayName: "Self Updating App",
+      bundleIdentifier: "com.example.unrelated",
+      localVersion: version("1.2026.119.1"),
+      iconDataURL: "data:image/png;base64,icon"
+    });
+    const store = await makeStore({
+      clients: {
+        scanner: { scanApplications: async () => [sameNameApp] },
+        homebrew: {
+          fetchIndex: async () => caskIndexForSelfUpdatingApp(version("1.2026.119.1")),
+          lookupUpdate: () => ({
+            remoteVersion: version("1.2026.119.1"),
+            token: "self-updating-app"
+          }),
+          searchCasks: () => []
+        },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:self-updating-app",
+                token: "self-updating-app",
+                name: "self-updating-app",
+                kind: "cask",
+                installedVersion: version("1.2026.98.2"),
+                latestVersion: version("1.2026.119.1"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.refresh(false);
+
+    const item = store
+      .getSnapshot()
+      .homebrewItems.find((candidate) => candidate.id === "cask:self-updating-app");
+    expect(item).toMatchObject({
+      installedVersion: version("1.2026.98.2"),
+      latestVersion: version("1.2026.119.1"),
+      isOutdated: true,
+      iconDataURL: "data:image/png;base64,icon"
+    });
   });
 
   it("suppresses duplicate Homebrew cask uninstall dispatches while running", async () => {
