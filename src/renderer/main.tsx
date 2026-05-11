@@ -117,13 +117,14 @@ export function Dashboard({
   const selectedTab = snapshot.selectedTab;
   const [toolbarSearchOpen, setToolbarSearchOpen] = useState(Boolean(snapshot.searchText));
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
+  const compactShellRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!compact || toolbarSearchOpen) {
       return;
     }
 
-    blurCompactControl(document.activeElement);
+    clearCompactPopoverControlFocus(document.activeElement, compactShellRef.current);
   }, [compact, toolbarSearchOpen]);
 
   const confirmAction = () => {
@@ -143,8 +144,14 @@ export function Dashboard({
   if (compact) {
     shell = (
       <main
+        ref={compactShellRef}
         className="app-shell compact"
-        onFocusCapture={(event) => blurCompactControl(event.target)}
+        onFocusCapture={(event) =>
+          clearCompactPopoverControlFocus(event.target, compactShellRef.current)
+        }
+        onMouseDownCapture={(event) =>
+          suppressCompactPopoverControlFocus(event.target, compactShellRef.current, event)
+        }
       >
         <header className="popover-titlebar">
           <div className="popover-title">
@@ -248,14 +255,45 @@ export function Dashboard({
   );
 }
 
-function blurCompactControl(target: EventTarget | Element | null): void {
-  if (!(target instanceof HTMLElement)) {
+function clearCompactPopoverControlFocus(
+  target: EventTarget | Element | null,
+  compactShell: HTMLElement | null
+): void {
+  const focusTarget = compactPopoverControlFocusTarget(target, compactShell);
+  if (!focusTarget) {
     return;
   }
-  if (target.matches("input, textarea, [contenteditable='true']")) {
-    return;
+  focusTarget.blur();
+}
+
+function suppressCompactPopoverControlFocus(
+  target: EventTarget | Element | null,
+  compactShell: HTMLElement | null,
+  event: React.MouseEvent
+): void {
+  if (compactPopoverControlFocusTarget(target, compactShell)) {
+    event.preventDefault();
   }
-  target.blur();
+}
+
+function compactPopoverControlFocusTarget(
+  target: EventTarget | Element | null,
+  compactShell: HTMLElement | null
+): HTMLElement | undefined {
+  if (!(target instanceof Element)) {
+    return undefined;
+  }
+  const focusTarget = target.closest("button, input, textarea, [contenteditable='true']");
+  if (!(focusTarget instanceof HTMLElement)) {
+    return undefined;
+  }
+  if (compactShell && !compactShell.contains(focusTarget)) {
+    return undefined;
+  }
+  if (focusTarget.matches("input, textarea, [contenteditable='true']")) {
+    return undefined;
+  }
+  return focusTarget;
 }
 
 function Sidebar({

@@ -652,10 +652,6 @@ describe("renderer button parity", () => {
   });
 
   it("clears compact menu bar control focus", async () => {
-    const focusTarget = document.createElement("button");
-    document.body.append(focusTarget);
-    focusTarget.focus();
-
     render(
       <Dashboard
         compact
@@ -671,8 +667,22 @@ describe("renderer button parity", () => {
 
     screen.getByRole("button", { name: "Open app" }).focus();
     await waitFor(() => expect(document.activeElement).toBe(document.body));
+  });
 
-    focusTarget.remove();
+  it("keeps compact menu bar row actions clickable while clearing focus", async () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot()}
+      />
+    );
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+
+    expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(document.body));
   });
 
   it("keeps compact menu bar search input focused when search is already open", async () => {
