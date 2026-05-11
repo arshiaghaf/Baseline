@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
-  AppWindow,
+  AppWindowMac,
   Beer,
   Check,
   CheckCircle2,
@@ -11,6 +11,7 @@ import {
   EyeOff,
   ExternalLink,
   FolderPlus,
+  LayoutGrid,
   MoreHorizontal,
   Package,
   RefreshCcw,
@@ -325,7 +326,7 @@ function Sidebar({
             void window.baseline.setSelectedTab("all");
           }}
         >
-          <AppWindow size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <LayoutGrid size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>All</span>
           <strong>{combinedAvailableCount(derived)}</strong>
         </button>
@@ -336,7 +337,7 @@ function Sidebar({
             void window.baseline.setSelectedTab("apps");
           }}
         >
-          <Package size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <AppWindowMac size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Apps</span>
           <strong>{derived.availableApps.length}</strong>
         </button>
