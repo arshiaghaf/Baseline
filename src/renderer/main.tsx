@@ -119,14 +119,14 @@ export function Dashboard({
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
 
   useEffect(() => {
-    if (!compact) {
+    if (!compact || toolbarSearchOpen) {
       return;
     }
 
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
-  }, [compact]);
+  }, [compact, toolbarSearchOpen]);
 
   const confirmAction = () => {
     if (!actionConfirmation) {

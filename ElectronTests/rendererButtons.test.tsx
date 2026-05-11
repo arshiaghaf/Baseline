@@ -675,6 +675,18 @@ describe("renderer button parity", () => {
     focusTarget.remove();
   });
 
+  it("keeps compact menu bar search input focused when search is already open", async () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ searchText: "raycast" })}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByPlaceholderText("Search")).toHaveFocus());
+  });
+
   it("unifies app and Homebrew recently updated rows in the All tab", () => {
     const currentCask: HomebrewManagedItem = {
       ...cask,
