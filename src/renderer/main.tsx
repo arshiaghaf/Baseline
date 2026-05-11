@@ -117,6 +117,15 @@ export function Dashboard({
   const selectedTab = snapshot.selectedTab;
   const [toolbarSearchOpen, setToolbarSearchOpen] = useState(Boolean(snapshot.searchText));
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
+  const compactShellRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!compact || toolbarSearchOpen) {
+      return;
+    }
+
+    clearCompactPopoverControlFocus(document.activeElement, compactShellRef.current);
+  }, [compact, toolbarSearchOpen]);
 
   const confirmAction = () => {
     if (!actionConfirmation) {
@@ -134,7 +143,16 @@ export function Dashboard({
   let shell: React.ReactNode;
   if (compact) {
     shell = (
-      <main className="app-shell compact">
+      <main
+        ref={compactShellRef}
+        className="app-shell compact"
+        onFocusCapture={(event) =>
+          clearCompactPopoverControlFocus(event.target, compactShellRef.current)
+        }
+        onMouseDownCapture={(event) =>
+          suppressCompactPopoverControlFocus(event.target, compactShellRef.current, event)
+        }
+      >
         <header className="popover-titlebar">
           <div className="popover-title">
             <h1>Baseline</h1>
@@ -145,15 +163,22 @@ export function Dashboard({
               snapshot={snapshot}
               onToggle={() => setToolbarSearchOpen((open) => !open)}
               onClose={() => setToolbarSearchOpen(false)}
+              toolbarButtonTabIndex={-1}
             />
             <button
               className="toolbar-button refresh-button"
               onClick={() => void window.baseline.refresh(false)}
               title="Refresh"
+              tabIndex={-1}
             >
               <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
             </button>
-            <button className="toolbar-button" onClick={onOpenSettings} title="Settings">
+            <button
+              className="toolbar-button"
+              onClick={onOpenSettings}
+              title="Settings"
+              tabIndex={-1}
+            >
               <Settings size={16} />
             </button>
           </div>
@@ -230,6 +255,47 @@ export function Dashboard({
   );
 }
 
+function clearCompactPopoverControlFocus(
+  target: EventTarget | Element | null,
+  compactShell: HTMLElement | null
+): void {
+  const focusTarget = compactPopoverControlFocusTarget(target, compactShell);
+  if (!focusTarget) {
+    return;
+  }
+  focusTarget.blur();
+}
+
+function suppressCompactPopoverControlFocus(
+  target: EventTarget | Element | null,
+  compactShell: HTMLElement | null,
+  event: React.MouseEvent
+): void {
+  if (compactPopoverControlFocusTarget(target, compactShell)) {
+    event.preventDefault();
+  }
+}
+
+function compactPopoverControlFocusTarget(
+  target: EventTarget | Element | null,
+  compactShell: HTMLElement | null
+): HTMLElement | undefined {
+  if (!(target instanceof Element)) {
+    return undefined;
+  }
+  const focusTarget = target.closest("button, input, textarea, [contenteditable='true']");
+  if (!(focusTarget instanceof HTMLElement)) {
+    return undefined;
+  }
+  if (compactShell && !compactShell.contains(focusTarget)) {
+    return undefined;
+  }
+  if (focusTarget.matches("input, textarea, [contenteditable='true']")) {
+    return undefined;
+  }
+  return focusTarget;
+}
+
 function Sidebar({
   snapshot,
   derived,
@@ -303,12 +369,14 @@ function ToolbarSearch({
   open,
   snapshot,
   onToggle,
-  onClose
+  onClose,
+  toolbarButtonTabIndex
 }: {
   open: boolean;
   snapshot: BaselineSnapshot;
   onToggle: () => void;
   onClose: () => void;
+  toolbarButtonTabIndex?: number;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -373,6 +441,7 @@ function ToolbarSearch({
         className="toolbar-button"
         onClick={onToggle}
         title={open ? "Close Search" : "Search"}
+        tabIndex={toolbarButtonTabIndex}
       >
         <Search size={16} />
       </button>

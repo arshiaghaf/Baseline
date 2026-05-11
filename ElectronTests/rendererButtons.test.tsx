@@ -651,6 +651,52 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("clears compact menu bar control focus", async () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot()}
+      />
+    );
+
+    await waitFor(() => expect(document.activeElement).toBe(document.body));
+    expect(screen.getByRole("button", { name: "Search" })).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute("tabindex", "-1");
+
+    screen.getByRole("button", { name: "Open app" }).focus();
+    await waitFor(() => expect(document.activeElement).toBe(document.body));
+  });
+
+  it("keeps compact menu bar row actions clickable while clearing focus", async () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot()}
+      />
+    );
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+
+    expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement).toBe(document.body));
+  });
+
+  it("keeps compact menu bar search input focused when search is already open", async () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ searchText: "raycast" })}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByPlaceholderText("Search")).toHaveFocus());
+  });
+
   it("unifies app and Homebrew recently updated rows in the All tab", () => {
     const currentCask: HomebrewManagedItem = {
       ...cask,
