@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
-  AppWindow,
+  AppWindowMac,
   Beer,
   Check,
   CheckCircle2,
@@ -11,6 +11,7 @@ import {
   EyeOff,
   ExternalLink,
   FolderPlus,
+  LayoutGrid,
   MoreHorizontal,
   Package,
   RefreshCcw,
@@ -44,6 +45,8 @@ type ActionConfirmation =
 type RequestActionConfirmation = (confirmation: ActionConfirmation) => void;
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
+const sidebarIconStrokeWidth = 1.5;
+const toolbarIconStrokeWidth = 1.5;
 
 const initialSnapshot: BaselineSnapshot = {
   ...defaultPersistedSnapshot(),
@@ -171,7 +174,11 @@ export function Dashboard({
               title="Refresh"
               tabIndex={-1}
             >
-              <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
+              <RefreshCcw
+                className={snapshot.isRefreshing ? "spin" : undefined}
+                size={16}
+                strokeWidth={toolbarIconStrokeWidth}
+              />
             </button>
             <button
               className="toolbar-button"
@@ -210,7 +217,11 @@ export function Dashboard({
                 onClick={() => void window.baseline.refresh(false)}
                 title="Refresh"
               >
-                <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
+                <RefreshCcw
+                  className={snapshot.isRefreshing ? "spin" : undefined}
+                  size={16}
+                  strokeWidth={toolbarIconStrokeWidth}
+                />
               </button>
             </div>
           </header>
@@ -315,7 +326,7 @@ function Sidebar({
             void window.baseline.setSelectedTab("all");
           }}
         >
-          <AppWindow size={16} />
+          <LayoutGrid size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>All</span>
           <strong>{combinedAvailableCount(derived)}</strong>
         </button>
@@ -326,7 +337,7 @@ function Sidebar({
             void window.baseline.setSelectedTab("apps");
           }}
         >
-          <Package size={16} />
+          <AppWindowMac size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Apps</span>
           <strong>{derived.availableApps.length}</strong>
         </button>
@@ -337,10 +348,12 @@ function Sidebar({
             void window.baseline.setSelectedTab("homebrew");
           }}
         >
-          <Beer size={16} />
+          <Beer size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Homebrew</span>
           <strong>{derived.homebrewOutdated.length}</strong>
         </button>
+      </nav>
+      <nav className="source-list secondary-source-list">
         <button
           className={route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}
           onClick={() => {
@@ -348,7 +361,7 @@ function Sidebar({
             void window.baseline.setSelectedTab("installed");
           }}
         >
-          <CheckCircle2 size={16} />
+          <CheckCircle2 size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Installed</span>
         </button>
       </nav>
@@ -357,7 +370,7 @@ function Sidebar({
           className={route === "settings" ? "selected" : ""}
           onClick={() => (window.location.hash = "/settings")}
         >
-          <Settings size={16} />
+          <Settings size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Settings</span>
         </button>
       </div>
@@ -443,7 +456,7 @@ function ToolbarSearch({
         title={open ? "Close Search" : "Search"}
         tabIndex={toolbarButtonTabIndex}
       >
-        <Search size={16} />
+        <Search size={16} strokeWidth={toolbarIconStrokeWidth} />
       </button>
     </div>
   );
