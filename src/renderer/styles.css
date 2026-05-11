@@ -280,7 +280,7 @@ button:disabled {
 .compact .toolbar-search .toolbar-button {
   border-color: transparent;
   background: transparent;
-  color: #8e8e93;
+  color: rgba(60, 60, 67, 0.78);
 }
 
 .command-row {
@@ -688,11 +688,11 @@ button:disabled {
 .toolbar-button.refresh-button {
   border-color: transparent;
   background: transparent;
-  color: #8e8e93;
+  color: rgba(60, 60, 67, 0.78);
 }
 
 .toolbar-search .toolbar-button {
-  color: #8e8e93;
+  color: rgba(60, 60, 67, 0.78);
 }
 
 .segmented button {
@@ -1334,7 +1334,7 @@ button:disabled {
 
   .toolbar-button.refresh-button,
   .toolbar-search .toolbar-button {
-    color: #8e8e93;
+    color: rgba(235, 235, 245, 0.78);
   }
 
   .compact .toolbar-button,
@@ -1342,7 +1342,7 @@ button:disabled {
   .compact .toolbar-search .toolbar-button {
     border-color: transparent;
     background: transparent;
-    color: #8e8e93;
+    color: rgba(235, 235, 245, 0.78);
   }
 
   .update-icon-button {

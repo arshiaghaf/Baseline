@@ -45,6 +45,7 @@ type RequestActionConfirmation = (confirmation: ActionConfirmation) => void;
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
+const toolbarIconStrokeWidth = 1.5;
 
 const initialSnapshot: BaselineSnapshot = {
   ...defaultPersistedSnapshot(),
@@ -172,7 +173,11 @@ export function Dashboard({
               title="Refresh"
               tabIndex={-1}
             >
-              <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
+              <RefreshCcw
+                className={snapshot.isRefreshing ? "spin" : undefined}
+                size={16}
+                strokeWidth={toolbarIconStrokeWidth}
+              />
             </button>
             <button
               className="toolbar-button"
@@ -211,7 +216,11 @@ export function Dashboard({
                 onClick={() => void window.baseline.refresh(false)}
                 title="Refresh"
               >
-                <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
+                <RefreshCcw
+                  className={snapshot.isRefreshing ? "spin" : undefined}
+                  size={16}
+                  strokeWidth={toolbarIconStrokeWidth}
+                />
               </button>
             </div>
           </header>
@@ -446,7 +455,7 @@ function ToolbarSearch({
         title={open ? "Close Search" : "Search"}
         tabIndex={toolbarButtonTabIndex}
       >
-        <Search size={16} />
+        <Search size={16} strokeWidth={toolbarIconStrokeWidth} />
       </button>
     </div>
   );
