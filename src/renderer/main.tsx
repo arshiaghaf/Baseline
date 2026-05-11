@@ -582,23 +582,27 @@ function AllRecentlyUpdatedSection({
   const homebrewUpdatedAt = new Map(
     snapshot.homebrewRecentlyUpdated.map((record) => [record.itemID, record.updatedAt])
   );
+  const recentlyUpdatedApps = snapshot.showRecentlyUpdatedAppsSection
+    ? derived.recentlyUpdatedApps
+    : [];
+  const homebrewRecentlyUpdated = snapshot.showRecentlyUpdatedHomebrewSection
+    ? derived.homebrewRecentlyUpdated.filter(
+        (item) => !homebrewItemMatchesApp(item, recentlyUpdatedApps)
+      )
+    : [];
   const rows = [
-    ...(snapshot.showRecentlyUpdatedAppsSection
-      ? derived.recentlyUpdatedApps.map((app) => ({
-          type: "app" as const,
-          id: app.id,
-          updatedAt: appUpdatedAt.get(app.id) ?? "",
-          item: app
-        }))
-      : []),
-    ...(snapshot.showRecentlyUpdatedHomebrewSection
-      ? derived.homebrewRecentlyUpdated.map((item) => ({
-          type: "homebrew" as const,
-          id: item.id,
-          updatedAt: homebrewUpdatedAt.get(item.id) ?? "",
-          item
-        }))
-      : [])
+    ...recentlyUpdatedApps.map((app) => ({
+      type: "app" as const,
+      id: app.id,
+      updatedAt: appUpdatedAt.get(app.id) ?? "",
+      item: app
+    })),
+    ...homebrewRecentlyUpdated.map((item) => ({
+      type: "homebrew" as const,
+      id: item.id,
+      updatedAt: homebrewUpdatedAt.get(item.id) ?? "",
+      item
+    }))
   ].sort((lhs, rhs) => compareRecentRows(lhs, rhs));
 
   const collapsed = snapshot.collapsedAppSectionIDs.includes("recentlyUpdated");
@@ -1782,6 +1786,17 @@ function homebrewItemHasAppUpdate(
     }
     return normalizedAppCandidates(app).has(normalizedName(item.token));
   });
+}
+
+function homebrewItemMatchesApp(item: HomebrewManagedItem, apps: AppRecord[]): boolean {
+  if (!isCask(item.kind)) {
+    return false;
+  }
+
+  const identifiers = homebrewItemIdentifiers(item);
+  return apps.some((app) =>
+    [...identifiers].some((identifier) => normalizedAppCandidates(app).has(identifier))
+  );
 }
 
 function matchingAppForHomebrewItem(
