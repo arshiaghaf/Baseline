@@ -123,9 +123,7 @@ export function Dashboard({
       return;
     }
 
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
+    blurCompactControl(document.activeElement);
   }, [compact, toolbarSearchOpen]);
 
   const confirmAction = () => {
@@ -144,7 +142,10 @@ export function Dashboard({
   let shell: React.ReactNode;
   if (compact) {
     shell = (
-      <main className="app-shell compact">
+      <main
+        className="app-shell compact"
+        onFocusCapture={(event) => blurCompactControl(event.target)}
+      >
         <header className="popover-titlebar">
           <div className="popover-title">
             <h1>Baseline</h1>
@@ -155,11 +156,13 @@ export function Dashboard({
               snapshot={snapshot}
               onToggle={() => setToolbarSearchOpen((open) => !open)}
               onClose={() => setToolbarSearchOpen(false)}
+              toolbarButtonTabIndex={-1}
             />
             <button
               className="toolbar-button refresh-button"
               onClick={() => void window.baseline.refresh(false)}
               title="Refresh"
+              tabIndex={-1}
             >
               <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
             </button>
@@ -167,6 +170,7 @@ export function Dashboard({
               className="toolbar-button"
               onClick={onOpenSettings}
               title="Settings"
+              tabIndex={-1}
             >
               <Settings size={16} />
             </button>
@@ -244,6 +248,16 @@ export function Dashboard({
   );
 }
 
+function blurCompactControl(target: EventTarget | Element | null): void {
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  if (target.matches("input, textarea, [contenteditable='true']")) {
+    return;
+  }
+  target.blur();
+}
+
 function Sidebar({
   snapshot,
   derived,
@@ -317,12 +331,14 @@ function ToolbarSearch({
   open,
   snapshot,
   onToggle,
-  onClose
+  onClose,
+  toolbarButtonTabIndex
 }: {
   open: boolean;
   snapshot: BaselineSnapshot;
   onToggle: () => void;
   onClose: () => void;
+  toolbarButtonTabIndex?: number;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -387,6 +403,7 @@ function ToolbarSearch({
         className="toolbar-button"
         onClick={onToggle}
         title={open ? "Close Search" : "Search"}
+        tabIndex={toolbarButtonTabIndex}
       >
         <Search size={16} />
       </button>
