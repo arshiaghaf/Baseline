@@ -5,6 +5,7 @@ import type {
   AppRecord,
   BaselineSnapshot,
   HomebrewCaskDiscoveryItem,
+  HomebrewCaskEntry,
   HomebrewCaskIndex,
   HomebrewFormulaIndex,
   HomebrewManagedItem,
@@ -27,7 +28,7 @@ import {
 } from "../shared/homebrewProgress";
 import type { PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
-import { compareVersions, isVersionGreater } from "../shared/version";
+import { compareVersions, isVersionEmpty, isVersionGreater } from "../shared/version";
 import { AppStoreLookupClient } from "./appStoreLookupClient";
 import { BundleScannerClient } from "./bundleScanner";
 import {
@@ -583,7 +584,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           homebrewInventory.outdatedDetectionSucceededByKind
         ),
         updates,
-        apps
+        apps,
+        homebrewIndex
       );
       const recentlyUpdated = this.mergeRecentlyUpdated(apps, updates, previousUpdates, now);
       const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
@@ -606,7 +608,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         homebrewDiscoverInstallingItemIDs: [],
         homebrewDiscoverInstalledPendingRefreshItemIDs: [],
         homebrewDiscoverProgressByItemID: {},
-        laggingHomebrewCaskTokens: detectLaggingHomebrewCaskTokens(homebrewItems, updates)
+        laggingHomebrewCaskTokens: detectLaggingHomebrewCaskTokens(
+          homebrewItems,
+          updates,
+          apps,
+          homebrewIndex
+        )
       });
       await this.refreshHomebrewDiscoverItems();
       await this.persist();
@@ -981,7 +988,8 @@ export function preservePreviousHomebrewOutdatedState(
 function reconcileHomebrewInventory(
   items: HomebrewManagedItem[],
   updates: UpdateRecord[],
-  apps: AppRecord[] = []
+  apps: AppRecord[] = [],
+  caskIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex
 ): HomebrewManagedItem[] {
   const updatesByToken = new Map<string, UpdateRecord>();
   for (const update of updates) {
@@ -998,15 +1006,32 @@ function reconcileHomebrewInventory(
     if (item.kind !== "cask") {
       return item;
     }
-    const iconDataURL = matchingHomebrewAppIcon(item, updatesByToken, appsByID, apps);
+    const caskEntry = caskIndex.byToken[item.token.toLowerCase()];
+    const matchingApp = matchingHomebrewApp(updatesByToken, appsByID, apps, item, caskEntry);
+    const iconDataURL =
+      matchingApp?.iconDataURL ?? matchingHomebrewAppIcon(item, updatesByToken, appsByID, apps);
     const update = updatesByToken.get(item.token.toLowerCase());
-    if (!update || !isVersionGreater(update.remoteVersion, item.installedVersion)) {
-      return iconDataURL ? { ...item, iconDataURL } : item;
+    const installedVersion =
+      matchingApp && isVersionGreater(matchingApp.localVersion, item.installedVersion)
+        ? matchingApp.localVersion
+        : item.installedVersion;
+    const latestVersion = bestHomebrewCaskLatestVersion(item, update, caskEntry);
+
+    if (!latestVersion || !isVersionGreater(latestVersion, installedVersion)) {
+      return {
+        ...item,
+        iconDataURL: iconDataURL ?? item.iconDataURL,
+        installedVersion,
+        latestVersion: undefined,
+        isOutdated: false,
+        releaseDate: undefined
+      };
     }
     return {
       ...item,
-      iconDataURL,
-      latestVersion: update.remoteVersion,
+      iconDataURL: iconDataURL ?? item.iconDataURL,
+      installedVersion,
+      latestVersion,
       isOutdated: true
     };
   });
@@ -1052,6 +1077,66 @@ export function mergeHomebrewRecentlyUpdatedRecords(
   return [...deduped.values()].slice(0, 40);
 }
 
+function bestHomebrewCaskLatestVersion(
+  item: HomebrewManagedItem,
+  update: UpdateRecord | undefined,
+  caskEntry: HomebrewCaskEntry | undefined
+): HomebrewManagedItem["latestVersion"] {
+  const caskIndexVersion = item.isOutdated ? caskEntry?.version : undefined;
+  const candidates = [item.latestVersion, update?.remoteVersion, caskIndexVersion].filter(
+    (candidate): candidate is NonNullable<HomebrewManagedItem["latestVersion"]> =>
+      Boolean(candidate) && !isVersionEmpty(candidate)
+  );
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  return candidates.reduce((latest, candidate) =>
+    compareVersions(candidate, latest) > 0 ? candidate : latest
+  );
+}
+
+function matchingHomebrewApp(
+  updatesByToken: Map<string, UpdateRecord>,
+  appsByID: Map<string, AppRecord>,
+  apps: AppRecord[],
+  item: HomebrewManagedItem,
+  caskEntry: HomebrewCaskEntry | undefined
+): AppRecord | undefined {
+  const update = updatesByToken.get(item.token.toLowerCase());
+  const appFromUpdate = update ? appsByID.get(update.appID) : undefined;
+  if (appFromUpdate && appMatchesCaskEntry(appFromUpdate, caskEntry)) {
+    return appFromUpdate;
+  }
+
+  if (caskEntry) {
+    const byCaskMetadata = apps.find((app) => appMatchesCaskEntry(app, caskEntry));
+    if (byCaskMetadata) {
+      return byCaskMetadata;
+    }
+  }
+
+  return undefined;
+}
+
+function appMatchesCaskEntry(
+  app: AppRecord,
+  caskEntry: HomebrewCaskEntry | undefined
+): boolean {
+  if (!caskEntry) {
+    return true;
+  }
+
+  const bundleIdentifiers = new Set(
+    caskEntry.bundleIdentifiers.map((identifier) => identifier.toLowerCase())
+  );
+  const bundleIdentifier = app.bundleIdentifier?.toLowerCase();
+  if (bundleIdentifier && bundleIdentifiers.size > 0) {
+    return bundleIdentifiers.has(bundleIdentifier);
+  }
+
+  return new Set(caskEntry.appBundleNames).has(normalizedAppBundleName(app.bundlePath));
+}
+
 function matchingHomebrewAppIcon(
   item: HomebrewManagedItem,
   updatesByToken: Map<string, UpdateRecord>,
@@ -1072,6 +1157,13 @@ function matchingHomebrewAppIcon(
   })?.iconDataURL;
 }
 
+function normalizedAppBundleName(bundlePath: string): string {
+  const fileName = bundlePath.split("/").pop() ?? bundlePath;
+  return fileName.toLowerCase().endsWith(".app")
+    ? fileName.toLowerCase()
+    : `${fileName.toLowerCase()}.app`;
+}
+
 function normalizedAppCandidates(app: AppRecord): Set<string> {
   const fileName = app.bundlePath
     .split("/")
@@ -1089,9 +1181,11 @@ function normalizedName(value: string): string {
 
 function detectLaggingHomebrewCaskTokens(
   items: HomebrewManagedItem[],
-  updates: UpdateRecord[]
+  updates: UpdateRecord[],
+  apps: AppRecord[] = [],
+  caskIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex
 ): string[] {
-  const reconciled = reconcileHomebrewInventory(items, updates);
+  const reconciled = reconcileHomebrewInventory(items, updates, apps, caskIndex);
   return reconciled
     .filter((item, index) => item.kind === "cask" && item.isOutdated && !items[index]?.isOutdated)
     .map((item) => item.token.toLowerCase());
