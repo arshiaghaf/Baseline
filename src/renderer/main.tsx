@@ -155,13 +155,11 @@ export function Dashboard({
               snapshot={snapshot}
               onToggle={() => setToolbarSearchOpen((open) => !open)}
               onClose={() => setToolbarSearchOpen(false)}
-              toolbarButtonTabIndex={-1}
             />
             <button
               className="toolbar-button refresh-button"
               onClick={() => void window.baseline.refresh(false)}
               title="Refresh"
-              tabIndex={-1}
             >
               <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
             </button>
@@ -169,7 +167,6 @@ export function Dashboard({
               className="toolbar-button"
               onClick={onOpenSettings}
               title="Settings"
-              tabIndex={-1}
             >
               <Settings size={16} />
             </button>
@@ -320,14 +317,12 @@ function ToolbarSearch({
   open,
   snapshot,
   onToggle,
-  onClose,
-  toolbarButtonTabIndex
+  onClose
 }: {
   open: boolean;
   snapshot: BaselineSnapshot;
   onToggle: () => void;
   onClose: () => void;
-  toolbarButtonTabIndex?: number;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -392,7 +387,6 @@ function ToolbarSearch({
         className="toolbar-button"
         onClick={onToggle}
         title={open ? "Close Search" : "Search"}
-        tabIndex={toolbarButtonTabIndex}
       >
         <Search size={16} />
       </button>

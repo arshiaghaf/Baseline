@@ -665,9 +665,12 @@ describe("renderer button parity", () => {
     );
 
     await waitFor(() => expect(document.activeElement).toBe(document.body));
-    expect(screen.getByRole("button", { name: "Search" })).toHaveAttribute("tabindex", "-1");
-    expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute("tabindex", "-1");
-    expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("button", { name: "Search" })).not.toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("button", { name: "Refresh" })).not.toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("button", { name: "Settings" })).not.toHaveAttribute("tabindex", "-1");
+
+    screen.getByRole("button", { name: "Search" }).focus();
+    expect(screen.getByRole("button", { name: "Search" })).toHaveFocus();
 
     screen.getByRole("button", { name: "Open app" }).focus();
     expect(screen.getByRole("button", { name: "Open app" })).toHaveFocus();
