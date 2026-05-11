@@ -652,13 +652,7 @@ describe("renderer button parity", () => {
   });
 
   it("clears compact menu bar control focus", async () => {
-    render(
-      <Dashboard
-        compact
-        onOpenSettings={() => undefined}
-        snapshot={snapshot()}
-      />
-    );
+    render(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
 
     await waitFor(() => expect(document.activeElement).toBe(document.body));
     expect(screen.getByRole("button", { name: "Search" })).toHaveAttribute("tabindex", "-1");
@@ -670,13 +664,7 @@ describe("renderer button parity", () => {
   });
 
   it("keeps compact menu bar row actions clickable while clearing focus", async () => {
-    render(
-      <Dashboard
-        compact
-        onOpenSettings={() => undefined}
-        snapshot={snapshot()}
-      />
-    );
+    render(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
 
     fireEvent.mouseDown(screen.getByRole("button", { name: "Actions" }));
     fireEvent.click(screen.getByRole("button", { name: "Actions" }));
@@ -697,9 +685,26 @@ describe("renderer button parity", () => {
     await waitFor(() => expect(screen.getByPlaceholderText("Search")).toHaveFocus());
   });
 
-  it("unifies app and Homebrew recently updated rows in the All tab", () => {
+  it("unifies app and Homebrew recently updated rows in the All tab without duplicating cask-backed apps", () => {
     const currentCask: HomebrewManagedItem = {
       ...cask,
+      latestVersion: version("2.0.0"),
+      isOutdated: false
+    };
+    const standaloneCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:standalone",
+      token: "standalone",
+      name: "Standalone",
+      latestVersion: version("2.0.0"),
+      isOutdated: false
+    };
+    const formula: HomebrewManagedItem = {
+      ...cask,
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
       latestVersion: version("2.0.0"),
       isOutdated: false
     };
@@ -711,7 +716,7 @@ describe("renderer button parity", () => {
         snapshot={snapshot({
           selectedTab: "all",
           updates: [],
-          homebrewItems: [currentCask],
+          homebrewItems: [currentCask, standaloneCask, formula],
           recentlyUpdated: [
             {
               id: "recent:app",
@@ -724,11 +729,31 @@ describe("renderer button parity", () => {
           ],
           homebrewRecentlyUpdated: [
             {
-              id: "recent:cask",
+              id: "recent:cask:example",
               itemID: currentCask.id,
               token: currentCask.token,
               kind: currentCask.kind,
               displayName: currentCask.name,
+              fromVersion: version("1.0.0"),
+              toVersion: version("2.0.0"),
+              updatedAt: "2026-04-30T12:00:00.000Z"
+            },
+            {
+              id: "recent:cask:standalone",
+              itemID: standaloneCask.id,
+              token: standaloneCask.token,
+              kind: standaloneCask.kind,
+              displayName: standaloneCask.name,
+              fromVersion: version("1.0.0"),
+              toVersion: version("2.0.0"),
+              updatedAt: "2026-04-30T12:00:00.000Z"
+            },
+            {
+              id: "recent:formula:ripgrep",
+              itemID: formula.id,
+              token: formula.token,
+              kind: formula.kind,
+              displayName: formula.name,
               fromVersion: version("1.0.0"),
               toVersion: version("2.0.0"),
               updatedAt: "2026-04-30T12:00:00.000Z"
@@ -745,7 +770,9 @@ describe("renderer button parity", () => {
     expect(
       screen.queryByRole("heading", { name: "Recently Updated Homebrew" })
     ).not.toBeInTheDocument();
-    expect(screen.getAllByText("Example")).toHaveLength(2);
+    expect(screen.getAllByText("Example")).toHaveLength(1);
+    expect(screen.getByText("Standalone")).toBeInTheDocument();
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
   });
 
   it("search includes installed items and hides empty result sections", () => {
