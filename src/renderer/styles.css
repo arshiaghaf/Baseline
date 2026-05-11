@@ -68,7 +68,7 @@ button:disabled {
   min-width: var(--sidebar-width);
   max-width: var(--sidebar-width);
   padding: 49px 10px 12px;
-  background: rgba(255, 255, 255, 0.5);
+  background: transparent;
   -webkit-app-region: drag;
 }
 
@@ -1179,10 +1179,6 @@ button:disabled {
     border-color: rgba(255, 255, 255, 0.14);
     background: rgba(25, 25, 25, 0.2);
     box-shadow: 0 18px 70px rgba(0, 0, 0, 0.5);
-  }
-
-  .sidebar {
-    background: rgba(25, 25, 25, 0.2);
   }
 
   .source-list button,
