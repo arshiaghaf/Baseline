@@ -651,6 +651,30 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("clears compact menu bar initial focus without blocking keyboard focus", async () => {
+    const focusTarget = document.createElement("button");
+    document.body.append(focusTarget);
+    focusTarget.focus();
+
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot()}
+      />
+    );
+
+    await waitFor(() => expect(document.activeElement).toBe(document.body));
+    expect(screen.getByRole("button", { name: "Search" })).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("button", { name: "Refresh" })).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveAttribute("tabindex", "-1");
+
+    screen.getByRole("button", { name: "Open app" }).focus();
+    expect(screen.getByRole("button", { name: "Open app" })).toHaveFocus();
+
+    focusTarget.remove();
+  });
+
   it("unifies app and Homebrew recently updated rows in the All tab", () => {
     const currentCask: HomebrewManagedItem = {
       ...cask,

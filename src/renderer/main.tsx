@@ -118,6 +118,16 @@ export function Dashboard({
   const [toolbarSearchOpen, setToolbarSearchOpen] = useState(Boolean(snapshot.searchText));
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
 
+  useEffect(() => {
+    if (!compact) {
+      return;
+    }
+
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }, [compact]);
+
   const confirmAction = () => {
     if (!actionConfirmation) {
       return;
@@ -145,15 +155,22 @@ export function Dashboard({
               snapshot={snapshot}
               onToggle={() => setToolbarSearchOpen((open) => !open)}
               onClose={() => setToolbarSearchOpen(false)}
+              toolbarButtonTabIndex={-1}
             />
             <button
               className="toolbar-button refresh-button"
               onClick={() => void window.baseline.refresh(false)}
               title="Refresh"
+              tabIndex={-1}
             >
               <RefreshCcw className={snapshot.isRefreshing ? "spin" : undefined} size={16} />
             </button>
-            <button className="toolbar-button" onClick={onOpenSettings} title="Settings">
+            <button
+              className="toolbar-button"
+              onClick={onOpenSettings}
+              title="Settings"
+              tabIndex={-1}
+            >
               <Settings size={16} />
             </button>
           </div>
@@ -303,12 +320,14 @@ function ToolbarSearch({
   open,
   snapshot,
   onToggle,
-  onClose
+  onClose,
+  toolbarButtonTabIndex
 }: {
   open: boolean;
   snapshot: BaselineSnapshot;
   onToggle: () => void;
   onClose: () => void;
+  toolbarButtonTabIndex?: number;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -373,6 +392,7 @@ function ToolbarSearch({
         className="toolbar-button"
         onClick={onToggle}
         title={open ? "Close Search" : "Search"}
+        tabIndex={toolbarButtonTabIndex}
       >
         <Search size={16} />
       </button>
