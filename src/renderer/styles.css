@@ -77,6 +77,10 @@ button:disabled {
   -webkit-app-region: no-drag;
 }
 
+.secondary-source-list {
+  margin-top: 12px;
+}
+
 .source-list button,
 .sidebar-footer button {
   display: grid;
@@ -93,10 +97,6 @@ button:disabled {
   font-weight: 300;
   text-align: left;
   transition: none;
-}
-
-.source-list button.source-list-spaced {
-  margin-top: 4px;
 }
 
 .source-list button.selected,

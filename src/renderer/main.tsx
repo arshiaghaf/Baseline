@@ -342,8 +342,10 @@ function Sidebar({
           <span>Homebrew</span>
           <strong>{derived.homebrewOutdated.length}</strong>
         </button>
+      </nav>
+      <nav className="source-list secondary-source-list">
         <button
-          className={`source-list-spaced ${route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}`}
+          className={route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}
           onClick={() => {
             window.location.hash = "/main";
             void window.baseline.setSelectedTab("installed");
