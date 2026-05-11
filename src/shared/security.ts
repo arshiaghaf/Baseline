@@ -102,7 +102,7 @@ function isDisallowedIPv4(host: string): boolean {
   const first = bytes[0];
   const second = bytes[1];
 
-  if (first === 10 || first === 127) {
+  if (first === 0 || first === 10 || first === 127) {
     return true;
   }
   if (first === 169 && second === 254) {
@@ -116,10 +116,37 @@ function isDisallowedIPv4(host: string): boolean {
 
 function isDisallowedIPv6(host: string): boolean {
   const normalized = host.toLowerCase();
+  const ipv4Mapped = normalized.match(/^::ffff:(?<mapped>[0-9a-f:.]+)$/u)?.groups?.mapped;
+  if (ipv4Mapped) {
+    const mapped = normalizeIPv4MappedAddress(ipv4Mapped);
+    return mapped ? isDisallowedIPv4(mapped) : true;
+  }
+
   return (
+    normalized === "::" ||
     normalized === "::1" ||
     normalized.startsWith("fe80:") ||
     normalized.startsWith("fc") ||
     normalized.startsWith("fd")
   );
+}
+
+function normalizeIPv4MappedAddress(raw: string): string | undefined {
+  if (isIP(raw) === 4) {
+    return raw;
+  }
+
+  const hexGroups = raw.split(":");
+  if (hexGroups.length !== 2) {
+    return undefined;
+  }
+
+  const [highRaw, lowRaw] = hexGroups as [string, string];
+  const high = Number.parseInt(highRaw, 16);
+  const low = Number.parseInt(lowRaw, 16);
+  if ([high, low].some((value) => !Number.isInteger(value) || value < 0 || value > 0xffff)) {
+    return undefined;
+  }
+
+  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join(".");
 }
