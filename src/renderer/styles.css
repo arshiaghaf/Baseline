@@ -66,14 +66,14 @@ button:disabled {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   max-width: var(--sidebar-width);
-  padding: 54px 10px 12px;
+  padding: 49px 10px 12px;
   background: rgba(255, 255, 255, 0.5);
   -webkit-app-region: drag;
 }
 
 .source-list {
   display: grid;
-  gap: 7px;
+  gap: 4px;
   -webkit-app-region: no-drag;
 }
 
@@ -93,6 +93,10 @@ button:disabled {
   font-weight: 300;
   text-align: left;
   transition: none;
+}
+
+.source-list button.source-list-spaced {
+  margin-top: 4px;
 }
 
 .source-list button.selected,

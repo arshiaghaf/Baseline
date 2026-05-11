@@ -44,6 +44,7 @@ type ActionConfirmation =
 type RequestActionConfirmation = (confirmation: ActionConfirmation) => void;
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
+const sidebarIconStrokeWidth = 1.5;
 
 const initialSnapshot: BaselineSnapshot = {
   ...defaultPersistedSnapshot(),
@@ -315,7 +316,7 @@ function Sidebar({
             void window.baseline.setSelectedTab("all");
           }}
         >
-          <AppWindow size={16} />
+          <AppWindow size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>All</span>
           <strong>{combinedAvailableCount(derived)}</strong>
         </button>
@@ -326,7 +327,7 @@ function Sidebar({
             void window.baseline.setSelectedTab("apps");
           }}
         >
-          <Package size={16} />
+          <Package size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Apps</span>
           <strong>{derived.availableApps.length}</strong>
         </button>
@@ -337,18 +338,18 @@ function Sidebar({
             void window.baseline.setSelectedTab("homebrew");
           }}
         >
-          <Beer size={16} />
+          <Beer size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Homebrew</span>
           <strong>{derived.homebrewOutdated.length}</strong>
         </button>
         <button
-          className={route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}
+          className={`source-list-spaced ${route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}`}
           onClick={() => {
             window.location.hash = "/main";
             void window.baseline.setSelectedTab("installed");
           }}
         >
-          <CheckCircle2 size={16} />
+          <CheckCircle2 size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Installed</span>
         </button>
       </nav>
@@ -357,7 +358,7 @@ function Sidebar({
           className={route === "settings" ? "selected" : ""}
           onClick={() => (window.location.hash = "/settings")}
         >
-          <Settings size={16} />
+          <Settings size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Settings</span>
         </button>
       </div>
