@@ -11,11 +11,11 @@ import {
   EyeOff,
   ExternalLink,
   FolderPlus,
-  LayoutGrid,
   MoreHorizontal,
   Package,
   RefreshCcw,
   Search,
+  Server,
   Settings,
   Terminal,
   Trash2,
@@ -326,7 +326,7 @@ function Sidebar({
             void window.baseline.setSelectedTab("all");
           }}
         >
-          <LayoutGrid size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <Server size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>All</span>
           <strong>{combinedAvailableCount(derived)}</strong>
         </button>
