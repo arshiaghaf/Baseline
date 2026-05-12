@@ -1,0 +1,87 @@
+name: Auto-label issues
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-label issue by content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const text = `${issue.title || ""}\n\n${issue.body || ""}`.toLowerCase();
+
+            const desired = new Set();
+
+            // Bug indicators.
+            if (
+              /\bbug\b|\berror\b|\bcrash\b|\bfail(?:ed|ing)?\b|\bregression\b/.test(text) ||
+              text.includes("steps to reproduce") ||
+              text.includes("actual behavior")
+            ) {
+              desired.add("bug");
+            }
+
+            // Feature request indicators.
+            if (
+              /\bfeature\b|\benhancement\b|\bproposal\b|\brequest\b/.test(text) ||
+              text.includes("proposed solution") ||
+              text.includes("alternatives considered")
+            ) {
+              desired.add("enhancement");
+            }
+
+            // Question indicators.
+            if (
+              /\bquestion\b|\bhow do i\b|\bhow to\b/.test(text) ||
+              (issue.title || "").trim().endsWith("?")
+            ) {
+              desired.add("question");
+            }
+
+            // Documentation indicators.
+            if (
+              /\bdocs?\b|\bdocumentation\b|\breadme\b/.test(text)
+            ) {
+              desired.add("documentation");
+            }
+
+            if (desired.size === 0) {
+              desired.add("needs-triage");
+            }
+
+            const repoLabels = await github.paginate(
+              github.rest.issues.listLabelsForRepo,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100
+              }
+            );
+
+            const available = new Set(repoLabels.map((label) => label.name));
+            const existing = new Set(issue.labels.map((label) => label.name));
+            const toAdd = [...desired].filter(
+              (label) => available.has(label) && !existing.has(label)
+            );
+
+            if (toAdd.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: toAdd
+              });
+              core.info(`Added labels: ${toAdd.join(", ")}`);
+            } else {
+              core.info("No matching labels available to add.");
+            }
+
