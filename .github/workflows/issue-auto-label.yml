@@ -20,6 +20,7 @@ jobs:
             const text = `${issue.title || ""}\n\n${issue.body || ""}`.toLowerCase();
 
             const desired = new Set();
+            const escapeRegex = (value) => value.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
 
             // Bug indicators.
             if (
@@ -48,14 +49,16 @@ jobs:
             }
 
             // Documentation indicators.
-            if (
-              /\bdocs?\b|\bdocumentation\b|\breadme\b/.test(text)
-            ) {
+            if (/\bdocs?\b|\bdocumentation\b|\breadme\b/.test(text)) {
               desired.add("documentation");
             }
 
-            if (desired.size === 0) {
-              desired.add("needs-triage");
+            // UI/theme indicators for common frontend issue tags.
+            if (/\bui\b|\bux\b|\binterface\b|\blayout\b/.test(text)) {
+              desired.add("ui");
+            }
+            if (/\btheme\b|\btheming\b|\bdark mode\b|\blight mode\b/.test(text)) {
+              desired.add("theme");
             }
 
             const repoLabels = await github.paginate(
@@ -66,6 +69,31 @@ jobs:
                 per_page: 100
               }
             );
+
+            // Add labels when issue text explicitly mentions the label name.
+            const skipAutoByName = new Set([
+              "duplicate",
+              "invalid",
+              "wontfix",
+              "good first issue",
+              "help wanted"
+            ]);
+
+            for (const label of repoLabels) {
+              const name = label.name.toLowerCase();
+              if (skipAutoByName.has(name)) {
+                continue;
+              }
+
+              const mentionPattern = new RegExp(`(^|\\W)${escapeRegex(name)}($|\\W)`, "i");
+              if (mentionPattern.test(text)) {
+                desired.add(label.name);
+              }
+            }
+
+            if (desired.size === 0) {
+              desired.add("needs-triage");
+            }
 
             const available = new Set(repoLabels.map((label) => label.name));
             const existing = new Set(issue.labels.map((label) => label.name));
