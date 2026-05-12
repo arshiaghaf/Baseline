@@ -19,6 +19,11 @@ describe("security policy", () => {
     expect(isAllowedFeedURL("https://10.0.0.4/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://192.168.1.10/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://[::1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://0.0.0.0/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::ffff:127.0.0.1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::ffff:10.0.0.4]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::ffff:192.168.1.10]/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://updates.example.com/appcast.xml")).toBe(true);
   });
 
