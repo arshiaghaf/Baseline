@@ -1118,10 +1118,7 @@ function matchingHomebrewApp(
   return undefined;
 }
 
-function appMatchesCaskEntry(
-  app: AppRecord,
-  caskEntry: HomebrewCaskEntry | undefined
-): boolean {
+function appMatchesCaskEntry(app: AppRecord, caskEntry: HomebrewCaskEntry | undefined): boolean {
   if (!caskEntry) {
     return true;
   }
