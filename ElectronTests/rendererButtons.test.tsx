@@ -685,7 +685,7 @@ describe("renderer button parity", () => {
     await waitFor(() => expect(screen.getByPlaceholderText("Search")).toHaveFocus());
   });
 
-  it("unifies app and Homebrew recently updated rows in the All tab without duplicating cask-backed apps", () => {
+  it("unifies app and Homebrew recently updated cards in the All tab without duplicating cask-backed apps", () => {
     const currentCask: HomebrewManagedItem = {
       ...cask,
       latestVersion: version("2.0.0"),
@@ -709,7 +709,7 @@ describe("renderer button parity", () => {
       isOutdated: false
     };
 
-    render(
+    const { container } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -764,6 +764,9 @@ describe("renderer button parity", () => {
     );
 
     expect(screen.getByRole("button", { name: "Recently Updated" })).toBeInTheDocument();
+    const recentGrid = container.querySelector(".recent-grid");
+    expect(recentGrid).toBeInTheDocument();
+    expect(recentGrid?.querySelectorAll(".recent-card")).toHaveLength(3);
     expect(
       screen.queryByRole("heading", { name: "Recently Updated Apps" })
     ).not.toBeInTheDocument();
@@ -773,6 +776,94 @@ describe("renderer button parity", () => {
     expect(screen.getAllByText("Example")).toHaveLength(1);
     expect(screen.getByText("Standalone")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
+  });
+
+  it("renders app and Homebrew recently updated sections as card grids outside compact mode", () => {
+    const recentApp = {
+      id: "recent:app",
+      appID: app.id,
+      displayName: app.displayName,
+      fromVersion: version("1.0.0"),
+      toVersion: version("2.0.0"),
+      updatedAt: "2026-04-29T12:00:00.000Z"
+    };
+    const recentCask = {
+      id: "recent:cask",
+      itemID: cask.id,
+      token: cask.token,
+      kind: cask.kind,
+      displayName: cask.name,
+      fromVersion: version("1.0.0"),
+      toVersion: version("2.0.0"),
+      updatedAt: "2026-04-30T12:00:00.000Z"
+    };
+
+    const { container, rerender } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          updates: [],
+          recentlyUpdated: [recentApp]
+        })}
+      />
+    );
+
+    expect(container.querySelector(".recent-grid")).toBeInTheDocument();
+    expect(container.querySelector(".recent-card")).toBeInTheDocument();
+    expect(container.querySelector(".rows .recent-card")).not.toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "homebrew",
+          homebrewItems: [{ ...cask, isOutdated: false }],
+          updates: [],
+          homebrewRecentlyUpdated: [recentCask]
+        })}
+      />
+    );
+
+    expect(container.querySelector(".recent-grid")).toBeInTheDocument();
+    expect(container.querySelector(".recent-card")).toBeInTheDocument();
+  });
+
+  it("renders ignored app and Homebrew sections as card grids with existing update details", () => {
+    const { container, rerender } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          ignoredIDs: [app.id]
+        })}
+      />
+    );
+
+    expect(container.querySelector(".ignored-grid")).toBeInTheDocument();
+    expect(container.querySelector(".ignored-card")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(screen.getByText("1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("2.0.0")).toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "homebrew",
+          ignoredHomebrewItemIDs: [cask.id]
+        })}
+      />
+    );
+
+    expect(container.querySelector(".ignored-grid")).toBeInTheDocument();
+    expect(container.querySelector(".ignored-card")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(screen.getByText("cask")).toBeInTheDocument();
   });
 
   it("search includes installed items and hides empty result sections", () => {
