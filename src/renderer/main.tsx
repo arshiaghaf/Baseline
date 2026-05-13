@@ -32,6 +32,14 @@ import type {
   UpdateRecord
 } from "../shared/domain";
 import { defaultPersistedSnapshot } from "../shared/domain";
+import {
+  homebrewItemHasAppRepresentation,
+  homebrewItemIdentifiers,
+  homebrewItemMatchesApp,
+  isCask,
+  normalizedAppCandidates,
+  normalizedHomebrewAppName
+} from "../shared/homebrewAppLinking";
 import "./styles.css";
 
 type Route = "main" | "menubar" | "settings";
@@ -2502,7 +2510,8 @@ function deriveSections(snapshot: BaselineSnapshot) {
     (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
   );
   const allHomebrewOutdated = homebrewOutdated.filter(
-    (item) => !homebrewItemHasAppUpdate(item, appsRepresentedOutsideHomebrew, updatesByAppID)
+    (item) =>
+      !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew, updatesByAppID)
   );
   const homebrewInstalled = snapshot.homebrewItems
     .filter((item) => !item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
@@ -2528,38 +2537,6 @@ function deriveSections(snapshot: BaselineSnapshot) {
   };
 }
 
-function homebrewItemHasAppUpdate(
-  item: HomebrewManagedItem,
-  apps: AppRecord[],
-  updatesByAppID: Map<string, UpdateRecord>
-): boolean {
-  if (!isCask(item.kind)) {
-    return false;
-  }
-
-  return apps.some((app) => {
-    const update = updatesByAppID.get(app.id);
-    if (
-      update?.homebrewToken &&
-      normalizedName(update.homebrewToken) === normalizedName(item.token)
-    ) {
-      return true;
-    }
-    return normalizedAppCandidates(app).has(normalizedName(item.token));
-  });
-}
-
-function homebrewItemMatchesApp(item: HomebrewManagedItem, apps: AppRecord[]): boolean {
-  if (!isCask(item.kind)) {
-    return false;
-  }
-
-  const identifiers = homebrewItemIdentifiers(item);
-  return apps.some((app) =>
-    [...identifiers].some((identifier) => normalizedAppCandidates(app).has(identifier))
-  );
-}
-
 function matchingAppForHomebrewItem(
   item: Pick<HomebrewManagedItem, "kind" | "token"> &
     Partial<Pick<HomebrewManagedItem, "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">>,
@@ -2571,7 +2548,8 @@ function matchingAppForHomebrewItem(
 
   const identifiers = homebrewItemIdentifiers(item);
   const matchingUpdate = snapshot.updates.find(
-    (update) => update.homebrewToken && identifiers.has(normalizedName(update.homebrewToken))
+    (update) =>
+      update.homebrewToken && identifiers.has(normalizedHomebrewAppName(update.homebrewToken))
   );
   const appFromUpdate = matchingUpdate
     ? snapshot.apps.find((app) => app.id === matchingUpdate.appID)
@@ -2591,9 +2569,9 @@ function uninstallableHomebrewItemForApp(
 ): HomebrewManagedItem | undefined {
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
   if (update?.homebrewToken) {
-    const token = normalizedName(update.homebrewToken);
+    const token = normalizedHomebrewAppName(update.homebrewToken);
     const matchedByUpdate = snapshot.homebrewItems.find(
-      (item) => item.kind === "cask" && normalizedName(item.token) === token
+      (item) => item.kind === "cask" && normalizedHomebrewAppName(item.token) === token
     );
     if (matchedByUpdate) {
       return matchedByUpdate;
@@ -2610,35 +2588,6 @@ function uninstallableHomebrewItemForApp(
   });
 }
 
-function homebrewItemIdentifiers(
-  item: Pick<HomebrewManagedItem, "token"> &
-    Partial<Pick<HomebrewManagedItem, "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">>
-): Set<string> {
-  return new Set(
-    [item.token, item.name, item.displayName]
-      .filter((value): value is string => Boolean(value))
-      .map(normalizedName)
-  );
-}
-
-function normalizedAppCandidates(app: AppRecord): Set<string> {
-  const fileName = app.bundlePath
-    .split("/")
-    .pop()
-    ?.replace(/\.app$/iu, "");
-  const candidates = [app.displayName, app.bundleIdentifier, fileName]
-    .filter((value): value is string => Boolean(value))
-    .map(normalizedName);
-  return new Set(candidates.flatMap((value) => [value, value.replace(/^com/u, "")]));
-}
-
-function normalizedName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
-}
-
-function isCask(kind: string): boolean {
-  return kind.toLowerCase() === "cask";
-}
 
 function sortByName(lhs: AppRecord, rhs: AppRecord): number {
   return lhs.displayName.localeCompare(rhs.displayName, undefined, { sensitivity: "base" });
