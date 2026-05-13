@@ -470,6 +470,15 @@ button:disabled {
     border-color 150ms ease,
     box-shadow 150ms ease,
     transform 150ms ease;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.item-card :is(strong, span, p) {
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .item-card.update-card {
