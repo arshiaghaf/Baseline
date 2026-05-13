@@ -38,6 +38,7 @@ button:disabled {
 .app-shell {
   --sidebar-width: 196px;
   --sidebar-background: rgba(255, 255, 255, 0.5);
+  --update-accent-rgb: 0, 122, 255;
 
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
@@ -469,6 +470,17 @@ button:disabled {
     border-color 150ms ease,
     box-shadow 150ms ease,
     transform 150ms ease;
+}
+
+.item-card.update-card {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(var(--update-accent-rgb), 0.085),
+      rgba(var(--update-accent-rgb), 0.02) 42%,
+      rgba(var(--update-accent-rgb), 0) 72%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 242, 242, 0.96)), #ffffff;
 }
 
 .item-card-top {
@@ -950,7 +962,7 @@ button:disabled {
   padding: 0 12px;
   border: 0;
   border-radius: 999px;
-  background: #007aff;
+  background: rgb(var(--update-accent-rgb));
   color: white;
 }
 
@@ -1277,6 +1289,7 @@ button:disabled {
 
   .app-shell {
     --sidebar-background: rgba(25, 25, 25, 0.2);
+    --update-accent-rgb: 10, 132, 255;
   }
 
   .app-shell.compact {
@@ -1426,6 +1439,18 @@ button:disabled {
       0 8px 18px rgba(0, 0, 0, 0.16);
   }
 
+  .item-card.update-card {
+    background:
+      linear-gradient(
+        145deg,
+        rgba(var(--update-accent-rgb), 0.12),
+        rgba(var(--update-accent-rgb), 0.04) 40%,
+        rgba(var(--update-accent-rgb), 0.01) 72%
+      ),
+      linear-gradient(180deg, rgba(36, 36, 36, 0.78), rgba(36, 36, 36, 0) 88px),
+      linear-gradient(180deg, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.04)), #1a1a1a;
+  }
+
   .app-icon {
     background: linear-gradient(180deg, #77777d, #3a3a3c);
   }
@@ -1546,7 +1571,7 @@ button:disabled {
   }
 
   .primary-button {
-    background: #0a84ff;
+    background: rgb(var(--update-accent-rgb));
   }
 
   .primary-button.outline-button {
