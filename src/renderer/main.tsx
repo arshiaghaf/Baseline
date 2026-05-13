@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  Download,
   Eye,
   EyeOff,
   ExternalLink,
@@ -1918,7 +1919,7 @@ function RowMoreActionButton({
               disabled={updateAction.disabled || updateAction.state.type !== "ready"}
             >
               {updateAction.state.type === "ready" ? (
-                <RefreshCcw size={14} />
+                <Download size={14} />
               ) : updateAction.state.type === "updating" ? (
                 updateAction.state.progress === undefined ? (
                   <RefreshCcw className="spin" size={14} />
