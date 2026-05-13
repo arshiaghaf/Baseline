@@ -1443,8 +1443,8 @@ button:disabled {
     background:
       linear-gradient(
         145deg,
-        rgba(var(--update-accent-rgb), 0.12),
-        rgba(var(--update-accent-rgb), 0.04) 40%,
+        rgba(var(--update-accent-rgb), 0.085),
+        rgba(var(--update-accent-rgb), 0.02) 40%,
         rgba(var(--update-accent-rgb), 0.01) 72%
       ),
       linear-gradient(180deg, rgba(36, 36, 36, 0.78), rgba(36, 36, 36, 0) 88px),
