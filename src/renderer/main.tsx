@@ -569,7 +569,7 @@ function AllTab({
   compact?: boolean;
 }) {
   return (
-    <div className="stack">
+    <div className="stack all-tab-stack">
       <AppSection
         sectionID="available"
         title={`App Updates (${derived.availableApps.length})`}
