@@ -458,7 +458,7 @@ button:disabled {
   min-height: 124px;
   padding: 14px;
   border: 1px solid rgba(60, 60, 67, 0.05);
-  border-radius: 8px;
+  border-radius: 12px;
   background-clip: padding-box;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 244, 244, 0.96)), #ffffff;
@@ -924,7 +924,8 @@ button:disabled {
 }
 
 @media (max-width: 680px) {
-  .card-grid {
+  .card-grid,
+  .update-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

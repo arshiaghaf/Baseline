@@ -542,6 +542,39 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Update All" })).toBeInTheDocument();
   });
 
+  it("renders full-window update sections as card grids with inline update actions", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ homebrewItems: [cask, formula] })}
+      />
+    );
+
+    expect(container.querySelectorAll(".update-grid")).toHaveLength(2);
+    expect(container.querySelectorAll(".update-card")).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Update" })).toHaveLength(2);
+    expect(
+      Array.from(container.querySelectorAll(".update-card")).map((card) => card.textContent)
+    ).toEqual(expect.arrayContaining([expect.stringContaining("Homebrew")]));
+    expect(
+      Array.from(container.querySelectorAll(".update-card")).map((card) => card.textContent)
+    ).toEqual(expect.arrayContaining([expect.stringContaining("formula")]));
+    expect(screen.getByText("1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("2.0.0")).toBeInTheDocument();
+    expect(screen.getByText("14.0.0")).toBeInTheDocument();
+    expect(screen.getByText("14.1.0")).toBeInTheDocument();
+  });
+
   it("moves installed apps and Homebrew into the Installed sidebar item", () => {
     const installedApp: AppRecord = {
       ...app,
@@ -604,7 +637,7 @@ describe("renderer button parity", () => {
   });
 
   it("renders compact menu bar as all updates without tabs or recent sections", () => {
-    render(
+    const { container } = render(
       <Dashboard
         compact
         onOpenSettings={() => undefined}
@@ -637,6 +670,7 @@ describe("renderer button parity", () => {
     );
 
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(container.querySelector(".update-grid")).not.toBeInTheDocument();
     expect(screen.queryByText("2 available")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh" })).toHaveClass("toolbar-button");

@@ -521,6 +521,7 @@ function SearchResults({
           apps={derived.availableApps}
           snapshot={snapshot}
           empty="All your apps are up to date."
+          cardLayout
         />
       )}
       {derived.allHomebrewOutdated.length > 0 && (
@@ -531,6 +532,7 @@ function SearchResults({
           snapshot={snapshot}
           empty="All your Homebrew items are up to date."
           showUpdateAll
+          cardLayout
         />
       )}
       {searchInstalledApps.length > 0 && (
@@ -573,6 +575,7 @@ function AllTab({
         apps={derived.availableApps}
         snapshot={snapshot}
         empty="All your apps are up to date."
+        cardLayout={!compact}
       />
       <HomebrewSection
         sectionID="outdated"
@@ -581,6 +584,7 @@ function AllTab({
         snapshot={snapshot}
         empty="All your Homebrew items are up to date."
         showUpdateAll
+        cardLayout={!compact}
       />
       {!compact && <AllRecentlyUpdatedSection snapshot={snapshot} derived={derived} />}
     </div>
@@ -652,6 +656,7 @@ function AppsTab({ snapshot, derived }: { snapshot: BaselineSnapshot; derived: D
         apps={derived.availableApps}
         snapshot={snapshot}
         empty="All your apps are up to date."
+        cardLayout
       />
       {snapshot.showRecentlyUpdatedAppsSection && (
         <RecentlyUpdatedAppSection
@@ -682,7 +687,8 @@ function AppSection({
   snapshot,
   empty,
   recentlyUpdated = false,
-  collapsible = false
+  collapsible = false,
+  cardLayout = false
 }: {
   sectionID: string;
   title: string;
@@ -691,6 +697,7 @@ function AppSection({
   empty: string;
   recentlyUpdated?: boolean;
   collapsible?: boolean;
+  cardLayout?: boolean;
 }) {
   const collapsed = collapsible && snapshot.collapsedAppSectionIDs.includes(sectionID);
   return (
@@ -704,6 +711,12 @@ function AppSection({
       {!collapsed &&
         (apps.length === 0 ? (
           <Empty text={empty} />
+        ) : cardLayout ? (
+          <CardGrid sectionClassName="update-grid">
+            {apps.map((app) => (
+              <AppUpdateCard key={app.id} app={app} snapshot={snapshot} />
+            ))}
+          </CardGrid>
         ) : (
           <div className="rows">
             {apps.map((app) => (
@@ -717,6 +730,87 @@ function AppSection({
           </div>
         ))}
     </section>
+  );
+}
+
+function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
+  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
+  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
+  const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
+  const isIgnored = snapshot.ignoredIDs.includes(app.id);
+  const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
+  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
+  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
+  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  const isUninstalling = uninstallableItem
+    ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
+    : false;
+  const actionState = actionStateFromFlags({
+    failed,
+    updating: isUpdating,
+    progress,
+    done
+  });
+
+  return (
+    <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
+      <div className="item-card-top">
+        <button
+          className={
+            app.iconDataURL
+              ? "app-icon app-icon-image clickable-app-icon"
+              : "app-icon clickable-app-icon"
+          }
+          onClick={() => void window.baseline.openApp(app.id)}
+          title="Open app"
+          aria-label="Open app"
+        >
+          {app.iconDataURL ? (
+            <img src={app.iconDataURL} alt="" draggable={false} />
+          ) : (
+            app.displayName.slice(0, 1).toUpperCase()
+          )}
+        </button>
+        <div className="item-card-actions">
+          {update && (
+            <UpdateActionButton
+              state={actionState}
+              disabled={isUninstalling}
+              onAction={() => void window.baseline.performAppUpdate(app.id)}
+            />
+          )}
+          <RowMoreActionButton
+            isIgnored={isIgnored}
+            disabled={isUninstalling}
+            onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
+            uninstallLabel="Uninstall"
+            canUninstall={Boolean(uninstallableItem)}
+            uninstalling={isUninstalling}
+            uninstallDisabled={isUpdating || isUninstalling}
+            onUninstall={() =>
+              uninstallableItem &&
+              requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
+            }
+          />
+        </div>
+      </div>
+      <div className="item-card-main row-main">
+        <div className="row-title">
+          <strong>{app.displayName}</strong>
+          {update && <span>{sourceLabel(update)}</span>}
+        </div>
+        <p>
+          {update ? (
+            <VersionChange
+              from={app.localVersion.raw || "unknown"}
+              to={update.remoteVersion.raw || "unknown"}
+            />
+          ) : (
+            app.localVersion.raw || "unknown"
+          )}
+        </p>
+      </div>
+    </article>
   );
 }
 
@@ -1231,7 +1325,8 @@ export function HomebrewSection({
   empty,
   showUpdateAll = false,
   collapsible = false,
-  recentlyUpdated = false
+  recentlyUpdated = false,
+  cardLayout = false
 }: {
   sectionID: string;
   title: string;
@@ -1241,6 +1336,7 @@ export function HomebrewSection({
   showUpdateAll?: boolean;
   collapsible?: boolean;
   recentlyUpdated?: boolean;
+  cardLayout?: boolean;
 }) {
   const collapsed = collapsible && snapshot.collapsedHomebrewSectionIDs.includes(sectionID);
   return (
@@ -1272,6 +1368,12 @@ export function HomebrewSection({
       {!collapsed &&
         (items.length === 0 ? (
           <Empty text={empty} />
+        ) : cardLayout ? (
+          <CardGrid sectionClassName="update-grid">
+            {items.map((item) => (
+              <HomebrewUpdateCard key={item.id} item={item} snapshot={snapshot} />
+            ))}
+          </CardGrid>
         ) : (
           <div className="rows">
             {items.map((item) => (
@@ -1285,6 +1387,71 @@ export function HomebrewSection({
           </div>
         ))}
     </section>
+  );
+}
+
+function HomebrewUpdateCard({
+  item,
+  snapshot
+}: {
+  item: HomebrewManagedItem;
+  snapshot: BaselineSnapshot;
+}) {
+  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
+  const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
+  const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
+  const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
+  const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
+  const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
+  const progress = snapshot.homebrewBatchProgressByItemID[item.id];
+  const updateState = actionStateFromFlags({
+    failed,
+    updating: isUpdating,
+    progress,
+    done
+  });
+
+  return (
+    <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
+      <div className="item-card-top">
+        <HomebrewItemIcon item={item} snapshot={snapshot} />
+        <div className="item-card-actions">
+          {item.isOutdated && (
+            <UpdateActionButton
+              state={updateState}
+              disabled={isUninstalling}
+              onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
+            />
+          )}
+          <RowMoreActionButton
+            isIgnored={isIgnored}
+            disabled={isUninstalling}
+            onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
+            uninstallLabel="Uninstall"
+            canUninstall={item.kind === "cask"}
+            uninstalling={isUninstalling}
+            uninstallDisabled={isUpdating || isUninstalling}
+            onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
+          />
+        </div>
+      </div>
+      <div className="item-card-main row-main">
+        <div className="row-title">
+          <strong>{item.name}</strong>
+          <span>{item.kind}</span>
+        </div>
+        <p>
+          {item.latestVersion ? (
+            <VersionChange
+              from={item.installedVersion.raw || "unknown"}
+              to={item.latestVersion.raw}
+            />
+          ) : (
+            item.installedVersion.raw || "unknown"
+          )}
+        </p>
+      </div>
+    </article>
   );
 }
 
