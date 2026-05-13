@@ -534,6 +534,11 @@ button:disabled {
   border-top: 0;
 }
 
+.app-shell:not(.compact) .content > .stack > .panel + .panel {
+  border-top: 1px solid rgba(60, 60, 67, 0.06);
+  padding-top: 16px;
+}
+
 .compact .row {
   grid-template-columns: 48px minmax(0, 1fr) auto;
   min-height: 68px;
@@ -1405,7 +1410,8 @@ button:disabled {
   }
 
   .row,
-  .ignored-row {
+  .ignored-row,
+  .app-shell:not(.compact) .content > .stack > .panel + .panel {
     border-color: rgba(235, 235, 245, 0.06);
   }
 
