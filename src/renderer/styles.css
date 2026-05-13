@@ -838,6 +838,7 @@ button:disabled {
 
   .primary-button.outline-button:not(:disabled):hover {
     background: rgba(0, 122, 255, 0.1);
+    box-shadow: none;
     color: #0a84ff;
   }
 
