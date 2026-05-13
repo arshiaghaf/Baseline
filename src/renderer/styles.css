@@ -452,8 +452,10 @@ button:disabled {
 .item-card {
   position: relative;
   display: grid;
+  grid-template-rows: auto auto;
+  align-content: start;
   min-width: 0;
-  min-height: 138px;
+  min-height: 124px;
   padding: 14px;
   border: 1px solid rgba(60, 60, 67, 0.05);
   border-radius: 8px;
@@ -510,7 +512,7 @@ button:disabled {
   display: grid;
   align-content: end;
   min-width: 0;
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .row {
