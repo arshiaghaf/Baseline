@@ -552,17 +552,30 @@ describe("renderer button parity", () => {
       latestVersion: version("14.1.0"),
       isOutdated: true
     };
+    const secondFormula: HomebrewManagedItem = {
+      id: "formula:fd",
+      token: "fd",
+      name: "fd",
+      kind: "formula",
+      installedVersion: version("9.0.0"),
+      latestVersion: version("10.0.0"),
+      isOutdated: true
+    };
     const { container } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
-        snapshot={snapshot({ homebrewItems: [cask, formula] })}
+        snapshot={snapshot({ homebrewItems: [cask, formula, secondFormula] })}
       />
     );
 
-    expect(container.querySelectorAll(".update-grid")).toHaveLength(2);
-    expect(container.querySelectorAll(".update-card")).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "Update" })).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Updates" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "App Updates" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Homebrew Updates" })).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".update-grid")).toHaveLength(1);
+    expect(container.querySelectorAll(".update-card")).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: "Update" })).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Update All" })).toBeInTheDocument();
     expect(
       Array.from(container.querySelectorAll(".update-card")).map((card) => card.textContent)
     ).toEqual(expect.arrayContaining([expect.stringContaining("Homebrew")]));
@@ -573,6 +586,26 @@ describe("renderer button parity", () => {
     expect(screen.getByText("2.0.0")).toBeInTheDocument();
     expect(screen.getByText("14.0.0")).toBeInTheDocument();
     expect(screen.getByText("14.1.0")).toBeInTheDocument();
+    expect(screen.getByText("9.0.0")).toBeInTheDocument();
+    expect(screen.getByText("10.0.0")).toBeInTheDocument();
+  });
+
+  it("renders the Homebrew tab outdated section as a card grid", () => {
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ selectedTab: "homebrew" })}
+      />
+    );
+
+    expect(container.querySelector(".update-grid")).toBeInTheDocument();
+    expect(container.querySelector(".update-card")).toBeInTheDocument();
+    expect(container.querySelector(".rows .update-card")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(screen.getByText("cask")).toBeInTheDocument();
+    expect(screen.getByText("1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("2.0.0")).toBeInTheDocument();
   });
 
   it("moves installed apps and Homebrew into the Installed sidebar item", () => {

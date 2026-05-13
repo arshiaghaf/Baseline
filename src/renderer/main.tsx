@@ -568,27 +568,99 @@ function AllTab({
   derived: DerivedSections;
   compact?: boolean;
 }) {
+  if (compact) {
+    return (
+      <div className="stack">
+        <AppSection
+          sectionID="available"
+          title={`App Updates (${derived.availableApps.length})`}
+          apps={derived.availableApps}
+          snapshot={snapshot}
+          empty="All your apps are up to date."
+        />
+        <HomebrewSection
+          sectionID="outdated"
+          title={`Homebrew Updates (${derived.allHomebrewOutdated.length})`}
+          items={derived.allHomebrewOutdated}
+          snapshot={snapshot}
+          empty="All your Homebrew items are up to date."
+          showUpdateAll
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="stack all-tab-stack">
-      <AppSection
-        sectionID="available"
-        title={`App Updates (${derived.availableApps.length})`}
-        apps={derived.availableApps}
-        snapshot={snapshot}
-        empty="All your apps are up to date."
-        cardLayout={!compact}
-      />
-      <HomebrewSection
-        sectionID="outdated"
-        title={`Homebrew Updates (${derived.allHomebrewOutdated.length})`}
-        items={derived.allHomebrewOutdated}
-        snapshot={snapshot}
-        empty="All your Homebrew items are up to date."
-        showUpdateAll
-        cardLayout={!compact}
-      />
-      {!compact && <AllRecentlyUpdatedSection snapshot={snapshot} derived={derived} />}
+    <div className="stack">
+      <AllUpdatesSection snapshot={snapshot} derived={derived} />
+      <AllRecentlyUpdatedSection snapshot={snapshot} derived={derived} />
     </div>
+  );
+}
+
+function AllUpdatesSection({
+  snapshot,
+  derived
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+}) {
+  const items: RecentGridItem[] = [
+    ...derived.availableApps.map((app) => ({
+      type: "app" as const,
+      id: app.id,
+      updatedAt: "",
+      item: app
+    })),
+    ...derived.allHomebrewOutdated.map((item) => ({
+      type: "homebrew" as const,
+      id: item.id,
+      updatedAt: "",
+      item
+    }))
+  ];
+
+  return (
+    <section className="panel">
+      <PanelTitle
+        title={`Updates (${combinedAvailableCount(derived)})`}
+        action={
+          derived.allHomebrewOutdated.length > 1 ? (
+            <UpdateActionButton
+              state={
+                snapshot.isRunningHomebrewMaintenance
+                  ? { type: "updating" }
+                  : derived.allHomebrewOutdated.every((item) =>
+                        snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id)
+                      )
+                    ? { type: "done" }
+                    : { type: "ready" }
+              }
+              readyLabel="Update All"
+              readyVariant="outline"
+              onAction={() => void window.baseline.performHomebrewUpdateAll()}
+            />
+          ) : undefined
+        }
+      />
+      {items.length === 0 ? (
+        <Empty text="All your apps and Homebrew items are up to date." />
+      ) : (
+        <CardGrid sectionClassName="update-grid">
+          {items.map((item) =>
+            item.type === "app" ? (
+              <AppUpdateCard key={`app:${item.id}`} app={item.item} snapshot={snapshot} />
+            ) : (
+              <HomebrewUpdateCard
+                key={`homebrew:${item.id}`}
+                item={item.item}
+                snapshot={snapshot}
+              />
+            )
+          )}
+        </CardGrid>
+      )}
+    </section>
   );
 }
 
@@ -1198,6 +1270,7 @@ function HomebrewTab({
         snapshot={snapshot}
         empty="All your Homebrew items are up to date."
         showUpdateAll
+        cardLayout
       />
       {snapshot.showRecentlyUpdatedHomebrewSection && (
         <RecentlyUpdatedHomebrewSection
