@@ -43,6 +43,11 @@ type ActionConfirmation =
   | { type: "install"; item: HomebrewCaskDiscoveryItem }
   | { type: "uninstall"; item: HomebrewManagedItem };
 type RequestActionConfirmation = (confirmation: ActionConfirmation) => void;
+type RowUpdateMenuAction = {
+  state: ActionState;
+  disabled?: boolean;
+  onAction: () => void;
+};
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
@@ -945,16 +950,18 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
           )}
         </button>
         <div className="item-card-actions">
-          {update && (
-            <UpdateActionButton
-              state={actionState}
-              disabled={isUninstalling}
-              onAction={() => void window.baseline.performAppUpdate(app.id)}
-            />
-          )}
           <RowMoreActionButton
             isIgnored={isIgnored}
             disabled={isUninstalling}
+            updateAction={
+              update
+                ? {
+                    state: actionState,
+                    disabled: isUninstalling,
+                    onAction: () => void window.baseline.performAppUpdate(app.id)
+                  }
+                : undefined
+            }
             onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
             uninstallLabel="Uninstall"
             canUninstall={Boolean(uninstallableItem)}
@@ -1447,16 +1454,18 @@ function IgnoredHomebrewCard({
       <div className="item-card-top">
         <HomebrewItemIcon item={item} snapshot={snapshot} />
         <div className="item-card-actions">
-          {item.isOutdated && (
-            <UpdateActionButton
-              state={updateState}
-              disabled={isUninstalling}
-              onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
-            />
-          )}
           <RowMoreActionButton
             isIgnored={isIgnored}
             disabled={isUninstalling}
+            updateAction={
+              item.isOutdated
+                ? {
+                    state: updateState,
+                    disabled: isUninstalling,
+                    onAction: () => void window.baseline.performHomebrewUpdate(item.id)
+                  }
+                : undefined
+            }
             onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
             uninstallLabel="Uninstall"
             canUninstall={item.kind === "cask"}
@@ -1655,6 +1664,7 @@ export function UpdateActionButton({
 function RowMoreActionButton({
   isIgnored,
   disabled,
+  updateAction,
   onToggleIgnore,
   uninstallLabel,
   canUninstall = false,
@@ -1664,6 +1674,7 @@ function RowMoreActionButton({
 }: {
   isIgnored: boolean;
   disabled?: boolean;
+  updateAction?: RowUpdateMenuAction;
   onToggleIgnore: () => void;
   uninstallLabel: string;
   canUninstall?: boolean;
@@ -1704,6 +1715,15 @@ function RowMoreActionButton({
     onToggleIgnore();
   };
 
+  const invokeUpdate = () => {
+    if (!updateAction || updateAction.state.type !== "ready" || updateAction.disabled) {
+      return;
+    }
+
+    setOpen(false);
+    updateAction.onAction();
+  };
+
   const invokeUninstall = () => {
     setOpen(false);
     onUninstall();
@@ -1724,6 +1744,32 @@ function RowMoreActionButton({
       </button>
       {open && (
         <div className="row-action-menu-popover" role="menu">
+          {updateAction && (
+            <button
+              onClick={invokeUpdate}
+              role="menuitem"
+              disabled={updateAction.disabled || updateAction.state.type !== "ready"}
+            >
+              {updateAction.state.type === "ready" ? (
+                <RefreshCcw size={14} />
+              ) : updateAction.state.type === "updating" ? (
+                updateAction.state.progress === undefined ? (
+                  <RefreshCcw className="spin" size={14} />
+                ) : (
+                  <ProgressRing value={updateAction.state.progress} />
+                )
+              ) : updateAction.state.type === "done" ? (
+                <Check size={14} />
+              ) : (
+                <span className="failure-glyph">!</span>
+              )}
+              <span>
+                {updateAction.state.type === "ready"
+                  ? "Update"
+                  : actionStateLabel(updateAction.state)}
+              </span>
+            </button>
+          )}
           <button onClick={invokeIgnore} role="menuitem" disabled={disabled}>
             {isIgnored ? <EyeOff size={14} /> : <Eye size={14} />}
             <span>{ignoreLabel}</span>

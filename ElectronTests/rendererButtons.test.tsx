@@ -845,9 +845,17 @@ describe("renderer button parity", () => {
 
     expect(container.querySelector(".ignored-grid")).toBeInTheDocument();
     expect(container.querySelector(".ignored-card")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
     expect(screen.getByText("1.0.0")).toBeInTheDocument();
     expect(screen.getByText("2.0.0")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Update",
+      "Unignore",
+      "Uninstall"
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Update" }));
+    expect(window.baseline.performAppUpdate).toHaveBeenCalledWith(app.id);
 
     rerender(
       <Dashboard
@@ -862,8 +870,16 @@ describe("renderer button parity", () => {
 
     expect(container.querySelector(".ignored-grid")).toBeInTheDocument();
     expect(container.querySelector(".ignored-card")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
     expect(screen.getByText("cask")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Update",
+      "Unignore",
+      "Uninstall"
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Update" }));
+    expect(window.baseline.performHomebrewUpdate).toHaveBeenCalledWith(cask.id);
   });
 
   it("search includes installed items and hides empty result sections", () => {
