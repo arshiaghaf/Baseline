@@ -89,6 +89,28 @@ describe("bundle scanner", () => {
 
     expect(records).toEqual([]);
   });
+
+  it("keeps normal app bundles that contain a generic manifest", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    await writeAppPlist(path.join(root, "Manifested.app"), {
+      displayName: "Manifested",
+      bundleIdentifier: "com.example.manifested",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>Manifest</key>",
+        "  <dict>",
+        "    <key>name</key>",
+        "    <string>Manifested</string>",
+        "  </dict>"
+      ].join("\n")
+    });
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records.map((record) => record.displayName)).toEqual(["Manifested"]);
+  });
 });
 
 async function writeAppPlist(

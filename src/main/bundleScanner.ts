@@ -207,11 +207,13 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
 function isWebAppBundle(info: InfoPlist): boolean {
   const templateParameters = recordValue(info.LSTemplateApplicationParameters);
   const templateIdentifier = stringValue(templateParameters?.CFBundleIdentifier);
+  const bundleIdentifier = stringValue(info.CFBundleIdentifier);
   return (
-    stringValue(info.CFBundleIdentifier)?.startsWith("com.apple.Safari.WebApp.") === true ||
+    bundleIdentifier?.startsWith("com.apple.Safari.WebApp.") === true ||
     templateIdentifier === "com.apple.Safari.WebApp" ||
-    stringValue(info.WKManifestURL) !== undefined ||
-    recordValue(info.Manifest) !== undefined
+    (stringValue(info.WKManifestURL) !== undefined &&
+      (bundleIdentifier?.startsWith("com.apple.Safari.") === true ||
+        templateIdentifier?.startsWith("com.apple.Safari.") === true))
   );
 }
 
