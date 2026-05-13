@@ -356,7 +356,7 @@ function Sidebar({
         >
           <Beer size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Homebrew</span>
-          <strong>{derived.homebrewOutdated.length}</strong>
+          <strong>{derived.allHomebrewOutdated.length}</strong>
         </button>
       </nav>
       <nav className="source-list secondary-source-list">
@@ -1265,8 +1265,8 @@ function HomebrewTab({
       {snapshot.searchText.trim() && <DiscoverSection snapshot={snapshot} />}
       <HomebrewSection
         sectionID="outdated"
-        title={`Outdated (${derived.homebrewOutdated.length})`}
-        items={derived.homebrewOutdated}
+        title={`Outdated (${derived.allHomebrewOutdated.length})`}
+        items={derived.allHomebrewOutdated}
         snapshot={snapshot}
         empty="All your Homebrew items are up to date."
         showUpdateAll
@@ -2498,8 +2498,11 @@ function deriveSections(snapshot: BaselineSnapshot) {
     .filter((item) => item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
     .filter(homebrewFilter)
     .sort(sortHomebrewOutdated);
+  const appsRepresentedOutsideHomebrew = snapshot.apps.filter(
+    (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
+  );
   const allHomebrewOutdated = homebrewOutdated.filter(
-    (item) => !homebrewItemHasAppUpdate(item, availableApps, updatesByAppID)
+    (item) => !homebrewItemHasAppUpdate(item, appsRepresentedOutsideHomebrew, updatesByAppID)
   );
   const homebrewInstalled = snapshot.homebrewItems
     .filter((item) => !item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))

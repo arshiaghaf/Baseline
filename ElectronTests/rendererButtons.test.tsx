@@ -591,21 +591,65 @@ describe("renderer button parity", () => {
   });
 
   it("renders the Homebrew tab outdated section as a card grid", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
     const { container } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
-        snapshot={snapshot({ selectedTab: "homebrew" })}
+        snapshot={snapshot({ selectedTab: "homebrew", homebrewItems: [cask, formula] })}
       />
     );
 
     expect(container.querySelector(".update-grid")).toBeInTheDocument();
     expect(container.querySelector(".update-card")).toBeInTheDocument();
+    expect(container.querySelectorAll(".update-card")).toHaveLength(1);
     expect(container.querySelector(".rows .update-card")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
-    expect(screen.getByText("cask")).toBeInTheDocument();
-    expect(screen.getByText("1.0.0")).toBeInTheDocument();
-    expect(screen.getByText("2.0.0")).toBeInTheDocument();
+    expect(screen.getByText("formula")).toBeInTheDocument();
+    expect(screen.getByText("14.0.0")).toBeInTheDocument();
+    expect(screen.getByText("14.1.0")).toBeInTheDocument();
+    expect(screen.queryByText("cask")).not.toBeInTheDocument();
+    expect(screen.queryByText("1.0.0")).not.toBeInTheDocument();
+    expect(screen.queryByText("2.0.0")).not.toBeInTheDocument();
+  });
+
+  it("hides app-backed Homebrew casks from the Homebrew tab when the matching app is ignored", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "homebrew",
+          ignoredIDs: [app.id],
+          homebrewItems: [cask, formula]
+        })}
+      />
+    );
+
+    expect(container.querySelectorAll(".update-card")).toHaveLength(1);
+    expect(screen.getByText("formula")).toBeInTheDocument();
+    expect(screen.getByText("14.0.0")).toBeInTheDocument();
+    expect(screen.getByText("14.1.0")).toBeInTheDocument();
+    expect(screen.queryByText("cask")).not.toBeInTheDocument();
+    expect(screen.queryByText("1.0.0")).not.toBeInTheDocument();
+    expect(screen.queryByText("2.0.0")).not.toBeInTheDocument();
   });
 
   it("moves installed apps and Homebrew into the Installed sidebar item", () => {
