@@ -18,10 +18,7 @@ export function homebrewItemHasAppRepresentation(
   const identifiers = homebrewItemIdentifiers(item);
   return apps.some((app) => {
     const update = updatesByAppID.get(app.id);
-    if (
-      update?.homebrewToken &&
-      identifiers.has(normalizedHomebrewAppName(update.homebrewToken))
-    ) {
+    if (update?.homebrewToken && identifiers.has(normalizedHomebrewAppName(update.homebrewToken))) {
       return true;
     }
 

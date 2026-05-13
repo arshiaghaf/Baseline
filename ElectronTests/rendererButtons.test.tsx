@@ -1039,6 +1039,45 @@ describe("renderer button parity", () => {
     expect(screen.getAllByRole("heading", { level: 2 })[0]).toHaveTextContent("Discover");
   });
 
+  it("shows app-backed Homebrew updates in search when the app result does not match", () => {
+    const shortNamedApp: AppRecord = {
+      ...app,
+      id: "app:short-name",
+      bundlePath: "/Applications/Short Name.app",
+      displayName: "Short Name",
+      bundleIdentifier: "com.example.shortname"
+    };
+    const matchingUpdate: UpdateRecord = {
+      ...update,
+      id: shortNamedApp.id,
+      appID: shortNamedApp.id,
+      homebrewToken: "long-token-name"
+    };
+    const matchingCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:long-token-name",
+      token: "long-token-name",
+      name: "Long Token Name"
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          searchText: "long-token-name",
+          apps: [shortNamedApp],
+          updates: [matchingUpdate],
+          homebrewItems: [matchingCask]
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("heading", { name: "App Updates" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Homebrew Updates" })).toBeInTheDocument();
+    expect(screen.getByText("Long Token Name")).toBeInTheDocument();
+  });
+
   it("search hides cask-backed apps from Installed Apps", () => {
     const caskBackedApp: AppRecord = {
       ...app,

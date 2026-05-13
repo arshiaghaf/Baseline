@@ -35,9 +35,9 @@ describe("Homebrew app linking", () => {
       checkedAt: "2026-04-30T12:00:00.000Z"
     };
 
-    expect(
-      homebrewItemHasAppRepresentation(codeCask, [app], new Map([[app.id, update]]))
-    ).toBe(true);
+    expect(homebrewItemHasAppRepresentation(codeCask, [app], new Map([[app.id, update]]))).toBe(
+      true
+    );
   });
 
   it("matches casks to ignored apps by app bundle name", () => {

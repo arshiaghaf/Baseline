@@ -2506,9 +2506,11 @@ function deriveSections(snapshot: BaselineSnapshot) {
     .filter((item) => item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
     .filter(homebrewFilter)
     .sort(sortHomebrewOutdated);
-  const appsRepresentedOutsideHomebrew = snapshot.apps.filter(
-    (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
-  );
+  const appsRepresentedOutsideHomebrew = term
+    ? [...availableApps, ...ignoredApps]
+    : snapshot.apps.filter(
+        (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
+      );
   const allHomebrewOutdated = homebrewOutdated.filter(
     (item) =>
       !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew, updatesByAppID)
@@ -2587,7 +2589,6 @@ function uninstallableHomebrewItemForApp(
     return [...identifiers].some((identifier) => appCandidates.has(identifier));
   });
 }
-
 
 function sortByName(lhs: AppRecord, rhs: AppRecord): number {
   return lhs.displayName.localeCompare(rhs.displayName, undefined, { sensitivity: "base" });
