@@ -162,7 +162,7 @@ function extractBundleIdentifiers(object: any): string[] {
       }
     }
   });
-  const found = explicit.size > 0 || hasAppArtifactName(object) ? explicit : quit;
+  const found = explicit.size > 0 || hasExplicitAppArtifactName(object) ? explicit : quit;
   return [...found].sort();
 }
 
@@ -199,10 +199,10 @@ function walk(value: any, visitor: (key: string, value: any) => void): void {
   }
 }
 
-function hasAppArtifactName(object: any): boolean {
+function hasExplicitAppArtifactName(object: any): boolean {
   let found = false;
   walk(object, (key, value) => {
-    if (found || !["app", "apps", "target"].includes(key)) {
+    if (found || !["app", "apps"].includes(key)) {
       return;
     }
     if (typeof value === "string") {

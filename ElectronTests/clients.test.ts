@@ -111,6 +111,39 @@ describe("ported clients", () => {
     expect(index.byBundleIdentifier["com.example.schema-drift"]?.token).toBe("schema-drift-app");
   });
 
+  it("uses quit metadata when non-app artifacts have targets", () => {
+    const client = new HomebrewCaskClient();
+    const index = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "pkg-with-target",
+            version: "1.0.0",
+            artifacts: [
+              {
+                binary: [
+                  "tool",
+                  {
+                    target: "tool-helper"
+                  }
+                ]
+              },
+              {
+                uninstall: [
+                  {
+                    quit: "com.example.pkg-target"
+                  }
+                ]
+              }
+            ]
+          }
+        ])
+      )
+    );
+
+    expect(index.byBundleIdentifier["com.example.pkg-target"]?.token).toBe("pkg-with-target");
+  });
+
   it("searches formulae", () => {
     const client = new HomebrewFormulaClient();
     const index = client.parseIndex(
