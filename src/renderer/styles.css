@@ -38,6 +38,9 @@ button:disabled {
 .app-shell {
   --sidebar-width: 196px;
   --sidebar-background: rgba(255, 255, 255, 0.5);
+  --scrollbar-thumb: rgba(60, 60, 60, 0.07);
+  --scrollbar-thumb-hover: rgba(60, 60, 60, 0.16);
+  --scrollbar-track: transparent;
   --update-accent-rgb: 0, 122, 255;
 
   display: grid;
@@ -47,6 +50,41 @@ button:disabled {
   overflow: hidden;
   border-radius: 18px;
   background: var(--sidebar-background);
+}
+
+.app-shell,
+.app-shell * {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+
+.app-shell::-webkit-scrollbar,
+.app-shell *::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+.app-shell::-webkit-scrollbar-track,
+.app-shell *::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.app-shell::-webkit-scrollbar-thumb,
+.app-shell *::-webkit-scrollbar-thumb {
+  min-width: 16px;
+  min-height: 16px;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+.app-shell::-webkit-scrollbar-thumb:hover,
+.app-shell *::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.app-shell::-webkit-scrollbar-corner,
+.app-shell *::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .app-shell.compact {
@@ -1334,6 +1372,8 @@ button:disabled {
 
   .app-shell {
     --sidebar-background: rgba(25, 25, 25, 0.2);
+    --scrollbar-thumb: rgba(235, 235, 235, 0.08);
+    --scrollbar-thumb-hover: rgba(235, 235, 235, 0.18);
     --update-accent-rgb: 10, 132, 255;
   }
 
