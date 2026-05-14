@@ -451,6 +451,10 @@ button:disabled {
 }
 
 .item-card {
+  --card-inner-highlight-strong: rgba(255, 255, 255, 0.92);
+  --card-inner-highlight-medium: rgba(255, 255, 255, 0.48);
+  --card-inner-highlight-soft: rgba(255, 255, 255, 0.16);
+
   position: relative;
   display: grid;
   grid-template-rows: auto auto;
@@ -473,6 +477,38 @@ button:disabled {
   cursor: default;
   -webkit-user-select: none;
   user-select: none;
+}
+
+.item-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.25px;
+  background:
+    radial-gradient(
+      145% 145% at 0% 0%,
+      var(--card-inner-highlight-strong) 0%,
+      var(--card-inner-highlight-medium) 28%,
+      var(--card-inner-highlight-soft) 48%,
+      transparent 68%
+    ),
+    radial-gradient(
+      145% 145% at 100% 100%,
+      var(--card-inner-highlight-strong) 0%,
+      var(--card-inner-highlight-medium) 28%,
+      var(--card-inner-highlight-soft) 48%,
+      transparent 68%
+    );
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
 }
 
 .item-card :is(strong, span, p) {
@@ -1439,6 +1475,10 @@ button:disabled {
   }
 
   .item-card {
+    --card-inner-highlight-strong: rgba(255, 255, 255, 0.14);
+    --card-inner-highlight-medium: rgba(255, 255, 255, 0.1);
+    --card-inner-highlight-soft: rgba(255, 255, 255, 0.04);
+
     border-color: rgba(245, 245, 245, 0.09);
     background:
       linear-gradient(180deg, rgba(36, 36, 36, 0.78), rgba(36, 36, 36, 0) 88px),
