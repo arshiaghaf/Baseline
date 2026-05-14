@@ -143,14 +143,17 @@ function extractBundleIdentifiers(object: any): string[] {
   const explicit = new Set<string>();
   const quit = new Set<string>();
   walk(object, (key, value) => {
-    if (key === "bundle_id" || key === "bundle_ids" || key === "bundle_identifier") {
+    if (
+      key === "bundle_id" ||
+      key === "bundle_ids" ||
+      key === "bundle_identifier" ||
+      key === "bundleIdentifier"
+    ) {
       if (typeof value === "string") {
         explicit.add(value);
       } else if (Array.isArray(value)) {
         value.filter((entry) => typeof entry === "string").forEach((entry) => explicit.add(entry));
       }
-    } else if (key === "bundleIdentifier" && typeof value === "string") {
-      explicit.add(value);
     } else if (key === "quit") {
       if (typeof value === "string") {
         quit.add(value);

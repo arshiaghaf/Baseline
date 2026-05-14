@@ -94,6 +94,23 @@ describe("ported clients", () => {
     ).toBe("app-with-helper");
   });
 
+  it("keeps array-valued bundleIdentifier metadata", () => {
+    const client = new HomebrewCaskClient();
+    const index = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "schema-drift-app",
+            version: "3.0.0",
+            bundleIdentifier: ["com.example.schema-drift"]
+          }
+        ])
+      )
+    );
+
+    expect(index.byBundleIdentifier["com.example.schema-drift"]?.token).toBe("schema-drift-app");
+  });
+
   it("searches formulae", () => {
     const client = new HomebrewFormulaClient();
     const index = client.parseIndex(
