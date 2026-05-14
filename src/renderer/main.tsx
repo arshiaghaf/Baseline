@@ -644,7 +644,7 @@ function AllUpdatesSection({
                     ? { type: "done" }
                     : { type: "ready" }
               }
-              readyLabel="Update All"
+              readyLabel="Update Brews"
               readyVariant="outline"
               onAction={() => void window.baseline.performHomebrewUpdateAll()}
             />
@@ -1440,7 +1440,7 @@ export function HomebrewSection({
                     ? { type: "done" }
                     : { type: "ready" }
               }
-              readyLabel="Update All"
+              readyLabel="Update Brews"
               readyVariant="outline"
               onAction={() => void window.baseline.performHomebrewUpdateAll()}
             />

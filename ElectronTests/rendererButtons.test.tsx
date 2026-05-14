@@ -509,7 +509,7 @@ describe("renderer button parity", () => {
     expect(window.baseline.installHomebrewItem).toHaveBeenCalledWith(item);
   });
 
-  it("shows Update All only for sections with more than one outdated item", () => {
+  it("shows Update Brews only for sections with more than one outdated item", () => {
     const second: HomebrewManagedItem = {
       ...cask,
       id: "formula:ripgrep",
@@ -527,7 +527,7 @@ describe("renderer button parity", () => {
         showUpdateAll
       />
     );
-    expect(screen.queryByRole("button", { name: "Update All" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update Brews" })).not.toBeInTheDocument();
 
     rerender(
       <HomebrewSection
@@ -539,7 +539,7 @@ describe("renderer button parity", () => {
         showUpdateAll
       />
     );
-    expect(screen.getByRole("button", { name: "Update All" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update Brews" })).toBeInTheDocument();
   });
 
   it("renders full-window update sections as card grids with inline update actions", () => {
@@ -575,7 +575,7 @@ describe("renderer button parity", () => {
     expect(container.querySelectorAll(".update-grid")).toHaveLength(1);
     expect(container.querySelectorAll(".update-card")).toHaveLength(3);
     expect(screen.getAllByRole("button", { name: "Update" })).toHaveLength(3);
-    expect(screen.getByRole("button", { name: "Update All" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update Brews" })).toBeInTheDocument();
     expect(
       Array.from(container.querySelectorAll(".update-card")).map((card) => card.textContent)
     ).toEqual(expect.arrayContaining([expect.stringContaining("Homebrew")]));
