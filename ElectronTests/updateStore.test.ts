@@ -93,7 +93,8 @@ describe("update store helpers", () => {
           installedVersion: version("1.100.0")
         })
       ],
-      now
+      now,
+      { currentDate: new Date("2026-05-01T12:00:00.000Z") }
     );
 
     expect(records).toEqual([
