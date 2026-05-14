@@ -397,6 +397,67 @@ describe("update store helpers", () => {
     expect(item?.latestVersion).toBeUndefined();
   });
 
+  it("falls back to app names when inferred quit metadata points at a helper", async () => {
+    const packageBackedApp = appRecord({
+      bundlePath: "/Applications/Package Backed.app",
+      displayName: "Package Backed",
+      bundleIdentifier: "com.example.pkgbacked",
+      localVersion: version("1.3.0"),
+      iconDataURL: "data:image/png;base64,package-backed"
+    });
+    const entry = {
+      token: "pkg-backed-app",
+      version: version("1.2.0"),
+      bundleIdentifiers: [],
+      inferredBundleIdentifiers: ["com.example.pkgbacked.helper"],
+      appBundleNames: ["package backed.app"]
+    };
+    const store = await makeStore({
+      clients: {
+        scanner: { scanApplications: async () => [packageBackedApp] },
+        homebrew: {
+          fetchIndex: async () => ({
+            byToken: { "pkg-backed-app": entry },
+            byBundleIdentifier: { "com.example.pkgbacked.helper": entry },
+            byAppBundleName: { "package backed.app": [entry] }
+          }),
+          lookupUpdate: () => undefined,
+          searchCasks: () => []
+        },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:pkg-backed-app",
+                token: "pkg-backed-app",
+                name: "pkg-backed-app",
+                kind: "cask",
+                installedVersion: version("1.1.0"),
+                latestVersion: version("1.2.0"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.refresh(false);
+
+    const item = store
+      .getSnapshot()
+      .homebrewItems.find((candidate) => candidate.id === "cask:pkg-backed-app");
+    expect(item).toMatchObject({
+      name: "Package Backed",
+      installedVersion: version("1.3.0"),
+      iconDataURL: "data:image/png;base64,package-backed",
+      isOutdated: false
+    });
+    expect(item?.latestVersion).toBeUndefined();
+  });
+
   it("uses the app bundle version for self-updated casks that still have a newer cask release", async () => {
     const selfUpdatingApp = appRecord({
       bundlePath: "/Applications/Self Updating App.app",

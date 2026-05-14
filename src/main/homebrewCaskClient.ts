@@ -100,12 +100,15 @@ export class HomebrewCaskClient {
         token,
         version: version(comparableVersion(item?.version)),
         homepageURL: sanitizeExternalURL(item?.homepage),
-        bundleIdentifiers: extractBundleIdentifiers(item),
+        ...extractBundleIdentifierMetadata(item),
         appBundleNames: extractAppBundleNames(item)
       };
       byToken[token.toLowerCase()] = entry;
 
-      for (const identifier of entry.bundleIdentifiers) {
+      for (const identifier of [
+        ...entry.bundleIdentifiers,
+        ...(entry.inferredBundleIdentifiers ?? [])
+      ]) {
         const key = identifier.toLowerCase();
         const existing = byBundleIdentifier[key];
         if (!existing || compareVersions(entry.version, existing.version) >= 0) {
@@ -139,7 +142,9 @@ export class HomebrewCaskClient {
   }
 }
 
-function extractBundleIdentifiers(object: any): string[] {
+function extractBundleIdentifierMetadata(
+  object: any
+): Pick<HomebrewCaskEntry, "bundleIdentifiers" | "inferredBundleIdentifiers"> {
   const explicit = new Set<string>();
   const quit = new Set<string>();
   walk(object, (key, value) => {
@@ -162,13 +167,13 @@ function extractBundleIdentifiers(object: any): string[] {
       }
     }
   });
-  const found =
-    explicit.size > 0 || hasExplicitAppArtifactName(object)
-      ? explicit
-      : hasPackageBackedAppNameHint(object)
-        ? quit
-        : new Set<string>();
-  return [...found].sort();
+  if (explicit.size > 0 || hasExplicitAppArtifactName(object)) {
+    return { bundleIdentifiers: [...explicit].sort() };
+  }
+  if (hasPackageBackedAppNameHint(object)) {
+    return { bundleIdentifiers: [], inferredBundleIdentifiers: [...quit].sort() };
+  }
+  return { bundleIdentifiers: [] };
 }
 
 function extractAppBundleNames(object: any): string[] {

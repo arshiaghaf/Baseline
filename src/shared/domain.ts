@@ -42,6 +42,7 @@ export type HomebrewCaskEntry = {
   version: VersionValue;
   homepageURL?: string;
   bundleIdentifiers: string[];
+  inferredBundleIdentifiers?: string[];
   appBundleNames: string[];
 };
 
