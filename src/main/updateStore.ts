@@ -1041,7 +1041,8 @@ export function mergeHomebrewRecentlyUpdatedRecords(
   existingRecords: HomebrewRecentlyUpdatedRecord[],
   previousItems: HomebrewManagedItem[],
   currentItems: HomebrewManagedItem[],
-  now: string
+  now: string,
+  options: { currentDate?: Date } = {}
 ): HomebrewRecentlyUpdatedRecord[] {
   const records = [...existingRecords];
   const previousByID = new Map(previousItems.map((item) => [item.id, item]));
@@ -1067,7 +1068,7 @@ export function mergeHomebrewRecentlyUpdatedRecords(
   }
 
   const retentionMs = 14 * 24 * 60 * 60 * 1000;
-  const cutoff = Date.now() - retentionMs;
+  const cutoff = (options.currentDate?.getTime() ?? Date.now()) - retentionMs;
   const deduped = new Map<string, HomebrewRecentlyUpdatedRecord>();
   for (const record of records) {
     if (new Date(record.updatedAt).getTime() >= cutoff && !deduped.has(record.itemID)) {
