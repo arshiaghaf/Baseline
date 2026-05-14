@@ -146,7 +146,8 @@ function extractBundleIdentifiers(object: any): string[] {
       key === "bundle_id" ||
       key === "bundle_ids" ||
       key === "bundle_identifier" ||
-      key === "bundleIdentifier"
+      key === "bundleIdentifier" ||
+      key === "quit"
     ) {
       if (typeof value === "string") {
         found.add(value);
@@ -161,7 +162,7 @@ function extractBundleIdentifiers(object: any): string[] {
 function extractAppBundleNames(object: any): string[] {
   const found = new Set<string>();
   walk(object, (key, value) => {
-    if (["app", "apps", "target"].includes(key)) {
+    if (["app", "apps", "target", "login_item"].includes(key)) {
       if (typeof value === "string") {
         const normalized = normalizeAppBundleName(value);
         if (normalized) found.add(normalized);

@@ -1020,6 +1020,7 @@ function reconcileHomebrewInventory(
     if (!latestVersion || !isVersionGreater(latestVersion, installedVersion)) {
       return {
         ...item,
+        name: matchingApp?.displayName ?? item.name,
         iconDataURL: iconDataURL ?? item.iconDataURL,
         installedVersion,
         latestVersion: undefined,
@@ -1029,6 +1030,7 @@ function reconcileHomebrewInventory(
     }
     return {
       ...item,
+      name: matchingApp?.displayName ?? item.name,
       iconDataURL: iconDataURL ?? item.iconDataURL,
       installedVersion,
       latestVersion,

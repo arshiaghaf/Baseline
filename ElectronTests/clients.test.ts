@@ -33,6 +33,37 @@ describe("ported clients", () => {
     expect(index.byAppBundleName["example.app"]?.[0]?.token).toBe("example-app");
   });
 
+  it("indexes package-backed casks by uninstall metadata", () => {
+    const client = new HomebrewCaskClient();
+    const index = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "pkg-backed-app",
+            version: "1.2.0",
+            artifacts: [
+              {
+                uninstall: [
+                  {
+                    quit: "com.example.pkgbacked",
+                    login_item: "Package Backed"
+                  }
+                ]
+              },
+              { pkg: ["PackageBacked.pkg"] }
+            ]
+          }
+        ])
+      )
+    );
+
+    expect(index.byBundleIdentifier["com.example.pkgbacked"]?.token).toBe("pkg-backed-app");
+    expect(index.byAppBundleName["package backed.app"]?.[0]?.token).toBe("pkg-backed-app");
+    expect(
+      client.lookupUpdate("com.example.pkgbacked", "Package Backed.app", version("1.2.1"), index)
+    ).toBeUndefined();
+  });
+
   it("searches formulae", () => {
     const client = new HomebrewFormulaClient();
     const index = client.parseIndex(
