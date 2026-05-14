@@ -140,22 +140,26 @@ export class HomebrewCaskClient {
 }
 
 function extractBundleIdentifiers(object: any): string[] {
-  const found = new Set<string>();
+  const explicit = new Set<string>();
+  const quit = new Set<string>();
   walk(object, (key, value) => {
-    if (
-      key === "bundle_id" ||
-      key === "bundle_ids" ||
-      key === "bundle_identifier" ||
-      key === "bundleIdentifier" ||
-      key === "quit"
-    ) {
+    if (key === "bundle_id" || key === "bundle_ids" || key === "bundle_identifier") {
       if (typeof value === "string") {
-        found.add(value);
+        explicit.add(value);
       } else if (Array.isArray(value)) {
-        value.filter((entry) => typeof entry === "string").forEach((entry) => found.add(entry));
+        value.filter((entry) => typeof entry === "string").forEach((entry) => explicit.add(entry));
+      }
+    } else if (key === "bundleIdentifier" && typeof value === "string") {
+      explicit.add(value);
+    } else if (key === "quit") {
+      if (typeof value === "string") {
+        quit.add(value);
+      } else if (Array.isArray(value)) {
+        value.filter((entry) => typeof entry === "string").forEach((entry) => quit.add(entry));
       }
     }
   });
+  const found = explicit.size > 0 || hasAppArtifactName(object) ? explicit : quit;
   return [...found].sort();
 }
 
@@ -190,6 +194,21 @@ function walk(value: any, visitor: (key: string, value: any) => void): void {
       walk(child, visitor);
     }
   }
+}
+
+function hasAppArtifactName(object: any): boolean {
+  let found = false;
+  walk(object, (key, value) => {
+    if (found || !["app", "apps", "target"].includes(key)) {
+      return;
+    }
+    if (typeof value === "string") {
+      found = normalizeAppBundleName(value) !== undefined;
+    } else if (Array.isArray(value)) {
+      found = value.some((entry) => typeof entry === "string" && normalizeAppBundleName(entry));
+    }
+  });
+  return found;
 }
 
 function comparableVersion(raw: unknown): string {

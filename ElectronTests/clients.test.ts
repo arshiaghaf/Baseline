@@ -64,6 +64,36 @@ describe("ported clients", () => {
     ).toBeUndefined();
   });
 
+  it("does not let quit metadata override app artifact matching", () => {
+    const client = new HomebrewCaskClient();
+    const index = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "app-with-helper",
+            version: "2.0.0",
+            artifacts: [
+              { app: ["App With Helper.app"] },
+              {
+                uninstall: [
+                  {
+                    quit: "com.example.helper"
+                  }
+                ]
+              }
+            ]
+          }
+        ])
+      )
+    );
+
+    expect(index.byBundleIdentifier["com.example.helper"]).toBeUndefined();
+    expect(index.byAppBundleName["app with helper.app"]?.[0]?.token).toBe("app-with-helper");
+    expect(
+      client.lookupUpdate("com.example.main", "App With Helper.app", version("1.0.0"), index)?.token
+    ).toBe("app-with-helper");
+  });
+
   it("searches formulae", () => {
     const client = new HomebrewFormulaClient();
     const index = client.parseIndex(
