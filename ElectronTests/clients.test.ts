@@ -111,7 +111,7 @@ describe("ported clients", () => {
     expect(index.byBundleIdentifier["com.example.schema-drift"]?.token).toBe("schema-drift-app");
   });
 
-  it("uses quit metadata when non-app artifacts have targets", () => {
+  it("does not use quit metadata when only non-app artifact targets exist", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(
       Buffer.from(
@@ -141,7 +141,11 @@ describe("ported clients", () => {
       )
     );
 
-    expect(index.byBundleIdentifier["com.example.pkg-target"]?.token).toBe("pkg-with-target");
+    expect(index.byBundleIdentifier["com.example.pkg-target"]).toBeUndefined();
+    expect(index.byAppBundleName["tool-helper.app"]?.[0]?.token).toBe("pkg-with-target");
+    expect(
+      client.lookupUpdate("com.example.pkg-target", "Audio MIDI Setup.app", version("0.9.0"), index)
+    ).toBeUndefined();
   });
 
   it("searches formulae", () => {
