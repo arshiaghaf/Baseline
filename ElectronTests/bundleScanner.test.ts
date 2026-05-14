@@ -58,6 +58,59 @@ describe("bundle scanner", () => {
       "com.example.nested"
     ]);
   });
+
+  it("ignores Safari web app bundles", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    await writeAppPlist(path.join(root, "GitHub.app"), {
+      displayName: "GitHub",
+      bundleIdentifier: "com.apple.Safari.WebApp.96B22158-BAD1-44DA-880D-913DB7E56FC7",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>LSTemplateApplication</key>",
+        "  <true/>",
+        "  <key>LSTemplateApplicationParameters</key>",
+        "  <dict>",
+        "    <key>CFBundleIdentifier</key>",
+        "    <string>com.apple.Safari.WebApp</string>",
+        "  </dict>",
+        "  <key>WKManifestURL</key>",
+        "  <string>https://github.com/manifest.json</string>",
+        "  <key>Manifest</key>",
+        "  <dict>",
+        "    <key>name</key>",
+        "    <string>GitHub</string>",
+        "  </dict>"
+      ].join("\n")
+    });
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records).toEqual([]);
+  });
+
+  it("keeps normal app bundles that contain a generic manifest", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    await writeAppPlist(path.join(root, "Manifested.app"), {
+      displayName: "Manifested",
+      bundleIdentifier: "com.example.manifested",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>Manifest</key>",
+        "  <dict>",
+        "    <key>name</key>",
+        "    <string>Manifested</string>",
+        "  </dict>"
+      ].join("\n")
+    });
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records.map((record) => record.displayName)).toEqual(["Manifested"]);
+  });
 });
 
 async function writeAppPlist(
@@ -65,8 +118,9 @@ async function writeAppPlist(
   {
     displayName,
     bundleIdentifier,
-    version
-  }: { displayName: string; bundleIdentifier: string; version: string }
+    version,
+    extraKeys = ""
+  }: { displayName: string; bundleIdentifier: string; version: string; extraKeys?: string }
 ): Promise<void> {
   await mkdir(path.join(appPath, "Contents"), { recursive: true });
   await writeFile(
@@ -81,6 +135,7 @@ async function writeAppPlist(
   <string>${bundleIdentifier}</string>
   <key>CFBundleShortVersionString</key>
   <string>${version}</string>
+${extraKeys}
 </dict>
 </plist>
 `

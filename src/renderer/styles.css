@@ -38,6 +38,7 @@ button:disabled {
 .app-shell {
   --sidebar-width: 196px;
   --sidebar-background: rgba(255, 255, 255, 0.5);
+  --update-accent-rgb: 0, 122, 255;
 
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
@@ -442,6 +443,135 @@ button:disabled {
   display: grid;
 }
 
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.item-card {
+  --card-inner-highlight-strong: rgba(255, 255, 255, 0.92);
+  --card-inner-highlight-medium: rgba(255, 255, 255, 0.64);
+  --card-inner-highlight-soft: rgba(255, 255, 255, 0.24);
+
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto;
+  align-content: start;
+  min-width: 0;
+  min-height: 124px;
+  padding: 14px;
+  border: 1px solid rgba(67, 67, 67, 0.05);
+  border-radius: 12px;
+  background-clip: padding-box;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 242, 242, 0.96)), #ffffff;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 4px 10px rgba(0, 0, 0, 0.03);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.item-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.25px;
+  background:
+    radial-gradient(
+      145% 145% at 0% 0%,
+      var(--card-inner-highlight-strong) 0%,
+      var(--card-inner-highlight-medium) 28%,
+      var(--card-inner-highlight-soft) 48%,
+      transparent 68%
+    ),
+    radial-gradient(
+      145% 145% at 100% 100%,
+      var(--card-inner-highlight-strong) 0%,
+      var(--card-inner-highlight-medium) 28%,
+      var(--card-inner-highlight-soft) 48%,
+      transparent 68%
+    );
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+.item-card :is(strong, span, p) {
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.item-card.update-card {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(var(--update-accent-rgb), 0.1),
+      rgba(var(--update-accent-rgb), 0.05) 42%,
+      rgba(var(--update-accent-rgb), 0) 72%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(242, 242, 242, 0.96)), #ffffff;
+}
+
+.item-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.item-card .app-icon,
+.item-card .app-icon img {
+  width: 50px;
+  height: 50px;
+}
+
+.item-card .app-icon {
+  border-radius: 12px;
+  font-size: 17px;
+}
+
+.item-card .app-icon.brew {
+  width: 50px;
+  height: 50px;
+}
+
+.item-card .app-icon.brew svg {
+  width: 26px;
+  height: 26px;
+}
+
+.item-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.item-card-main {
+  display: grid;
+  align-content: end;
+  min-width: 0;
+  margin-top: 12px;
+}
+
 .row {
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr) auto;
@@ -459,6 +589,11 @@ button:disabled {
 
 .row:first-child {
   border-top: 0;
+}
+
+.app-shell:not(.compact) .content > .stack > .panel + .panel {
+  border-top: 1px solid rgba(60, 60, 67, 0.06);
+  padding-top: 16px;
 }
 
 .compact .row {
@@ -644,7 +779,7 @@ button:disabled {
   gap: 5px;
   min-height: 26px;
   font-size: 12px;
-  font-weight: 590;
+  font-weight: 500;
   letter-spacing: 0;
   transition:
     transform 150ms ease,
@@ -744,6 +879,14 @@ button:disabled {
     color: #0d0d0d;
   }
 
+  .item-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(60, 60, 67, 0.075);
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.05),
+      0 6px 14px rgba(0, 0, 0, 0.04);
+  }
+
   .update-icon-button:not(:disabled):hover,
   .primary-button:not(:disabled):hover {
     background: #0a84ff;
@@ -752,6 +895,7 @@ button:disabled {
 
   .primary-button.outline-button:not(:disabled):hover {
     background: rgba(0, 122, 255, 0.1);
+    box-shadow: none;
     color: #0a84ff;
   }
 
@@ -808,6 +952,10 @@ button:disabled {
     transform: none;
   }
 
+  .item-card {
+    transition: none;
+  }
+
   .toolbar-button:not(:disabled):hover,
   .icon-button:not(:disabled):hover,
   .secondary-icon-button:not(:disabled):hover,
@@ -832,6 +980,19 @@ button:disabled {
   }
 }
 
+@media (max-width: 920px) {
+  .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .card-grid,
+  .update-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .ghost-button {
   padding: 0 10px;
   border: 1px solid rgba(60, 60, 67, 0.16);
@@ -842,11 +1003,11 @@ button:disabled {
 
 .primary-button,
 .danger-button {
-  min-width: 68px;
+  min-width: 54px;
   padding: 0 12px;
   border: 0;
   border-radius: 999px;
-  background: #007aff;
+  background: rgb(var(--update-accent-rgb));
   color: white;
 }
 
@@ -1173,6 +1334,7 @@ button:disabled {
 
   .app-shell {
     --sidebar-background: rgba(25, 25, 25, 0.2);
+    --update-accent-rgb: 10, 132, 255;
   }
 
   .app-shell.compact {
@@ -1307,8 +1469,35 @@ button:disabled {
   }
 
   .row,
-  .ignored-row {
+  .ignored-row,
+  .app-shell:not(.compact) .content > .stack > .panel + .panel {
     border-color: rgba(235, 235, 245, 0.06);
+  }
+
+  .item-card {
+    --card-inner-highlight-strong: rgba(255, 255, 255, 0.12);
+    --card-inner-highlight-medium: rgba(255, 255, 255, 0.1);
+    --card-inner-highlight-soft: rgba(255, 255, 255, 0.04);
+
+    border-color: rgba(245, 245, 245, 0.09);
+    background:
+      linear-gradient(180deg, rgba(36, 36, 36, 0.78), rgba(36, 36, 36, 0) 88px),
+      linear-gradient(180deg, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.04)), #1a1a1a;
+    box-shadow:
+      0 1px 2px rgba(0, 0, 0, 0.24),
+      0 8px 18px rgba(0, 0, 0, 0.16);
+  }
+
+  .item-card.update-card {
+    background:
+      linear-gradient(
+        145deg,
+        rgba(var(--update-accent-rgb), 0.085),
+        rgba(var(--update-accent-rgb), 0.02) 40%,
+        rgba(var(--update-accent-rgb), 0.01) 72%
+      ),
+      linear-gradient(180deg, rgba(36, 36, 36, 0.78), rgba(36, 36, 36, 0) 88px),
+      linear-gradient(180deg, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.04)), #1a1a1a;
   }
 
   .app-icon {
@@ -1404,6 +1593,13 @@ button:disabled {
     .row-action-menu-popover button:not(:disabled):hover {
       background: rgba(255, 255, 255, 0.1);
     }
+
+    .item-card:hover {
+      border-color: rgba(235, 235, 235, 0.12);
+      box-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.28),
+        0 10px 22px rgba(0, 0, 0, 0.18);
+    }
   }
 
   .confirmation-card {
@@ -1424,7 +1620,7 @@ button:disabled {
   }
 
   .primary-button {
-    background: #0a84ff;
+    background: rgb(var(--update-accent-rgb));
   }
 
   .primary-button.outline-button {

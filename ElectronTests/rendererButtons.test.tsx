@@ -509,7 +509,7 @@ describe("renderer button parity", () => {
     expect(window.baseline.installHomebrewItem).toHaveBeenCalledWith(item);
   });
 
-  it("shows Update All only for sections with more than one outdated item", () => {
+  it("shows Update Brews only for sections with more than one outdated item", () => {
     const second: HomebrewManagedItem = {
       ...cask,
       id: "formula:ripgrep",
@@ -527,7 +527,7 @@ describe("renderer button parity", () => {
         showUpdateAll
       />
     );
-    expect(screen.queryByRole("button", { name: "Update All" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update Brews" })).not.toBeInTheDocument();
 
     rerender(
       <HomebrewSection
@@ -539,7 +539,117 @@ describe("renderer button parity", () => {
         showUpdateAll
       />
     );
-    expect(screen.getByRole("button", { name: "Update All" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update Brews" })).toBeInTheDocument();
+  });
+
+  it("renders full-window update sections as card grids with inline update actions", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    const secondFormula: HomebrewManagedItem = {
+      id: "formula:fd",
+      token: "fd",
+      name: "fd",
+      kind: "formula",
+      installedVersion: version("9.0.0"),
+      latestVersion: version("10.0.0"),
+      isOutdated: true
+    };
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ homebrewItems: [cask, formula, secondFormula] })}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Updates" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "App Updates" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Homebrew Updates" })).not.toBeInTheDocument();
+    expect(container.querySelectorAll(".update-grid")).toHaveLength(1);
+    expect(container.querySelectorAll(".update-card")).toHaveLength(3);
+    expect(screen.getAllByRole("button", { name: "Update" })).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Update Brews" })).toBeInTheDocument();
+    expect(
+      Array.from(container.querySelectorAll(".update-card")).map((card) => card.textContent)
+    ).toEqual(expect.arrayContaining([expect.stringContaining("Homebrew")]));
+    expect(
+      Array.from(container.querySelectorAll(".update-card")).map((card) => card.textContent)
+    ).toEqual(expect.arrayContaining([expect.stringContaining("formula")]));
+    expect(screen.getByText("1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("2.0.0")).toBeInTheDocument();
+    expect(screen.getByText("14.0.0")).toBeInTheDocument();
+    expect(screen.getByText("14.1.0")).toBeInTheDocument();
+    expect(screen.getByText("9.0.0")).toBeInTheDocument();
+    expect(screen.getByText("10.0.0")).toBeInTheDocument();
+  });
+
+  it("renders the Homebrew tab outdated section as a card grid", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ selectedTab: "homebrew", homebrewItems: [cask, formula] })}
+      />
+    );
+
+    expect(container.querySelector(".update-grid")).toBeInTheDocument();
+    expect(container.querySelector(".update-card")).toBeInTheDocument();
+    expect(container.querySelectorAll(".update-card")).toHaveLength(1);
+    expect(container.querySelector(".rows .update-card")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+    expect(screen.getByText("formula")).toBeInTheDocument();
+    expect(screen.getByText("14.0.0")).toBeInTheDocument();
+    expect(screen.getByText("14.1.0")).toBeInTheDocument();
+    expect(screen.queryByText("cask")).not.toBeInTheDocument();
+    expect(screen.queryByText("1.0.0")).not.toBeInTheDocument();
+    expect(screen.queryByText("2.0.0")).not.toBeInTheDocument();
+  });
+
+  it("hides app-backed Homebrew casks from the Homebrew tab when the matching app is ignored", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "homebrew",
+          ignoredIDs: [app.id],
+          homebrewItems: [cask, formula]
+        })}
+      />
+    );
+
+    expect(container.querySelectorAll(".update-card")).toHaveLength(1);
+    expect(screen.getByText("formula")).toBeInTheDocument();
+    expect(screen.getByText("14.0.0")).toBeInTheDocument();
+    expect(screen.getByText("14.1.0")).toBeInTheDocument();
+    expect(screen.queryByText("cask")).not.toBeInTheDocument();
+    expect(screen.queryByText("1.0.0")).not.toBeInTheDocument();
+    expect(screen.queryByText("2.0.0")).not.toBeInTheDocument();
   });
 
   it("moves installed apps and Homebrew into the Installed sidebar item", () => {
@@ -604,7 +714,7 @@ describe("renderer button parity", () => {
   });
 
   it("renders compact menu bar as all updates without tabs or recent sections", () => {
-    render(
+    const { container } = render(
       <Dashboard
         compact
         onOpenSettings={() => undefined}
@@ -637,6 +747,7 @@ describe("renderer button parity", () => {
     );
 
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(container.querySelector(".update-grid")).not.toBeInTheDocument();
     expect(screen.queryByText("2 available")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Refresh" })).toHaveClass("toolbar-button");
@@ -685,7 +796,7 @@ describe("renderer button parity", () => {
     await waitFor(() => expect(screen.getByPlaceholderText("Search")).toHaveFocus());
   });
 
-  it("unifies app and Homebrew recently updated rows in the All tab without duplicating cask-backed apps", () => {
+  it("unifies app and Homebrew recently updated cards in the All tab without duplicating cask-backed apps", () => {
     const currentCask: HomebrewManagedItem = {
       ...cask,
       latestVersion: version("2.0.0"),
@@ -709,7 +820,7 @@ describe("renderer button parity", () => {
       isOutdated: false
     };
 
-    render(
+    const { container } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -764,6 +875,9 @@ describe("renderer button parity", () => {
     );
 
     expect(screen.getByRole("button", { name: "Recently Updated" })).toBeInTheDocument();
+    const recentGrid = container.querySelector(".recent-grid");
+    expect(recentGrid).toBeInTheDocument();
+    expect(recentGrid?.querySelectorAll(".recent-card")).toHaveLength(3);
     expect(
       screen.queryByRole("heading", { name: "Recently Updated Apps" })
     ).not.toBeInTheDocument();
@@ -773,6 +887,110 @@ describe("renderer button parity", () => {
     expect(screen.getAllByText("Example")).toHaveLength(1);
     expect(screen.getByText("Standalone")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
+  });
+
+  it("renders app and Homebrew recently updated sections as card grids outside compact mode", () => {
+    const recentApp = {
+      id: "recent:app",
+      appID: app.id,
+      displayName: app.displayName,
+      fromVersion: version("1.0.0"),
+      toVersion: version("2.0.0"),
+      updatedAt: "2026-04-29T12:00:00.000Z"
+    };
+    const recentCask = {
+      id: "recent:cask",
+      itemID: cask.id,
+      token: cask.token,
+      kind: cask.kind,
+      displayName: cask.name,
+      fromVersion: version("1.0.0"),
+      toVersion: version("2.0.0"),
+      updatedAt: "2026-04-30T12:00:00.000Z"
+    };
+
+    const { container, rerender } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          updates: [],
+          recentlyUpdated: [recentApp]
+        })}
+      />
+    );
+
+    expect(container.querySelector(".recent-grid")).toBeInTheDocument();
+    expect(container.querySelector(".recent-card")).toBeInTheDocument();
+    expect(container.querySelector(".rows .recent-card")).not.toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "homebrew",
+          homebrewItems: [{ ...cask, isOutdated: false }],
+          updates: [],
+          homebrewRecentlyUpdated: [recentCask]
+        })}
+      />
+    );
+
+    expect(container.querySelector(".recent-grid")).toBeInTheDocument();
+    expect(container.querySelector(".recent-card")).toBeInTheDocument();
+  });
+
+  it("renders ignored app and Homebrew sections as card grids with existing update details", () => {
+    const { container, rerender } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          ignoredIDs: [app.id]
+        })}
+      />
+    );
+
+    expect(container.querySelector(".ignored-grid")).toBeInTheDocument();
+    expect(container.querySelector(".ignored-card")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(screen.getByText("1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("2.0.0")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Update",
+      "Unignore",
+      "Uninstall"
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Update" }));
+    expect(window.baseline.performAppUpdate).toHaveBeenCalledWith(app.id);
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "homebrew",
+          ignoredHomebrewItemIDs: [cask.id]
+        })}
+      />
+    );
+
+    expect(container.querySelector(".ignored-grid")).toBeInTheDocument();
+    expect(container.querySelector(".ignored-card")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(screen.getByText("cask")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Update",
+      "Unignore",
+      "Uninstall"
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Update" }));
+    expect(window.baseline.performHomebrewUpdate).toHaveBeenCalledWith(cask.id);
   });
 
   it("search includes installed items and hides empty result sections", () => {
@@ -819,6 +1037,45 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("All your apps are up to date.")).not.toBeInTheDocument();
     expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 2 })[0]).toHaveTextContent("Discover");
+  });
+
+  it("shows app-backed Homebrew updates in search when the app result does not match", () => {
+    const shortNamedApp: AppRecord = {
+      ...app,
+      id: "app:short-name",
+      bundlePath: "/Applications/Short Name.app",
+      displayName: "Short Name",
+      bundleIdentifier: "com.example.shortname"
+    };
+    const matchingUpdate: UpdateRecord = {
+      ...update,
+      id: shortNamedApp.id,
+      appID: shortNamedApp.id,
+      homebrewToken: "long-token-name"
+    };
+    const matchingCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:long-token-name",
+      token: "long-token-name",
+      name: "Long Token Name"
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          searchText: "long-token-name",
+          apps: [shortNamedApp],
+          updates: [matchingUpdate],
+          homebrewItems: [matchingCask]
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("heading", { name: "App Updates" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Homebrew Updates" })).toBeInTheDocument();
+    expect(screen.getByText("Long Token Name")).toBeInTheDocument();
   });
 
   it("search hides cask-backed apps from Installed Apps", () => {

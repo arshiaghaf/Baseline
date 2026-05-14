@@ -62,6 +62,9 @@ export class BundleScannerClient {
     if (!info) {
       return undefined;
     }
+    if (isWebAppBundle(info)) {
+      return undefined;
+    }
 
     const displayName =
       stringValue(info.CFBundleDisplayName) ??
@@ -199,6 +202,19 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function isWebAppBundle(info: InfoPlist): boolean {
+  const templateParameters = recordValue(info.LSTemplateApplicationParameters);
+  const templateIdentifier = stringValue(templateParameters?.CFBundleIdentifier);
+  const bundleIdentifier = stringValue(info.CFBundleIdentifier);
+  return (
+    bundleIdentifier?.startsWith("com.apple.Safari.WebApp.") === true ||
+    templateIdentifier === "com.apple.Safari.WebApp" ||
+    (stringValue(info.WKManifestURL) !== undefined &&
+      (bundleIdentifier?.startsWith("com.apple.Safari.") === true ||
+        templateIdentifier?.startsWith("com.apple.Safari.") === true))
+  );
 }
 
 function resizedIconDataURL(image: NativeImage): string {
