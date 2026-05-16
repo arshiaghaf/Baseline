@@ -1153,14 +1153,17 @@ function appMatchesCaskEntry(app: AppRecord, caskEntry: HomebrewCaskEntry | unde
   if (bundleIdentifier && bundleIdentifiers.size > 0) {
     return bundleIdentifiers.has(bundleIdentifier);
   }
+  const matchesAppBundleName = new Set(caskEntry.appBundleNames).has(
+    normalizedAppBundleName(app.bundlePath)
+  );
   const inferredBundleIdentifiers = new Set(
     (caskEntry.inferredBundleIdentifiers ?? []).map((identifier) => identifier.toLowerCase())
   );
   if (bundleIdentifier && inferredBundleIdentifiers.has(bundleIdentifier)) {
-    return true;
+    return matchesAppBundleName;
   }
 
-  return new Set(caskEntry.appBundleNames).has(normalizedAppBundleName(app.bundlePath));
+  return matchesAppBundleName;
 }
 
 function matchingHomebrewAppIcon(

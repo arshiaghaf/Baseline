@@ -437,6 +437,13 @@ describe("update store helpers", () => {
   });
 
   it("falls back to app names when inferred quit metadata points at a helper", async () => {
+    const helperApp = appRecord({
+      bundlePath: "/Applications/Package Backed Helper.app",
+      displayName: "Package Backed Helper",
+      bundleIdentifier: "com.example.pkgbacked.helper",
+      localVersion: version("1.4.0"),
+      iconDataURL: "data:image/png;base64,helper"
+    });
     const packageBackedApp = appRecord({
       bundlePath: "/Applications/Package Backed.app",
       displayName: "Package Backed",
@@ -453,11 +460,11 @@ describe("update store helpers", () => {
     };
     const store = await makeStore({
       clients: {
-        scanner: { scanApplications: async () => [packageBackedApp] },
+        scanner: { scanApplications: async () => [helperApp, packageBackedApp] },
         homebrew: {
           fetchIndex: async () => ({
             byToken: { "pkg-backed-app": entry },
-            byBundleIdentifier: { "com.example.pkgbacked.helper": entry },
+            byBundleIdentifier: {},
             byAppBundleName: { "package backed.app": [entry] }
           }),
           lookupUpdate: () => undefined,
