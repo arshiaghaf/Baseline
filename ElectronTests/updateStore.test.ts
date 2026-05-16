@@ -348,7 +348,8 @@ describe("update store helpers", () => {
     const entry = {
       token: "pkg-backed-app",
       version: version("1.2.0"),
-      bundleIdentifiers: ["com.example.pkgbacked"],
+      bundleIdentifiers: [],
+      inferredBundleIdentifiers: ["com.example.pkgbacked"],
       appBundleNames: ["package backed.app"]
     };
     const store = await makeStore({

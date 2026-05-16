@@ -170,7 +170,7 @@ function extractBundleIdentifierMetadata(
   if (explicit.size > 0 || hasExplicitAppArtifactName(object)) {
     return { bundleIdentifiers: [...explicit].sort() };
   }
-  if (hasPackageBackedAppNameHint(object)) {
+  if (isPackageBackedAppCandidate(object)) {
     return { bundleIdentifiers: [], inferredBundleIdentifiers: [...quit].sort() };
   }
   return { bundleIdentifiers: [] };
@@ -178,19 +178,22 @@ function extractBundleIdentifierMetadata(
 
 function extractAppBundleNames(object: any): string[] {
   const found = new Set<string>();
+  const addNormalized = (value: string, options: { requireAppSuffix?: boolean } = {}) => {
+    if (options.requireAppSuffix && !value.trim().toLowerCase().endsWith(".app")) {
+      return;
+    }
+    const normalized = normalizeAppBundleName(value);
+    if (normalized) found.add(normalized);
+  };
   walk(object, (key, value) => {
     if (["app", "apps", "target", "login_item"].includes(key)) {
       if (typeof value === "string") {
-        const normalized = normalizeAppBundleName(value);
-        if (normalized) found.add(normalized);
+        addNormalized(value);
       } else if (Array.isArray(value)) {
-        value
-          .filter((entry) => typeof entry === "string")
-          .forEach((entry) => {
-            const normalized = normalizeAppBundleName(entry);
-            if (normalized) found.add(normalized);
-          });
+        value.filter((entry) => typeof entry === "string").forEach((entry) => addNormalized(entry));
       }
+    } else if (key === "delete") {
+      stringValues(value).forEach((entry) => addNormalized(entry, { requireAppSuffix: true }));
     }
   });
   return [...found].sort();
@@ -237,6 +240,56 @@ function hasPackageBackedAppNameHint(object: any): boolean {
     }
   });
   return found;
+}
+
+function isPackageBackedAppCandidate(object: any): boolean {
+  if (!hasArtifactKey(object, "pkg") || hasExplicitAppArtifactName(object)) {
+    return false;
+  }
+  if (hasPackageBackedAppNameHint(object) || hasDeletedAppPathHint(object)) {
+    return true;
+  }
+  return !hasTargetArtifactName(object);
+}
+
+function hasDeletedAppPathHint(object: any): boolean {
+  let found = false;
+  walk(object, (key, value) => {
+    if (found || key !== "delete") {
+      return;
+    }
+    found = stringValues(value).some((entry) => entry.trim().toLowerCase().endsWith(".app"));
+  });
+  return found;
+}
+
+function hasTargetArtifactName(object: any): boolean {
+  let found = false;
+  walk(object, (key, value) => {
+    if (found || key !== "target") {
+      return;
+    }
+    found = stringValues(value).some((entry) => normalizeAppBundleName(entry));
+  });
+  return found;
+}
+
+function hasArtifactKey(object: any, artifactKey: string): boolean {
+  return Array.isArray(object?.artifacts)
+    ? object.artifacts.some(
+        (artifact: unknown) => artifact && typeof artifact === "object" && artifactKey in artifact
+      )
+    : false;
+}
+
+function stringValues(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === "string");
+  }
+  return [];
 }
 
 function comparableVersion(raw: unknown): string {

@@ -64,6 +64,64 @@ describe("ported clients", () => {
     ).toBeUndefined();
   });
 
+  it("indexes package-backed casks without login items by uninstall quit metadata", () => {
+    const client = new HomebrewCaskClient();
+    const index = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "pkg-backed-without-login-item",
+            version: "4.0.0",
+            artifacts: [
+              {
+                uninstall: [
+                  {
+                    quit: "com.example.pkgbacked.no-login",
+                    delete: "/Applications/Package Backed No Login.app"
+                  }
+                ]
+              },
+              { pkg: ["PackageBackedNoLogin.pkg"] }
+            ]
+          }
+        ])
+      )
+    );
+
+    expect(index.byBundleIdentifier["com.example.pkgbacked.no-login"]?.token).toBe(
+      "pkg-backed-without-login-item"
+    );
+    expect(index.byAppBundleName["package backed no login.app"]?.[0]?.token).toBe(
+      "pkg-backed-without-login-item"
+    );
+  });
+
+  it("indexes package-backed casks with only quit metadata when no non-app target is present", () => {
+    const client = new HomebrewCaskClient();
+    const index = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "pkg-backed-quit-only",
+            version: "5.0.0",
+            artifacts: [
+              {
+                uninstall: [
+                  {
+                    quit: "com.example.quitonly"
+                  }
+                ]
+              },
+              { pkg: ["QuitOnly.pkg"] }
+            ]
+          }
+        ])
+      )
+    );
+
+    expect(index.byBundleIdentifier["com.example.quitonly"]?.token).toBe("pkg-backed-quit-only");
+  });
+
   it("does not let quit metadata override app artifact matching", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(
