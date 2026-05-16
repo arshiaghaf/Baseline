@@ -842,6 +842,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         id: appID,
         appID,
         displayName: appRecord.displayName,
+        source: previousUpdate.source,
         fromVersion: previousUpdate.localVersion,
         toVersion: appRecord.localVersion,
         updatedAt: now

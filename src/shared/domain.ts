@@ -95,6 +95,7 @@ export type RecentlyUpdatedRecord = {
   id: string;
   appID: string;
   displayName: string;
+  source?: UpdateSource;
   fromVersion: VersionValue;
   toVersion: VersionValue;
   updatedAt: string;

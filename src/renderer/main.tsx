@@ -29,9 +29,14 @@ import type {
   HomebrewCaskDiscoveryItem,
   HomebrewManagedItem,
   MenuTab,
+  RecentlyUpdatedRecord,
   UpdateRecord
 } from "../shared/domain";
-import { defaultPersistedSnapshot, homebrewPresentationLabel } from "../shared/domain";
+import {
+  defaultPersistedSnapshot,
+  homebrewPresentationLabel,
+  sourceDisplayName
+} from "../shared/domain";
 import {
   homebrewItemHasAppRepresentation,
   homebrewItemIdentifiers,
@@ -822,6 +827,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
   const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
   const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  const label = appSourceLabel(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
@@ -877,7 +883,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {update && <span>{sourceLabel(update)}</span>}
+          {label && <span>{label}</span>}
         </div>
         <p>
           {update ? (
@@ -1027,6 +1033,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
     done
   });
   const recentlyUpdatedRecord = snapshot.recentlyUpdated.find((record) => record.appID === app.id);
+  const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
 
   return (
     <article className={isIgnored ? "item-card recent-card ignored-row" : "item-card recent-card"}>
@@ -1073,7 +1080,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {update && <span>{sourceLabel(update)}</span>}
+          {label && <span>{label}</span>}
         </div>
         <p>
           {recentlyUpdatedRecord
@@ -1094,6 +1101,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
   const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
   const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  const label = appSourceLabel(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
@@ -1151,7 +1159,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {update && <span>{sourceLabel(update)}</span>}
+          {label && <span>{label}</span>}
         </div>
         <p>
           {update ? (
@@ -1197,6 +1205,10 @@ export function AppRow({
   const recentlyUpdatedAt = recentlyUpdated
     ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)?.updatedAt
     : undefined;
+  const recentlyUpdatedRecord = recentlyUpdated
+    ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)
+    : undefined;
+  const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
 
   return (
     <article className={isIgnored ? "row ignored-row" : "row"}>
@@ -1219,7 +1231,7 @@ export function AppRow({
       <div className="row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {update && <span>{sourceLabel(update)}</span>}
+          {label && <span>{label}</span>}
         </div>
         <p>
           {update ? (
@@ -2407,6 +2419,34 @@ function sourceLabel(update: UpdateRecord): string {
   if (update.source === "sparkle") return "Sparkle";
   if (update.source === "homebrew") return "Homebrew";
   return "Update";
+}
+
+function appSourceLabel(
+  app: AppRecord,
+  snapshot: BaselineSnapshot,
+  recentRecord?: RecentlyUpdatedRecord
+): string | undefined {
+  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
+  if (update) {
+    return sourceLabel(update);
+  }
+
+  if (recentRecord?.source && recentRecord.source !== "unknown") {
+    if (recentRecord.source === "homebrew") {
+      const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+      if (uninstallableItem) {
+        return homebrewPresentationLabel(uninstallableItem.kind, uninstallableItem.presentation);
+      }
+    }
+    return sourceDisplayName(recentRecord.source);
+  }
+
+  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  if (uninstallableItem) {
+    return homebrewPresentationLabel(uninstallableItem.kind, uninstallableItem.presentation);
+  }
+
+  return app.sourceHint === "unknown" ? undefined : sourceDisplayName(app.sourceHint);
 }
 
 function selectedTabTitle(tab: MenuTab): string {

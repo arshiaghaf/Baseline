@@ -45,6 +45,7 @@ describe("snapshot persistence", () => {
           id: "app:example",
           appID: "app:example",
           displayName: "Example",
+          source: "sparkle",
           fromVersion: version("1.0.0"),
           toVersion: version("2.0.0"),
           updatedAt: "2026-04-30T12:00:00.000Z"
@@ -70,6 +71,7 @@ describe("snapshot persistence", () => {
       recentlyUpdated: [
         {
           appID: "app:example",
+          source: "sparkle",
           fromVersion: { raw: "1.0.0" },
           toVersion: { raw: "2.0.0" }
         }

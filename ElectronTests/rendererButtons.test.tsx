@@ -1003,6 +1003,65 @@ describe("renderer button parity", () => {
     expect(container.querySelector(".recent-card")).toBeInTheDocument();
   });
 
+  it("shows source labels on recently updated app cards without active updates", () => {
+    const appBackedItem: HomebrewManagedItem = {
+      ...cask,
+      appID: app.id,
+      isOutdated: false,
+      presentation: "app"
+    };
+
+    const { rerender } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          updates: [],
+          homebrewItems: [],
+          recentlyUpdated: [
+            {
+              id: "recent:app",
+              appID: app.id,
+              displayName: app.displayName,
+              source: "sparkle",
+              fromVersion: version("1.0.0"),
+              toVersion: version("2.0.0"),
+              updatedAt: "2026-04-29T12:00:00.000Z"
+            }
+          ]
+        })}
+      />
+    );
+
+    expect(screen.getByText("Sparkle")).toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          updates: [],
+          homebrewItems: [appBackedItem],
+          recentlyUpdated: [
+            {
+              id: "recent:app",
+              appID: app.id,
+              displayName: app.displayName,
+              source: "homebrew",
+              fromVersion: version("1.0.0"),
+              toVersion: version("2.0.0"),
+              updatedAt: "2026-04-29T12:00:00.000Z"
+            }
+          ]
+        })}
+      />
+    );
+
+    expect(screen.getByText("App Cask")).toBeInTheDocument();
+  });
+
   it("renders ignored app and Homebrew sections as card grids with existing update details", () => {
     const { container, rerender } = render(
       <Dashboard
