@@ -33,7 +33,7 @@ describe("ported clients", () => {
     expect(index.byAppBundleName["example.app"]?.[0]?.token).toBe("example-app");
   });
 
-  it("indexes package-backed casks by uninstall metadata", () => {
+  it("matches package-backed casks by app name without indexing inferred quit IDs", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(
       Buffer.from(
@@ -57,14 +57,21 @@ describe("ported clients", () => {
       )
     );
 
-    expect(index.byBundleIdentifier["com.example.pkgbacked"]?.token).toBe("pkg-backed-app");
+    expect(index.byBundleIdentifier["com.example.pkgbacked"]).toBeUndefined();
     expect(index.byAppBundleName["package backed.app"]?.[0]?.token).toBe("pkg-backed-app");
     expect(
       client.lookupUpdate("com.example.pkgbacked", "Package Backed.app", version("1.2.1"), index)
     ).toBeUndefined();
+    expect(
+      client.lookupUpdate("com.example.pkgbacked", "Package Backed.app", version("1.0.0"), index)
+        ?.token
+    ).toBe("pkg-backed-app");
+    expect(
+      client.lookupUpdate("com.example.pkgbacked", "Helper.app", version("1.0.0"), index)
+    ).toBeUndefined();
   });
 
-  it("indexes package-backed casks without login items by uninstall quit metadata", () => {
+  it("matches package-backed casks without login items by deleted app name", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(
       Buffer.from(
@@ -88,15 +95,21 @@ describe("ported clients", () => {
       )
     );
 
-    expect(index.byBundleIdentifier["com.example.pkgbacked.no-login"]?.token).toBe(
-      "pkg-backed-without-login-item"
-    );
+    expect(index.byBundleIdentifier["com.example.pkgbacked.no-login"]).toBeUndefined();
     expect(index.byAppBundleName["package backed no login.app"]?.[0]?.token).toBe(
       "pkg-backed-without-login-item"
     );
+    expect(
+      client.lookupUpdate(
+        "com.example.pkgbacked.no-login",
+        "Package Backed No Login.app",
+        version("3.0.0"),
+        index
+      )?.token
+    ).toBe("pkg-backed-without-login-item");
   });
 
-  it("indexes package-backed casks with only quit metadata when no non-app target is present", () => {
+  it("keeps quit-only package-backed casks searchable without authoritative app matching", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(
       Buffer.from(
@@ -119,7 +132,13 @@ describe("ported clients", () => {
       )
     );
 
-    expect(index.byBundleIdentifier["com.example.quitonly"]?.token).toBe("pkg-backed-quit-only");
+    expect(index.byToken["pkg-backed-quit-only"]?.inferredBundleIdentifiers).toEqual([
+      "com.example.quitonly"
+    ]);
+    expect(index.byBundleIdentifier["com.example.quitonly"]).toBeUndefined();
+    expect(client.searchCasks("quit only", index, new Set()).at(0)?.token).toBe(
+      "pkg-backed-quit-only"
+    );
   });
 
   it("does not let quit metadata override app artifact matching", () => {
@@ -169,7 +188,7 @@ describe("ported clients", () => {
     expect(index.byBundleIdentifier["com.example.schema-drift"]?.token).toBe("schema-drift-app");
   });
 
-  it("keeps explicit bundle identifiers ahead of newer inferred identifiers", () => {
+  it("keeps explicit bundle identifiers when newer casks only infer the same identifier", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(
       Buffer.from(
@@ -200,7 +219,7 @@ describe("ported clients", () => {
     expect(index.byBundleIdentifier["com.example.shared"]?.token).toBe("explicit-owner");
   });
 
-  it("lets explicit bundle identifiers replace older inferred identifiers", () => {
+  it("indexes explicit bundle identifiers even when older casks only infer the same identifier", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(
       Buffer.from(
