@@ -2434,7 +2434,7 @@ function appSourceLabel(
   if (recentRecord?.source && recentRecord.source !== "unknown") {
     if (recentRecord.source === "homebrew") {
       const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
-      if (uninstallableItem) {
+      if (uninstallableItem?.presentation && uninstallableItem.presentation !== "app") {
         return homebrewPresentationLabel(uninstallableItem.kind, uninstallableItem.presentation);
       }
     }
@@ -2442,7 +2442,7 @@ function appSourceLabel(
   }
 
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
-  if (uninstallableItem) {
+  if (uninstallableItem?.presentation && uninstallableItem.presentation !== "app") {
     return homebrewPresentationLabel(uninstallableItem.kind, uninstallableItem.presentation);
   }
 

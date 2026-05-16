@@ -203,7 +203,7 @@ describe("renderer button parity", () => {
   });
 
   it("uses the same short search placeholder on every tab", () => {
-    const { rerender } = render(
+    const { container, rerender } = render(
       <Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />
     );
 
@@ -229,7 +229,7 @@ describe("renderer button parity", () => {
   });
 
   it("clears toolbar search from compact and main layouts", () => {
-    const { rerender } = render(
+    const { container, rerender } = render(
       <Dashboard
         compact
         onOpenSettings={() => undefined}
@@ -1011,7 +1011,7 @@ describe("renderer button parity", () => {
       presentation: "app"
     };
 
-    const { rerender } = render(
+    const { container, rerender } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -1034,7 +1034,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByText("Sparkle")).toBeInTheDocument();
+    expect(
+      within(container.querySelector(".recent-card") as HTMLElement).getByText("Sparkle")
+    ).toBeInTheDocument();
 
     rerender(
       <Dashboard
@@ -1059,7 +1061,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByText("App Cask")).toBeInTheDocument();
+    expect(
+      within(container.querySelector(".recent-card") as HTMLElement).getByText("Homebrew")
+    ).toBeInTheDocument();
   });
 
   it("renders ignored app and Homebrew sections as card grids with existing update details", () => {
