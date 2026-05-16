@@ -58,28 +58,6 @@ export function homebrewItemIdentifiers(
   );
 }
 
-export function normalizedAppCandidates(app: AppRecord): Set<string> {
-  const fileName = app.bundlePath
-    .split("/")
-    .pop()
-    ?.replace(/\.app$/iu, "");
-  const candidates = [app.displayName, app.bundleIdentifier, fileName]
-    .filter((value): value is string => Boolean(value))
-    .map(normalizedHomebrewAppName);
-  return new Set(candidates.flatMap((value) => [value, value.replace(/^com/u, "")]));
-}
-
-export function normalizedStrongAppCandidates(app: AppRecord): Set<string> {
-  const fileName = app.bundlePath
-    .split("/")
-    .pop()
-    ?.replace(/\.app$/iu, "");
-  const candidates = [app.bundleIdentifier, fileName]
-    .filter((value): value is string => Boolean(value))
-    .map(normalizedHomebrewAppName);
-  return new Set(candidates.flatMap((value) => [value, value.replace(/^com/u, "")]));
-}
-
 export function normalizedHomebrewAppName(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
 }
