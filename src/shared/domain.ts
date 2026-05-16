@@ -247,7 +247,7 @@ export function homebrewPresentationLabel(
     return "Formula";
   }
   return {
-    app: "Homebrew App",
+    app: "App Cask",
     cli: "CLI Cask",
     package: "Package Cask",
     cask: "Cask",

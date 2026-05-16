@@ -453,7 +453,7 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Formula")).toBeInTheDocument();
     expect(screen.getAllByText("CLI Cask")).toHaveLength(2);
     expect(screen.getByText("Package Cask")).toBeInTheDocument();
-    expect(screen.getByText("Homebrew App")).toBeInTheDocument();
+    expect(screen.getByText("App Cask")).toBeInTheDocument();
   });
 
   it("keeps ignore enabled while a Homebrew cask is updating and disables uninstall", () => {
