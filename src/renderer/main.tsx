@@ -37,8 +37,6 @@ import {
   homebrewItemIdentifiers,
   homebrewItemMatchesApp,
   isCask,
-  normalizedAppCandidates,
-  normalizedStrongAppCandidates,
   normalizedHomebrewAppName
 } from "../shared/homebrewAppLinking";
 import "./styles.css";
@@ -1821,7 +1819,7 @@ function HomebrewItemIcon({
 }: {
   item: Pick<HomebrewManagedItem, "kind" | "token"> &
     Partial<
-      Pick<HomebrewManagedItem, "name" | "iconDataURL"> &
+      Pick<HomebrewManagedItem, "appID" | "name" | "iconDataURL"> &
         Pick<HomebrewCaskDiscoveryItem, "displayName">
     >;
   snapshot: BaselineSnapshot;
@@ -2543,11 +2541,19 @@ function deriveSections(snapshot: BaselineSnapshot) {
 
 function matchingAppForHomebrewItem(
   item: Pick<HomebrewManagedItem, "kind" | "token"> &
-    Partial<Pick<HomebrewManagedItem, "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">>,
+    Partial<
+      Pick<HomebrewManagedItem, "appID" | "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">
+    >,
   snapshot: BaselineSnapshot
 ): AppRecord | undefined {
   if (!isCask(item.kind)) {
     return undefined;
+  }
+  const appFromExplicitLink = item.appID
+    ? snapshot.apps.find((app) => app.id === item.appID)
+    : undefined;
+  if (appFromExplicitLink) {
+    return appFromExplicitLink;
   }
 
   const identifiers = homebrewItemIdentifiers(item);
@@ -2562,22 +2568,20 @@ function matchingAppForHomebrewItem(
     return appFromUpdate;
   }
 
-  const appFromStrongMatch = snapshot.apps.find((app) =>
-    [...identifiers].some((identifier) => normalizedStrongAppCandidates(app).has(identifier))
-  );
-  if (appFromStrongMatch) {
-    return appFromStrongMatch;
-  }
-
-  return snapshot.apps.find((app) =>
-    [...identifiers].some((identifier) => normalizedAppCandidates(app).has(identifier))
-  );
+  return appFromUpdate;
 }
 
 function uninstallableHomebrewItemForApp(
   app: AppRecord,
   snapshot: BaselineSnapshot
 ): HomebrewManagedItem | undefined {
+  const matchedByExplicitLink = snapshot.homebrewItems.find(
+    (item) => item.kind === "cask" && item.appID === app.id
+  );
+  if (matchedByExplicitLink) {
+    return matchedByExplicitLink;
+  }
+
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
   if (update?.homebrewToken) {
     const token = normalizedHomebrewAppName(update.homebrewToken);
@@ -2589,14 +2593,7 @@ function uninstallableHomebrewItemForApp(
     }
   }
 
-  const appCandidates = normalizedStrongAppCandidates(app);
-  return snapshot.homebrewItems.find((item) => {
-    if (item.kind !== "cask") {
-      return false;
-    }
-    const identifiers = homebrewItemIdentifiers(item);
-    return [...identifiers].some((identifier) => appCandidates.has(identifier));
-  });
+  return undefined;
 }
 
 function sortByName(lhs: AppRecord, rhs: AppRecord): number {

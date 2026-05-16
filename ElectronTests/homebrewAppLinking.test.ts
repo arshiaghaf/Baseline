@@ -40,8 +40,14 @@ describe("Homebrew app linking", () => {
     );
   });
 
-  it("matches casks to ignored apps by app bundle name", () => {
-    expect(homebrewItemHasAppRepresentation(codeCask, [app], new Map())).toBe(true);
+  it("matches casks to ignored apps by explicit app link", () => {
+    expect(homebrewItemHasAppRepresentation({ ...codeCask, appID: app.id }, [app], new Map())).toBe(
+      true
+    );
+  });
+
+  it("does not use app bundle names alone as app-backed proof", () => {
+    expect(homebrewItemHasAppRepresentation(codeCask, [app], new Map())).toBe(false);
   });
 
   it("does not treat formulae as app-backed items", () => {

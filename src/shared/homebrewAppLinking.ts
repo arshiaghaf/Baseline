@@ -7,12 +7,17 @@ import type {
 
 export function homebrewItemHasAppRepresentation(
   item: Pick<HomebrewManagedItem, "kind" | "token"> &
-    Partial<Pick<HomebrewManagedItem, "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">>,
+    Partial<
+      Pick<HomebrewManagedItem, "appID" | "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">
+    >,
   apps: AppRecord[],
   updatesByAppID: Map<string, UpdateRecord>
 ): boolean {
   if (!isCask(item.kind)) {
     return false;
+  }
+  if (item.appID && apps.some((app) => app.id === item.appID)) {
+    return true;
   }
 
   const identifiers = homebrewItemIdentifiers(item);
@@ -21,25 +26,25 @@ export function homebrewItemHasAppRepresentation(
     if (update?.homebrewToken && identifiers.has(normalizedHomebrewAppName(update.homebrewToken))) {
       return true;
     }
-
-    const appCandidates = normalizedStrongAppCandidates(app);
-    return [...identifiers].some((identifier) => appCandidates.has(identifier));
+    return false;
   });
 }
 
 export function homebrewItemMatchesApp(
   item: Pick<HomebrewManagedItem, "kind" | "token"> &
-    Partial<Pick<HomebrewManagedItem, "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">>,
+    Partial<
+      Pick<HomebrewManagedItem, "appID" | "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">
+    >,
   apps: AppRecord[]
 ): boolean {
   if (!isCask(item.kind)) {
     return false;
   }
+  if (item.appID) {
+    return apps.some((app) => app.id === item.appID);
+  }
 
-  const identifiers = homebrewItemIdentifiers(item);
-  return apps.some((app) =>
-    [...identifiers].some((identifier) => normalizedStrongAppCandidates(app).has(identifier))
-  );
+  return false;
 }
 
 export function homebrewItemIdentifiers(

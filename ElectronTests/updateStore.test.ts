@@ -143,6 +143,44 @@ describe("update store helpers", () => {
     expect(records[0]?.toVersion).toEqual(version("1.2.0"));
   });
 
+  it("drops stale Homebrew recent records when the current installed version no longer matches", () => {
+    const records = mergeHomebrewRecentlyUpdatedRecords(
+      [
+        {
+          id: "cask:managed-tool",
+          itemID: "cask:managed-tool",
+          token: "managed-tool",
+          kind: "cask",
+          displayName: "Managed Tool",
+          fromVersion: version("2.0.0"),
+          toVersion: version("3.0.0"),
+          updatedAt: new Date().toISOString()
+        }
+      ],
+      [
+        homebrewItem({
+          id: "cask:managed-tool",
+          token: "managed-tool",
+          name: "Managed Tool",
+          kind: "cask",
+          installedVersion: version("2.0.0")
+        })
+      ],
+      [
+        homebrewItem({
+          id: "cask:managed-tool",
+          token: "managed-tool",
+          name: "Managed Tool",
+          kind: "cask",
+          installedVersion: version("1.0.0")
+        })
+      ],
+      new Date().toISOString()
+    );
+
+    expect(records).toHaveLength(0);
+  });
+
   it("keeps previous Homebrew outdated state when outdated detection is unreliable", () => {
     const current = [
       homebrewItem({
@@ -595,7 +633,7 @@ describe("update store helpers", () => {
       installedVersion: version("1.2026.98.2"),
       latestVersion: version("1.2026.119.1"),
       isOutdated: true,
-      iconDataURL: "data:image/png;base64,icon"
+      iconDataURL: undefined
     });
   });
 
@@ -647,7 +685,7 @@ describe("update store helpers", () => {
       installedVersion: version("1.2026.98.2"),
       latestVersion: version("1.2026.119.1"),
       isOutdated: true,
-      iconDataURL: "data:image/png;base64,icon"
+      iconDataURL: undefined
     });
   });
 

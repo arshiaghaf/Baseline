@@ -186,12 +186,14 @@ function extractAppBundleNames(object: any): string[] {
     if (normalized) found.add(normalized);
   };
   walk(object, (key, value) => {
-    if (["app", "apps", "target", "login_item"].includes(key)) {
+    if (["app", "apps", "login_item"].includes(key)) {
       if (typeof value === "string") {
         addNormalized(value);
       } else if (Array.isArray(value)) {
         value.filter((entry) => typeof entry === "string").forEach((entry) => addNormalized(entry));
       }
+    } else if (key === "target") {
+      stringValues(value).forEach((entry) => addNormalized(entry, { requireAppSuffix: true }));
     } else if (key === "delete") {
       stringValues(value).forEach((entry) => addNormalized(entry, { requireAppSuffix: true }));
     }

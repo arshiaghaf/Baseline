@@ -169,7 +169,7 @@ describe("ported clients", () => {
     expect(index.byBundleIdentifier["com.example.schema-drift"]?.token).toBe("schema-drift-app");
   });
 
-  it("does not use quit metadata when only non-app artifact targets exist", () => {
+  it("does not treat non-app artifact targets as app bundle names", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(
       Buffer.from(
@@ -200,10 +200,36 @@ describe("ported clients", () => {
     );
 
     expect(index.byBundleIdentifier["com.example.pkg-target"]).toBeUndefined();
-    expect(index.byAppBundleName["tool-helper.app"]?.[0]?.token).toBe("pkg-with-target");
+    expect(index.byAppBundleName["tool-helper.app"]).toBeUndefined();
     expect(
       client.lookupUpdate("com.example.pkg-target", "Audio MIDI Setup.app", version("0.9.0"), index)
     ).toBeUndefined();
+  });
+
+  it("keeps app-suffixed artifact targets available for app matching", () => {
+    const client = new HomebrewCaskClient();
+    const index = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "renamed-app-target",
+            version: "2.0.0",
+            artifacts: [
+              {
+                artifact: [
+                  "Original.app",
+                  {
+                    target: "Renamed.app"
+                  }
+                ]
+              }
+            ]
+          }
+        ])
+      )
+    );
+
+    expect(index.byAppBundleName["renamed.app"]?.[0]?.token).toBe("renamed-app-target");
   });
 
   it("searches formulae", () => {

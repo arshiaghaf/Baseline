@@ -118,6 +118,7 @@ export type HomebrewManagedItem = {
   isOutdated: boolean;
   releaseDate?: string;
   iconDataURL?: string;
+  appID?: string;
 };
 
 export type PersistedSnapshot = {

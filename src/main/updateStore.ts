@@ -1009,7 +1009,9 @@ function reconcileHomebrewInventory(
     const caskEntry = caskIndex.byToken[item.token.toLowerCase()];
     const matchingApp = matchingHomebrewApp(updatesByToken, appsByID, apps, item, caskEntry);
     const iconDataURL =
-      matchingApp?.iconDataURL ?? matchingHomebrewAppIcon(item, updatesByToken, appsByID, apps);
+      matchingApp?.iconDataURL ??
+      (caskEntry ? undefined : matchingHomebrewAppIcon(item, updatesByToken, appsByID, apps));
+    const preservedIconDataURL = caskEntry && !matchingApp ? undefined : item.iconDataURL;
     const update = updatesByToken.get(item.token.toLowerCase());
     const installedVersion =
       matchingApp && isVersionGreater(matchingApp.localVersion, item.installedVersion)
@@ -1020,8 +1022,9 @@ function reconcileHomebrewInventory(
     if (!latestVersion || !isVersionGreater(latestVersion, installedVersion)) {
       return {
         ...item,
+        appID: matchingApp?.id,
         name: matchingApp?.displayName ?? item.name,
-        iconDataURL: iconDataURL ?? item.iconDataURL,
+        iconDataURL: iconDataURL ?? preservedIconDataURL,
         installedVersion,
         latestVersion: undefined,
         isOutdated: false,
@@ -1030,8 +1033,9 @@ function reconcileHomebrewInventory(
     }
     return {
       ...item,
+      appID: matchingApp?.id,
       name: matchingApp?.displayName ?? item.name,
-      iconDataURL: iconDataURL ?? item.iconDataURL,
+      iconDataURL: iconDataURL ?? preservedIconDataURL,
       installedVersion,
       latestVersion,
       isOutdated: true
@@ -1071,9 +1075,16 @@ export function mergeHomebrewRecentlyUpdatedRecords(
 
   const retentionMs = 14 * 24 * 60 * 60 * 1000;
   const cutoff = (options.currentDate?.getTime() ?? Date.now()) - retentionMs;
+  const currentByID = new Map(currentItems.map((item) => [item.id, item]));
   const deduped = new Map<string, HomebrewRecentlyUpdatedRecord>();
   for (const record of records) {
-    if (new Date(record.updatedAt).getTime() >= cutoff && !deduped.has(record.itemID)) {
+    const currentItem = currentByID.get(record.itemID);
+    if (
+      currentItem &&
+      compareVersions(record.toVersion, currentItem.installedVersion) === 0 &&
+      new Date(record.updatedAt).getTime() >= cutoff &&
+      !deduped.has(record.itemID)
+    ) {
       deduped.set(record.itemID, record);
     }
   }

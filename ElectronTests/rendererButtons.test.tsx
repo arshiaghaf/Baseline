@@ -800,7 +800,8 @@ describe("renderer button parity", () => {
     const currentCask: HomebrewManagedItem = {
       ...cask,
       latestVersion: version("2.0.0"),
-      isOutdated: false
+      isOutdated: false,
+      appID: app.id
     };
     const standaloneCask: HomebrewManagedItem = {
       ...cask,
@@ -1097,7 +1098,8 @@ describe("renderer button parity", () => {
       token: "managed",
       name: "Managed",
       latestVersion: version("1.0.0"),
-      isOutdated: false
+      isOutdated: false,
+      appID: caskBackedApp.id
     };
 
     render(
@@ -1149,7 +1151,8 @@ describe("renderer button parity", () => {
       token: "managed",
       name: "Managed",
       latestVersion: version("1.0.0"),
-      isOutdated: false
+      isOutdated: false,
+      appID: managedApp.id
     };
 
     render(
@@ -1174,6 +1177,48 @@ describe("renderer button parity", () => {
     expect(installedHomebrew).not.toBeNull();
     expect(within(installedApps as HTMLElement).getAllByText("Managed")).toHaveLength(1);
     expect(within(installedHomebrew as HTMLElement).getByText("Managed")).toBeInTheDocument();
+  });
+
+  it("does not treat a non-app cask token as proof that an installed app is cask-backed", () => {
+    const installedApp: AppRecord = {
+      ...app,
+      id: "app:managed",
+      bundlePath: "/Applications/Managed.app",
+      displayName: "Managed",
+      bundleIdentifier: "com.example.managed"
+    };
+    const nonAppCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:managed",
+      token: "managed",
+      name: "managed",
+      latestVersion: version("1.0.0"),
+      isOutdated: false,
+      iconDataURL: undefined
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "installed",
+          apps: [installedApp],
+          updates: [],
+          homebrewItems: [nonAppCask],
+          homebrewDiscoverItems: []
+        })}
+      />
+    );
+
+    const installedApps = screen.getByRole("button", { name: "Installed Apps" }).closest("section");
+    const installedHomebrew = screen
+      .getByRole("button", { name: "Installed Homebrew" })
+      .closest("section");
+    expect(installedApps).not.toBeNull();
+    expect(installedHomebrew).not.toBeNull();
+    expect(within(installedApps as HTMLElement).getByText("Managed")).toBeInTheDocument();
+    expect(within(installedHomebrew as HTMLElement).getByText("managed")).toBeInTheDocument();
   });
 
   it("collapses persisted secondary sections and toggles them through preferences", () => {
