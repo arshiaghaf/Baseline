@@ -22,7 +22,7 @@ export function homebrewItemHasAppRepresentation(
       return true;
     }
 
-    const appCandidates = normalizedAppCandidates(app);
+    const appCandidates = normalizedStrongAppCandidates(app);
     return [...identifiers].some((identifier) => appCandidates.has(identifier));
   });
 }
@@ -38,7 +38,7 @@ export function homebrewItemMatchesApp(
 
   const identifiers = homebrewItemIdentifiers(item);
   return apps.some((app) =>
-    [...identifiers].some((identifier) => normalizedAppCandidates(app).has(identifier))
+    [...identifiers].some((identifier) => normalizedStrongAppCandidates(app).has(identifier))
   );
 }
 
@@ -59,6 +59,17 @@ export function normalizedAppCandidates(app: AppRecord): Set<string> {
     .pop()
     ?.replace(/\.app$/iu, "");
   const candidates = [app.displayName, app.bundleIdentifier, fileName]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizedHomebrewAppName);
+  return new Set(candidates.flatMap((value) => [value, value.replace(/^com/u, "")]));
+}
+
+export function normalizedStrongAppCandidates(app: AppRecord): Set<string> {
+  const fileName = app.bundlePath
+    .split("/")
+    .pop()
+    ?.replace(/\.app$/iu, "");
+  const candidates = [app.bundleIdentifier, fileName]
     .filter((value): value is string => Boolean(value))
     .map(normalizedHomebrewAppName);
   return new Set(candidates.flatMap((value) => [value, value.replace(/^com/u, "")]));

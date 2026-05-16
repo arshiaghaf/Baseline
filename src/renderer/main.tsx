@@ -38,6 +38,7 @@ import {
   homebrewItemMatchesApp,
   isCask,
   normalizedAppCandidates,
+  normalizedStrongAppCandidates,
   normalizedHomebrewAppName
 } from "../shared/homebrewAppLinking";
 import "./styles.css";
@@ -2486,6 +2487,7 @@ function deriveSections(snapshot: BaselineSnapshot) {
     .sort((lhs, rhs) => sortByUpdateDate(lhs, rhs, updatesByAppID));
   const installedApps = snapshot.apps
     .filter((app) => !updatesByAppID.has(app.id) && !snapshot.ignoredIDs.includes(app.id))
+    .filter((app) => !uninstallableHomebrewItemForApp(app, snapshot))
     .filter(appFilter)
     .sort(sortByName);
   const ignoredApps = snapshot.apps
@@ -2560,6 +2562,13 @@ function matchingAppForHomebrewItem(
     return appFromUpdate;
   }
 
+  const appFromStrongMatch = snapshot.apps.find((app) =>
+    [...identifiers].some((identifier) => normalizedStrongAppCandidates(app).has(identifier))
+  );
+  if (appFromStrongMatch) {
+    return appFromStrongMatch;
+  }
+
   return snapshot.apps.find((app) =>
     [...identifiers].some((identifier) => normalizedAppCandidates(app).has(identifier))
   );
@@ -2580,7 +2589,7 @@ function uninstallableHomebrewItemForApp(
     }
   }
 
-  const appCandidates = normalizedAppCandidates(app);
+  const appCandidates = normalizedStrongAppCandidates(app);
   return snapshot.homebrewItems.find((item) => {
     if (item.kind !== "cask") {
       return false;

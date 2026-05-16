@@ -1081,19 +1081,21 @@ describe("renderer button parity", () => {
   it("search hides cask-backed apps from Installed Apps", () => {
     const caskBackedApp: AppRecord = {
       ...app,
-      id: "app:notion",
-      displayName: "Notion"
+      id: "app:managed",
+      bundlePath: "/Applications/Managed.app",
+      displayName: "Managed"
     };
     const nonCaskApp: AppRecord = {
       ...app,
-      id: "app:notion-notes",
-      displayName: "Notion Notes"
+      id: "app:managed-helper",
+      bundlePath: "/Applications/Managed Helper.app",
+      displayName: "Managed Helper"
     };
     const installedCask: HomebrewManagedItem = {
       ...cask,
-      id: "cask:notion",
-      token: "notion",
-      name: "Notion",
+      id: "cask:managed",
+      token: "managed",
+      name: "Managed",
       latestVersion: version("1.0.0"),
       isOutdated: false
     };
@@ -1104,7 +1106,7 @@ describe("renderer button parity", () => {
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "apps",
-          searchText: "notion",
+          searchText: "managed",
           apps: [caskBackedApp, nonCaskApp],
           updates: [],
           homebrewItems: [installedCask],
@@ -1121,9 +1123,57 @@ describe("renderer button parity", () => {
       .closest("section");
     expect(installedApps).not.toBeNull();
     expect(installedHomebrew).not.toBeNull();
-    expect(within(installedApps as HTMLElement).queryByText("Notion")).not.toBeInTheDocument();
-    expect(within(installedApps as HTMLElement).getByText("Notion Notes")).toBeInTheDocument();
-    expect(within(installedHomebrew as HTMLElement).getByText("Notion")).toBeInTheDocument();
+    expect(within(installedApps as HTMLElement).queryByText("Managed")).not.toBeInTheDocument();
+    expect(within(installedApps as HTMLElement).getByText("Managed Helper")).toBeInTheDocument();
+    expect(within(installedHomebrew as HTMLElement).getByText("Managed")).toBeInTheDocument();
+  });
+
+  it("does not show a Homebrew-backed app twice when another installed variant shares its display name", () => {
+    const managedApp: AppRecord = {
+      ...app,
+      id: "app:managed",
+      bundlePath: "/Applications/Managed.app",
+      displayName: "Managed",
+      bundleIdentifier: "com.example.managed"
+    };
+    const unmanagedVariant: AppRecord = {
+      ...app,
+      id: "app:managed-variant",
+      bundlePath: "/Applications/Managed Variant.app",
+      displayName: "Managed",
+      bundleIdentifier: "com.example.managed.variant"
+    };
+    const installedCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:managed",
+      token: "managed",
+      name: "Managed",
+      latestVersion: version("1.0.0"),
+      isOutdated: false
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "installed",
+          apps: [managedApp, unmanagedVariant],
+          updates: [],
+          homebrewItems: [installedCask],
+          homebrewDiscoverItems: []
+        })}
+      />
+    );
+
+    const installedApps = screen.getByRole("button", { name: "Installed Apps" }).closest("section");
+    const installedHomebrew = screen
+      .getByRole("button", { name: "Installed Homebrew" })
+      .closest("section");
+    expect(installedApps).not.toBeNull();
+    expect(installedHomebrew).not.toBeNull();
+    expect(within(installedApps as HTMLElement).getAllByText("Managed")).toHaveLength(1);
+    expect(within(installedHomebrew as HTMLElement).getByText("Managed")).toBeInTheDocument();
   });
 
   it("collapses persisted secondary sections and toggles them through preferences", () => {
