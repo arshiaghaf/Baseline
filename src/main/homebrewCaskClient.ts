@@ -88,6 +88,7 @@ export class HomebrewCaskClient {
     const raw = JSON.parse(data.toString("utf8")) as any[];
     const byToken: Record<string, HomebrewCaskEntry> = {};
     const byBundleIdentifier: Record<string, HomebrewCaskEntry> = {};
+    const byBundleIdentifierSource: Record<string, "explicit" | "inferred"> = {};
     const byAppBundleName: Record<string, HomebrewCaskEntry[]> = {};
 
     for (const item of raw) {
@@ -105,15 +106,23 @@ export class HomebrewCaskClient {
       };
       byToken[token.toLowerCase()] = entry;
 
-      for (const identifier of [
-        ...entry.bundleIdentifiers,
-        ...(entry.inferredBundleIdentifiers ?? [])
-      ]) {
-        const key = identifier.toLowerCase();
-        const existing = byBundleIdentifier[key];
-        if (!existing || compareVersions(entry.version, existing.version) >= 0) {
-          byBundleIdentifier[key] = entry;
-        }
+      for (const identifier of entry.bundleIdentifiers) {
+        indexBundleIdentifier(
+          byBundleIdentifier,
+          byBundleIdentifierSource,
+          identifier,
+          entry,
+          "explicit"
+        );
+      }
+      for (const identifier of entry.inferredBundleIdentifiers ?? []) {
+        indexBundleIdentifier(
+          byBundleIdentifier,
+          byBundleIdentifierSource,
+          identifier,
+          entry,
+          "inferred"
+        );
       }
 
       for (const appName of entry.appBundleNames) {
@@ -174,6 +183,33 @@ function extractBundleIdentifierMetadata(
     return { bundleIdentifiers: [], inferredBundleIdentifiers: [...quit].sort() };
   }
   return { bundleIdentifiers: [] };
+}
+
+function indexBundleIdentifier(
+  byBundleIdentifier: Record<string, HomebrewCaskEntry>,
+  byBundleIdentifierSource: Record<string, "explicit" | "inferred">,
+  identifier: string,
+  entry: HomebrewCaskEntry,
+  source: "explicit" | "inferred"
+): void {
+  const key = identifier.toLowerCase();
+  const existing = byBundleIdentifier[key];
+  const existingSource = byBundleIdentifierSource[key];
+  if (!existing) {
+    byBundleIdentifier[key] = entry;
+    byBundleIdentifierSource[key] = source;
+    return;
+  }
+  if (existingSource === "explicit" && source === "inferred") {
+    return;
+  }
+  if (
+    (existingSource === "inferred" && source === "explicit") ||
+    (existingSource === source && compareVersions(entry.version, existing.version) >= 0)
+  ) {
+    byBundleIdentifier[key] = entry;
+    byBundleIdentifierSource[key] = source;
+  }
 }
 
 function extractAppBundleNames(object: any): string[] {

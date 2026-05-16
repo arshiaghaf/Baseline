@@ -169,6 +169,68 @@ describe("ported clients", () => {
     expect(index.byBundleIdentifier["com.example.schema-drift"]?.token).toBe("schema-drift-app");
   });
 
+  it("keeps explicit bundle identifiers ahead of newer inferred identifiers", () => {
+    const client = new HomebrewCaskClient();
+    const index = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "explicit-owner",
+            version: "1.0.0",
+            bundleIdentifier: "com.example.shared"
+          },
+          {
+            token: "inferred-owner",
+            version: "2.0.0",
+            artifacts: [
+              {
+                uninstall: [
+                  {
+                    quit: "com.example.shared"
+                  }
+                ]
+              },
+              { pkg: ["InferredOwner.pkg"] }
+            ]
+          }
+        ])
+      )
+    );
+
+    expect(index.byBundleIdentifier["com.example.shared"]?.token).toBe("explicit-owner");
+  });
+
+  it("lets explicit bundle identifiers replace older inferred identifiers", () => {
+    const client = new HomebrewCaskClient();
+    const index = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "inferred-owner",
+            version: "2.0.0",
+            artifacts: [
+              {
+                uninstall: [
+                  {
+                    quit: "com.example.shared"
+                  }
+                ]
+              },
+              { pkg: ["InferredOwner.pkg"] }
+            ]
+          },
+          {
+            token: "explicit-owner",
+            version: "1.0.0",
+            bundleIdentifier: "com.example.shared"
+          }
+        ])
+      )
+    );
+
+    expect(index.byBundleIdentifier["com.example.shared"]?.token).toBe("explicit-owner");
+  });
+
   it("does not treat non-app artifact targets as app bundle names", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(
