@@ -585,7 +585,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ),
         updates,
         apps,
-        homebrewIndex
+        homebrewIndex,
+        previousHomebrewItems
       );
       const recentlyUpdated = this.mergeRecentlyUpdated(apps, updates, previousUpdates, now);
       const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
@@ -989,7 +990,8 @@ function reconcileHomebrewInventory(
   items: HomebrewManagedItem[],
   updates: UpdateRecord[],
   apps: AppRecord[] = [],
-  caskIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex
+  caskIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex,
+  previousItems: HomebrewManagedItem[] = []
 ): HomebrewManagedItem[] {
   const updatesByToken = new Map<string, UpdateRecord>();
   for (const update of updates) {
@@ -1002,6 +1004,7 @@ function reconcileHomebrewInventory(
     }
   }
   const appsByID = new Map(apps.map((app) => [app.id, app]));
+  const previousItemsByID = new Map(previousItems.map((item) => [item.id, item]));
   return items.map((item) => {
     if (item.kind !== "cask") {
       return item;
@@ -1018,11 +1021,17 @@ function reconcileHomebrewInventory(
         ? matchingApp.localVersion
         : item.installedVersion;
     const latestVersion = bestHomebrewCaskLatestVersion(item, update, caskEntry);
+    const previousAppID = previousItemsByID.get(item.id)?.appID;
+    const preservedAppID =
+      !caskEntry && !matchingApp && previousAppID && appsByID.has(previousAppID)
+        ? previousAppID
+        : undefined;
+    const appID = matchingApp?.id ?? preservedAppID;
 
     if (!latestVersion || !isVersionGreater(latestVersion, installedVersion)) {
       return {
         ...item,
-        appID: matchingApp?.id,
+        appID,
         name: matchingApp?.displayName ?? item.name,
         iconDataURL: iconDataURL ?? preservedIconDataURL,
         installedVersion,
@@ -1033,7 +1042,7 @@ function reconcileHomebrewInventory(
     }
     return {
       ...item,
-      appID: matchingApp?.id,
+      appID,
       name: matchingApp?.displayName ?? item.name,
       iconDataURL: iconDataURL ?? preservedIconDataURL,
       installedVersion,

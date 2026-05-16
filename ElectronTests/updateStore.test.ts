@@ -588,6 +588,57 @@ describe("update store helpers", () => {
     });
   });
 
+  it("preserves proven cask app links when current cask metadata is unavailable", async () => {
+    const selfUpdatingApp = appRecord({
+      bundlePath: "/Applications/Self Updating App.app",
+      displayName: "Self Updating App",
+      bundleIdentifier: "com.example.selfupdating",
+      localVersion: version("1.2026.119.1")
+    });
+    const store = await makeStore({
+      clients: {
+        scanner: { scanApplications: async () => [selfUpdatingApp] },
+        homebrew: {
+          fetchIndex: vi
+            .fn()
+            .mockResolvedValueOnce(caskIndexForSelfUpdatingApp(version("1.2026.119.1")))
+            .mockResolvedValue(emptyHomebrewCaskIndex),
+          lookupUpdate: () => undefined,
+          searchCasks: () => []
+        },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:self-updating-app",
+                token: "self-updating-app",
+                name: "self-updating-app",
+                kind: "cask",
+                installedVersion: version("1.2026.98.2"),
+                latestVersion: version("1.2026.119.1"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.refresh(false);
+    await store.refresh(false);
+
+    const item = store
+      .getSnapshot()
+      .homebrewItems.find((candidate) => candidate.id === "cask:self-updating-app");
+    expect(item).toMatchObject({
+      appID: selfUpdatingApp.id,
+      name: "self-updating-app",
+      installedVersion: version("1.2026.98.2")
+    });
+  });
+
   it("does not use app bundle-name matches when cask and app bundle identifiers conflict", async () => {
     const sameNameApp = appRecord({
       bundlePath: "/Applications/Self Updating App.app",
