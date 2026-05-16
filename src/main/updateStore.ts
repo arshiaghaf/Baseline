@@ -1027,11 +1027,15 @@ function reconcileHomebrewInventory(
         ? previousAppID
         : undefined;
     const appID = matchingApp?.id ?? preservedAppID;
+    const presentation: HomebrewManagedItem["presentation"] = appID
+      ? "app"
+      : (caskEntry?.presentation ?? item.presentation);
 
     if (!latestVersion || !isVersionGreater(latestVersion, installedVersion)) {
       return {
         ...item,
         appID,
+        presentation,
         name: matchingApp?.displayName ?? item.name,
         iconDataURL: iconDataURL ?? preservedIconDataURL,
         installedVersion,
@@ -1043,6 +1047,7 @@ function reconcileHomebrewInventory(
     return {
       ...item,
       appID,
+      presentation,
       name: matchingApp?.displayName ?? item.name,
       iconDataURL: iconDataURL ?? preservedIconDataURL,
       installedVersion,

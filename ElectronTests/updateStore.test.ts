@@ -53,6 +53,7 @@ function caskIndexForSelfUpdatingApp(latestVersion: ReturnType<typeof version>):
   const entry = {
     token: "self-updating-app",
     version: latestVersion,
+    presentation: "app" as const,
     bundleIdentifiers: ["com.example.selfupdating"],
     appBundleNames: ["self updating app.app"]
   };
@@ -386,6 +387,7 @@ describe("update store helpers", () => {
     const entry = {
       token: "pkg-backed-app",
       version: version("1.2.0"),
+      presentation: "app" as const,
       bundleIdentifiers: [],
       inferredBundleIdentifiers: ["com.example.pkgbacked"],
       appBundleNames: ["package backed.app"]
@@ -454,6 +456,7 @@ describe("update store helpers", () => {
     const entry = {
       token: "pkg-backed-app",
       version: version("1.2.0"),
+      presentation: "app" as const,
       bundleIdentifiers: [],
       inferredBundleIdentifiers: ["com.example.pkgbacked.helper"],
       appBundleNames: ["package backed.app"]

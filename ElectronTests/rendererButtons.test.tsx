@@ -396,6 +396,66 @@ describe("renderer button parity", () => {
     expect(screen.queryByRole("button", { name: "Open app" })).not.toBeInTheDocument();
   });
 
+  it("shows presentation labels for Homebrew items without changing their install kind", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:example-cli",
+      token: "example-cli",
+      name: "example-cli",
+      kind: "formula",
+      presentation: "formula",
+      installedVersion: version("1.0.0"),
+      isOutdated: false
+    };
+    const cliCask: HomebrewManagedItem = {
+      id: "cask:example-cli-cask",
+      token: "example-cli-cask",
+      name: "example-cli-cask",
+      kind: "cask",
+      presentation: "cli",
+      installedVersion: version("1.0.0"),
+      isOutdated: false
+    };
+    const packageCask: HomebrewManagedItem = {
+      id: "cask:example-package",
+      token: "example-package",
+      name: "example-package",
+      kind: "cask",
+      presentation: "package",
+      installedVersion: version("1.0.0"),
+      isOutdated: false
+    };
+    const appCask: HomebrewManagedItem = {
+      ...cask,
+      presentation: "app"
+    };
+    const discoverItem: HomebrewCaskDiscoveryItem = {
+      id: "cask:discover-cli",
+      token: "discover-cli",
+      displayName: "Discover CLI",
+      kind: "cask",
+      presentation: "cli",
+      version: version("1.0.0")
+    };
+
+    render(
+      <>
+        <HomebrewRow item={formula} snapshot={snapshot({ homebrewItems: [formula] })} />
+        <HomebrewRow item={cliCask} snapshot={snapshot({ homebrewItems: [cliCask] })} />
+        <HomebrewRow item={packageCask} snapshot={snapshot({ homebrewItems: [packageCask] })} />
+        <HomebrewRow item={appCask} snapshot={snapshot({ homebrewItems: [appCask] })} />
+        <DiscoverRow
+          item={discoverItem}
+          snapshot={snapshot({ homebrewDiscoverItems: [discoverItem] })}
+        />
+      </>
+    );
+
+    expect(screen.getByText("Formula")).toBeInTheDocument();
+    expect(screen.getAllByText("CLI Cask")).toHaveLength(2);
+    expect(screen.getByText("Package Cask")).toBeInTheDocument();
+    expect(screen.getByText("Homebrew App")).toBeInTheDocument();
+  });
+
   it("keeps ignore enabled while a Homebrew cask is updating and disables uninstall", () => {
     render(
       <HomebrewRow
@@ -581,7 +641,7 @@ describe("renderer button parity", () => {
     ).toEqual(expect.arrayContaining([expect.stringContaining("Homebrew")]));
     expect(
       Array.from(container.querySelectorAll(".update-card")).map((card) => card.textContent)
-    ).toEqual(expect.arrayContaining([expect.stringContaining("formula")]));
+    ).toEqual(expect.arrayContaining([expect.stringContaining("Formula")]));
     expect(screen.getByText("1.0.0")).toBeInTheDocument();
     expect(screen.getByText("2.0.0")).toBeInTheDocument();
     expect(screen.getByText("14.0.0")).toBeInTheDocument();
@@ -613,10 +673,10 @@ describe("renderer button parity", () => {
     expect(container.querySelectorAll(".update-card")).toHaveLength(1);
     expect(container.querySelector(".rows .update-card")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
-    expect(screen.getByText("formula")).toBeInTheDocument();
+    expect(screen.getByText("Formula")).toBeInTheDocument();
     expect(screen.getByText("14.0.0")).toBeInTheDocument();
     expect(screen.getByText("14.1.0")).toBeInTheDocument();
-    expect(screen.queryByText("cask")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cask")).not.toBeInTheDocument();
     expect(screen.queryByText("1.0.0")).not.toBeInTheDocument();
     expect(screen.queryByText("2.0.0")).not.toBeInTheDocument();
   });
@@ -644,10 +704,10 @@ describe("renderer button parity", () => {
     );
 
     expect(container.querySelectorAll(".update-card")).toHaveLength(1);
-    expect(screen.getByText("formula")).toBeInTheDocument();
+    expect(screen.getByText("Formula")).toBeInTheDocument();
     expect(screen.getByText("14.0.0")).toBeInTheDocument();
     expect(screen.getByText("14.1.0")).toBeInTheDocument();
-    expect(screen.queryByText("cask")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cask")).not.toBeInTheDocument();
     expect(screen.queryByText("1.0.0")).not.toBeInTheDocument();
     expect(screen.queryByText("2.0.0")).not.toBeInTheDocument();
   });
@@ -983,7 +1043,7 @@ describe("renderer button parity", () => {
     expect(container.querySelector(".ignored-grid")).toBeInTheDocument();
     expect(container.querySelector(".ignored-card")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
-    expect(screen.getByText("cask")).toBeInTheDocument();
+    expect(screen.getByText("Cask")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Actions" }));
     expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "Update",

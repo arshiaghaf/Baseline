@@ -31,7 +31,7 @@ import type {
   MenuTab,
   UpdateRecord
 } from "../shared/domain";
-import { defaultPersistedSnapshot } from "../shared/domain";
+import { defaultPersistedSnapshot, homebrewPresentationLabel } from "../shared/domain";
 import {
   homebrewItemHasAppRepresentation,
   homebrewItemIdentifiers,
@@ -1373,7 +1373,7 @@ export function DiscoverRow({
       <div className="row-main">
         <div className="row-title">
           <strong>{item.displayName}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>{item.version.raw || item.token}</p>
       </div>
@@ -1519,7 +1519,7 @@ function HomebrewUpdateCard({
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>
           {item.latestVersion ? (
@@ -1664,7 +1664,7 @@ function RecentHomebrewCard({
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>
           {recentlyUpdatedRecord
@@ -1726,7 +1726,7 @@ function IgnoredHomebrewCard({
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>
           {item.latestVersion ? (
@@ -1775,7 +1775,7 @@ export function HomebrewRow({
       <div className="row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>
           {recentlyUpdatedAt ? (
@@ -1817,7 +1817,7 @@ function HomebrewItemIcon({
   item,
   snapshot
 }: {
-  item: Pick<HomebrewManagedItem, "kind" | "token"> &
+  item: Pick<HomebrewManagedItem, "kind" | "token" | "presentation"> &
     Partial<
       Pick<HomebrewManagedItem, "appID" | "name" | "iconDataURL"> &
         Pick<HomebrewCaskDiscoveryItem, "displayName">
@@ -1827,7 +1827,8 @@ function HomebrewItemIcon({
   const app = matchingAppForHomebrewItem(item, snapshot);
   const iconDataURL = item.iconDataURL ?? app?.iconDataURL;
   const isCaskItem = isCask(item.kind);
-  const fallbackIcon = isCaskItem ? <Package size={26} /> : <Terminal size={26} />;
+  const isCliLike = item.kind === "formula" || item.presentation === "cli";
+  const fallbackIcon = isCliLike ? <Terminal size={26} /> : <Package size={26} />;
   const fallbackClassName = isCaskItem ? "app-icon brew cask" : "app-icon brew formula";
 
   if (app) {
@@ -2089,7 +2090,10 @@ function ActionConfirmationOverlay({
       : `Uninstall ${confirmation.item.name}?`;
   const message =
     confirmation.type === "install"
-      ? `This will run Homebrew and install ${confirmation.item.displayName} (${confirmation.item.kind} ${confirmation.item.token}) on your Mac.`
+      ? `This will run Homebrew and install ${confirmation.item.displayName} (${homebrewPresentationLabel(
+          confirmation.item.kind,
+          confirmation.item.presentation
+        )} ${confirmation.item.token}) on your Mac.`
       : "This will fully delete the item from your Mac. Do you want to proceed?";
   const actionTitle =
     confirmation.type === "install"
@@ -2542,7 +2546,8 @@ function deriveSections(snapshot: BaselineSnapshot) {
 function matchingAppForHomebrewItem(
   item: Pick<HomebrewManagedItem, "kind" | "token"> &
     Partial<
-      Pick<HomebrewManagedItem, "appID" | "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">
+      Pick<HomebrewManagedItem, "appID" | "name" | "presentation"> &
+        Pick<HomebrewCaskDiscoveryItem, "displayName">
     >,
   snapshot: BaselineSnapshot
 ): AppRecord | undefined {
