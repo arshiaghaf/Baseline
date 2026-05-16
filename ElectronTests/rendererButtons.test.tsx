@@ -203,7 +203,7 @@ describe("renderer button parity", () => {
   });
 
   it("uses the same short search placeholder on every tab", () => {
-    const { container, rerender } = render(
+    const { rerender } = render(
       <Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />
     );
 
@@ -229,7 +229,7 @@ describe("renderer button parity", () => {
   });
 
   it("clears toolbar search from compact and main layouts", () => {
-    const { container, rerender } = render(
+    const { rerender } = render(
       <Dashboard
         compact
         onOpenSettings={() => undefined}
@@ -868,6 +868,7 @@ describe("renderer button parity", () => {
       id: "cask:standalone",
       token: "standalone",
       name: "Standalone",
+      presentation: "app",
       latestVersion: version("2.0.0"),
       isOutdated: false
     };
@@ -948,6 +949,11 @@ describe("renderer button parity", () => {
     expect(screen.getAllByText("Example")).toHaveLength(1);
     expect(screen.getByText("Standalone")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    const standaloneCard = [...(recentGrid?.querySelectorAll(".recent-card") ?? [])].find((card) =>
+      card.textContent?.includes("Standalone")
+    );
+    expect(standaloneCard).toBeDefined();
+    expect(within(standaloneCard as HTMLElement).getByText("Homebrew")).toBeInTheDocument();
   });
 
   it("renders app and Homebrew recently updated sections as card grids outside compact mode", () => {
@@ -1051,7 +1057,6 @@ describe("renderer button parity", () => {
               id: "recent:app",
               appID: app.id,
               displayName: app.displayName,
-              source: "homebrew",
               fromVersion: version("1.0.0"),
               toVersion: version("2.0.0"),
               updatedAt: "2026-04-29T12:00:00.000Z"

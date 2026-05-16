@@ -726,7 +726,7 @@ function AllRecentlyUpdatedSection({
         (rows.length === 0 ? (
           <Empty text="No recently updated items yet." />
         ) : (
-          <RecentGrid items={rows} snapshot={snapshot} />
+          <RecentGrid items={rows} snapshot={snapshot} homebrewAppCaskLabel="Homebrew" />
         ))}
     </section>
   );
@@ -990,14 +990,27 @@ type RecentGridItem =
       item: HomebrewManagedItem;
     };
 
-function RecentGrid({ items, snapshot }: { items: RecentGridItem[]; snapshot: BaselineSnapshot }) {
+function RecentGrid({
+  items,
+  snapshot,
+  homebrewAppCaskLabel
+}: {
+  items: RecentGridItem[];
+  snapshot: BaselineSnapshot;
+  homebrewAppCaskLabel?: string;
+}) {
   return (
     <CardGrid sectionClassName="recent-grid">
       {items.map((item) =>
         item.type === "app" ? (
           <RecentAppCard key={`app:${item.id}`} app={item.item} snapshot={snapshot} />
         ) : (
-          <RecentHomebrewCard key={`homebrew:${item.id}`} item={item.item} snapshot={snapshot} />
+          <RecentHomebrewCard
+            key={`homebrew:${item.id}`}
+            item={item.item}
+            snapshot={snapshot}
+            appCaskLabel={homebrewAppCaskLabel}
+          />
         )
       )}
     </CardGrid>
@@ -1627,10 +1640,12 @@ function IgnoredHomebrewSection({
 
 function RecentHomebrewCard({
   item,
-  snapshot
+  snapshot,
+  appCaskLabel
 }: {
   item: HomebrewManagedItem;
   snapshot: BaselineSnapshot;
+  appCaskLabel?: string;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
@@ -1676,7 +1691,7 @@ function RecentHomebrewCard({
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
-          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
+          <span>{homebrewItemLabel(item, appCaskLabel)}</span>
         </div>
         <p>
           {recentlyUpdatedRecord
@@ -2435,18 +2450,27 @@ function appSourceLabel(
     if (recentRecord.source === "homebrew") {
       const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
       if (uninstallableItem?.presentation && uninstallableItem.presentation !== "app") {
-        return homebrewPresentationLabel(uninstallableItem.kind, uninstallableItem.presentation);
+        return homebrewItemLabel(uninstallableItem);
       }
     }
     return sourceDisplayName(recentRecord.source);
   }
 
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
-  if (uninstallableItem?.presentation && uninstallableItem.presentation !== "app") {
-    return homebrewPresentationLabel(uninstallableItem.kind, uninstallableItem.presentation);
+  if (uninstallableItem) {
+    return uninstallableItem.presentation === "app" || uninstallableItem.appID === app.id
+      ? "Homebrew"
+      : homebrewItemLabel(uninstallableItem);
   }
 
   return app.sourceHint === "unknown" ? undefined : sourceDisplayName(app.sourceHint);
+}
+
+function homebrewItemLabel(item: HomebrewManagedItem, appCaskLabel?: string): string {
+  if (item.presentation === "app" && appCaskLabel) {
+    return appCaskLabel;
+  }
+  return homebrewPresentationLabel(item.kind, item.presentation);
 }
 
 function selectedTabTitle(tab: MenuTab): string {
