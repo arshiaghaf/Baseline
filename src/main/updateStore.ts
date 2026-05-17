@@ -1022,7 +1022,8 @@ function reconcileHomebrewInventory(
         ? matchingApp.localVersion
         : item.installedVersion;
     const latestVersion = bestHomebrewCaskLatestVersion(item, update, caskEntry);
-    const previousAppID = previousItemsByID.get(item.id)?.appID;
+    const previousItem = previousItemsByID.get(item.id);
+    const previousAppID = previousItem?.appID;
     const preservedAppID =
       !caskEntry && !matchingApp && previousAppID && appsByID.has(previousAppID)
         ? previousAppID
@@ -1030,7 +1031,7 @@ function reconcileHomebrewInventory(
     const appID = matchingApp?.id ?? preservedAppID;
     const presentation: HomebrewManagedItem["presentation"] = appID
       ? "app"
-      : (caskEntry?.presentation ?? item.presentation);
+      : (caskEntry?.presentation ?? previousItem?.presentation ?? item.presentation);
 
     if (!latestVersion || !isVersionGreater(latestVersion, installedVersion)) {
       return {

@@ -304,24 +304,7 @@ function hasCliArtifactEvidence(object: any): boolean {
     "fish_completion",
     "generate_completions_from_executable"
   ];
-  return (
-    cliArtifactKeys.some((artifactKey) => hasArtifactKey(object, artifactKey)) ||
-    hasNonAppTargetHint(object)
-  );
-}
-
-function hasNonAppTargetHint(object: any): boolean {
-  let found = false;
-  walk(object, (key, value) => {
-    if (found || key !== "target") {
-      return;
-    }
-    found = stringValues(value).some((entry) => {
-      const trimmed = entry.trim().toLowerCase();
-      return trimmed.length > 0 && !trimmed.endsWith(".app");
-    });
-  });
-  return found;
+  return cliArtifactKeys.some((artifactKey) => hasArtifactKey(object, artifactKey));
 }
 
 function hasDeletedAppPathHint(object: any): boolean {

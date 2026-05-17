@@ -53,6 +53,11 @@ describe("ported clients", () => {
             artifacts: [{ pkg: ["InstallerTool.pkg"] }]
           },
           {
+            token: "renamed-installer-tool",
+            version: "1.0.0",
+            artifacts: [{ pkg: [{ file: "InstallerTool.pkg", target: "RenamedInstaller.pkg" }] }]
+          },
+          {
             token: "plain-cask",
             version: "1.0.0",
             artifacts: [{ uninstall: [{ quit: "com.example.plain" }] }]
@@ -64,6 +69,7 @@ describe("ported clients", () => {
     expect(index.byToken["graphical-tool"]?.presentation).toBe("app");
     expect(index.byToken["command-tool"]?.presentation).toBe("cli");
     expect(index.byToken["installer-tool"]?.presentation).toBe("package");
+    expect(index.byToken["renamed-installer-tool"]?.presentation).toBe("package");
     expect(index.byToken["plain-cask"]?.presentation).toBe("cask");
     expect(new HomebrewCaskClient().searchCasks("command", index, new Set()).at(0)).toMatchObject({
       token: "command-tool",
