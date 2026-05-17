@@ -1,0 +1,52 @@
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      app-minor-and-patch:
+        patterns:
+          - "fast-xml-parser"
+          - "lucide-react"
+          - "react"
+          - "react-dom"
+        update-types:
+          - "minor"
+          - "patch"
+
+      tooling-minor-and-patch:
+        patterns:
+          - "@eslint/js"
+          - "@playwright/test"
+          - "@testing-library/*"
+          - "@types/*"
+          - "@vitejs/*"
+          - "@vitest/*"
+          - "autoprefixer"
+          - "eslint"
+          - "jsdom"
+          - "postcss"
+          - "prettier"
+          - "tailwindcss"
+          - "typescript"
+          - "typescript-eslint"
+          - "vite"
+          - "vitest"
+        update-types:
+          - "minor"
+          - "patch"
+
+      electron-patches:
+        patterns:
+          - "electron"
+          - "@electron-forge/*"
+        update-types:
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
