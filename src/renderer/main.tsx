@@ -1420,7 +1420,7 @@ function IgnoredTab({
 
   return (
     <section className="panel">
-      <PanelTitle title={`Ignored Apps (${items.length})`} />
+      <PanelTitle title={`Ignored Apps and Homebrew (${items.length})`} />
       {items.length === 0 ? (
         <Empty text="No ignored apps or Homebrew items." />
       ) : (
@@ -2557,7 +2557,7 @@ function selectedTabTitle(tab: MenuTab): string {
   if (tab === "all") return "All";
   if (tab === "apps") return "Apps";
   if (tab === "installed") return "Installed";
-  if (tab === "ignored") return "Ignored Apps";
+  if (tab === "ignored") return "Ignored";
   return "Homebrew";
 }
 

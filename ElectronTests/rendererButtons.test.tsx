@@ -820,7 +820,10 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 2, name: "Ignored Apps" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Ignored Apps and Homebrew" })
+    ).toBeInTheDocument();
     expect(screen.getByText("Example")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
     expect(screen.getByText("Formula")).toBeInTheDocument();
