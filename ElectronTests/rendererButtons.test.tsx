@@ -778,7 +778,7 @@ describe("renderer button parity", () => {
     expect(container.querySelector(".rows .update-card")).not.toBeInTheDocument();
   });
 
-  it("adds a combined Ignored Apps sidebar item for ignored apps and Homebrew items", () => {
+  it("adds a combined Ignored sidebar item for ignored apps and Homebrew items", () => {
     const ignoredFormula: HomebrewManagedItem = {
       ...cask,
       id: "formula:ripgrep",
@@ -803,8 +803,8 @@ describe("renderer button parity", () => {
       Array.from(container.querySelectorAll(".secondary-source-list button")).map((button) =>
         button.textContent?.trim()
       )
-    ).toEqual(["Installed", "Ignored Apps2"]);
-    fireEvent.click(screen.getByRole("button", { name: /Ignored Apps/ }));
+    ).toEqual(["Installed", "Ignored2"]);
+    fireEvent.click(screen.getByRole("button", { name: /Ignored/ }));
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("ignored");
 
     rerender(

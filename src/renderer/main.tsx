@@ -393,7 +393,7 @@ function Sidebar({
           }}
         >
           <EyeOff size={16} strokeWidth={sidebarIconStrokeWidth} />
-          <span>Ignored Apps</span>
+          <span>Ignored</span>
           <strong>{combinedIgnoredCount(derived)}</strong>
         </button>
       </nav>
