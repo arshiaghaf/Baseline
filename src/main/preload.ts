@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { contextBridge, ipcRenderer } from "electron";
 import { ipcChannels, type BaselineAPI, type PreferencePatch } from "../shared/ipc";
 import type { HomebrewCaskDiscoveryItem } from "../shared/domain";

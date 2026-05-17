@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import {
   app,
   BrowserWindow,
@@ -54,6 +57,10 @@ if (!hasSingleInstanceLock) {
 
 if (hasSingleInstanceLock) {
   void app.whenReady().then(async () => {
+    app.setAboutPanelOptions({
+      copyright: "© 2026 Arshia Ghaffarian"
+    });
+
     const persistence = new SnapshotPersistence(app.getPath("userData"));
     const persisted = await persistence.load();
     store = new UpdateStore({

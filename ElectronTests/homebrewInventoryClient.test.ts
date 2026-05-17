@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandMock = vi.hoisted(() => ({

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { _electron as electron, expect, test } from "@playwright/test";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";

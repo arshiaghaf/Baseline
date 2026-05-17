@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import type { HomebrewManagedItem, HomebrewManagedItemKind } from "../shared/domain";
 import { homebrewItemID } from "../shared/domain";
 import { maxVersion, version } from "../shared/version";
