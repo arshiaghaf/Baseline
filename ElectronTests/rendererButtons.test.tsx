@@ -735,7 +735,7 @@ describe("renderer button parity", () => {
       updates: [],
       homebrewItems: [installedFormula]
     });
-    const { rerender } = render(
+    const { container, rerender } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -774,6 +774,57 @@ describe("renderer button parity", () => {
     );
     expect(screen.getByText("Stable App")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    expect(container.querySelectorAll(".update-card")).toHaveLength(2);
+    expect(container.querySelector(".rows .update-card")).not.toBeInTheDocument();
+  });
+
+  it("adds a combined Ignored Apps sidebar item for ignored apps and Homebrew items", () => {
+    const ignoredFormula: HomebrewManagedItem = {
+      ...cask,
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula"
+    };
+    const { container, rerender } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "all",
+          ignoredIDs: [app.id],
+          ignoredHomebrewItemIDs: [ignoredFormula.id],
+          homebrewItems: [ignoredFormula]
+        })}
+      />
+    );
+
+    expect(
+      Array.from(container.querySelectorAll(".secondary-source-list button")).map((button) =>
+        button.textContent?.trim()
+      )
+    ).toEqual(["Installed", "Ignored Apps2"]);
+    fireEvent.click(screen.getByRole("button", { name: /Ignored Apps/ }));
+    expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("ignored");
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "ignored",
+          ignoredIDs: [app.id],
+          ignoredHomebrewItemIDs: [ignoredFormula.id],
+          homebrewItems: [ignoredFormula]
+        })}
+      />
+    );
+
+    expect(screen.getByRole("heading", { level: 2, name: "Ignored Apps" })).toBeInTheDocument();
+    expect(screen.getByText("Example")).toBeInTheDocument();
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    expect(screen.getByText("Formula")).toBeInTheDocument();
+    expect(container.querySelectorAll(".ignored-card")).toHaveLength(2);
   });
 
   it("renders compact menu bar as all updates without tabs or recent sections", () => {

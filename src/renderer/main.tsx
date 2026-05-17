@@ -385,6 +385,17 @@ function Sidebar({
           <CheckCircle2 size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Installed</span>
         </button>
+        <button
+          className={route === "main" && snapshot.selectedTab === "ignored" ? "selected" : ""}
+          onClick={() => {
+            window.location.hash = "/main";
+            void window.baseline.setSelectedTab("ignored");
+          }}
+        >
+          <EyeOff size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <span>Ignored Apps</span>
+          <strong>{combinedIgnoredCount(derived)}</strong>
+        </button>
       </nav>
       <div className="sidebar-footer">
         <button
@@ -506,6 +517,9 @@ function SelectedTabContent({
   }
   if (snapshot.selectedTab === "homebrew") {
     return <HomebrewTab snapshot={snapshot} derived={derived} />;
+  }
+  if (snapshot.selectedTab === "ignored") {
+    return <IgnoredTab snapshot={snapshot} derived={derived} compact={compact} />;
   }
   return <InstalledTab snapshot={snapshot} derived={derived} compact={compact} />;
 }
@@ -993,6 +1007,18 @@ type RecentGridItem =
       item: HomebrewManagedItem;
     };
 
+type IgnoredGridItem =
+  | {
+      type: "app";
+      id: string;
+      item: AppRecord;
+    }
+  | {
+      type: "homebrew";
+      id: string;
+      item: HomebrewManagedItem;
+    };
+
 function RecentGrid({
   items,
   snapshot,
@@ -1348,6 +1374,7 @@ function InstalledTab({
           apps={derived.installedApps}
           snapshot={snapshot}
           empty="No installed apps found."
+          cardLayout
         />
       )}
       {!compact && snapshot.showInstalledHomebrewSection && (
@@ -1358,10 +1385,61 @@ function InstalledTab({
           items={derived.homebrewInstalled}
           snapshot={snapshot}
           empty="No installed Homebrew items found."
+          cardLayout
         />
       )}
       {compact && <Empty text="Open Baseline to view installed items." />}
     </div>
+  );
+}
+
+function IgnoredTab({
+  snapshot,
+  derived,
+  compact
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+  compact: boolean;
+}) {
+  if (compact) {
+    return <Empty text="Open Baseline to view ignored items." />;
+  }
+
+  const items: IgnoredGridItem[] = [
+    ...derived.ignoredApps.map((app) => ({
+      type: "app" as const,
+      id: app.id,
+      item: app
+    })),
+    ...derived.homebrewIgnored.map((item) => ({
+      type: "homebrew" as const,
+      id: item.id,
+      item
+    }))
+  ];
+
+  return (
+    <section className="panel">
+      <PanelTitle title={`Ignored Apps (${items.length})`} />
+      {items.length === 0 ? (
+        <Empty text="No ignored apps or Homebrew items." />
+      ) : (
+        <CardGrid sectionClassName="ignored-grid">
+          {items.map((item) =>
+            item.type === "app" ? (
+              <IgnoredAppCard key={`app:${item.id}`} app={item.item} snapshot={snapshot} />
+            ) : (
+              <IgnoredHomebrewCard
+                key={`homebrew:${item.id}`}
+                item={item.item}
+                snapshot={snapshot}
+              />
+            )
+          )}
+        </CardGrid>
+      )}
+    </section>
   );
 }
 
@@ -2480,6 +2558,7 @@ function selectedTabTitle(tab: MenuTab): string {
   if (tab === "all") return "All";
   if (tab === "apps") return "Apps";
   if (tab === "installed") return "Installed";
+  if (tab === "ignored") return "Ignored Apps";
   return "Homebrew";
 }
 
@@ -2516,6 +2595,10 @@ function compareRecentRows(
 
 function combinedAvailableCount(derived: DerivedSections): number {
   return derived.availableApps.length + derived.allHomebrewOutdated.length;
+}
+
+function combinedIgnoredCount(derived: DerivedSections): number {
+  return derived.ignoredApps.length + derived.homebrewIgnored.length;
 }
 
 function toggleCollapsedSection(
