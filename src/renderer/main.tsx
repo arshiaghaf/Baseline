@@ -394,7 +394,6 @@ function Sidebar({
         >
           <EyeOff size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Ignored</span>
-          <strong>{combinedIgnoredCount(derived)}</strong>
         </button>
       </nav>
       <div className="sidebar-footer">
@@ -2595,10 +2594,6 @@ function compareRecentRows(
 
 function combinedAvailableCount(derived: DerivedSections): number {
   return derived.availableApps.length + derived.allHomebrewOutdated.length;
-}
-
-function combinedIgnoredCount(derived: DerivedSections): number {
-  return derived.ignoredApps.length + derived.homebrewIgnored.length;
 }
 
 function toggleCollapsedSection(

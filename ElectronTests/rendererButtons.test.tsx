@@ -803,7 +803,7 @@ describe("renderer button parity", () => {
       Array.from(container.querySelectorAll(".secondary-source-list button")).map((button) =>
         button.textContent?.trim()
       )
-    ).toEqual(["Installed", "Ignored2"]);
+    ).toEqual(["Installed", "Ignored"]);
     fireEvent.click(screen.getByRole("button", { name: /Ignored/ }));
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("ignored");
 
