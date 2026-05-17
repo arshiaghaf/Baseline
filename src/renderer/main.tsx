@@ -768,15 +768,13 @@ function AppsTab({ snapshot, derived }: { snapshot: BaselineSnapshot; derived: D
           empty="No recently updated apps yet."
         />
       )}
-      {snapshot.showIgnoredAppsSection && (
-        <IgnoredAppSection
-          sectionID="ignored"
-          title={`Ignored (${derived.ignoredApps.length})`}
-          apps={derived.ignoredApps}
-          snapshot={snapshot}
-          empty="No ignored apps."
-        />
-      )}
+      <IgnoredAppSection
+        sectionID="ignored"
+        title={`Ignored (${derived.ignoredApps.length})`}
+        apps={derived.ignoredApps}
+        snapshot={snapshot}
+        empty="No ignored apps."
+      />
     </div>
   );
 }
@@ -1341,15 +1339,13 @@ function HomebrewTab({
           empty="No recently updated Homebrew items yet."
         />
       )}
-      {snapshot.showIgnoredHomebrewSection && (
-        <IgnoredHomebrewSection
-          sectionID="ignored"
-          title={`Ignored (${derived.homebrewIgnored.length})`}
-          items={derived.homebrewIgnored}
-          snapshot={snapshot}
-          empty="No ignored Homebrew items."
-        />
-      )}
+      <IgnoredHomebrewSection
+        sectionID="ignored"
+        title={`Ignored (${derived.homebrewIgnored.length})`}
+        items={derived.homebrewIgnored}
+        snapshot={snapshot}
+        empty="No ignored Homebrew items."
+      />
     </div>
   );
 }
@@ -2318,11 +2314,6 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
               patch="showRecentlyUpdatedAppsSection"
             />
             <Toggle
-              label="Ignored apps"
-              value={snapshot.showIgnoredAppsSection}
-              patch="showIgnoredAppsSection"
-            />
-            <Toggle
               label="Recently updated Homebrew"
               value={snapshot.showRecentlyUpdatedHomebrewSection}
               patch="showRecentlyUpdatedHomebrewSection"
@@ -2331,11 +2322,6 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
               label="Installed Homebrew"
               value={snapshot.showInstalledHomebrewSection}
               patch="showInstalledHomebrewSection"
-            />
-            <Toggle
-              label="Ignored Homebrew"
-              value={snapshot.showIgnoredHomebrewSection}
-              patch="showIgnoredHomebrewSection"
             />
           </section>
 

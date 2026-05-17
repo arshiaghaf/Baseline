@@ -141,10 +141,8 @@ export type PersistedSnapshot = {
   selectedTab: MenuTab;
   showInstalledAppsSection: boolean;
   showRecentlyUpdatedAppsSection: boolean;
-  showIgnoredAppsSection: boolean;
   showRecentlyUpdatedHomebrewSection: boolean;
   showInstalledHomebrewSection: boolean;
-  showIgnoredHomebrewSection: boolean;
   collapsedAppSectionIDs: string[];
   collapsedHomebrewSectionIDs: string[];
   autoRefreshEnabled: boolean;
@@ -213,10 +211,8 @@ export function defaultPersistedSnapshot(): PersistedSnapshot {
     selectedTab: "all",
     showInstalledAppsSection: true,
     showRecentlyUpdatedAppsSection: true,
-    showIgnoredAppsSection: true,
     showRecentlyUpdatedHomebrewSection: true,
     showInstalledHomebrewSection: true,
-    showIgnoredHomebrewSection: true,
     collapsedAppSectionIDs: [],
     collapsedHomebrewSectionIDs: [],
     autoRefreshEnabled: true,
