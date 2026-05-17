@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { PersistedSnapshot } from "../shared/domain";

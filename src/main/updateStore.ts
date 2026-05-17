@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";

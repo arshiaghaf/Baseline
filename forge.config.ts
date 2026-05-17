@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerZIP } from "@electron-forge/maker-zip";

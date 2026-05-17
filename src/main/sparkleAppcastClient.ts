@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { XMLParser } from "fast-xml-parser";
 import type { SparkleLookupResult } from "../shared/domain";
 import { byteLimits, isAllowedFeedURL, sanitizeExternalURL } from "../shared/security";

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import type { AppStoreLookupResult } from "../shared/domain";
 import { byteLimits, sanitizeExternalURL } from "../shared/security";
 import { isVersionGreater, type VersionValue, version } from "../shared/version";

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import { execFile } from "node:child_process";
 import { app as electronApp, nativeImage, type NativeImage } from "electron";
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";

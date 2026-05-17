@@ -132,4 +132,9 @@ Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow
 
 ## License
 
-Baseline is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
+Baseline is licensed as `GPL-3.0-only`. See [LICENSE](LICENSE) for the full
+GNU General Public License v3.0 text.
+
+Copyright (C) 2026 Arshia Ghaffarian. Modified versions that are distributed
+must remain licensed under the GPL, including the corresponding source code and
+notices required by the license.

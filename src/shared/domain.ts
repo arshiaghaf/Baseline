@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
 import type { VersionValue } from "./version";
 
 export type UpdateSource = "appStore" | "sparkle" | "homebrew" | "web" | "unknown";
