@@ -830,7 +830,7 @@ describe("renderer button parity", () => {
     expect(container.querySelectorAll(".ignored-card")).toHaveLength(2);
   });
 
-  it("keeps ignored sections visible outside Settings preferences", () => {
+  it("keeps app sections visible without Settings section controls", () => {
     const ignoredFormula: HomebrewManagedItem = {
       ...cask,
       id: "formula:ripgrep",
@@ -838,7 +838,7 @@ describe("renderer button parity", () => {
       name: "ripgrep",
       kind: "formula"
     };
-    const ignoredSectionsSnapshot = snapshot({
+    const fixedSectionsSnapshot = snapshot({
       selectedTab: "apps",
       ignoredIDs: [app.id],
       ignoredHomebrewItemIDs: [ignoredFormula.id],
@@ -848,7 +848,7 @@ describe("renderer button parity", () => {
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
-        snapshot={ignoredSectionsSnapshot}
+        snapshot={fixedSectionsSnapshot}
       />
     );
 
@@ -859,16 +859,21 @@ describe("renderer button parity", () => {
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
-        snapshot={{ ...ignoredSectionsSnapshot, selectedTab: "homebrew" }}
+        snapshot={{ ...fixedSectionsSnapshot, selectedTab: "homebrew" }}
       />
     );
 
     expect(screen.getByTitle("Collapse Ignored")).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
 
-    rerender(<SettingsView snapshot={ignoredSectionsSnapshot} />);
+    rerender(<SettingsView snapshot={fixedSectionsSnapshot} />);
 
+    expect(screen.queryByRole("heading", { name: "Sections" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Installed apps")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Recently updated apps")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Ignored apps")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Recently updated Homebrew")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Installed Homebrew")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Ignored Homebrew")).not.toBeInTheDocument();
   });
 
