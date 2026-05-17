@@ -502,6 +502,9 @@ function SelectedTabContent({
   derived: DerivedSections;
   compact: boolean;
 }) {
+  if (!compact && snapshot.selectedTab === "ignored") {
+    return <IgnoredTab snapshot={snapshot} derived={derived} compact={compact} />;
+  }
   if (snapshot.searchText.trim()) {
     return <SearchResults snapshot={snapshot} derived={derived} />;
   }
@@ -516,9 +519,6 @@ function SelectedTabContent({
   }
   if (snapshot.selectedTab === "homebrew") {
     return <HomebrewTab snapshot={snapshot} derived={derived} />;
-  }
-  if (snapshot.selectedTab === "ignored") {
-    return <IgnoredTab snapshot={snapshot} derived={derived} compact={compact} />;
   }
   return <InstalledTab snapshot={snapshot} derived={derived} compact={compact} />;
 }

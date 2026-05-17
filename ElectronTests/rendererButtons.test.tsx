@@ -828,6 +828,25 @@ describe("renderer button parity", () => {
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
     expect(screen.getByText("Formula")).toBeInTheDocument();
     expect(container.querySelectorAll(".ignored-card")).toHaveLength(2);
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "ignored",
+          searchText: "rip",
+          ignoredIDs: [app.id],
+          ignoredHomebrewItemIDs: [ignoredFormula.id],
+          homebrewItems: [ignoredFormula]
+        })}
+      />
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    expect(screen.queryByText("Example")).not.toBeInTheDocument();
+    expect(screen.queryByText("No matches found.")).not.toBeInTheDocument();
   });
 
   it("keeps app sections visible without Settings section controls", () => {
