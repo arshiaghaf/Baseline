@@ -57,6 +57,10 @@ if (!hasSingleInstanceLock) {
 
 if (hasSingleInstanceLock) {
   void app.whenReady().then(async () => {
+    app.setAboutPanelOptions({
+      copyright: "Copyright (C) 2026 Arshia Ghaffarian"
+    });
+
     const persistence = new SnapshotPersistence(app.getPath("userData"));
     const persisted = await persistence.load();
     store = new UpdateStore({
