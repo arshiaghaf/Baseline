@@ -63,6 +63,7 @@ export class HomebrewFormulaClient {
         kind: "formula",
         token: entry.token,
         displayName: entry.token,
+        presentation: "formula",
         version: entry.version,
         homepageURL:
           sanitizeExternalURL(`https://formulae.brew.sh/formula/${entry.token}`) ??

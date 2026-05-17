@@ -33,6 +33,50 @@ describe("ported clients", () => {
     expect(index.byAppBundleName["example.app"]?.[0]?.token).toBe("example-app");
   });
 
+  it("classifies Homebrew casks by presentation evidence", () => {
+    const index = new HomebrewCaskClient().parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "graphical-tool",
+            version: "1.0.0",
+            artifacts: [{ app: ["Graphical Tool.app"] }]
+          },
+          {
+            token: "command-tool",
+            version: "1.0.0",
+            artifacts: [{ binary: ["command-tool"] }]
+          },
+          {
+            token: "installer-tool",
+            version: "1.0.0",
+            artifacts: [{ pkg: ["InstallerTool.pkg"] }]
+          },
+          {
+            token: "renamed-installer-tool",
+            version: "1.0.0",
+            artifacts: [{ pkg: [{ file: "InstallerTool.pkg", target: "RenamedInstaller.pkg" }] }]
+          },
+          {
+            token: "plain-cask",
+            version: "1.0.0",
+            artifacts: [{ uninstall: [{ quit: "com.example.plain" }] }]
+          }
+        ])
+      )
+    );
+
+    expect(index.byToken["graphical-tool"]?.presentation).toBe("app");
+    expect(index.byToken["command-tool"]?.presentation).toBe("cli");
+    expect(index.byToken["installer-tool"]?.presentation).toBe("package");
+    expect(index.byToken["renamed-installer-tool"]?.presentation).toBe("package");
+    expect(index.byToken["plain-cask"]?.presentation).toBe("cask");
+    expect(new HomebrewCaskClient().searchCasks("command", index, new Set()).at(0)).toMatchObject({
+      token: "command-tool",
+      presentation: "cli"
+    });
+  });
+
   it("matches package-backed casks by app name without indexing inferred quit IDs", () => {
     const client = new HomebrewCaskClient();
     const index = client.parseIndex(

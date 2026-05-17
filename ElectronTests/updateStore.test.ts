@@ -53,6 +53,7 @@ function caskIndexForSelfUpdatingApp(latestVersion: ReturnType<typeof version>):
   const entry = {
     token: "self-updating-app",
     version: latestVersion,
+    presentation: "app" as const,
     bundleIdentifiers: ["com.example.selfupdating"],
     appBundleNames: ["self updating app.app"]
   };
@@ -386,6 +387,7 @@ describe("update store helpers", () => {
     const entry = {
       token: "pkg-backed-app",
       version: version("1.2.0"),
+      presentation: "app" as const,
       bundleIdentifiers: [],
       inferredBundleIdentifiers: ["com.example.pkgbacked"],
       appBundleNames: ["package backed.app"]
@@ -454,6 +456,7 @@ describe("update store helpers", () => {
     const entry = {
       token: "pkg-backed-app",
       version: version("1.2.0"),
+      presentation: "app" as const,
       bundleIdentifiers: [],
       inferredBundleIdentifiers: ["com.example.pkgbacked.helper"],
       appBundleNames: ["package backed.app"]
@@ -641,8 +644,60 @@ describe("update store helpers", () => {
       .homebrewItems.find((candidate) => candidate.id === "cask:self-updating-app");
     expect(item).toMatchObject({
       appID: selfUpdatingApp.id,
+      presentation: "app",
       name: "self-updating-app",
       installedVersion: version("1.2026.98.2")
+    });
+  });
+
+  it("preserves cask presentation when current cask metadata is unavailable", async () => {
+    const entry = {
+      token: "standalone-tool",
+      version: version("1.0.0"),
+      presentation: "cli" as const,
+      bundleIdentifiers: [],
+      appBundleNames: []
+    };
+    const store = await makeStore({
+      clients: {
+        homebrew: {
+          fetchIndex: vi
+            .fn()
+            .mockResolvedValueOnce({
+              byToken: { "standalone-tool": entry },
+              byBundleIdentifier: {},
+              byAppBundleName: {}
+            })
+            .mockResolvedValue(emptyHomebrewCaskIndex),
+          lookupUpdate: () => undefined,
+          searchCasks: () => []
+        },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:standalone-tool",
+                token: "standalone-tool",
+                name: "standalone-tool",
+                kind: "cask",
+                presentation: "cask",
+                installedVersion: version("1.0.0")
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.refresh(false);
+    await store.refresh(false);
+
+    expect(
+      store.getSnapshot().homebrewItems.find((candidate) => candidate.id === "cask:standalone-tool")
+    ).toMatchObject({
+      presentation: "cli"
     });
   });
 

@@ -29,9 +29,14 @@ import type {
   HomebrewCaskDiscoveryItem,
   HomebrewManagedItem,
   MenuTab,
+  RecentlyUpdatedRecord,
   UpdateRecord
 } from "../shared/domain";
-import { defaultPersistedSnapshot } from "../shared/domain";
+import {
+  defaultPersistedSnapshot,
+  homebrewPresentationLabel,
+  sourceDisplayName
+} from "../shared/domain";
 import {
   homebrewItemHasAppRepresentation,
   homebrewItemIdentifiers,
@@ -721,7 +726,7 @@ function AllRecentlyUpdatedSection({
         (rows.length === 0 ? (
           <Empty text="No recently updated items yet." />
         ) : (
-          <RecentGrid items={rows} snapshot={snapshot} />
+          <RecentGrid items={rows} snapshot={snapshot} homebrewAppCaskLabel="Homebrew" />
         ))}
     </section>
   );
@@ -822,6 +827,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
   const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
   const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  const label = appSourceLabel(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
@@ -877,7 +883,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {update && <span>{sourceLabel(update)}</span>}
+          {label && <span>{label}</span>}
         </div>
         <p>
           {update ? (
@@ -984,14 +990,27 @@ type RecentGridItem =
       item: HomebrewManagedItem;
     };
 
-function RecentGrid({ items, snapshot }: { items: RecentGridItem[]; snapshot: BaselineSnapshot }) {
+function RecentGrid({
+  items,
+  snapshot,
+  homebrewAppCaskLabel
+}: {
+  items: RecentGridItem[];
+  snapshot: BaselineSnapshot;
+  homebrewAppCaskLabel?: string;
+}) {
   return (
     <CardGrid sectionClassName="recent-grid">
       {items.map((item) =>
         item.type === "app" ? (
           <RecentAppCard key={`app:${item.id}`} app={item.item} snapshot={snapshot} />
         ) : (
-          <RecentHomebrewCard key={`homebrew:${item.id}`} item={item.item} snapshot={snapshot} />
+          <RecentHomebrewCard
+            key={`homebrew:${item.id}`}
+            item={item.item}
+            snapshot={snapshot}
+            appCaskLabel={homebrewAppCaskLabel}
+          />
         )
       )}
     </CardGrid>
@@ -1027,6 +1046,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
     done
   });
   const recentlyUpdatedRecord = snapshot.recentlyUpdated.find((record) => record.appID === app.id);
+  const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
 
   return (
     <article className={isIgnored ? "item-card recent-card ignored-row" : "item-card recent-card"}>
@@ -1073,7 +1093,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {update && <span>{sourceLabel(update)}</span>}
+          {label && <span>{label}</span>}
         </div>
         <p>
           {recentlyUpdatedRecord
@@ -1094,6 +1114,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
   const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
   const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  const label = appSourceLabel(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
@@ -1151,7 +1172,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {update && <span>{sourceLabel(update)}</span>}
+          {label && <span>{label}</span>}
         </div>
         <p>
           {update ? (
@@ -1197,6 +1218,10 @@ export function AppRow({
   const recentlyUpdatedAt = recentlyUpdated
     ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)?.updatedAt
     : undefined;
+  const recentlyUpdatedRecord = recentlyUpdated
+    ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)
+    : undefined;
+  const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
 
   return (
     <article className={isIgnored ? "row ignored-row" : "row"}>
@@ -1219,7 +1244,7 @@ export function AppRow({
       <div className="row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {update && <span>{sourceLabel(update)}</span>}
+          {label && <span>{label}</span>}
         </div>
         <p>
           {update ? (
@@ -1373,7 +1398,7 @@ export function DiscoverRow({
       <div className="row-main">
         <div className="row-title">
           <strong>{item.displayName}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>{item.version.raw || item.token}</p>
       </div>
@@ -1519,7 +1544,7 @@ function HomebrewUpdateCard({
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>
           {item.latestVersion ? (
@@ -1615,10 +1640,12 @@ function IgnoredHomebrewSection({
 
 function RecentHomebrewCard({
   item,
-  snapshot
+  snapshot,
+  appCaskLabel
 }: {
   item: HomebrewManagedItem;
   snapshot: BaselineSnapshot;
+  appCaskLabel?: string;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
@@ -1664,7 +1691,7 @@ function RecentHomebrewCard({
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewItemLabel(item, appCaskLabel)}</span>
         </div>
         <p>
           {recentlyUpdatedRecord
@@ -1726,7 +1753,7 @@ function IgnoredHomebrewCard({
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>
           {item.latestVersion ? (
@@ -1775,7 +1802,7 @@ export function HomebrewRow({
       <div className="row-main">
         <div className="row-title">
           <strong>{item.name}</strong>
-          <span>{item.kind}</span>
+          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>
           {recentlyUpdatedAt ? (
@@ -1817,7 +1844,7 @@ function HomebrewItemIcon({
   item,
   snapshot
 }: {
-  item: Pick<HomebrewManagedItem, "kind" | "token"> &
+  item: Pick<HomebrewManagedItem, "kind" | "token" | "presentation"> &
     Partial<
       Pick<HomebrewManagedItem, "appID" | "name" | "iconDataURL"> &
         Pick<HomebrewCaskDiscoveryItem, "displayName">
@@ -1827,7 +1854,8 @@ function HomebrewItemIcon({
   const app = matchingAppForHomebrewItem(item, snapshot);
   const iconDataURL = item.iconDataURL ?? app?.iconDataURL;
   const isCaskItem = isCask(item.kind);
-  const fallbackIcon = isCaskItem ? <Package size={26} /> : <Terminal size={26} />;
+  const isCliLike = item.kind === "formula" || item.presentation === "cli";
+  const fallbackIcon = isCliLike ? <Terminal size={26} /> : <Package size={26} />;
   const fallbackClassName = isCaskItem ? "app-icon brew cask" : "app-icon brew formula";
 
   if (app) {
@@ -2089,7 +2117,10 @@ function ActionConfirmationOverlay({
       : `Uninstall ${confirmation.item.name}?`;
   const message =
     confirmation.type === "install"
-      ? `This will run Homebrew and install ${confirmation.item.displayName} (${confirmation.item.kind} ${confirmation.item.token}) on your Mac.`
+      ? `This will run Homebrew and install ${confirmation.item.displayName} (${homebrewPresentationLabel(
+          confirmation.item.kind,
+          confirmation.item.presentation
+        )} ${confirmation.item.token}) on your Mac.`
       : "This will fully delete the item from your Mac. Do you want to proceed?";
   const actionTitle =
     confirmation.type === "install"
@@ -2405,6 +2436,43 @@ function sourceLabel(update: UpdateRecord): string {
   return "Update";
 }
 
+function appSourceLabel(
+  app: AppRecord,
+  snapshot: BaselineSnapshot,
+  recentRecord?: RecentlyUpdatedRecord
+): string | undefined {
+  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
+  if (update) {
+    return sourceLabel(update);
+  }
+
+  if (recentRecord?.source && recentRecord.source !== "unknown") {
+    if (recentRecord.source === "homebrew") {
+      const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+      if (uninstallableItem?.presentation && uninstallableItem.presentation !== "app") {
+        return homebrewItemLabel(uninstallableItem);
+      }
+    }
+    return sourceDisplayName(recentRecord.source);
+  }
+
+  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  if (uninstallableItem) {
+    return uninstallableItem.presentation === "app" || uninstallableItem.appID === app.id
+      ? "Homebrew"
+      : homebrewItemLabel(uninstallableItem);
+  }
+
+  return app.sourceHint === "unknown" ? undefined : sourceDisplayName(app.sourceHint);
+}
+
+function homebrewItemLabel(item: HomebrewManagedItem, appCaskLabel?: string): string {
+  if (item.presentation === "app" && appCaskLabel) {
+    return appCaskLabel;
+  }
+  return homebrewPresentationLabel(item.kind, item.presentation);
+}
+
 function selectedTabTitle(tab: MenuTab): string {
   if (tab === "all") return "All";
   if (tab === "apps") return "Apps";
@@ -2542,7 +2610,8 @@ function deriveSections(snapshot: BaselineSnapshot) {
 function matchingAppForHomebrewItem(
   item: Pick<HomebrewManagedItem, "kind" | "token"> &
     Partial<
-      Pick<HomebrewManagedItem, "appID" | "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">
+      Pick<HomebrewManagedItem, "appID" | "name" | "presentation"> &
+        Pick<HomebrewCaskDiscoveryItem, "displayName">
     >,
   snapshot: BaselineSnapshot
 ): AppRecord | undefined {

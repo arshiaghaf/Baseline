@@ -2,7 +2,8 @@ import type {
   HomebrewCaskDiscoveryItem,
   HomebrewCaskEntry,
   HomebrewCaskIndex,
-  HomebrewLookupResult
+  HomebrewLookupResult,
+  HomebrewPresentation
 } from "../shared/domain";
 import { emptyHomebrewCaskIndex, homebrewDiscoverID } from "../shared/domain";
 import { byteLimits, isValidHomebrewToken, sanitizeExternalURL } from "../shared/security";
@@ -74,6 +75,7 @@ export class HomebrewCaskClient {
         kind: "cask",
         token: entry.token,
         displayName: displayName(entry),
+        presentation: entry.presentation,
         version: entry.version,
         homepageURL:
           sanitizeExternalURL(`https://formulae.brew.sh/cask/${entry.token}`) ?? entry.homepageURL
@@ -100,6 +102,7 @@ export class HomebrewCaskClient {
         token,
         version: version(comparableVersion(item?.version)),
         homepageURL: sanitizeExternalURL(item?.homepage),
+        presentation: classifyCaskPresentation(item),
         ...extractBundleIdentifierMetadata(item),
         appBundleNames: extractAppBundleNames(item)
       };
@@ -257,6 +260,51 @@ function isPackageBackedAppCandidate(object: any): boolean {
     return true;
   }
   return !hasTargetArtifactName(object);
+}
+
+function classifyCaskPresentation(object: any): HomebrewPresentation {
+  if (hasAppArtifactEvidence(object)) {
+    return "app";
+  }
+  if (hasCliArtifactEvidence(object)) {
+    return "cli";
+  }
+  if (hasArtifactKey(object, "pkg")) {
+    return "package";
+  }
+  return "cask";
+}
+
+function hasAppArtifactEvidence(object: any): boolean {
+  return (
+    hasExplicitAppArtifactName(object) ||
+    hasPackageBackedAppNameHint(object) ||
+    hasDeletedAppPathHint(object) ||
+    hasTargetAppPathHint(object)
+  );
+}
+
+function hasTargetAppPathHint(object: any): boolean {
+  let found = false;
+  walk(object, (key, value) => {
+    if (found || key !== "target") {
+      return;
+    }
+    found = stringValues(value).some((entry) => entry.trim().toLowerCase().endsWith(".app"));
+  });
+  return found;
+}
+
+function hasCliArtifactEvidence(object: any): boolean {
+  const cliArtifactKeys = [
+    "binary",
+    "manpage",
+    "bash_completion",
+    "zsh_completion",
+    "fish_completion",
+    "generate_completions_from_executable"
+  ];
+  return cliArtifactKeys.some((artifactKey) => hasArtifactKey(object, artifactKey));
 }
 
 function hasDeletedAppPathHint(object: any): boolean {

@@ -4,6 +4,7 @@ export type UpdateSource = "appStore" | "sparkle" | "homebrew" | "web" | "unknow
 export type SupportLevel = "supported" | "limited" | "unsupported";
 export type MenuTab = "all" | "apps" | "homebrew" | "installed";
 export type HomebrewManagedItemKind = "formula" | "cask";
+export type HomebrewPresentation = "formula" | "app" | "cli" | "package" | "cask";
 
 export type AppRecord = {
   id: string;
@@ -41,6 +42,7 @@ export type HomebrewCaskEntry = {
   token: string;
   version: VersionValue;
   homepageURL?: string;
+  presentation: HomebrewPresentation;
   bundleIdentifiers: string[];
   inferredBundleIdentifiers?: string[];
   appBundleNames: string[];
@@ -51,6 +53,7 @@ export type HomebrewCaskDiscoveryItem = {
   kind: HomebrewManagedItemKind;
   token: string;
   displayName: string;
+  presentation?: HomebrewPresentation;
   version: VersionValue;
   homepageURL?: string;
 };
@@ -92,6 +95,7 @@ export type RecentlyUpdatedRecord = {
   id: string;
   appID: string;
   displayName: string;
+  source?: UpdateSource;
   fromVersion: VersionValue;
   toVersion: VersionValue;
   updatedAt: string;
@@ -113,6 +117,7 @@ export type HomebrewManagedItem = {
   token: string;
   name: string;
   kind: HomebrewManagedItemKind;
+  presentation?: HomebrewPresentation;
   installedVersion: VersionValue;
   latestVersion?: VersionValue;
   isOutdated: boolean;
@@ -233,4 +238,20 @@ export function sourceDisplayName(source: UpdateSource): string {
     web: "Web",
     unknown: "Unknown"
   }[source];
+}
+
+export function homebrewPresentationLabel(
+  kind: HomebrewManagedItemKind,
+  presentation?: HomebrewPresentation
+): string {
+  if (kind === "formula") {
+    return "Formula";
+  }
+  return {
+    app: "App Cask",
+    cli: "CLI Cask",
+    package: "Package Cask",
+    cask: "Cask",
+    formula: "Formula"
+  }[presentation ?? "cask"];
 }

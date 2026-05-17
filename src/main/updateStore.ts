@@ -842,6 +842,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         id: appID,
         appID,
         displayName: appRecord.displayName,
+        source: previousUpdate.source,
         fromVersion: previousUpdate.localVersion,
         toVersion: appRecord.localVersion,
         updatedAt: now
@@ -1021,17 +1022,22 @@ function reconcileHomebrewInventory(
         ? matchingApp.localVersion
         : item.installedVersion;
     const latestVersion = bestHomebrewCaskLatestVersion(item, update, caskEntry);
-    const previousAppID = previousItemsByID.get(item.id)?.appID;
+    const previousItem = previousItemsByID.get(item.id);
+    const previousAppID = previousItem?.appID;
     const preservedAppID =
       !caskEntry && !matchingApp && previousAppID && appsByID.has(previousAppID)
         ? previousAppID
         : undefined;
     const appID = matchingApp?.id ?? preservedAppID;
+    const presentation: HomebrewManagedItem["presentation"] = appID
+      ? "app"
+      : (caskEntry?.presentation ?? previousItem?.presentation ?? item.presentation);
 
     if (!latestVersion || !isVersionGreater(latestVersion, installedVersion)) {
       return {
         ...item,
         appID,
+        presentation,
         name: matchingApp?.displayName ?? item.name,
         iconDataURL: iconDataURL ?? preservedIconDataURL,
         installedVersion,
@@ -1043,6 +1049,7 @@ function reconcileHomebrewInventory(
     return {
       ...item,
       appID,
+      presentation,
       name: matchingApp?.displayName ?? item.name,
       iconDataURL: iconDataURL ?? preservedIconDataURL,
       installedVersion,
