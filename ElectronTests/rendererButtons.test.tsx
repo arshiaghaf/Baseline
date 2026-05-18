@@ -735,7 +735,7 @@ describe("renderer button parity", () => {
       updates: [],
       homebrewItems: [installedFormula]
     });
-    const { rerender } = render(
+    const { container, rerender } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -774,6 +774,126 @@ describe("renderer button parity", () => {
     );
     expect(screen.getByText("Stable App")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    expect(container.querySelectorAll(".update-card")).toHaveLength(2);
+    expect(container.querySelector(".rows .update-card")).not.toBeInTheDocument();
+  });
+
+  it("adds a combined Ignored sidebar item for ignored apps and Homebrew items", () => {
+    const ignoredFormula: HomebrewManagedItem = {
+      ...cask,
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula"
+    };
+    const { container, rerender } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "all",
+          ignoredIDs: [app.id],
+          ignoredHomebrewItemIDs: [ignoredFormula.id],
+          homebrewItems: [ignoredFormula]
+        })}
+      />
+    );
+
+    expect(
+      Array.from(container.querySelectorAll(".secondary-source-list button")).map((button) =>
+        button.textContent?.trim()
+      )
+    ).toEqual(["Installed", "Ignored"]);
+    fireEvent.click(screen.getByRole("button", { name: /Ignored/ }));
+    expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("ignored");
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "ignored",
+          ignoredIDs: [app.id],
+          ignoredHomebrewItemIDs: [ignoredFormula.id],
+          homebrewItems: [ignoredFormula]
+        })}
+      />
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Ignored Apps and Homebrew" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Example")).toBeInTheDocument();
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    expect(screen.getByText("Formula")).toBeInTheDocument();
+    expect(container.querySelectorAll(".ignored-card")).toHaveLength(2);
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "ignored",
+          searchText: "rip",
+          ignoredIDs: [app.id],
+          ignoredHomebrewItemIDs: [ignoredFormula.id],
+          homebrewItems: [ignoredFormula]
+        })}
+      />
+    );
+
+    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    expect(screen.queryByText("Example")).not.toBeInTheDocument();
+    expect(screen.queryByText("No matches found.")).not.toBeInTheDocument();
+  });
+
+  it("keeps app sections visible without Settings section controls", () => {
+    const ignoredFormula: HomebrewManagedItem = {
+      ...cask,
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula"
+    };
+    const fixedSectionsSnapshot = snapshot({
+      selectedTab: "apps",
+      ignoredIDs: [app.id],
+      ignoredHomebrewItemIDs: [ignoredFormula.id],
+      homebrewItems: [ignoredFormula]
+    });
+    const { rerender } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={fixedSectionsSnapshot}
+      />
+    );
+
+    expect(screen.getByTitle("Collapse Ignored")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Example")).toBeInTheDocument();
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={{ ...fixedSectionsSnapshot, selectedTab: "homebrew" }}
+      />
+    );
+
+    expect(screen.getByTitle("Collapse Ignored")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
+
+    rerender(<SettingsView snapshot={fixedSectionsSnapshot} />);
+
+    expect(screen.queryByRole("heading", { name: "Sections" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Installed apps")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Recently updated apps")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Ignored apps")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Recently updated Homebrew")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Installed Homebrew")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Ignored Homebrew")).not.toBeInTheDocument();
   });
 
   it("renders compact menu bar as all updates without tabs or recent sections", () => {

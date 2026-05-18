@@ -385,6 +385,16 @@ function Sidebar({
           <CheckCircle2 size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Installed</span>
         </button>
+        <button
+          className={route === "main" && snapshot.selectedTab === "ignored" ? "selected" : ""}
+          onClick={() => {
+            window.location.hash = "/main";
+            void window.baseline.setSelectedTab("ignored");
+          }}
+        >
+          <EyeOff size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <span>Ignored</span>
+        </button>
       </nav>
       <div className="sidebar-footer">
         <button
@@ -492,6 +502,9 @@ function SelectedTabContent({
   derived: DerivedSections;
   compact: boolean;
 }) {
+  if (!compact && snapshot.selectedTab === "ignored") {
+    return <IgnoredTab snapshot={snapshot} derived={derived} compact={compact} />;
+  }
   if (snapshot.searchText.trim()) {
     return <SearchResults snapshot={snapshot} derived={derived} />;
   }
@@ -692,14 +705,10 @@ function AllRecentlyUpdatedSection({
   const homebrewUpdatedAt = new Map(
     snapshot.homebrewRecentlyUpdated.map((record) => [record.itemID, record.updatedAt])
   );
-  const recentlyUpdatedApps = snapshot.showRecentlyUpdatedAppsSection
-    ? derived.recentlyUpdatedApps
-    : [];
-  const homebrewRecentlyUpdated = snapshot.showRecentlyUpdatedHomebrewSection
-    ? derived.homebrewRecentlyUpdated.filter(
-        (item) => !homebrewItemMatchesApp(item, recentlyUpdatedApps)
-      )
-    : [];
+  const recentlyUpdatedApps = derived.recentlyUpdatedApps;
+  const homebrewRecentlyUpdated = derived.homebrewRecentlyUpdated.filter(
+    (item) => !homebrewItemMatchesApp(item, recentlyUpdatedApps)
+  );
   const rows: RecentGridItem[] = [
     ...recentlyUpdatedApps.map((app) => ({
       type: "app" as const,
@@ -746,24 +755,20 @@ function AppsTab({ snapshot, derived }: { snapshot: BaselineSnapshot; derived: D
         empty="All your apps are up to date."
         cardLayout
       />
-      {snapshot.showRecentlyUpdatedAppsSection && (
-        <RecentlyUpdatedAppSection
-          sectionID="recentlyUpdated"
-          title="Recently Updated"
-          apps={derived.recentlyUpdatedApps}
-          snapshot={snapshot}
-          empty="No recently updated apps yet."
-        />
-      )}
-      {snapshot.showIgnoredAppsSection && (
-        <IgnoredAppSection
-          sectionID="ignored"
-          title={`Ignored (${derived.ignoredApps.length})`}
-          apps={derived.ignoredApps}
-          snapshot={snapshot}
-          empty="No ignored apps."
-        />
-      )}
+      <RecentlyUpdatedAppSection
+        sectionID="recentlyUpdated"
+        title="Recently Updated"
+        apps={derived.recentlyUpdatedApps}
+        snapshot={snapshot}
+        empty="No recently updated apps yet."
+      />
+      <IgnoredAppSection
+        sectionID="ignored"
+        title={`Ignored (${derived.ignoredApps.length})`}
+        apps={derived.ignoredApps}
+        snapshot={snapshot}
+        empty="No ignored apps."
+      />
     </div>
   );
 }
@@ -990,6 +995,18 @@ type RecentGridItem =
       type: "homebrew";
       id: string;
       updatedAt: string;
+      item: HomebrewManagedItem;
+    };
+
+type IgnoredGridItem =
+  | {
+      type: "app";
+      id: string;
+      item: AppRecord;
+    }
+  | {
+      type: "homebrew";
+      id: string;
       item: HomebrewManagedItem;
     };
 
@@ -1307,24 +1324,20 @@ function HomebrewTab({
         showUpdateAll
         cardLayout
       />
-      {snapshot.showRecentlyUpdatedHomebrewSection && (
-        <RecentlyUpdatedHomebrewSection
-          sectionID="recentlyUpdated"
-          title="Recently Updated"
-          items={derived.homebrewRecentlyUpdated}
-          snapshot={snapshot}
-          empty="No recently updated Homebrew items yet."
-        />
-      )}
-      {snapshot.showIgnoredHomebrewSection && (
-        <IgnoredHomebrewSection
-          sectionID="ignored"
-          title={`Ignored (${derived.homebrewIgnored.length})`}
-          items={derived.homebrewIgnored}
-          snapshot={snapshot}
-          empty="No ignored Homebrew items."
-        />
-      )}
+      <RecentlyUpdatedHomebrewSection
+        sectionID="recentlyUpdated"
+        title="Recently Updated"
+        items={derived.homebrewRecentlyUpdated}
+        snapshot={snapshot}
+        empty="No recently updated Homebrew items yet."
+      />
+      <IgnoredHomebrewSection
+        sectionID="ignored"
+        title={`Ignored (${derived.homebrewIgnored.length})`}
+        items={derived.homebrewIgnored}
+        snapshot={snapshot}
+        empty="No ignored Homebrew items."
+      />
     </div>
   );
 }
@@ -1340,7 +1353,7 @@ function InstalledTab({
 }) {
   return (
     <div className="stack">
-      {!compact && snapshot.showInstalledAppsSection && (
+      {!compact && (
         <AppSection
           sectionID="installed"
           collapsible
@@ -1348,9 +1361,10 @@ function InstalledTab({
           apps={derived.installedApps}
           snapshot={snapshot}
           empty="No installed apps found."
+          cardLayout
         />
       )}
-      {!compact && snapshot.showInstalledHomebrewSection && (
+      {!compact && (
         <HomebrewSection
           sectionID="installed"
           collapsible
@@ -1358,10 +1372,61 @@ function InstalledTab({
           items={derived.homebrewInstalled}
           snapshot={snapshot}
           empty="No installed Homebrew items found."
+          cardLayout
         />
       )}
       {compact && <Empty text="Open Baseline to view installed items." />}
     </div>
+  );
+}
+
+function IgnoredTab({
+  snapshot,
+  derived,
+  compact
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+  compact: boolean;
+}) {
+  if (compact) {
+    return <Empty text="Open Baseline to view ignored items." />;
+  }
+
+  const items: IgnoredGridItem[] = [
+    ...derived.ignoredApps.map((app) => ({
+      type: "app" as const,
+      id: app.id,
+      item: app
+    })),
+    ...derived.homebrewIgnored.map((item) => ({
+      type: "homebrew" as const,
+      id: item.id,
+      item
+    }))
+  ];
+
+  return (
+    <section className="panel">
+      <PanelTitle title={`Ignored Apps and Homebrew (${items.length})`} />
+      {items.length === 0 ? (
+        <Empty text="No ignored apps or Homebrew items." />
+      ) : (
+        <CardGrid sectionClassName="ignored-grid">
+          {items.map((item) =>
+            item.type === "app" ? (
+              <IgnoredAppCard key={`app:${item.id}`} app={item.item} snapshot={snapshot} />
+            ) : (
+              <IgnoredHomebrewCard
+                key={`homebrew:${item.id}`}
+                item={item.item}
+                snapshot={snapshot}
+              />
+            )
+          )}
+        </CardGrid>
+      )}
+    </section>
   );
 }
 
@@ -2203,7 +2268,7 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
         <header className="topbar">
           <div>
             <h1>Settings</h1>
-            <p>Sections, scan paths, optional tools, and refresh behavior</p>
+            <p>Scan paths, optional tools, and refresh behavior</p>
           </div>
           <button
             className="toolbar-button text-button"
@@ -2226,40 +2291,6 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
                 Check Again
               </button>
             </div>
-          </section>
-
-          <section className="panel">
-            <PanelTitle title="Sections" />
-            <Toggle
-              label="Installed apps"
-              value={snapshot.showInstalledAppsSection}
-              patch="showInstalledAppsSection"
-            />
-            <Toggle
-              label="Recently updated apps"
-              value={snapshot.showRecentlyUpdatedAppsSection}
-              patch="showRecentlyUpdatedAppsSection"
-            />
-            <Toggle
-              label="Ignored apps"
-              value={snapshot.showIgnoredAppsSection}
-              patch="showIgnoredAppsSection"
-            />
-            <Toggle
-              label="Recently updated Homebrew"
-              value={snapshot.showRecentlyUpdatedHomebrewSection}
-              patch="showRecentlyUpdatedHomebrewSection"
-            />
-            <Toggle
-              label="Installed Homebrew"
-              value={snapshot.showInstalledHomebrewSection}
-              patch="showInstalledHomebrewSection"
-            />
-            <Toggle
-              label="Ignored Homebrew"
-              value={snapshot.showIgnoredHomebrewSection}
-              patch="showIgnoredHomebrewSection"
-            />
           </section>
 
           <section className="panel">
@@ -2480,6 +2511,7 @@ function selectedTabTitle(tab: MenuTab): string {
   if (tab === "all") return "All";
   if (tab === "apps") return "Apps";
   if (tab === "installed") return "Installed";
+  if (tab === "ignored") return "Ignored";
   return "Homebrew";
 }
 

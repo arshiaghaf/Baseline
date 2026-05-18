@@ -5,7 +5,7 @@ import type { VersionValue } from "./version";
 
 export type UpdateSource = "appStore" | "sparkle" | "homebrew" | "web" | "unknown";
 export type SupportLevel = "supported" | "limited" | "unsupported";
-export type MenuTab = "all" | "apps" | "homebrew" | "installed";
+export type MenuTab = "all" | "apps" | "homebrew" | "installed" | "ignored";
 export type HomebrewManagedItemKind = "formula" | "cask";
 export type HomebrewPresentation = "formula" | "app" | "cli" | "package" | "cask";
 
@@ -139,12 +139,6 @@ export type PersistedSnapshot = {
   ignoredHomebrewItemIDs: string[];
   additionalDirectories: string[];
   selectedTab: MenuTab;
-  showInstalledAppsSection: boolean;
-  showRecentlyUpdatedAppsSection: boolean;
-  showIgnoredAppsSection: boolean;
-  showRecentlyUpdatedHomebrewSection: boolean;
-  showInstalledHomebrewSection: boolean;
-  showIgnoredHomebrewSection: boolean;
   collapsedAppSectionIDs: string[];
   collapsedHomebrewSectionIDs: string[];
   autoRefreshEnabled: boolean;
@@ -211,12 +205,6 @@ export function defaultPersistedSnapshot(): PersistedSnapshot {
     ignoredHomebrewItemIDs: [],
     additionalDirectories: [],
     selectedTab: "all",
-    showInstalledAppsSection: true,
-    showRecentlyUpdatedAppsSection: true,
-    showIgnoredAppsSection: true,
-    showRecentlyUpdatedHomebrewSection: true,
-    showInstalledHomebrewSection: true,
-    showIgnoredHomebrewSection: true,
     collapsedAppSectionIDs: [],
     collapsedHomebrewSectionIDs: [],
     autoRefreshEnabled: true,

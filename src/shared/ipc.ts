@@ -41,12 +41,6 @@ export const ipcChannels = {
 
 export type PreferencePatch = Partial<{
   selectedTab: MenuTab;
-  showInstalledAppsSection: boolean;
-  showRecentlyUpdatedAppsSection: boolean;
-  showIgnoredAppsSection: boolean;
-  showRecentlyUpdatedHomebrewSection: boolean;
-  showInstalledHomebrewSection: boolean;
-  showIgnoredHomebrewSection: boolean;
   collapsedAppSectionIDs: string[];
   collapsedHomebrewSectionIDs: string[];
   autoRefreshEnabled: boolean;
