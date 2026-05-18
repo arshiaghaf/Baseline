@@ -1,14 +1,24 @@
 # Baseline
 
+<p align="center">
+  <a href="https://github.com/arshiaghaf/baseline/releases">
+    <img alt="Latest release" src="https://img.shields.io/github/v/release/arshiaghaf/baseline?include_prereleases&style=for-the-badge&logo=github" />
+  </a>
+  <img alt="Minimum macOS version" src="https://img.shields.io/badge/macOS-13.0%2B-000000?style=for-the-badge&logo=apple" />
+  <a href="https://github.com/arshiaghaf/baseline/blob/main/LICENSE">
+    <img alt="GPL-3.0-only license" src="https://img.shields.io/github/license/arshiaghaf/baseline?style=for-the-badge&logo=github" />
+  </a>
+</p>
+
 Baseline is a standalone macOS Electron app for finding app updates through public update sources.
 
-It scans installed apps, checks App Store, Sparkle/DevMate appcast, and Homebrew metadata, then shows update actions in a full app window and a compact menu bar tray window.
+It scans installed apps, checks App Store, Sparkle/DevMate appcast, and Homebrew metadata, then gives you update, install, ignore, and fallback actions in a full app window plus a compact menu bar tray window.
 
 ![Baseline full app window showing app and Homebrew updates](docs/images/app.png)
 
 ## Project Status
 
-Baseline is early-stage macOS software. The core update-checking flow is functional, but the UI and packaging/release process are still evolving.
+Baseline is early-stage macOS preview software. The Electron app, menu bar tray, update scanning, Homebrew flows, ignored-state handling, and unsigned release pipeline are functional, but the UI and packaging/release process are still evolving.
 
 Unsigned builds are not notarized by Apple. macOS Gatekeeper may warn when opening them. If you are not comfortable with unsigned preview software, build from source or wait for a signed release path.
 
@@ -20,15 +30,16 @@ Unsigned builds are not notarized by Apple. macOS Gatekeeper may warn when openi
   - App Store lookup API
   - Sparkle/DevMate appcasts
   - Homebrew cask and formula metadata
-- Unified update lists for apps, Homebrew casks, and Homebrew formulae
+- Unified update cards for apps, Homebrew casks, and Homebrew formulae
 
   ![Baseline menu bar tray showing app and Homebrew updates](docs/images/menubar.png)
 
-- Dedicated `Apps`, `Homebrew`, and `Installed` views in the full app
+- Sidebar views for `All`, `Apps`, `Homebrew`, `Installed`, `Ignored`, and `Settings`
 
-- Recently updated and ignored sections for keeping update lists manageable
+- Recently updated and ignored card grids for keeping update lists manageable
 - Ignore specific apps or Homebrew items so they stay out of the main update list
-- Uninstall Homebrew-managed casks and formulae from the row actions menu
+- Explicit ignored tab that combines ignored apps and Homebrew items in one place
+- Uninstall Homebrew-managed casks and formulae from item actions
 
   ![Baseline Apps tab showing actions, recently updated apps, and ignored updates](docs/images/app-ignore.png)
 
@@ -42,13 +53,17 @@ Unsigned builds are not notarized by Apple. macOS Gatekeeper may warn when openi
   - Search installable casks and formulae
   - Install casks with `brew install --cask <token>` when `brew` is installed
   - Install formulae with `brew install <token>` when `brew` is installed
+- Homebrew presentation labels for app casks, CLI casks, package casks, formulae, and generic casks
+- App-backed Homebrew cask linking to avoid duplicate app and cask rows when Homebrew metadata proves they represent the same app
+- Auto refresh, refresh interval, custom scan directories, optional `mas`, and diagnostics controls in Settings
 - External fallback links when local CLI tooling is unavailable
 
 ## Download
 
-Preview builds are published on the GitHub Releases page as unsigned DMGs.
+Preview builds are published on the [GitHub Releases](https://github.com/arshiaghaf/baseline/releases) page as unsigned DMGs.
 
 For each release:
+
 - Download `Baseline-<version>-unsigned.dmg`.
 - Verify the published SHA-256 checksum.
 - Drag `Baseline.app` to `/Applications`.
@@ -58,6 +73,7 @@ Because the app is unsigned, macOS may show an unidentified-developer warning. T
 ## Build From Source
 
 Requirements:
+
 - macOS
 - Node.js 25 or newer
 - npm
@@ -110,9 +126,9 @@ scripts/prepare-unsigned-release.sh 0.1.0
 Baseline keeps update logic outside React views:
 
 - `src/shared` defines domain contracts, persistence snapshots, security policy, and shared parsers.
-- `src/main` contains Electron lifecycle, privileged IO, scanning, network lookup, subprocess execution, persistence, and IPC.
+- `src/main` contains Electron lifecycle, windows/tray, privileged IO, scanning, network lookup, subprocess execution, persistence, and IPC.
 - `src/renderer` renders React state and dispatches user intents through the preload API.
-- `ElectronTests` covers parsers, version logic, security checks, renderer behavior, persistence, store behavior, and source-client fixtures.
+- `ElectronTests` covers parsers, version logic, security checks, renderer behavior, persistence, store behavior, Homebrew app linking, and source-client fixtures.
 - `e2e` covers Electron launch smoke tests.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for more detail.
