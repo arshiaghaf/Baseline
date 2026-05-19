@@ -4,7 +4,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { PersistedSnapshot } from "../shared/domain";
-import { defaultPersistedSnapshot } from "../shared/domain";
+import { defaultPersistedSnapshot, normalizeAppearancePreference } from "../shared/domain";
 import { version } from "../shared/version";
 export { defaultPersistedSnapshot };
 
@@ -63,6 +63,7 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
       fromVersion: version(record.fromVersion?.raw),
       toVersion: version(record.toVersion?.raw)
     })),
+    appearancePreference: normalizeAppearancePreference(input.appearancePreference),
     refreshIntervalMinutes: clamp(
       input.refreshIntervalMinutes ?? defaults.refreshIntervalMinutes,
       5,

@@ -6,6 +6,7 @@ import type { VersionValue } from "./version";
 export type UpdateSource = "appStore" | "sparkle" | "homebrew" | "web" | "unknown";
 export type SupportLevel = "supported" | "limited" | "unsupported";
 export type MenuTab = "all" | "apps" | "homebrew" | "installed" | "ignored";
+export type AppearancePreference = "system" | "light" | "dark";
 export type HomebrewManagedItemKind = "formula" | "cask";
 export type HomebrewPresentation = "formula" | "app" | "cli" | "package" | "cask";
 
@@ -143,6 +144,7 @@ export type PersistedSnapshot = {
   collapsedHomebrewSectionIDs: string[];
   autoRefreshEnabled: boolean;
   refreshIntervalMinutes: number;
+  appearancePreference: AppearancePreference;
   useMasForAppStoreUpdates: boolean;
   showMenuBarIcon: boolean;
   lastRefreshDate?: string;
@@ -210,9 +212,17 @@ export function defaultPersistedSnapshot(): PersistedSnapshot {
     collapsedHomebrewSectionIDs: [],
     autoRefreshEnabled: true,
     refreshIntervalMinutes: 60,
+    appearancePreference: "system",
     useMasForAppStoreUpdates: true,
     showMenuBarIcon: true
   };
+}
+
+export function normalizeAppearancePreference(value: unknown): AppearancePreference {
+  if (value === "light" || value === "dark" || value === "system") {
+    return value;
+  }
+  return "system";
 }
 
 export function homebrewItemID(kind: HomebrewManagedItemKind, token: string): string {

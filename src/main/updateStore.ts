@@ -22,7 +22,8 @@ import {
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
   homebrewDiscoverID,
-  homebrewItemID
+  homebrewItemID,
+  normalizeAppearancePreference
 } from "../shared/domain";
 import {
   HomebrewMaintenanceOutputParser,
@@ -203,7 +204,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       patch.refreshIntervalMinutes === undefined
         ? this.state.refreshIntervalMinutes
         : Math.min(Math.max(Math.trunc(patch.refreshIntervalMinutes), 5), 1440);
-    this.patch({ ...patch, refreshIntervalMinutes });
+    const appearancePreference = normalizeAppearancePreference(
+      patch.appearancePreference ?? this.state.appearancePreference
+    );
+    this.patch({ ...patch, appearancePreference, refreshIntervalMinutes });
     this.restartAutoRefreshLoop();
     await this.persist();
   }
@@ -929,6 +933,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     collapsedHomebrewSectionIDs: snapshot.collapsedHomebrewSectionIDs,
     autoRefreshEnabled: snapshot.autoRefreshEnabled,
     refreshIntervalMinutes: snapshot.refreshIntervalMinutes,
+    appearancePreference: snapshot.appearancePreference,
     useMasForAppStoreUpdates: snapshot.useMasForAppStoreUpdates,
     showMenuBarIcon: snapshot.showMenuBarIcon,
     lastRefreshDate: snapshot.lastRefreshDate

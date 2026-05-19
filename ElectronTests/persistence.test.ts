@@ -17,6 +17,51 @@ afterEach(async () => {
 });
 
 describe("snapshot persistence", () => {
+  it("defaults the appearance preference on older snapshots", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await mkdir(userData, { recursive: true });
+    await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
+
+    const persistence = new SnapshotPersistence(userData);
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      appearancePreference: "system"
+    });
+  });
+
+  it("preserves the appearance preference across save and load", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      appearancePreference: "dark"
+    });
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      appearancePreference: "dark"
+    });
+  });
+
+  it("normalizes invalid appearance preferences from older or edited snapshots", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await mkdir(userData, { recursive: true });
+    await writeFile(
+      path.join(userData, "baseline-snapshot.json"),
+      JSON.stringify({ appearancePreference: "sepia" }),
+      "utf8"
+    );
+
+    const persistence = new SnapshotPersistence(userData);
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      appearancePreference: "system"
+    });
+  });
+
   it("defaults the menu bar icon preference on older snapshots", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);
