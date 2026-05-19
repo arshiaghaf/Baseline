@@ -930,6 +930,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     autoRefreshEnabled: snapshot.autoRefreshEnabled,
     refreshIntervalMinutes: snapshot.refreshIntervalMinutes,
     useMasForAppStoreUpdates: snapshot.useMasForAppStoreUpdates,
+    showMenuBarIcon: snapshot.showMenuBarIcon,
     lastRefreshDate: snapshot.lastRefreshDate
   };
 }

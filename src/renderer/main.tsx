@@ -2319,6 +2319,11 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
               value={snapshot.useMasForAppStoreUpdates}
               patch="useMasForAppStoreUpdates"
             />
+            <Toggle
+              label="Show menu bar icon"
+              value={snapshot.showMenuBarIcon}
+              patch="showMenuBarIcon"
+            />
           </section>
 
           <section className="panel wide-panel">

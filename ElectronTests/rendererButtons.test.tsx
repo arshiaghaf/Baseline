@@ -1504,4 +1504,14 @@ describe("renderer button parity", () => {
     expect(window.baseline.refreshToolStatus).toHaveBeenCalledTimes(1);
     expect(window.baseline.refresh).not.toHaveBeenCalled();
   });
+
+  it("updates the menu bar icon preference from settings", () => {
+    render(<SettingsView snapshot={snapshot()} />);
+
+    fireEvent.click(screen.getByLabelText("Show menu bar icon"));
+
+    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
+      showMenuBarIcon: false
+    });
+  });
 });

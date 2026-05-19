@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -17,6 +17,34 @@ afterEach(async () => {
 });
 
 describe("snapshot persistence", () => {
+  it("defaults the menu bar icon preference on older snapshots", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await mkdir(userData, { recursive: true });
+    await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
+
+    const persistence = new SnapshotPersistence(userData);
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      showMenuBarIcon: true
+    });
+  });
+
+  it("preserves the menu bar icon preference across save and load", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      showMenuBarIcon: false
+    });
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      showMenuBarIcon: false
+    });
+  });
+
   it("preserves collapsed section preferences across save and load", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);
