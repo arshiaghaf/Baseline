@@ -8,9 +8,9 @@
   </a>
 </p>
 
-Baseline helps you find and manage macOS app updates from public sources, including the App Store, Sparkle appcasts, and Homebrew.
+Baseline helps you manage and update Mac apps installed from different sources, including the App Store, Homebrew, Sparkle-enabled apps, and direct downloads.
 
-It brings app updates, Homebrew updates, install discovery, ignored items, and fallback actions into one full app window and a compact menu bar tray.
+It brings app updates, Homebrew updates, install discovery, ignored items, and fallback actions into one full app and the menu bar tray.
 
 ![Baseline full app window showing app and Homebrew updates](docs/images/baseline-main-window.png)
 
