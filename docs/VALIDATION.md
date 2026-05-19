@@ -1,6 +1,6 @@
 # Validation
 
-Use this checklist before handing off a preview build or opening a release PR.
+Use this checklist before handing off a local preview build, opening a release PR, or cutting the first public release.
 
 ## Known-Good Preview
 
