@@ -144,6 +144,7 @@ export type PersistedSnapshot = {
   autoRefreshEnabled: boolean;
   refreshIntervalMinutes: number;
   useMasForAppStoreUpdates: boolean;
+  showMenuBarIcon: boolean;
   lastRefreshDate?: string;
 };
 
@@ -209,7 +210,8 @@ export function defaultPersistedSnapshot(): PersistedSnapshot {
     collapsedHomebrewSectionIDs: [],
     autoRefreshEnabled: true,
     refreshIntervalMinutes: 60,
-    useMasForAppStoreUpdates: true
+    useMasForAppStoreUpdates: true,
+    showMenuBarIcon: true
   };
 }
 

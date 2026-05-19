@@ -46,6 +46,7 @@ export type PreferencePatch = Partial<{
   autoRefreshEnabled: boolean;
   refreshIntervalMinutes: number;
   useMasForAppStoreUpdates: boolean;
+  showMenuBarIcon: boolean;
 }>;
 
 export type BaselineAPI = {

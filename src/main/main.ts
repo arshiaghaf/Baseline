@@ -78,10 +78,10 @@ if (hasSingleInstanceLock) {
       }
     });
 
-    createTray();
     createMainWindow("main");
     wireStoreEvents();
     wireIpc();
+    updateTrayStatus(store.getSnapshot());
     if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
       store.emit("snapshot", store.getSnapshot());
     } else {
@@ -185,6 +185,9 @@ async function loadRenderer(
 }
 
 function createTray(): void {
+  if (tray) {
+    return;
+  }
   trayBaseIcon = nativeImage.createFromDataURL(
     "data:image/svg+xml;charset=utf-8," +
       encodeURIComponent(
@@ -194,12 +197,24 @@ function createTray(): void {
   trayBaseIcon.setTemplateImage(true);
   trayRefreshIcon = nativeImage.createFromDataURL(trayRefreshIconDataURL);
   trayRefreshIcon.setTemplateImage(true);
+
   tray = new Tray(trayBaseIcon);
+
   tray.setToolTip("Baseline");
   tray.on("click", toggleMenuWindow);
 }
 
+function destroyTray(): void {
+  menuWindow?.destroy();
+  menuWindow = undefined;
+  tray?.destroy();
+  tray = undefined;
+}
+
 function toggleMenuWindow(): void {
+  if (!store.getSnapshot().showMenuBarIcon) {
+    return;
+  }
   const window = createMenuWindow();
   if (window.isVisible()) {
     window.hide();
@@ -264,6 +279,11 @@ function wireStoreEvents(): void {
 }
 
 function updateTrayStatus(snapshot: BaselineSnapshot): void {
+  if (!snapshot.showMenuBarIcon) {
+    destroyTray();
+    return;
+  }
+  createTray();
   if (!tray) {
     return;
   }
