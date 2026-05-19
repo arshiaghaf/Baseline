@@ -5,6 +5,7 @@ This repository uses GitHub Actions for pull request and `main` branch validatio
 Baseline is now an Electron app that still targets macOS first, so CI runs on GitHub's `macos-26` hosted runner.
 
 The CI workflow:
+
 - Installs Node dependencies with `npm ci`.
 - Lints release scripts with `bash -n`.
 - Typechecks the Electron main/preload/renderer TypeScript.
@@ -32,4 +33,4 @@ scripts/validate-preview.sh 0.0.0-preview
 
 That command also creates an unsigned DMG and smoke-launches the installed `/Applications/Baseline.app` copy.
 
-Unsigned DMG release publishing is handled by `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
+Unsigned DMG release publishing is handled by `.github/workflows/release.yml` when the first `vX.Y.Z` tag, or a later release tag, is pushed.

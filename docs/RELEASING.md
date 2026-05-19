@@ -1,10 +1,10 @@
 # Releasing Baseline
 
-Baseline currently supports Electron source builds and optional unsigned preview DMGs.
+Baseline currently supports Electron source builds and unsigned preview DMG release tooling. No public packaged release has been cut yet; use this process for the first public release and later unsigned preview releases.
 
 Unsigned DMGs are not notarized by Apple. macOS Gatekeeper may warn users before opening the app. Do not describe unsigned builds as signed, notarized, or production-grade.
 
-## Release Checklist
+## First Release Checklist
 
 1. Choose a version, for example `0.1.0`.
 2. Update `CHANGELOG.md`.
