@@ -11,7 +11,7 @@ const config: ForgeConfig = {
     name: "Baseline",
     executableName: "Baseline",
     icon: "assets/app-icon",
-    appBundleId: "com.arshia.baseline",
+    appBundleId: "com.arshiaghaf.baseline",
     appCategoryType: "public.app-category.utilities",
     asar: true,
     extendInfo: {
