@@ -15,12 +15,15 @@ import {
   EyeOff,
   ExternalLink,
   FolderPlus,
+  Monitor,
   MoreHorizontal,
+  Moon,
   Package,
   RefreshCcw,
   Search,
   Server,
   Settings,
+  Sun,
   Terminal,
   Trash2,
   X,
@@ -28,6 +31,7 @@ import {
 } from "lucide-react";
 import type {
   AppRecord,
+  AppearancePreference,
   BaselineSnapshot,
   HomebrewCaskDiscoveryItem,
   HomebrewManagedItem,
@@ -2295,6 +2299,11 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
           </section>
 
           <section className="panel">
+            <PanelTitle title="Appearance" />
+            <AppearanceSelector value={snapshot.appearancePreference} />
+          </section>
+
+          <section className="panel">
             <PanelTitle title="Refresh" />
             <Toggle
               label="Auto refresh"
@@ -2384,8 +2393,43 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
 
 type TogglePatch = Exclude<
   keyof Parameters<typeof window.baseline.updatePreferences>[0],
-  "selectedTab" | "refreshIntervalMinutes"
+  "selectedTab" | "refreshIntervalMinutes" | "appearancePreference"
 >;
+
+const appearanceOptions: Array<{
+  value: AppearancePreference;
+  label: string;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+}> = [
+  { value: "system", label: "System Default", icon: Monitor },
+  { value: "light", label: "Light Mode", icon: Sun },
+  { value: "dark", label: "Dark Mode", icon: Moon }
+];
+
+function AppearanceSelector({ value }: { value: AppearancePreference }) {
+  return (
+    <div className="appearance-options" role="group" aria-label="Appearance">
+      {appearanceOptions.map((option) => {
+        const Icon = option.icon;
+        const selected = option.value === value;
+        return (
+          <button
+            aria-pressed={selected}
+            className={selected ? "selected" : ""}
+            key={option.value}
+            onClick={() =>
+              void window.baseline.updatePreferences({ appearancePreference: option.value })
+            }
+            type="button"
+          >
+            <Icon size={15} strokeWidth={toolbarIconStrokeWidth} />
+            <span>{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function Toggle({ label, value, patch }: { label: string; value: boolean; patch: TogglePatch }) {
   return (

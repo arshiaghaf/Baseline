@@ -1545,6 +1545,21 @@ describe("renderer button parity", () => {
     expect(window.baseline.refresh).not.toHaveBeenCalled();
   });
 
+  it("updates the appearance preference from settings", () => {
+    render(<SettingsView snapshot={snapshot({ appearancePreference: "light" })} />);
+
+    expect(screen.getByRole("button", { name: "Light Mode" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Dark Mode" }));
+
+    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
+      appearancePreference: "dark"
+    });
+  });
+
   it("updates the menu bar icon preference from settings", () => {
     render(<SettingsView snapshot={snapshot()} />);
 

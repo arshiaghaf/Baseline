@@ -33,7 +33,8 @@ export function renderDiagnostics(
     `- Last refresh: ${snapshot.lastRefreshDate ?? "Never"}`,
     `- Refreshing: ${yesNo(snapshot.isRefreshing)}`,
     `- Auto refresh: ${yesNo(snapshot.autoRefreshEnabled)}`,
-    `- Refresh interval: ${snapshot.refreshIntervalMinutes} minutes`
+    `- Refresh interval: ${snapshot.refreshIntervalMinutes} minutes`,
+    `- Appearance: ${appearanceLabel(snapshot.appearancePreference)}`
   ];
 
   if (safeLastMessage) {
@@ -70,6 +71,14 @@ export function renderDiagnostics(
 
 function yesNo(value: boolean): string {
   return value ? "Yes" : "No";
+}
+
+function appearanceLabel(value: BaselineSnapshot["appearancePreference"]): string {
+  return {
+    system: "System Default",
+    light: "Light Mode",
+    dark: "Dark Mode"
+  }[value];
 }
 
 function defaultScanDirectories(additional: string[]): string[] {

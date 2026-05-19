@@ -1328,6 +1328,47 @@ button:disabled {
   padding: 10px 12px;
 }
 
+.appearance-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  margin: 12px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(118, 118, 128, 0.12);
+}
+
+.appearance-options button {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #2c2c2e;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.appearance-options button.selected {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 0 0 0.5px rgba(60, 60, 67, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.1);
+  color: #0d0d0d;
+}
+
+.appearance-options span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .directory-list {
   display: grid;
 }
@@ -1580,6 +1621,22 @@ button:disabled {
   .ghost-button {
     border-color: rgba(235, 235, 245, 0.16);
     background: rgba(255, 255, 255, 0.08);
+  }
+
+  .appearance-options {
+    background: rgba(118, 118, 128, 0.28);
+  }
+
+  .appearance-options button {
+    color: rgba(235, 235, 245, 0.78);
+  }
+
+  .appearance-options button.selected {
+    background: rgba(99, 99, 102, 0.78);
+    box-shadow:
+      0 0 0 0.5px rgba(255, 255, 255, 0.14),
+      0 1px 3px rgba(0, 0, 0, 0.4);
+    color: #ffffff;
   }
 
   .toolbar-button.refresh-button,

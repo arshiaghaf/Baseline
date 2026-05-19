@@ -7,6 +7,7 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  nativeTheme,
   nativeImage,
   screen,
   shell,
@@ -14,7 +15,12 @@ import {
 } from "electron";
 import path from "node:path";
 import { renderDiagnostics } from "../shared/diagnostics";
-import type { BaselineSnapshot, HomebrewCaskDiscoveryItem, MenuTab } from "../shared/domain";
+import type {
+  AppearancePreference,
+  BaselineSnapshot,
+  HomebrewCaskDiscoveryItem,
+  MenuTab
+} from "../shared/domain";
 import { homebrewItemHasAppRepresentation } from "../shared/homebrewAppLinking";
 import { ipcChannels, type PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL } from "../shared/security";
@@ -63,6 +69,7 @@ if (hasSingleInstanceLock) {
 
     const persistence = new SnapshotPersistence(app.getPath("userData"));
     const persisted = await persistence.load();
+    applyAppearancePreference(persisted.appearancePreference);
     store = new UpdateStore({
       persistence,
       persisted,
@@ -253,6 +260,7 @@ function showWindow(window?: BrowserWindow): void {
 
 function wireStoreEvents(): void {
   store.on("snapshot", (snapshot) => {
+    applyAppearancePreference(snapshot.appearancePreference);
     updateTrayStatus(snapshot);
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send(ipcChannels.snapshotChanged, snapshot);
@@ -276,6 +284,10 @@ function wireStoreEvents(): void {
       window.webContents.send(ipcChannels.homebrewCommandEvent, event);
     }
   });
+}
+
+function applyAppearancePreference(preference: AppearancePreference): void {
+  nativeTheme.themeSource = preference;
 }
 
 function updateTrayStatus(snapshot: BaselineSnapshot): void {

@@ -3,6 +3,7 @@
 
 import type {
   BaselineSnapshot,
+  AppearancePreference,
   HomebrewCaskDiscoveryItem,
   HomebrewManagedItem,
   MenuTab,
@@ -45,6 +46,7 @@ export type PreferencePatch = Partial<{
   collapsedHomebrewSectionIDs: string[];
   autoRefreshEnabled: boolean;
   refreshIntervalMinutes: number;
+  appearancePreference: AppearancePreference;
   useMasForAppStoreUpdates: boolean;
   showMenuBarIcon: boolean;
 }>;
