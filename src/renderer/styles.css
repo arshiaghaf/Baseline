@@ -793,6 +793,12 @@ button:disabled {
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
 }
 
+.row:has(.row-action-menu-popover),
+.item-card:has(.row-action-menu-popover) {
+  position: relative;
+  z-index: 30;
+}
+
 .row-action-menu-popover button {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
