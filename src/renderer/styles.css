@@ -625,7 +625,15 @@ button:disabled {
   border-top: 1px solid rgba(60, 60, 67, 0.06);
 }
 
-.ignored-row {
+.ignored-row > .app-icon,
+.ignored-row > .app-icon img,
+.ignored-row > .row-main,
+.ignored-row > .row-actions > .update-icon-button,
+.ignored-row > .row-actions > .row-action-menu > .secondary-icon-button,
+.ignored-row > .item-card-main,
+.ignored-row > .item-card-top > :not(.item-card-actions),
+.ignored-row > .item-card-top > .item-card-actions > .update-icon-button,
+.ignored-row > .item-card-top > .item-card-actions > .row-action-menu > .secondary-icon-button {
   opacity: 0.9;
   filter: saturate(0.45);
 }
