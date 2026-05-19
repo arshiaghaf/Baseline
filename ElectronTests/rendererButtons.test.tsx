@@ -205,6 +205,46 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
   });
 
+  it("keeps sidebar update badges fixed while search filters the content", () => {
+    const installedApp: AppRecord = {
+      ...app,
+      id: "app:stable",
+      displayName: "Stable App",
+      bundleIdentifier: "com.example.stable"
+    };
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("1.1.0"),
+      isOutdated: true
+    };
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          apps: [app, installedApp],
+          homebrewItems: [formula],
+          searchText: "stable"
+        })}
+      />
+    );
+
+    const [allButton, appsButton, homebrewButton] = Array.from(
+      container.querySelectorAll(".source-list button")
+    );
+
+    expect(within(allButton as HTMLElement).getByText("2")).toBeInTheDocument();
+    expect(within(appsButton as HTMLElement).getByText("1")).toBeInTheDocument();
+    expect(within(homebrewButton as HTMLElement).getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("Stable App")).toBeInTheDocument();
+    expect(screen.queryByText("Example")).not.toBeInTheDocument();
+    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+  });
+
   it("uses the same short search placeholder on every tab", () => {
     const { rerender } = render(
       <Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />

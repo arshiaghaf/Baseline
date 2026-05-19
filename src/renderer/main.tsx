@@ -138,6 +138,7 @@ export function Dashboard({
   onOpenSettings: () => void;
 }) {
   const derived = useMemo(() => deriveSections(snapshot), [snapshot]);
+  const sidebarDerived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
   const selectedTab = snapshot.selectedTab;
   const [toolbarSearchOpen, setToolbarSearchOpen] = useState(Boolean(snapshot.searchText));
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
@@ -220,7 +221,7 @@ export function Dashboard({
     const title = selectedTabTitle(selectedTab);
     shell = (
       <main className="app-shell">
-        <Sidebar snapshot={snapshot} derived={derived} route="main" />
+        <Sidebar snapshot={snapshot} derived={sidebarDerived} route="main" />
         <section className="workspace">
           <header className="topbar">
             <div>
