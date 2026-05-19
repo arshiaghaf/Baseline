@@ -1,63 +1,63 @@
 # Baseline
 
-Baseline is a standalone macOS Electron app for finding app updates through public update sources.
+<p align="center">
+  <img alt="Project status: Beta" src="https://img.shields.io/badge/status-beta-blue?style=for-the-badge" />
+  <img alt="Minimum macOS version" src="https://img.shields.io/badge/macOS-13.0%2B-000000?style=for-the-badge&logo=apple" />
+  <a href="https://github.com/arshiaghaf/baseline/blob/main/LICENSE">
+    <img alt="GPL-3.0-only license" src="https://img.shields.io/github/license/arshiaghaf/baseline?style=for-the-badge&logo=github" />
+  </a>
+</p>
 
-It scans installed apps, checks App Store, Sparkle/DevMate appcast, and Homebrew metadata, then shows update actions in a full app window and a compact menu bar tray window.
+Baseline helps you find and manage macOS app updates from public sources, including the App Store, Sparkle appcasts, and Homebrew.
 
-![Baseline full app window showing app and Homebrew updates](docs/images/app.png)
+It brings app updates, Homebrew updates, install discovery, ignored items, and fallback actions into one full app window and a compact menu bar tray.
 
-## Project Status
+![Baseline full app window showing app and Homebrew updates](docs/images/baseline-main-window.png)
 
-Baseline is early-stage macOS software. The core update-checking flow is functional, but the UI and packaging/release process are still evolving.
+## What Baseline Does
 
-Unsigned builds are not notarized by Apple. macOS Gatekeeper may warn when opening them. If you are not comfortable with unsigned preview software, build from source or wait for a signed release path.
+Baseline scans installed apps from system, user, and custom app directories, then checks public update sources for newer versions. It shows available updates, recently updated items, ignored items, and Homebrew discovery results without requiring a backend service or private API.
+
+When direct local tooling is available, Baseline can run update and install actions through Homebrew or `mas`. When local tooling is unavailable, it provides external fallback links instead of guessing.
 
 ## Features
 
-- Full Electron app window plus compact menu bar tray window
-- Installed app scanning from system, user, and custom app directories
-- Update detection through:
-  - App Store lookup API
-  - Sparkle/DevMate appcasts
-  - Homebrew cask and formula metadata
-- Unified update lists for apps, Homebrew casks, and Homebrew formulae
+- Full app window plus compact menu bar tray for quick update checks
+- Update detection from App Store lookup, Sparkle/DevMate appcasts, and Homebrew metadata
+- Unified update views for apps, Homebrew casks, and Homebrew formulae
+- Sidebar views for `All`, `Apps`, `Homebrew`, `Installed`, `Ignored`, and `Settings`
 
-  ![Baseline menu bar tray showing app and Homebrew updates](docs/images/menubar.png)
-
-- Dedicated `Apps`, `Homebrew`, and `Installed` views in the full app
+  ![Baseline menu bar tray showing app and Homebrew updates](docs/images/baseline-menu-bar.png)
 
 - Recently updated and ignored sections for keeping update lists manageable
 - Ignore specific apps or Homebrew items so they stay out of the main update list
-- Uninstall Homebrew-managed casks and formulae from the row actions menu
+- Uninstall Homebrew-managed casks and formulae from item actions
 
-  ![Baseline Apps tab showing actions, recently updated apps, and ignored updates](docs/images/app-ignore.png)
+  ![Baseline Ignored tab showing app and Homebrew item actions](docs/images/baseline-ignored-updates.png)
 
 - Search from the main window or menu bar tray to filter updates and discover installable Homebrew casks and formulae
 
-  ![Baseline menu bar Homebrew search showing an installable cask](docs/images/menubar-search.png)
+  ![Baseline main window Homebrew search showing installable casks](docs/images/baseline-homebrew-search.png)
 
-- Best-effort App Store updates through `mas upgrade <appId>` when `mas` is installed
-- Homebrew-managed inventory and update actions for installed casks and formulae when Homebrew is installed
-- Search-driven Homebrew discovery:
-  - Search installable casks and formulae
-  - Install casks with `brew install --cask <token>` when `brew` is installed
-  - Install formulae with `brew install <token>` when `brew` is installed
+- Auto refresh, refresh interval, custom scan directories, optional `mas`, and diagnostics controls in Settings
 - External fallback links when local CLI tooling is unavailable
 
-## Download
+## Project Status
 
-Preview builds are published on the GitHub Releases page as unsigned DMGs.
+Baseline is functional beta macOS software. The core app experience works end to end, with ongoing polish focused on UI, packaging, and release quality.
 
-For each release:
-- Download `Baseline-<version>-unsigned.dmg`.
-- Verify the published SHA-256 checksum.
-- Drag `Baseline.app` to `/Applications`.
+Packaged unsigned DMGs are planned for the first public release.
 
-Because the app is unsigned, macOS may show an unidentified-developer warning. This is expected for preview builds without an Apple Developer account.
+## Install
+
+No packaged release is available yet. Build Baseline from source for now.
+
+Future unsigned DMG releases will be published on the [GitHub Releases](https://github.com/arshiaghaf/baseline/releases) page. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
 
 ## Build From Source
 
 Requirements:
+
 - macOS
 - Node.js 25 or newer
 - npm
@@ -78,7 +78,16 @@ Run the app during development:
 npm start
 ```
 
-For a fuller preview handoff, run:
+## Limitations
+
+- Update detection is best-effort and depends on public update sources exposed by installed apps, Apple lookup endpoints, and Homebrew metadata.
+- Homebrew actions require Homebrew to be installed. Without it, Baseline opens external Homebrew or app pages instead.
+- App Store update actions use optional local `mas` support when available. Without `mas`, Baseline opens the App Store page externally.
+- Packaged releases are not signed or notarized yet.
+
+## Release Tooling
+
+For a fuller local release preview, run:
 
 ```bash
 scripts/validate-preview.sh 0.0.0-preview
@@ -100,19 +109,14 @@ To create the unsigned DMG plus release-note checksum text:
 scripts/prepare-unsigned-release.sh 0.1.0
 ```
 
-## Optional Local Tooling
-
-- `mas` is optional. Without it, Baseline opens the App Store page externally instead of running `mas upgrade`.
-- Homebrew (`brew`) is optional. Without it, Baseline opens external Homebrew/app pages instead of running install/upgrade actions.
-
 ## Architecture
 
 Baseline keeps update logic outside React views:
 
 - `src/shared` defines domain contracts, persistence snapshots, security policy, and shared parsers.
-- `src/main` contains Electron lifecycle, privileged IO, scanning, network lookup, subprocess execution, persistence, and IPC.
+- `src/main` contains Electron lifecycle, windows/tray, privileged IO, scanning, network lookup, subprocess execution, persistence, and IPC.
 - `src/renderer` renders React state and dispatches user intents through the preload API.
-- `ElectronTests` covers parsers, version logic, security checks, renderer behavior, persistence, store behavior, and source-client fixtures.
+- `ElectronTests` covers parsers, version logic, security checks, renderer behavior, persistence, store behavior, Homebrew app linking, and source-client fixtures.
 - `e2e` covers Electron launch smoke tests.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for more detail.
