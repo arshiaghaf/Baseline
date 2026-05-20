@@ -45,6 +45,21 @@ describe("snapshot persistence", () => {
     });
   });
 
+  it("does not restore the previously selected sidebar tab", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      selectedTab: "homebrew"
+    });
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      selectedTab: "all"
+    });
+  });
+
   it("normalizes invalid appearance preferences from older or edited snapshots", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);

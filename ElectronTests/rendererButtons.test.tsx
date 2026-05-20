@@ -205,6 +205,158 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
   });
 
+  it("closes search mode on sidebar tab clicks without clearing the saved query", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:obsidian-cli",
+      token: "obsidian-cli",
+      name: "obsidian-cli",
+      kind: "formula",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("1.1.0"),
+      isOutdated: true
+    };
+    const discoverItem: HomebrewCaskDiscoveryItem = {
+      id: "cask:obsidian",
+      token: "obsidian",
+      displayName: "Obsidian",
+      kind: "cask",
+      version: version("1.6.0")
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          searchText: "obsidian",
+          apps: [app],
+          updates: [update],
+          homebrewItems: [formula],
+          homebrewDiscoverItems: [discoverItem]
+        })}
+      />
+    );
+
+    expect(screen.getByText("Obsidian")).toBeInTheDocument();
+    expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
+    expect(screen.queryByText("Example")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
+
+    expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("apps");
+    expect(window.baseline.setSearchText).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.getByText("Example")).toBeInTheDocument();
+    expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
+    expect(screen.queryByText("obsidian-cli")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(screen.getByDisplayValue("obsidian")).toBeInTheDocument();
+    expect(screen.getByText("Obsidian")).toBeInTheDocument();
+    expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
+  });
+
+  it("does not show discovery results after dismissing search into the Homebrew tab", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("1.1.0"),
+      isOutdated: true
+    };
+    const discoverItem: HomebrewCaskDiscoveryItem = {
+      id: "cask:obsidian",
+      token: "obsidian",
+      displayName: "Obsidian",
+      kind: "cask",
+      version: version("1.6.0")
+    };
+
+    const searchSnapshot = snapshot({
+      selectedTab: "apps",
+      searchText: "obsidian",
+      apps: [],
+      updates: [],
+      homebrewItems: [formula],
+      homebrewDiscoverItems: [discoverItem]
+    });
+    const { rerender } = render(
+      <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={searchSnapshot} />
+    );
+
+    expect(screen.getByText("Obsidian")).toBeInTheDocument();
+    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Homebrew/ }));
+
+    expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("homebrew");
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={{ ...searchSnapshot, selectedTab: "homebrew" }}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
+  });
+
+  it("keeps a preserved query inactive after search is dismissed across remounts", () => {
+    const discoverItem: HomebrewCaskDiscoveryItem = {
+      id: "cask:obsidian",
+      token: "obsidian",
+      displayName: "Obsidian",
+      kind: "cask",
+      version: version("1.6.0")
+    };
+    const searchSnapshot = snapshot({
+      selectedTab: "apps",
+      searchText: "obsidian",
+      apps: [app],
+      updates: [update],
+      homebrewItems: [],
+      homebrewDiscoverItems: [discoverItem]
+    });
+    let searchOpen = true;
+    const setSearchOpen = vi.fn((open: boolean) => {
+      searchOpen = open;
+    });
+
+    const { unmount } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        onToolbarSearchOpenChange={setSearchOpen}
+        toolbarSearchOpen={searchOpen}
+        snapshot={searchSnapshot}
+      />
+    );
+
+    expect(screen.getByText("Obsidian")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
+    expect(setSearchOpen).toHaveBeenCalledWith(false);
+
+    unmount();
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        onToolbarSearchOpenChange={setSearchOpen}
+        toolbarSearchOpen={searchOpen}
+        snapshot={searchSnapshot}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.getByText("Example")).toBeInTheDocument();
+    expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
+  });
+
   it("keeps sidebar update badges fixed while search filters the content", () => {
     const installedApp: AppRecord = {
       ...app,
@@ -243,6 +395,41 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Stable App")).toBeInTheDocument();
     expect(screen.queryByText("Example")).not.toBeInTheDocument();
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+  });
+
+  it("keeps Settings sidebar badges fixed when a saved query is present", () => {
+    const installedApp: AppRecord = {
+      ...app,
+      id: "app:stable",
+      displayName: "Stable App",
+      bundleIdentifier: "com.example.stable"
+    };
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("1.1.0"),
+      isOutdated: true
+    };
+    const { container } = render(
+      <SettingsView
+        snapshot={snapshot({
+          apps: [app, installedApp],
+          homebrewItems: [formula],
+          searchText: "stable"
+        })}
+      />
+    );
+
+    const [allButton, appsButton, homebrewButton] = Array.from(
+      container.querySelectorAll(".source-list button")
+    );
+
+    expect(within(allButton as HTMLElement).getByText("2")).toBeInTheDocument();
+    expect(within(appsButton as HTMLElement).getByText("1")).toBeInTheDocument();
+    expect(within(homebrewButton as HTMLElement).getByText("1")).toBeInTheDocument();
   });
 
   it("uses the same short search placeholder on every tab", () => {

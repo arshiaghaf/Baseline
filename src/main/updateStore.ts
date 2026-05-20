@@ -196,7 +196,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async setSelectedTab(selectedTab: MenuTab): Promise<void> {
-    await this.updatePreferences({ selectedTab });
+    this.patch({ selectedTab });
   }
 
   async updatePreferences(patch: PreferencePatch): Promise<void> {
@@ -928,7 +928,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     ignoredIDs: snapshot.ignoredIDs,
     ignoredHomebrewItemIDs: snapshot.ignoredHomebrewItemIDs,
     additionalDirectories: snapshot.additionalDirectories,
-    selectedTab: snapshot.selectedTab,
+    selectedTab: "all",
     collapsedAppSectionIDs: snapshot.collapsedAppSectionIDs,
     collapsedHomebrewSectionIDs: snapshot.collapsedHomebrewSectionIDs,
     autoRefreshEnabled: snapshot.autoRefreshEnabled,

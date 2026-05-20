@@ -35,6 +35,7 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
   return {
     ...defaults,
     ...input,
+    selectedTab: "all",
     apps: (input.apps ?? []).map((app) => ({
       ...app,
       id: app.id ?? app.bundlePath,
