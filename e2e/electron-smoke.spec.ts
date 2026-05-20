@@ -61,10 +61,6 @@ async function launchBaseline(options: { packaged?: boolean; userData?: string }
 }
 
 async function closeApp(app: Awaited<ReturnType<typeof electron.launch>>) {
-  await app.evaluate(async ({ app }) => {
-    setTimeout(() => app.exit(0), 1_000);
-    app.quit();
-  });
   await app.close();
 }
 
