@@ -417,27 +417,6 @@ describe("renderer button parity", () => {
     expect(window.baseline.setSearchText).not.toHaveBeenCalled();
   });
 
-  it("collapses toolbar search from main window chrome clicks without clearing text", async () => {
-    const { container } = render(
-      <Dashboard
-        compact={false}
-        onOpenSettings={() => undefined}
-        snapshot={snapshot({ searchText: "obsidian" })}
-      />
-    );
-
-    fireEvent.click(container.querySelector(".topbar") as HTMLElement);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument());
-    expect(window.baseline.setSearchText).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
-
-    fireEvent.click(container.querySelector(".sidebar") as HTMLElement);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument());
-    expect(window.baseline.setSearchText).not.toHaveBeenCalled();
-  });
-
   it("keeps toolbar search open for clicks inside the search controls", () => {
     render(
       <Dashboard

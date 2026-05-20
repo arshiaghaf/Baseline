@@ -249,7 +249,7 @@ export function Dashboard({
           onNavigate={() => setToolbarSearchOpen(false)}
         />
         <section className="workspace">
-          <header className="topbar" onClick={() => setToolbarSearchOpen(false)}>
+          <header className="topbar">
             <div>
               <h1>{title}</h1>
             </div>
@@ -378,7 +378,7 @@ function Sidebar({
   };
 
   return (
-    <aside className="sidebar" onClick={() => onNavigate?.()}>
+    <aside className="sidebar">
       <nav className="source-list">
         <button
           className={route === "main" && snapshot.selectedTab === "all" ? "selected" : ""}
