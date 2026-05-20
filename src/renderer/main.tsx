@@ -2359,7 +2359,7 @@ function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): strin
 
 export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
-  const derived = useMemo(() => deriveSections(snapshot), [snapshot]);
+  const derived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
 
   return (
     <main className="app-shell">
