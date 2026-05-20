@@ -288,6 +288,94 @@ describe("update store helpers", () => {
     expect(inventoryOptions).toEqual([{ updateMetadata: true }, { updateMetadata: false }]);
   });
 
+  it("preserves App Store, Sparkle, then Homebrew update source precedence", async () => {
+    const precedenceApp = appRecord({
+      bundlePath: "/Applications/Precedence.app",
+      displayName: "Precedence",
+      bundleIdentifier: "com.example.precedence",
+      sparkleFeedURL: "https://updates.example.com/appcast.xml",
+      localVersion: version("1.0.0")
+    });
+    const clients = {
+      scanner: { scanApplications: async () => [precedenceApp] },
+      homebrew: {
+        fetchIndex: async () => emptyHomebrewCaskIndex,
+        lookupUpdate: () => ({
+          remoteVersion: version("2.0.0"),
+          token: "precedence"
+        }),
+        searchCasks: () => []
+      }
+    };
+    const storeWithAppStore = await makeStore({
+      clients: {
+        ...clients,
+        appStore: {
+          lookupOutcome: async () => ({
+            type: "completed",
+            value: {
+              remoteVersion: version("4.0.0"),
+              updateURL: "https://apps.apple.com/app/example",
+              appStoreItemID: 123
+            }
+          })
+        },
+        sparkle: {
+          lookupOutcome: async () => ({
+            type: "completed",
+            value: {
+              remoteVersion: version("3.0.0"),
+              updateURL: "https://updates.example.com/download"
+            }
+          })
+        }
+      }
+    });
+
+    await storeWithAppStore.refresh(false);
+    expect(storeWithAppStore.getSnapshot().updates[0]).toMatchObject({
+      source: "appStore",
+      remoteVersion: version("4.0.0")
+    });
+
+    const storeWithSparkle = await makeStore({
+      clients: {
+        ...clients,
+        appStore: { lookupOutcome: async () => ({ type: "completed" }) },
+        sparkle: {
+          lookupOutcome: async () => ({
+            type: "completed",
+            value: {
+              remoteVersion: version("3.0.0"),
+              updateURL: "https://updates.example.com/download"
+            }
+          })
+        }
+      }
+    });
+
+    await storeWithSparkle.refresh(false);
+    expect(storeWithSparkle.getSnapshot().updates[0]).toMatchObject({
+      source: "sparkle",
+      remoteVersion: version("3.0.0")
+    });
+
+    const storeWithHomebrew = await makeStore({
+      clients: {
+        ...clients,
+        appStore: { lookupOutcome: async () => ({ type: "completed" }) },
+        sparkle: { lookupOutcome: async () => ({ type: "completed" }) }
+      }
+    });
+
+    await storeWithHomebrew.refresh(false);
+    expect(storeWithHomebrew.getSnapshot().updates[0]).toMatchObject({
+      source: "homebrew",
+      remoteVersion: version("2.0.0"),
+      homebrewToken: "precedence"
+    });
+  });
+
   it("surfaces unreliable Homebrew outdated detection and preserves previous outdated items", async () => {
     const previousItem = homebrewItem({
       id: "formula:ripgrep",
@@ -841,6 +929,169 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().refreshErrorMessage).toContain("Error: still running");
   });
 
+  it("uses mas for App Store updates and falls back to safe external routes on failure", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/App Store Managed.app",
+      displayName: "App Store Managed",
+      bundleIdentifier: "com.example.appstore",
+      localVersion: version("1.0.0")
+    });
+    const persisted = {
+      ...defaultPersistedSnapshot(),
+      apps: [app],
+      updates: [
+        {
+          id: app.id,
+          appID: app.id,
+          source: "appStore" as const,
+          supportLevel: "supported" as const,
+          localVersion: version("1.0.0"),
+          remoteVersion: version("2.0.0"),
+          updateURL: "https://apps.apple.com/app/example",
+          appStoreItemID: 123,
+          checkedAt: "2026-05-20T12:00:00.000Z"
+        }
+      ]
+    };
+    const successfulMas = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const successfulStore = await makeStore({ persisted, runMasCommand: successfulMas });
+
+    await successfulStore.performAppUpdate(app.id);
+
+    expect(successfulMas).toHaveBeenCalledWith(["upgrade", "123"]);
+
+    const failingMas = vi.fn(async () => ({ success: false, status: 1, output: "" }));
+    const openedExternalURLs: string[] = [];
+    const fallbackStore = await makeStore({
+      persisted,
+      runMasCommand: failingMas,
+      openExternalURL: async (url) => {
+        openedExternalURLs.push(url);
+        return true;
+      }
+    });
+
+    await fallbackStore.performAppUpdate(app.id);
+
+    expect(failingMas).toHaveBeenCalledWith(["upgrade", "123"]);
+    expect(openedExternalURLs).toEqual(["https://apps.apple.com/app/example"]);
+  });
+
+  it("blocks unsafe external URLs before invoking the platform opener", async () => {
+    const openExternalURL = vi.fn(async () => true);
+    const store = await makeStore({ openExternalURL });
+
+    await expect(store.openExternal("http://updates.example.com/download")).resolves.toBe(false);
+
+    expect(openExternalURL).not.toHaveBeenCalled();
+    expect(store.getSnapshot().refreshErrorMessage).toBe("Blocked an unsafe external link.");
+  });
+
+  it("routes Homebrew-backed app updates through validated cask upgrade commands", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Homebrew Managed.app",
+      displayName: "Homebrew Managed",
+      bundleIdentifier: "com.example.homebrew",
+      localVersion: version("1.0.0")
+    });
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "homebrew",
+            supportLevel: "limited",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            homebrewToken: "homebrew-managed",
+            checkedAt: "2026-05-20T12:00:00.000Z"
+          }
+        ],
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:homebrew-managed",
+            token: "homebrew-managed",
+            name: "Homebrew Managed",
+            kind: "cask",
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performAppUpdate(app.id);
+
+    expect(runBrewCommand).toHaveBeenCalledWith(
+      ["upgrade", "--cask", "homebrew-managed"],
+      expect.any(Function)
+    );
+  });
+
+  it("rejects unsafe Homebrew-backed app update tokens", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Unsafe Managed.app",
+      displayName: "Unsafe Managed",
+      bundleIdentifier: "com.example.unsafe",
+      localVersion: version("1.0.0")
+    });
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "homebrew",
+            supportLevel: "limited",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            homebrewToken: "--unsafe-token",
+            checkedAt: "2026-05-20T12:00:00.000Z"
+          }
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performAppUpdate(app.id);
+
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(store.getSnapshot().refreshErrorMessage).toContain("Blocked unsafe Homebrew token");
+  });
+
+  it("rejects unsafe direct Homebrew update tokens", async () => {
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:unsafe",
+            token: "../unsafe",
+            name: "Unsafe",
+            kind: "cask",
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdate("cask:unsafe");
+
+    expect(runBrewCommand).not.toHaveBeenCalled();
+  });
+
   it("rejects Homebrew uninstall for formula and unsafe cask tokens", async () => {
     const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
     const store = await makeStore({
@@ -935,20 +1186,24 @@ async function makeStore({
   persisted = defaultPersistedSnapshot(),
   clients = {},
   runBrewCommand = async () => ({ success: true, status: 0, output: "" }),
-  runMasCommand = async () => ({ success: true, status: 0, output: "" })
+  runMasCommand = async () => ({ success: true, status: 0, output: "" }),
+  openExternalURL = async () => true,
+  openAppBundle = async () => undefined
 }: {
   persisted?: PersistedSnapshot;
   clients?: Partial<ConstructorParameters<typeof UpdateStore>[0]["clients"]>;
   runBrewCommand?: ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"];
   runMasCommand?: ConstructorParameters<typeof UpdateStore>[0]["runMasCommand"];
+  openExternalURL?: ConstructorParameters<typeof UpdateStore>[0]["openExternalURL"];
+  openAppBundle?: ConstructorParameters<typeof UpdateStore>[0]["openAppBundle"];
 } = {}): Promise<UpdateStore> {
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-update-store-"));
   tempDirs.push(userData);
   return new UpdateStore({
     persistence: new SnapshotPersistence(userData),
     persisted,
-    openExternalURL: async () => true,
-    openAppBundle: async () => undefined,
+    openExternalURL,
+    openAppBundle,
     runBrewCommand,
     runMasCommand,
     clients: {

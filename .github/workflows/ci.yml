@@ -11,8 +11,12 @@ permissions:
 
 jobs:
   build-test:
-    name: Build and test
-    runs-on: macos-26
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, macos-15]
 
     steps:
       - name: Check out repository
@@ -36,6 +40,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format
+
       - name: Run unit tests
         run: npm test
 
@@ -44,3 +54,6 @@ jobs:
 
       - name: Electron smoke test
         run: npm run test:electron
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
