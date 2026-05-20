@@ -141,12 +141,24 @@ export function Dashboard({
   compact: boolean;
   onOpenSettings: () => void;
 }) {
-  const derived = useMemo(() => deriveSections(snapshot), [snapshot]);
-  const sidebarDerived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
   const selectedTab = snapshot.selectedTab;
   const [toolbarSearchOpen, setToolbarSearchOpen] = useState(Boolean(snapshot.searchText));
+  const previousSearchTextRef = useRef(snapshot.searchText);
+  const derived = useMemo(
+    () => deriveSections(toolbarSearchOpen ? snapshot : { ...snapshot, searchText: "" }),
+    [snapshot, toolbarSearchOpen]
+  );
+  const sidebarDerived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
   const compactShellRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const previousSearchText = previousSearchTextRef.current;
+    previousSearchTextRef.current = snapshot.searchText;
+    if (!previousSearchText.trim() && snapshot.searchText.trim()) {
+      setToolbarSearchOpen(true);
+    }
+  }, [snapshot.searchText]);
 
   useEffect(() => {
     if (!compact || toolbarSearchOpen) {
@@ -217,7 +229,12 @@ export function Dashboard({
           </div>
         </header>
         <section className="content single">
-          <SelectedTabContent snapshot={snapshot} derived={derived} compact={compact} />
+          <SelectedTabContent
+            snapshot={snapshot}
+            derived={derived}
+            compact={compact}
+            searchActive={toolbarSearchOpen}
+          />
         </section>
       </main>
     );
@@ -225,7 +242,12 @@ export function Dashboard({
     const title = selectedTabTitle(selectedTab);
     shell = (
       <main className="app-shell">
-        <Sidebar snapshot={snapshot} derived={sidebarDerived} route="main" />
+        <Sidebar
+          snapshot={snapshot}
+          derived={sidebarDerived}
+          route="main"
+          onNavigate={() => setToolbarSearchOpen(false)}
+        />
         <section className="workspace">
           <header className="topbar">
             <div>
@@ -266,7 +288,12 @@ export function Dashboard({
           )}
 
           <section className="content">
-            <SelectedTabContent snapshot={snapshot} derived={derived} compact={compact} />
+            <SelectedTabContent
+              snapshot={snapshot}
+              derived={derived}
+              compact={compact}
+              searchActive={toolbarSearchOpen}
+            />
           </section>
         </section>
       </main>
@@ -336,21 +363,26 @@ function compactPopoverControlFocusTarget(
 function Sidebar({
   snapshot,
   derived,
-  route
+  route,
+  onNavigate
 }: {
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
   route: "main" | "settings";
+  onNavigate?: () => void;
 }) {
+  const selectTab = (tab: MenuTab) => {
+    onNavigate?.();
+    window.location.hash = "/main";
+    void window.baseline.setSelectedTab(tab);
+  };
+
   return (
     <aside className="sidebar">
       <nav className="source-list">
         <button
           className={route === "main" && snapshot.selectedTab === "all" ? "selected" : ""}
-          onClick={() => {
-            window.location.hash = "/main";
-            void window.baseline.setSelectedTab("all");
-          }}
+          onClick={() => selectTab("all")}
         >
           <Server size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>All</span>
@@ -358,10 +390,7 @@ function Sidebar({
         </button>
         <button
           className={route === "main" && snapshot.selectedTab === "apps" ? "selected" : ""}
-          onClick={() => {
-            window.location.hash = "/main";
-            void window.baseline.setSelectedTab("apps");
-          }}
+          onClick={() => selectTab("apps")}
         >
           <AppWindowMac size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Apps</span>
@@ -369,10 +398,7 @@ function Sidebar({
         </button>
         <button
           className={route === "main" && snapshot.selectedTab === "homebrew" ? "selected" : ""}
-          onClick={() => {
-            window.location.hash = "/main";
-            void window.baseline.setSelectedTab("homebrew");
-          }}
+          onClick={() => selectTab("homebrew")}
         >
           <Beer size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Homebrew</span>
@@ -382,20 +408,14 @@ function Sidebar({
       <nav className="source-list secondary-source-list">
         <button
           className={route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}
-          onClick={() => {
-            window.location.hash = "/main";
-            void window.baseline.setSelectedTab("installed");
-          }}
+          onClick={() => selectTab("installed")}
         >
           <CheckCircle2 size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Installed</span>
         </button>
         <button
           className={route === "main" && snapshot.selectedTab === "ignored" ? "selected" : ""}
-          onClick={() => {
-            window.location.hash = "/main";
-            void window.baseline.setSelectedTab("ignored");
-          }}
+          onClick={() => selectTab("ignored")}
         >
           <EyeOff size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Ignored</span>
@@ -404,7 +424,10 @@ function Sidebar({
       <div className="sidebar-footer">
         <button
           className={route === "settings" ? "selected" : ""}
-          onClick={() => (window.location.hash = "/settings")}
+          onClick={() => {
+            onNavigate?.();
+            window.location.hash = "/settings";
+          }}
         >
           <Settings size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Settings</span>
@@ -501,17 +524,19 @@ function ToolbarSearch({
 function SelectedTabContent({
   snapshot,
   derived,
-  compact
+  compact,
+  searchActive
 }: {
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
   compact: boolean;
+  searchActive: boolean;
 }) {
+  if (searchActive && snapshot.searchText.trim()) {
+    return <SearchResults snapshot={snapshot} derived={derived} />;
+  }
   if (!compact && snapshot.selectedTab === "ignored") {
     return <IgnoredTab snapshot={snapshot} derived={derived} compact={compact} />;
-  }
-  if (snapshot.searchText.trim()) {
-    return <SearchResults snapshot={snapshot} derived={derived} />;
   }
   if (compact) {
     return <AllTab snapshot={snapshot} derived={derived} compact />;
@@ -543,7 +568,9 @@ function SearchResults({
     derived.availableApps.length > 0 ||
     derived.allHomebrewOutdated.length > 0 ||
     searchInstalledApps.length > 0 ||
-    derived.homebrewInstalled.length > 0;
+    derived.homebrewInstalled.length > 0 ||
+    derived.ignoredApps.length > 0 ||
+    derived.homebrewIgnored.length > 0;
 
   return (
     <div className="stack">
@@ -587,8 +614,47 @@ function SearchResults({
           empty="No installed Homebrew items found."
         />
       )}
+      {(derived.ignoredApps.length > 0 || derived.homebrewIgnored.length > 0) && (
+        <SearchIgnoredSection snapshot={snapshot} derived={derived} />
+      )}
       {!hasResults && <Empty text="No matches found." />}
     </div>
+  );
+}
+
+function SearchIgnoredSection({
+  snapshot,
+  derived
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+}) {
+  const items: IgnoredGridItem[] = [
+    ...derived.ignoredApps.map((app) => ({
+      type: "app" as const,
+      id: app.id,
+      item: app
+    })),
+    ...derived.homebrewIgnored.map((item) => ({
+      type: "homebrew" as const,
+      id: item.id,
+      item
+    }))
+  ];
+
+  return (
+    <section className="panel">
+      <PanelTitle title="Ignored" />
+      <CardGrid sectionClassName="ignored-grid">
+        {items.map((item) =>
+          item.type === "app" ? (
+            <IgnoredAppCard key={`app:${item.id}`} app={item.item} snapshot={snapshot} />
+          ) : (
+            <IgnoredHomebrewCard key={`homebrew:${item.id}`} item={item.item} snapshot={snapshot} />
+          )
+        )}
+      </CardGrid>
+    </section>
   );
 }
 
@@ -1319,7 +1385,6 @@ function HomebrewTab({
 }) {
   return (
     <div className="stack">
-      {snapshot.searchText.trim() && <DiscoverSection snapshot={snapshot} />}
       <HomebrewSection
         sectionID="outdated"
         title={`Outdated (${derived.allHomebrewOutdated.length})`}
