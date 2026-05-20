@@ -101,11 +101,21 @@ const initialSnapshot: BaselineSnapshot = {
 function App() {
   const [snapshot, setSnapshot] = useState<BaselineSnapshot>(initialSnapshot);
   const [route, setRoute] = useState<Route>(currentRoute());
+  const [toolbarSearchOpen, setToolbarSearchOpen] = useState(false);
+  const previousSearchTextRef = useRef(initialSnapshot.searchText);
 
   useEffect(() => {
     void window.baseline.getSnapshot().then(setSnapshot);
     return window.baseline.onSnapshotChanged(setSnapshot);
   }, []);
+
+  useEffect(() => {
+    const previousSearchText = previousSearchTextRef.current;
+    previousSearchTextRef.current = snapshot.searchText;
+    if (!previousSearchText.trim() && snapshot.searchText.trim()) {
+      setToolbarSearchOpen(true);
+    }
+  }, [snapshot.searchText]);
 
   useEffect(() => {
     const onHashChange = () => setRoute(currentRoute());
@@ -121,7 +131,10 @@ function App() {
     <Dashboard
       snapshot={snapshot}
       compact={route === "menubar"}
+      toolbarSearchOpen={toolbarSearchOpen}
+      onToolbarSearchOpenChange={setToolbarSearchOpen}
       onOpenSettings={() => {
+        setToolbarSearchOpen(false);
         if (route === "menubar") {
           void window.baseline.showSettings();
         } else {
@@ -135,14 +148,28 @@ function App() {
 export function Dashboard({
   snapshot,
   compact,
+  toolbarSearchOpen: controlledToolbarSearchOpen,
+  onToolbarSearchOpenChange,
   onOpenSettings
 }: {
   snapshot: BaselineSnapshot;
   compact: boolean;
+  toolbarSearchOpen?: boolean;
+  onToolbarSearchOpenChange?: (open: boolean) => void;
   onOpenSettings: () => void;
 }) {
   const selectedTab = snapshot.selectedTab;
-  const [toolbarSearchOpen, setToolbarSearchOpen] = useState(Boolean(snapshot.searchText));
+  const [uncontrolledToolbarSearchOpen, setUncontrolledToolbarSearchOpen] = useState(
+    Boolean(snapshot.searchText)
+  );
+  const toolbarSearchOpen = controlledToolbarSearchOpen ?? uncontrolledToolbarSearchOpen;
+  const setToolbarSearchOpen = (open: boolean) => {
+    if (onToolbarSearchOpenChange) {
+      onToolbarSearchOpenChange(open);
+      return;
+    }
+    setUncontrolledToolbarSearchOpen(open);
+  };
   const previousSearchTextRef = useRef(snapshot.searchText);
   const derived = useMemo(
     () => deriveSections(toolbarSearchOpen ? snapshot : { ...snapshot, searchText: "" }),
@@ -153,12 +180,15 @@ export function Dashboard({
   const compactShellRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
+    if (controlledToolbarSearchOpen !== undefined) {
+      return;
+    }
     const previousSearchText = previousSearchTextRef.current;
     previousSearchTextRef.current = snapshot.searchText;
     if (!previousSearchText.trim() && snapshot.searchText.trim()) {
       setToolbarSearchOpen(true);
     }
-  }, [snapshot.searchText]);
+  }, [controlledToolbarSearchOpen, snapshot.searchText]);
 
   useEffect(() => {
     if (!compact || toolbarSearchOpen) {
@@ -202,7 +232,7 @@ export function Dashboard({
             <ToolbarSearch
               open={toolbarSearchOpen}
               snapshot={snapshot}
-              onToggle={() => setToolbarSearchOpen((open) => !open)}
+              onToggle={() => setToolbarSearchOpen(!toolbarSearchOpen)}
               onClose={() => setToolbarSearchOpen(false)}
               toolbarButtonTabIndex={-1}
             />
@@ -257,7 +287,7 @@ export function Dashboard({
               <ToolbarSearch
                 open={toolbarSearchOpen}
                 snapshot={snapshot}
-                onToggle={() => setToolbarSearchOpen((open) => !open)}
+                onToggle={() => setToolbarSearchOpen(!toolbarSearchOpen)}
                 onClose={() => setToolbarSearchOpen(false)}
               />
               <button

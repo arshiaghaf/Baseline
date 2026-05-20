@@ -306,6 +306,57 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
   });
 
+  it("keeps a preserved query inactive after search is dismissed across remounts", () => {
+    const discoverItem: HomebrewCaskDiscoveryItem = {
+      id: "cask:obsidian",
+      token: "obsidian",
+      displayName: "Obsidian",
+      kind: "cask",
+      version: version("1.6.0")
+    };
+    const searchSnapshot = snapshot({
+      selectedTab: "apps",
+      searchText: "obsidian",
+      apps: [app],
+      updates: [update],
+      homebrewItems: [],
+      homebrewDiscoverItems: [discoverItem]
+    });
+    let searchOpen = true;
+    const setSearchOpen = vi.fn((open: boolean) => {
+      searchOpen = open;
+    });
+
+    const { unmount } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        onToolbarSearchOpenChange={setSearchOpen}
+        toolbarSearchOpen={searchOpen}
+        snapshot={searchSnapshot}
+      />
+    );
+
+    expect(screen.getByText("Obsidian")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
+    expect(setSearchOpen).toHaveBeenCalledWith(false);
+
+    unmount();
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        onToolbarSearchOpenChange={setSearchOpen}
+        toolbarSearchOpen={searchOpen}
+        snapshot={searchSnapshot}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.getByText("Example")).toBeInTheDocument();
+    expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
+  });
+
   it("keeps sidebar update badges fixed while search filters the content", () => {
     const installedApp: AppRecord = {
       ...app,
