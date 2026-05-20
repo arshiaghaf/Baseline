@@ -22,8 +22,8 @@ fi
 
 cd "$ROOT_DIR"
 
-if ! grep -q "## Unreleased" CHANGELOG.md; then
-  echo "CHANGELOG.md must contain an Unreleased section before preparing a release."
+if ! awk '/^## / && $0 ~ /Unreleased$/ { found = 1 } END { exit found ? 0 : 1 }' CHANGELOG.md; then
+  echo "CHANGELOG.md must contain an Unreleased section heading before preparing a release."
   exit 1
 fi
 
