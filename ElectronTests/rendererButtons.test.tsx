@@ -1308,7 +1308,7 @@ describe("renderer button parity", () => {
       version: version("1.0.0")
     };
 
-    render(
+    const { container } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -1329,6 +1329,27 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("All your apps are up to date.")).not.toBeInTheDocument();
     expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 2 })[0]).toHaveTextContent("Discover");
+
+    const sections = Array.from(container.querySelectorAll("section.panel"));
+    const discoverSection = sections.find((section) =>
+      within(section as HTMLElement).queryByRole("heading", { name: "Discover" })
+    ) as HTMLElement | undefined;
+    const installedAppsSection = sections.find((section) =>
+      within(section as HTMLElement).queryByRole("heading", { name: "Installed Apps" })
+    ) as HTMLElement | undefined;
+    const installedHomebrewSection = sections.find((section) =>
+      within(section as HTMLElement).queryByRole("heading", { name: "Installed Homebrew" })
+    ) as HTMLElement | undefined;
+
+    expect(discoverSection).toBeDefined();
+    expect(installedAppsSection).toBeDefined();
+    expect(installedHomebrewSection).toBeDefined();
+    expect(discoverSection!.querySelector(".rows .row")).not.toBeNull();
+    expect(discoverSection!.querySelector(".item-card")).toBeNull();
+    expect(installedAppsSection!.querySelector(".card-grid .item-card")).not.toBeNull();
+    expect(installedAppsSection!.querySelector(".rows .row")).toBeNull();
+    expect(installedHomebrewSection!.querySelector(".card-grid .item-card")).not.toBeNull();
+    expect(installedHomebrewSection!.querySelector(".rows .row")).toBeNull();
   });
 
   it("shows app-backed Homebrew updates in search when the app result does not match", () => {

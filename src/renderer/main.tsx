@@ -576,6 +576,7 @@ function SearchResults({
           apps={searchInstalledApps}
           snapshot={snapshot}
           empty="No installed apps found."
+          cardLayout
         />
       )}
       {derived.homebrewInstalled.length > 0 && (
@@ -585,6 +586,7 @@ function SearchResults({
           items={derived.homebrewInstalled}
           snapshot={snapshot}
           empty="No installed Homebrew items found."
+          cardLayout
         />
       )}
       {!hasResults && <Empty text="No matches found." />}
