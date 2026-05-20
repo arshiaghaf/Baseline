@@ -6,6 +6,33 @@ import { access, mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+const expectedBaselineAPI = [
+  "chooseDirectory",
+  "copyDiagnostics",
+  "getDiagnostics",
+  "getSnapshot",
+  "getToolStatus",
+  "installHomebrewItem",
+  "onHomebrewCommandEvent",
+  "onSnapshotChanged",
+  "openApp",
+  "openExternal",
+  "performAppUpdate",
+  "performHomebrewUpdate",
+  "performHomebrewUpdateAll",
+  "refresh",
+  "refreshToolStatus",
+  "removeDirectory",
+  "setSearchText",
+  "setSelectedTab",
+  "showMainWindow",
+  "showSettings",
+  "toggleIgnoredApp",
+  "toggleIgnoredHomebrew",
+  "uninstallHomebrewItem",
+  "updatePreferences"
+];
+
 async function launchBaseline(options: { packaged?: boolean; userData?: string } = {}) {
   const userData = options.userData ?? (await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-")));
   const common = {
@@ -58,6 +85,17 @@ test("launches the Electron shell and renders the dashboard", async () => {
   await expect(page.evaluate(() => Boolean(globalThis.process?.versions?.node))).resolves.toBe(
     false
   );
+  await expect(page.evaluate(() => Object.keys(window.baseline).sort())).resolves.toEqual(
+    expectedBaselineAPI
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.values(window.baseline).every((value) => typeof value === "function")
+      )
+    )
+    .toBe(true);
+  await expect(page.evaluate(() => typeof window.baseline.getSnapshot())).resolves.toBe("object");
 
   await closeApp(app);
 });

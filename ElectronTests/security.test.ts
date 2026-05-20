@@ -3,9 +3,12 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  brewExecutableCandidates,
   isAllowedExternalURL,
   isAllowedFeedURL,
-  isValidHomebrewToken
+  isValidHomebrewToken,
+  masExecutableCandidates,
+  resolvedExecutablePath
 } from "../src/shared/security";
 
 describe("security policy", () => {
@@ -38,5 +41,18 @@ describe("security policy", () => {
     expect(isValidHomebrewToken("--notion")).toBe(false);
     expect(isValidHomebrewToken("bad token")).toBe(false);
     expect(isValidHomebrewToken("Owner/repo/formula")).toBe(false);
+  });
+
+  it("resolves only absolute known executable candidates", () => {
+    expect(brewExecutableCandidates()).toEqual(["/opt/homebrew/bin/brew", "/usr/local/bin/brew"]);
+    expect(masExecutableCandidates()).toEqual(["/opt/homebrew/bin/mas", "/usr/local/bin/mas"]);
+
+    expect(
+      resolvedExecutablePath(
+        ["brew", "/usr/bin/env", "/opt/homebrew/bin/brew"],
+        (candidate) => candidate === "/opt/homebrew/bin/brew"
+      )
+    ).toBe("/opt/homebrew/bin/brew");
+    expect(resolvedExecutablePath(["brew", "/usr/bin/env"], () => true)).toBeUndefined();
   });
 });

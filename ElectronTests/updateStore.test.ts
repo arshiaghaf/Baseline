@@ -265,6 +265,35 @@ describe("update store helpers", () => {
     expect(reconciled.find((item) => item.id === "cask:notion")?.isOutdated).toBe(false);
   });
 
+  it("persists resolved additional scan directories", async () => {
+    let userData = "";
+    const store = await makeStore({
+      onUserData: (directory) => {
+        userData = directory;
+      }
+    });
+    const firstDirectory = path.join(userData, "Apps");
+    const nestedDirectory = path.join(userData, "Apps", "..", "More Apps");
+
+    await store.addDirectory(firstDirectory);
+    await store.addDirectory(firstDirectory);
+    await store.addDirectory(nestedDirectory);
+
+    const resolvedFirst = path.resolve(firstDirectory);
+    const resolvedNested = path.resolve(nestedDirectory);
+    expect(store.getSnapshot().additionalDirectories).toEqual([resolvedFirst, resolvedNested]);
+    await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
+      additionalDirectories: [resolvedFirst, resolvedNested]
+    });
+
+    await store.removeDirectory(path.join(userData, "More Apps", "."));
+
+    expect(store.getSnapshot().additionalDirectories).toEqual([resolvedFirst]);
+    await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
+      additionalDirectories: [resolvedFirst]
+    });
+  });
+
   it("passes Homebrew metadata update mode only for full refresh", async () => {
     const inventoryOptions: Array<{ updateMetadata?: boolean }> = [];
     const store = await makeStore({
@@ -1188,7 +1217,8 @@ async function makeStore({
   runBrewCommand = async () => ({ success: true, status: 0, output: "" }),
   runMasCommand = async () => ({ success: true, status: 0, output: "" }),
   openExternalURL = async () => true,
-  openAppBundle = async () => undefined
+  openAppBundle = async () => undefined,
+  onUserData
 }: {
   persisted?: PersistedSnapshot;
   clients?: Partial<ConstructorParameters<typeof UpdateStore>[0]["clients"]>;
@@ -1196,9 +1226,11 @@ async function makeStore({
   runMasCommand?: ConstructorParameters<typeof UpdateStore>[0]["runMasCommand"];
   openExternalURL?: ConstructorParameters<typeof UpdateStore>[0]["openExternalURL"];
   openAppBundle?: ConstructorParameters<typeof UpdateStore>[0]["openAppBundle"];
+  onUserData?: (directory: string) => void;
 } = {}): Promise<UpdateStore> {
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-update-store-"));
   tempDirs.push(userData);
+  onUserData?.(userData);
   return new UpdateStore({
     persistence: new SnapshotPersistence(userData),
     persisted,
