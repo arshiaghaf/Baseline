@@ -22,7 +22,7 @@ fi
 
 cd "$ROOT_DIR"
 
-if ! awk '/^## / && $0 ~ /Unreleased$/ { found = 1 } END { exit found ? 0 : 1 }' CHANGELOG.md; then
+if ! grep -Eq '^## (Unreleased|[0-9]+[.][0-9]+[.][0-9]+([-+][A-Za-z0-9._-]+)? — Unreleased)$' CHANGELOG.md; then
   echo "CHANGELOG.md must contain an Unreleased section heading before preparing a release."
   exit 1
 fi
