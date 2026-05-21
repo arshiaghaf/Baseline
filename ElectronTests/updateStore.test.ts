@@ -1246,7 +1246,10 @@ describe("update store helpers", () => {
           })
         }
       },
-      runBrewCommand: async () => ({ success: false, status: 1, output: "Error: update failed" })
+      runBrewCommand: async (_args, onOutputLine = () => undefined) => {
+        onOutputLine("Pouring retryable--1.1.0.arm64_tahoe.bottle.tar.gz");
+        return { success: false, status: 1, output: "Error: update failed" };
+      }
     });
 
     vi.useFakeTimers();
@@ -1260,6 +1263,7 @@ describe("update store helpers", () => {
 
       vi.advanceTimersByTime(1);
       expect(store.getSnapshot().homebrewBatchFailedItemIDs).not.toContain(itemID);
+      expect(store.getSnapshot().homebrewBatchProgressByItemID[itemID]).toBeUndefined();
       expect(store.getSnapshot().homebrewItems.find((item) => item.id === itemID)?.isOutdated).toBe(
         true
       );
@@ -1316,7 +1320,10 @@ describe("update store helpers", () => {
           })
         }
       },
-      runBrewCommand: async () => ({ success: false, status: 1, output: "Error: update failed" })
+      runBrewCommand: async (_args, onOutputLine = () => undefined) => {
+        onOutputLine("Downloading homebrew-fallback");
+        return { success: false, status: 1, output: "Error: update failed" };
+      }
     });
 
     vi.useFakeTimers();
@@ -1327,6 +1334,7 @@ describe("update store helpers", () => {
 
       vi.advanceTimersByTime(4000);
       expect(store.getSnapshot().homebrewFallbackFailedAppIDs).not.toContain(app.id);
+      expect(store.getSnapshot().homebrewFallbackProgressByAppID[app.id]).toBeUndefined();
       expect(store.getSnapshot().updates.find((update) => update.appID === app.id)).toBeDefined();
     } finally {
       vi.useRealTimers();

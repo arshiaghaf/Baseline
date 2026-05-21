@@ -939,7 +939,11 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           return;
         }
         this.patch({
-          homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID)
+          homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID),
+          homebrewBatchProgressByItemID: removeRecordKey(
+            this.state.homebrewBatchProgressByItemID,
+            itemID
+          )
         });
       }, TRANSIENT_HOMEBREW_FAILURE_MS);
       timer.unref?.();
@@ -958,6 +962,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.patch({
           homebrewFallbackFailedAppIDs: removeFromArray(
             this.state.homebrewFallbackFailedAppIDs,
+            appID
+          ),
+          homebrewFallbackProgressByAppID: removeRecordKey(
+            this.state.homebrewFallbackProgressByAppID,
             appID
           )
         });
@@ -1042,6 +1050,12 @@ function addToArray<T>(values: T[], value: T): T[] {
 
 function removeFromArray<T>(values: T[], value: T): T[] {
   return values.filter((candidate) => candidate !== value);
+}
+
+function removeRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const next = { ...record };
+  delete next[key];
+  return next;
 }
 
 export function preservePreviousHomebrewOutdatedState(
