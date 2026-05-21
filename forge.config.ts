@@ -5,17 +5,38 @@ import type { ForgeConfig } from "@electron-forge/shared-types";
 import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
+import { execFileSync } from "node:child_process";
+
+function macOSMajorVersion(): number | undefined {
+  if (process.platform !== "darwin") {
+    return undefined;
+  }
+
+  try {
+    const version = execFileSync("/usr/bin/sw_vers", ["-productVersion"], {
+      encoding: "utf8"
+    }).trim();
+    const major = Number.parseInt(version.split(".")[0] ?? "", 10);
+
+    return Number.isNaN(major) ? undefined : major;
+  } catch {
+    return undefined;
+  }
+}
+
+const appIcon =
+  (macOSMajorVersion() ?? 26) >= 26 ? "assets/app-icon" : "assets/app-icon-legacy.icns";
 
 const config: ForgeConfig = {
   packagerConfig: {
     name: "Baseline",
     executableName: "Baseline",
-    icon: "assets/app-icon",
+    icon: appIcon,
     appBundleId: "com.arshiaghaf.baseline",
     appCategoryType: "public.app-category.utilities",
     asar: true,
     extendInfo: {
-      LSMinimumSystemVersion: "13.0"
+      LSMinimumSystemVersion: "14.0"
     }
   },
   rebuildConfig: {},
