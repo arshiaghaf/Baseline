@@ -32,10 +32,10 @@ When the required local tooling is available, Baseline can run update and instal
 - Provides external fallback links when local CLI tooling is unavailable
   
 ![Baseline Ignored tab showing app and Homebrew item actions](docs/images/baseline-ignored-updates.png)
-  
-![Baseline menu bar tray showing app and Homebrew updates](docs/images/baseline-menu-bar.png)
 
 ![Baseline main window Homebrew search showing installable casks](docs/images/baseline-homebrew-search.png)
+  
+![Baseline menu bar tray showing app and Homebrew updates](docs/images/baseline-menu-bar.png)
 
 ## Project Status
 
