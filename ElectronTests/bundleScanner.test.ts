@@ -5,20 +5,25 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BundleScannerClient } from "../src/main/bundleScanner";
+import { BundleScannerClient, testingExports } from "../src/main/bundleScanner";
+
+const electronMocks = vi.hoisted(() => ({
+  getFileIcon: vi.fn(async () => ({
+    isEmpty: () => true,
+    resize: () => ({ toDataURL: () => "" })
+  })),
+  createFromPath: vi.fn(() => ({
+    isEmpty: () => true,
+    resize: () => ({ toDataURL: () => "" })
+  }))
+}));
 
 vi.mock("electron", () => ({
   app: {
-    getFileIcon: vi.fn(async () => ({
-      isEmpty: () => true,
-      resize: () => ({ toDataURL: () => "" })
-    }))
+    getFileIcon: electronMocks.getFileIcon
   },
   nativeImage: {
-    createFromPath: vi.fn(() => ({
-      isEmpty: () => true,
-      resize: () => ({ toDataURL: () => "" })
-    }))
+    createFromPath: electronMocks.createFromPath
   }
 }));
 
@@ -113,6 +118,12 @@ describe("bundle scanner", () => {
     const records = await new BundleScannerClient().scanApplications([root]);
 
     expect(records.map((record) => record.displayName)).toEqual(["Manifested"]);
+  });
+
+  it("detects grayscale icon conversion output", () => {
+    expect(testingExports.isGrayscaleSipsOutput("  space: Gray\n")).toBe(true);
+    expect(testingExports.isGrayscaleSipsOutput("  space: RGB\n")).toBe(false);
+    expect(testingExports.isGrayscaleSipsOutput("  profile: Generic Gray Gamma 2.2\n")).toBe(false);
   });
 });
 
