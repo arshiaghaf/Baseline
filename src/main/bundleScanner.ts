@@ -254,7 +254,10 @@ async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
       maxBuffer: 4 * 1024 * 1024
     });
     if (await shouldPadGrayscaleIcon(iconPath, pngPath)) {
-      return { dataURL: await paddedRasterIconDataURL(pngPath) };
+      const paddedDataURL = await paddedRasterIconDataURL(pngPath);
+      if (paddedDataURL) {
+        return { dataURL: paddedDataURL };
+      }
     }
     const image = nativeImage.createFromPath(pngPath);
     return image.isEmpty() ? {} : { dataURL: resizedIconDataURL(image) };
