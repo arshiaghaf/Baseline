@@ -2459,17 +2459,19 @@ function SettingsPane({
       return (
         <>
           <section className="panel settings-panel">
-            <PanelTitle title="Readiness" />
+            <PanelTitle
+              title="Readiness"
+              action={
+                <button
+                  className="ghost-button small-button"
+                  onClick={() => void window.baseline.refreshToolStatus()}
+                >
+                  Refresh
+                </button>
+              }
+            />
             <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
             <Readiness label="mas" ready={snapshot.isMasInstalled} />
-            <div className="settings-action">
-              <button
-                className="ghost-button wide"
-                onClick={() => void window.baseline.refreshToolStatus()}
-              >
-                Check Again
-              </button>
-            </div>
           </section>
           <section className="panel settings-panel">
             <PanelTitle title="Refresh" />
@@ -2631,6 +2633,7 @@ function Toggle({ label, value, patch }: { label: string; value: boolean; patch:
       <span>{label}</span>
       <input
         type="checkbox"
+        role="switch"
         checked={value}
         onChange={(event) =>
           void window.baseline.updatePreferences({ [patch]: event.currentTarget.checked })

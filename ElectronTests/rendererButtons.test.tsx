@@ -435,10 +435,20 @@ describe("renderer button parity", () => {
     for (const label of ["General", "Appearance", "Diagnostics"]) {
       expect(within(container).getByRole("button", { name: label })).toBeInTheDocument();
     }
-    expect(screen.queryByRole("button", { name: "About" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Readiness" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Refresh" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Scan Directories" })).not.toBeInTheDocument();
+    const settingsNav = container.querySelector(".source-list");
+    expect(settingsNav).not.toBeNull();
+    expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "About" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "Readiness" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "Refresh" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "Scan Directories" })
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "All" })).not.toBeInTheDocument();
     expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
@@ -1767,7 +1777,7 @@ describe("renderer button parity", () => {
   it("rechecks tool readiness from settings without running a refresh", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Check Again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 
     expect(window.baseline.refreshToolStatus).toHaveBeenCalledTimes(1);
     expect(window.baseline.refresh).not.toHaveBeenCalled();
@@ -1801,7 +1811,10 @@ describe("renderer button parity", () => {
   it("updates the menu bar icon preference from settings", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
-    fireEvent.click(screen.getByLabelText("Show menu bar icon"));
+    const menuBarSwitch = screen.getByRole("switch", { name: "Show menu bar icon" });
+    expect(menuBarSwitch).toHaveAttribute("type", "checkbox");
+
+    fireEvent.click(menuBarSwitch);
 
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
       showMenuBarIcon: false
