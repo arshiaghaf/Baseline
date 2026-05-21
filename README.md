@@ -1,50 +1,47 @@
 # Baseline
 
-<p align="center">
-  <img alt="Project status: Beta" src="https://img.shields.io/badge/status-beta-blue?style=for-the-badge" />
-  <img alt="Minimum macOS version" src="https://img.shields.io/badge/macOS-14.0%2B-000000?style=for-the-badge&logo=apple" />
-  <a href="https://github.com/arshiaghaf/baseline/blob/main/LICENSE">
-    <img alt="GPL-3.0-only license" src="https://img.shields.io/badge/license-GPL--3.0--only-blue?style=for-the-badge&logo=github" />
-  </a>
-</p>
+[![Release: Pending](https://img.shields.io/badge/release-pending-0a0a0c?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
+&nbsp;
+[![Project status: Beta](https://img.shields.io/badge/status-beta-blue?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
+&nbsp;
+[![Minimum macOS version: 14+](https://img.shields.io/badge/macOS-14.0%2B-0a0a0c?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
+&nbsp;
+[![Homebrew tap: arshiaghaf/tap/baseline](https://img.shields.io/badge/brew-arshiaghaf%2Ftap%2Fbaseline-orange?style=flat-square)](https://github.com/arshiaghaf/homebrew-tap)
+&nbsp;
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/baseline/blob/main/LICENSE)
 
-Baseline helps you manage and update Mac apps installed from different sources, including the App Store, Homebrew, Sparkle-enabled apps, and direct downloads.
+Baseline is a macOS app for managing and updating installed Mac apps and Homebrew packages from one place. It supports App Store apps, direct downloads, Sparkle-enabled apps, and Homebrew casks and formulae.
 
-It brings app updates, Homebrew updates, install discovery, ignored items, and fallback actions into one full app and the menu bar tray.
+You can check for app updates, run Homebrew upgrades, search and install Homebrew packages, ignore specific items so they no longer appear as available updates, and open update pages for apps that require manual action.
 
 ![Baseline full app window showing app and Homebrew updates](docs/images/baseline-main-window.png)
 
 ## What Baseline Does
 
-Baseline scans installed apps from system, user, and custom app directories, then checks public update sources for newer versions. It shows available updates, recently updated items, ignored items, and Homebrew discovery results without requiring a backend service or private API.
+Baseline scans installed apps from system, user, and custom app directories, then checks public update sources for newer versions. It shows available updates, recently updated items, ignored items, and Homebrew discovery results without requiring a backend service or private APIs.
 
-When direct local tooling is available, Baseline can run update and install actions through Homebrew or `mas`. When local tooling is unavailable, it provides external fallback links instead of guessing.
+When the required local tooling is available, Baseline can run update and install actions through Homebrew or `mas`. When that tooling is unavailable, it provides external fallback links.
 
 ## Features
 
-- Full app window plus compact menu bar tray for quick update checks
-- Update detection from App Store lookup, Sparkle/DevMate appcasts, and Homebrew metadata
-- Unified update views for apps, Homebrew casks, and Homebrew formulae
-- Sidebar views for `All`, `Apps`, `Homebrew`, `Installed`, `Ignored`, and `Settings`
+- Detects updates from App Store lookup, Sparkle and DevMate appcasts, and Homebrew metadata
+- Provides unified update views for Mac apps, Homebrew casks, and Homebrew formulae
+- Shows recently updated items so you can see what was updated and when
+- Lets you ignore specific apps or Homebrew items so they stay out of the main update list
+- Supports uninstalling Homebrew-managed casks and formulae from item actions
+- Supports Homebrew search from the main window and menu bar tray to discover installable casks and formulae
+- Lets you search installed apps and filter available updates
+- Provides external fallback links when local CLI tooling is unavailable
+  
+![Baseline Ignored tab showing app and Homebrew item actions](docs/images/baseline-ignored-updates.png)
+  
+![Baseline menu bar tray showing app and Homebrew updates](docs/images/baseline-menu-bar.png)
 
-  ![Baseline menu bar tray showing app and Homebrew updates](docs/images/baseline-menu-bar.png)
-
-- Recently updated and ignored sections for keeping update lists manageable
-- Ignore specific apps or Homebrew items so they stay out of the main update list
-- Uninstall Homebrew-managed casks and formulae from item actions
-
-  ![Baseline Ignored tab showing app and Homebrew item actions](docs/images/baseline-ignored-updates.png)
-
-- Search from the main window or menu bar tray to filter updates and discover installable Homebrew casks and formulae
-
-  ![Baseline main window Homebrew search showing installable casks](docs/images/baseline-homebrew-search.png)
-
-- Auto refresh, refresh interval, custom scan directories, optional `mas`, and diagnostics controls in Settings
-- External fallback links when local CLI tooling is unavailable
+![Baseline main window Homebrew search showing installable casks](docs/images/baseline-homebrew-search.png)
 
 ## Project Status
 
-Baseline is functional beta macOS software. The core app experience works end to end, with ongoing polish focused on UI, packaging, and release quality.
+Baseline is currently in beta. The core app experience works end to end, with ongoing polish focused on UI, packaging, and release quality.
 
 Packaged unsigned DMGs are planned for the first public release.
 
@@ -54,7 +51,7 @@ No packaged release is available yet. Build Baseline from source for now.
 
 Future unsigned DMG releases will be published on the [GitHub Releases](https://github.com/arshiaghaf/baseline/releases) page. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
 
-## Build From Source
+## Build from Source
 
 Requirements:
 
@@ -62,7 +59,7 @@ Requirements:
 - Node.js 25 or newer
 - npm
 
-## Build And Test
+## Build and Test
 
 ```bash
 npm ci
@@ -85,29 +82,13 @@ npm start
 - App Store update actions use optional local `mas` support when available. Without `mas`, Baseline opens the App Store page externally.
 - Packaged releases are not signed or notarized yet.
 
-## Release Tooling
+## Privacy and Security
 
-For a fuller local release preview, run:
+Baseline uses public update sources and local tooling. It does not require private Apple frameworks, a backend service, or an API key.
 
-```bash
-scripts/validate-preview.sh 0.0.0-preview
-```
+The app may query public services such as Apple lookup endpoints, Sparkle or appcast URLs declared by installed apps, and Homebrew metadata endpoints. Homebrew and `mas` actions run locally when you choose those update paths.
 
-This builds, tests, packages an unsigned DMG, installs `/Applications/Baseline.app`, and smoke-launches the installed copy.
-
-## Package An Unsigned DMG
-
-```bash
-scripts/create-unsigned-dmg.sh 0.1.0
-```
-
-The script builds a Release app, creates `dist/Baseline-0.1.0-unsigned.dmg`, and prints a SHA-256 checksum. See [docs/RELEASING.md](docs/RELEASING.md) for release steps and limitations.
-
-To create the unsigned DMG plus release-note checksum text:
-
-```bash
-scripts/prepare-unsigned-release.sh 0.1.0
-```
+Report suspected security issues using the process in [SECURITY.md](SECURITY.md).
 
 ## Architecture
 
@@ -122,13 +103,29 @@ Baseline keeps update logic outside React views:
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for more detail.
 See [docs/VALIDATION.md](docs/VALIDATION.md) for preview validation.
 
-## Privacy And Security
+## Release Tooling
 
-Baseline uses public update pathways. It does not require private Apple frameworks, does not require a backend service, and does not require an API key.
+For a fuller local release preview, run:
 
-The app may query public services such as Apple lookup endpoints, Sparkle/appcast URLs declared by installed apps, and Homebrew metadata endpoints. Homebrew and `mas` actions run locally when users choose those update paths.
+```bash
+scripts/validate-preview.sh 0.0.0-preview
+```
 
-Report suspected security issues using the process in [SECURITY.md](SECURITY.md).
+This builds, tests, packages an unsigned DMG, installs `/Applications/Baseline.app`, and smoke-launches the installed copy.
+
+## Package an Unsigned DMG
+
+```bash
+scripts/create-unsigned-dmg.sh 0.1.0
+```
+
+The script builds a Release app, creates `dist/Baseline-0.1.0-unsigned.dmg`, and prints a SHA-256 checksum. See [docs/RELEASING.md](docs/RELEASING.md) for release steps and limitations.
+
+To create the unsigned DMG plus release-note checksum text:
+
+```bash
+scripts/prepare-unsigned-release.sh 0.1.0
+```
 
 ## Contributing
 
@@ -136,9 +133,11 @@ Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow
 
 ## License
 
-Baseline is licensed as `GPL-3.0-only`. See [LICENSE](LICENSE) for the full
+Baseline is licensed under `GPL-3.0-only`. See [LICENSE](LICENSE) for the full
 GNU General Public License v3.0 text.
 
-Copyright (C) 2026 Arshia Ghaffarian. Modified versions that are distributed
-must remain licensed under the GPL, including the corresponding source code and
-notices required by the license.
+Copyright (C) 2026 Arshia Ghaffarian.
+
+Distributed modified versions must remain licensed under the GPL and include
+the corresponding source code, license text, copyright notices, and other notices
+required by the license.
