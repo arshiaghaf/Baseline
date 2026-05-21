@@ -70,13 +70,7 @@ type RowUpdateMenuAction = {
   disabled?: boolean;
   onAction: () => void;
 };
-type SettingsSectionID =
-  | "about"
-  | "readiness"
-  | "appearance"
-  | "refresh"
-  | "scan-directories"
-  | "diagnostics";
+type SettingsSectionID = "general" | "appearance" | "diagnostics";
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
@@ -86,11 +80,8 @@ const settingsSidebarItems: Array<{
   label: string;
   icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
 }> = [
-  { id: "about", label: "About", icon: AppWindowMac },
-  { id: "readiness", label: "Readiness", icon: CheckCircle2 },
+  { id: "general", label: "General", icon: Settings },
   { id: "appearance", label: "Appearance", icon: Monitor },
-  { id: "refresh", label: "Refresh", icon: RefreshCcw },
-  { id: "scan-directories", label: "Scan Directories", icon: FolderPlus },
   { id: "diagnostics", label: "Diagnostics", icon: Terminal }
 ];
 
@@ -2381,7 +2372,7 @@ function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): strin
 }
 
 export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
-  const [selectedSection, setSelectedSection] = useState<SettingsSectionID>("about");
+  const [selectedSection, setSelectedSection] = useState<SettingsSectionID>("general");
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [appMetadata, setAppMetadata] = useState<AppMetadata>();
   const selectedItem = settingsSidebarItems.find((item) => item.id === selectedSection);
@@ -2428,7 +2419,7 @@ function SettingsSidebar({
       <div className="settings-sidebar-header">
         <button className="back-to-app-button" onClick={() => (window.location.hash = "/main")}>
           <ArrowLeft size={15} strokeWidth={sidebarIconStrokeWidth} />
-          <span>Back to App</span>
+          <span>Back to app</span>
         </button>
       </div>
       <nav className="source-list">
@@ -2464,39 +2455,86 @@ function SettingsPane({
   snapshot: BaselineSnapshot;
 }) {
   switch (section) {
-    case "about":
+    case "general":
       return (
-        <section className="panel settings-panel">
-          <PanelTitle title="About" />
-          <div className="metadata-list">
-            <div>
-              <span>Version</span>
-              <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
+        <>
+          <section className="panel settings-panel">
+            <PanelTitle title="Readiness" />
+            <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
+            <Readiness label="mas" ready={snapshot.isMasInstalled} />
+            <div className="settings-action">
+              <button
+                className="ghost-button wide"
+                onClick={() => void window.baseline.refreshToolStatus()}
+              >
+                Check Again
+              </button>
             </div>
-            {appMetadata?.buildNumber && (
-              <div>
-                <span>Build</span>
-                <strong>{appMetadata.buildNumber}</strong>
-              </div>
-            )}
-          </div>
-        </section>
-      );
-    case "readiness":
-      return (
-        <section className="panel settings-panel">
-          <PanelTitle title="Readiness" />
-          <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
-          <Readiness label="mas" ready={snapshot.isMasInstalled} />
-          <div className="settings-action">
-            <button
-              className="ghost-button wide"
-              onClick={() => void window.baseline.refreshToolStatus()}
-            >
-              Check Again
-            </button>
-          </div>
-        </section>
+          </section>
+          <section className="panel settings-panel">
+            <PanelTitle title="Refresh" />
+            <Toggle
+              label="Auto refresh"
+              value={snapshot.autoRefreshEnabled}
+              patch="autoRefreshEnabled"
+            />
+            <label className="field">
+              <span>Interval minutes</span>
+              <input
+                type="number"
+                min={5}
+                max={1440}
+                value={snapshot.refreshIntervalMinutes}
+                onChange={(event) =>
+                  void window.baseline.updatePreferences({
+                    refreshIntervalMinutes: Number(event.currentTarget.value)
+                  })
+                }
+              />
+            </label>
+            <Toggle
+              label="Use mas for App Store updates"
+              value={snapshot.useMasForAppStoreUpdates}
+              patch="useMasForAppStoreUpdates"
+            />
+            <Toggle
+              label="Show menu bar icon"
+              value={snapshot.showMenuBarIcon}
+              patch="showMenuBarIcon"
+            />
+          </section>
+          <section className="panel settings-panel">
+            <PanelTitle
+              title="Scan Directories"
+              action={
+                <button
+                  className="toolbar-button"
+                  onClick={() => void window.baseline.chooseDirectory()}
+                  title="Add directory"
+                >
+                  <FolderPlus size={15} />
+                </button>
+              }
+            />
+            <div className="directory-list">
+              {snapshot.additionalDirectories.length === 0 && (
+                <Empty text="Using default Applications folders." />
+              )}
+              {snapshot.additionalDirectories.map((directory) => (
+                <div className="directory-row" key={directory}>
+                  <span>{directory}</span>
+                  <button
+                    className="toolbar-button"
+                    onClick={() => void window.baseline.removeDirectory(directory)}
+                    title="Remove"
+                  >
+                    <XCircle size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
       );
     case "appearance":
       return (
@@ -2505,94 +2543,44 @@ function SettingsPane({
           <AppearanceSelector value={snapshot.appearancePreference} />
         </section>
       );
-    case "refresh":
-      return (
-        <section className="panel settings-panel">
-          <PanelTitle title="Refresh" />
-          <Toggle
-            label="Auto refresh"
-            value={snapshot.autoRefreshEnabled}
-            patch="autoRefreshEnabled"
-          />
-          <label className="field">
-            <span>Interval minutes</span>
-            <input
-              type="number"
-              min={5}
-              max={1440}
-              value={snapshot.refreshIntervalMinutes}
-              onChange={(event) =>
-                void window.baseline.updatePreferences({
-                  refreshIntervalMinutes: Number(event.currentTarget.value)
-                })
-              }
-            />
-          </label>
-          <Toggle
-            label="Use mas for App Store updates"
-            value={snapshot.useMasForAppStoreUpdates}
-            patch="useMasForAppStoreUpdates"
-          />
-          <Toggle
-            label="Show menu bar icon"
-            value={snapshot.showMenuBarIcon}
-            patch="showMenuBarIcon"
-          />
-        </section>
-      );
-    case "scan-directories":
-      return (
-        <section className="panel settings-panel">
-          <PanelTitle
-            title="Scan Directories"
-            action={
-              <button
-                className="toolbar-button"
-                onClick={() => void window.baseline.chooseDirectory()}
-                title="Add directory"
-              >
-                <FolderPlus size={15} />
-              </button>
-            }
-          />
-          <div className="directory-list">
-            {snapshot.additionalDirectories.length === 0 && (
-              <Empty text="Using default Applications folders." />
-            )}
-            {snapshot.additionalDirectories.map((directory) => (
-              <div className="directory-row" key={directory}>
-                <span>{directory}</span>
-                <button
-                  className="toolbar-button"
-                  onClick={() => void window.baseline.removeDirectory(directory)}
-                  title="Remove"
-                >
-                  <XCircle size={15} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      );
     case "diagnostics":
       return (
-        <section className="panel settings-panel">
-          <PanelTitle title="Diagnostics" />
-          <p className="muted panel-copy">
-            Copy a local report with counts, tool status, scan paths, and the latest non-sensitive
-            refresh message.
-          </p>
-          <div className="settings-action">
-            <button
-              className="primary-button wide"
-              onClick={() => {
-                void window.baseline.copyDiagnostics().then(() => onDiagnosticsCopiedChange(true));
-              }}
-            >
-              {diagnosticsCopied ? "Copied" : "Copy Report"}
-            </button>
-          </div>
-        </section>
+        <>
+          <section className="panel settings-panel">
+            <PanelTitle title="About" />
+            <div className="metadata-list">
+              <div>
+                <span>Version</span>
+                <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
+              </div>
+              {appMetadata?.buildNumber && (
+                <div>
+                  <span>Build</span>
+                  <strong>{appMetadata.buildNumber}</strong>
+                </div>
+              )}
+            </div>
+          </section>
+          <section className="panel settings-panel">
+            <PanelTitle title="Diagnostics" />
+            <p className="muted panel-copy">
+              Copy a local report with counts, tool status, scan paths, and the latest non-sensitive
+              refresh message.
+            </p>
+            <div className="settings-action">
+              <button
+                className="primary-button wide"
+                onClick={() => {
+                  void window.baseline
+                    .copyDiagnostics()
+                    .then(() => onDiagnosticsCopiedChange(true));
+                }}
+              >
+                {diagnosticsCopied ? "Copied" : "Copy Report"}
+              </button>
+            </div>
+          </section>
+        </>
       );
   }
 }

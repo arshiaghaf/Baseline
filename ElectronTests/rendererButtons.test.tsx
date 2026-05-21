@@ -431,17 +431,14 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(within(container).getByRole("button", { name: "Back to App" })).toBeInTheDocument();
-    for (const label of [
-      "About",
-      "Readiness",
-      "Appearance",
-      "Refresh",
-      "Scan Directories",
-      "Diagnostics"
-    ]) {
+    expect(within(container).getByRole("button", { name: "Back to app" })).toBeInTheDocument();
+    for (const label of ["General", "Appearance", "Diagnostics"]) {
       expect(within(container).getByRole("button", { name: label })).toBeInTheDocument();
     }
+    expect(screen.queryByRole("button", { name: "About" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Readiness" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Refresh" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Scan Directories" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "All" })).not.toBeInTheDocument();
     expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
@@ -450,7 +447,7 @@ describe("renderer button parity", () => {
   it("returns from settings to the main app route", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Back to App" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to app" }));
 
     expect(window.location.hash).toBe("#/main");
   });
@@ -1770,7 +1767,6 @@ describe("renderer button parity", () => {
   it("rechecks tool readiness from settings without running a refresh", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Readiness" }));
     fireEvent.click(screen.getByRole("button", { name: "Check Again" }));
 
     expect(window.baseline.refreshToolStatus).toHaveBeenCalledTimes(1);
@@ -1780,6 +1776,7 @@ describe("renderer button parity", () => {
   it("shows app version and build number in settings", async () => {
     render(<SettingsView snapshot={snapshot()} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
     expect(await screen.findByText("0.1.0 (224)")).toBeInTheDocument();
     expect(screen.getByText("Build")).toBeInTheDocument();
     expect(screen.getByText("224")).toBeInTheDocument();
@@ -1804,7 +1801,6 @@ describe("renderer button parity", () => {
   it("updates the menu bar icon preference from settings", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     fireEvent.click(screen.getByLabelText("Show menu bar icon"));
 
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
