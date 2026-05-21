@@ -51,6 +51,8 @@ type StoreEvents = {
   homebrewCommand: [HomebrewMaintenanceRunEvent];
 };
 
+const TRANSIENT_HOMEBREW_FAILURE_MS = 4000;
+
 export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly persistence: SnapshotPersistence;
   private readonly scanner: Pick<BundleScannerClient, "scanApplications">;
@@ -68,6 +70,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly openAppBundle: (bundlePath: string) => Promise<void>;
   private refreshTask?: Promise<void>;
   private autoRefreshTimer?: NodeJS.Timeout;
+  private readonly homebrewBatchFailureClearTimers = new Map<string, NodeJS.Timeout>();
+  private readonly homebrewFallbackFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
   private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
 
@@ -310,6 +314,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const command =
       item.kind === "cask" ? ["upgrade", "--cask", item.token] : ["upgrade", item.token];
     await this.withHomebrewUpdating(itemID, async () => {
+      this.clearHomebrewBatchFailureTimer(itemID);
+      this.patch({
+        homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID)
+      });
       const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
       const result = await this.runBrewWithEvents(command, (event) => {
         this.applyHomebrewProgressEvent(
@@ -343,6 +351,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             [itemID]: 1
           }
         });
+        this.scheduleHomebrewBatchFailureClear([itemID]);
       }
       await this.refresh();
     });
@@ -376,8 +385,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           affectedIDs.map((id) => [id, HomebrewMaintenanceProgressStage.queued])
         )
       },
+      homebrewBatchFailedItemIDs: this.state.homebrewBatchFailedItemIDs.filter(
+        (id) => !affectedIDs.includes(id)
+      ),
       refreshErrorMessage: undefined
     });
+    for (const id of affectedIDs) {
+      this.clearHomebrewBatchFailureTimer(id);
+    }
 
     const parser = new HomebrewMaintenanceOutputParser(
       affected.map((item) => item.token.toLowerCase())
@@ -407,12 +422,22 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       ),
       homebrewBatchFailedItemIDs: success
         ? this.state.homebrewBatchFailedItemIDs.filter((id) => !affectedIDs.includes(id))
-        : this.state.homebrewBatchFailedItemIDs,
+        : [
+            ...new Set([
+              ...this.state.homebrewBatchFailedItemIDs,
+              ...affectedIDs.filter(
+                (id) => !this.state.homebrewUpdatedPendingRefreshItemIDs.includes(id)
+              )
+            ])
+          ],
       homebrewUpdatedPendingRefreshItemIDs: success
         ? [...new Set([...this.state.homebrewUpdatedPendingRefreshItemIDs, ...affectedIDs])]
         : this.state.homebrewUpdatedPendingRefreshItemIDs,
       refreshErrorMessage: success ? undefined : "Homebrew maintenance cycle failed."
     });
+    if (!success) {
+      this.scheduleHomebrewBatchFailureClear(affectedIDs);
+    }
     await this.refresh();
   }
 
@@ -683,6 +708,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return;
     }
     await this.withAppUpdating(appRecord.id, async () => {
+      this.clearHomebrewFallbackFailureTimer(appRecord.id);
+      this.patch({
+        homebrewFallbackFailedAppIDs: removeFromArray(
+          this.state.homebrewFallbackFailedAppIDs,
+          appRecord.id
+        )
+      });
       const parser = new HomebrewMaintenanceOutputParser([token.toLowerCase()]);
       const success = await this.runBrewWithEvents(["upgrade", "--cask", token], (event) => {
         this.applyHomebrewFallbackEvent(event, parser, appRecord.id, token.toLowerCase());
@@ -698,6 +730,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           ? undefined
           : `Homebrew update failed for ${appRecord.displayName}.`
       });
+      if (!success) {
+        this.scheduleHomebrewFallbackFailureClear([appRecord.id]);
+      }
       await this.refresh();
     });
   }
@@ -892,6 +927,59 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({
         homebrewUpdatingItemIDs: removeFromArray(this.state.homebrewUpdatingItemIDs, itemID)
       });
+    }
+  }
+
+  private scheduleHomebrewBatchFailureClear(itemIDs: string[]): void {
+    for (const itemID of itemIDs) {
+      this.clearHomebrewBatchFailureTimer(itemID);
+      const timer = setTimeout(() => {
+        this.homebrewBatchFailureClearTimers.delete(itemID);
+        if (!this.state.homebrewBatchFailedItemIDs.includes(itemID)) {
+          return;
+        }
+        this.patch({
+          homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID)
+        });
+      }, TRANSIENT_HOMEBREW_FAILURE_MS);
+      timer.unref?.();
+      this.homebrewBatchFailureClearTimers.set(itemID, timer);
+    }
+  }
+
+  private scheduleHomebrewFallbackFailureClear(appIDs: string[]): void {
+    for (const appID of appIDs) {
+      this.clearHomebrewFallbackFailureTimer(appID);
+      const timer = setTimeout(() => {
+        this.homebrewFallbackFailureClearTimers.delete(appID);
+        if (!this.state.homebrewFallbackFailedAppIDs.includes(appID)) {
+          return;
+        }
+        this.patch({
+          homebrewFallbackFailedAppIDs: removeFromArray(
+            this.state.homebrewFallbackFailedAppIDs,
+            appID
+          )
+        });
+      }, TRANSIENT_HOMEBREW_FAILURE_MS);
+      timer.unref?.();
+      this.homebrewFallbackFailureClearTimers.set(appID, timer);
+    }
+  }
+
+  private clearHomebrewBatchFailureTimer(itemID: string): void {
+    const timer = this.homebrewBatchFailureClearTimers.get(itemID);
+    if (timer) {
+      clearTimeout(timer);
+      this.homebrewBatchFailureClearTimers.delete(itemID);
+    }
+  }
+
+  private clearHomebrewFallbackFailureTimer(appID: string): void {
+    const timer = this.homebrewFallbackFailureClearTimers.get(appID);
+    if (timer) {
+      clearTimeout(timer);
+      this.homebrewFallbackFailureClearTimers.delete(appID);
     }
   }
 
