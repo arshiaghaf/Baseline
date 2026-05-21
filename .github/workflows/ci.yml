@@ -32,6 +32,14 @@ jobs:
           node-version: 25
           cache: npm
 
+      - name: Runner info
+        run: |
+          sw_vers
+          uname -a
+          uname -m
+          node --version
+          npm --version
+
       - name: Install dependencies
         run: npm ci
 
