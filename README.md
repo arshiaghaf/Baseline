@@ -4,7 +4,7 @@
   <img alt="Project status: Beta" src="https://img.shields.io/badge/status-beta-blue?style=for-the-badge" />
   <img alt="Minimum macOS version" src="https://img.shields.io/badge/macOS-14.0%2B-000000?style=for-the-badge&logo=apple" />
   <a href="https://github.com/arshiaghaf/baseline/blob/main/LICENSE">
-    <img alt="GPL-3.0-only license" src="https://img.shields.io/github/license/arshiaghaf/baseline?style=for-the-badge&logo=github&cacheSeconds=3600" />
+    <img alt="GPL-3.0-only license" src="https://img.shields.io/badge/license-GPL--3.0--only-blue?style=for-the-badge&logo=github" />
   </a>
 </p>
 
