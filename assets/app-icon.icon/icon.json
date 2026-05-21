@@ -57,18 +57,10 @@
               }
             }
           ],
-          "glass-specializations" : [
-            {
-              "value" : true
-            },
-            {
-              "appearance" : "light",
-              "value" : true
-            }
-          ],
+          "glass" : true,
           "hidden" : false,
-          "image-name" : "Image 5.png",
-          "name" : "Image 5",
+          "image-name" : "Image 2.png",
+          "name" : "Image 2",
           "opacity-specializations" : [
             {
               "appearance" : "tinted",
@@ -78,7 +70,7 @@
           "position" : {
             "scale" : 0.4,
             "translation-in-points" : [
-              36.3,
+              36.28926630469944,
               0
             ]
           }
