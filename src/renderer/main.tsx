@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
   AppWindowMac,
+  ArrowLeft,
   Beer,
   Check,
   CheckCircle2,
@@ -69,10 +70,29 @@ type RowUpdateMenuAction = {
   disabled?: boolean;
   onAction: () => void;
 };
+type SettingsSectionID =
+  | "about"
+  | "readiness"
+  | "appearance"
+  | "refresh"
+  | "scan-directories"
+  | "diagnostics";
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
 const toolbarIconStrokeWidth = 1.5;
+const settingsSidebarItems: Array<{
+  id: SettingsSectionID;
+  label: string;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+}> = [
+  { id: "about", label: "About", icon: AppWindowMac },
+  { id: "readiness", label: "Readiness", icon: CheckCircle2 },
+  { id: "appearance", label: "Appearance", icon: Monitor },
+  { id: "refresh", label: "Refresh", icon: RefreshCcw },
+  { id: "scan-directories", label: "Scan Directories", icon: FolderPlus },
+  { id: "diagnostics", label: "Diagnostics", icon: Terminal }
+];
 
 const initialSnapshot: BaselineSnapshot = {
   ...defaultPersistedSnapshot(),
@@ -2361,153 +2381,220 @@ function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): strin
 }
 
 export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
+  const [selectedSection, setSelectedSection] = useState<SettingsSectionID>("about");
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [appMetadata, setAppMetadata] = useState<AppMetadata>();
-  const derived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
+  const selectedItem = settingsSidebarItems.find((item) => item.id === selectedSection);
 
   useEffect(() => {
     void window.baseline.getAppMetadata().then(setAppMetadata);
   }, []);
 
   return (
-    <main className="app-shell">
-      <Sidebar snapshot={snapshot} derived={derived} route="settings" />
+    <main className="app-shell settings-shell">
+      <SettingsSidebar selectedSection={selectedSection} onSelectSection={setSelectedSection} />
       <section className="workspace">
         <header className="topbar">
           <div>
-            <h1>Settings</h1>
-            <p>Scan paths, optional tools, and refresh behavior</p>
+            <h1>{selectedItem?.label ?? "Settings"}</h1>
           </div>
-          <button
-            className="toolbar-button text-button"
-            onClick={() => (window.location.hash = "/main")}
-          >
-            Done
-          </button>
         </header>
 
-        <section className="settings-grid">
-          <section className="panel">
-            <PanelTitle title="About" />
-            <div className="metadata-list">
-              <div>
-                <span>Version</span>
-                <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
-              </div>
-              {appMetadata?.buildNumber && (
-                <div>
-                  <span>Build</span>
-                  <strong>{appMetadata.buildNumber}</strong>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="panel">
-            <PanelTitle title="Readiness" />
-            <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
-            <Readiness label="mas" ready={snapshot.isMasInstalled} />
-            <div className="settings-action">
-              <button
-                className="ghost-button wide"
-                onClick={() => void window.baseline.refreshToolStatus()}
-              >
-                Check Again
-              </button>
-            </div>
-          </section>
-
-          <section className="panel">
-            <PanelTitle title="Appearance" />
-            <AppearanceSelector value={snapshot.appearancePreference} />
-          </section>
-
-          <section className="panel">
-            <PanelTitle title="Refresh" />
-            <Toggle
-              label="Auto refresh"
-              value={snapshot.autoRefreshEnabled}
-              patch="autoRefreshEnabled"
+        <section className="content settings-content">
+          <section className="stack">
+            <SettingsPane
+              appMetadata={appMetadata}
+              diagnosticsCopied={diagnosticsCopied}
+              onDiagnosticsCopiedChange={setDiagnosticsCopied}
+              section={selectedSection}
+              snapshot={snapshot}
             />
-            <label className="field">
-              <span>Interval minutes</span>
-              <input
-                type="number"
-                min={5}
-                max={1440}
-                value={snapshot.refreshIntervalMinutes}
-                onChange={(event) =>
-                  void window.baseline.updatePreferences({
-                    refreshIntervalMinutes: Number(event.currentTarget.value)
-                  })
-                }
-              />
-            </label>
-            <Toggle
-              label="Use mas for App Store updates"
-              value={snapshot.useMasForAppStoreUpdates}
-              patch="useMasForAppStoreUpdates"
-            />
-            <Toggle
-              label="Show menu bar icon"
-              value={snapshot.showMenuBarIcon}
-              patch="showMenuBarIcon"
-            />
-          </section>
-
-          <section className="panel wide-panel">
-            <PanelTitle
-              title="Scan Directories"
-              action={
-                <button
-                  className="toolbar-button"
-                  onClick={() => void window.baseline.chooseDirectory()}
-                  title="Add directory"
-                >
-                  <FolderPlus size={15} />
-                </button>
-              }
-            />
-            <div className="directory-list">
-              {snapshot.additionalDirectories.length === 0 && (
-                <Empty text="Using default Applications folders." />
-              )}
-              {snapshot.additionalDirectories.map((directory) => (
-                <div className="directory-row" key={directory}>
-                  <span>{directory}</span>
-                  <button
-                    className="toolbar-button"
-                    onClick={() => void window.baseline.removeDirectory(directory)}
-                    title="Remove"
-                  >
-                    <XCircle size={15} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel">
-            <PanelTitle title="Diagnostics" />
-            <p className="muted panel-copy">
-              Copy a local report with counts, tool status, scan paths, and the latest non-sensitive
-              refresh message.
-            </p>
-            <div className="settings-action">
-              <button
-                className="primary-button wide"
-                onClick={() => {
-                  void window.baseline.copyDiagnostics().then(() => setDiagnosticsCopied(true));
-                }}
-              >
-                {diagnosticsCopied ? "Copied" : "Copy Report"}
-              </button>
-            </div>
           </section>
         </section>
       </section>
     </main>
   );
+}
+
+function SettingsSidebar({
+  selectedSection,
+  onSelectSection
+}: {
+  selectedSection: SettingsSectionID;
+  onSelectSection: (section: SettingsSectionID) => void;
+}) {
+  return (
+    <aside className="sidebar settings-sidebar">
+      <div className="settings-sidebar-header">
+        <button className="back-to-app-button" onClick={() => (window.location.hash = "/main")}>
+          <ArrowLeft size={15} strokeWidth={sidebarIconStrokeWidth} />
+          <span>Back to App</span>
+        </button>
+      </div>
+      <nav className="source-list">
+        {settingsSidebarItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              className={selectedSection === item.id ? "selected" : ""}
+              key={item.id}
+              onClick={() => onSelectSection(item.id)}
+            >
+              <Icon size={16} strokeWidth={sidebarIconStrokeWidth} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </aside>
+  );
+}
+
+function SettingsPane({
+  appMetadata,
+  diagnosticsCopied,
+  onDiagnosticsCopiedChange,
+  section,
+  snapshot
+}: {
+  appMetadata?: AppMetadata;
+  diagnosticsCopied: boolean;
+  onDiagnosticsCopiedChange: (copied: boolean) => void;
+  section: SettingsSectionID;
+  snapshot: BaselineSnapshot;
+}) {
+  switch (section) {
+    case "about":
+      return (
+        <section className="panel settings-panel">
+          <PanelTitle title="About" />
+          <div className="metadata-list">
+            <div>
+              <span>Version</span>
+              <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
+            </div>
+            {appMetadata?.buildNumber && (
+              <div>
+                <span>Build</span>
+                <strong>{appMetadata.buildNumber}</strong>
+              </div>
+            )}
+          </div>
+        </section>
+      );
+    case "readiness":
+      return (
+        <section className="panel settings-panel">
+          <PanelTitle title="Readiness" />
+          <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
+          <Readiness label="mas" ready={snapshot.isMasInstalled} />
+          <div className="settings-action">
+            <button
+              className="ghost-button wide"
+              onClick={() => void window.baseline.refreshToolStatus()}
+            >
+              Check Again
+            </button>
+          </div>
+        </section>
+      );
+    case "appearance":
+      return (
+        <section className="panel settings-panel">
+          <PanelTitle title="Appearance" />
+          <AppearanceSelector value={snapshot.appearancePreference} />
+        </section>
+      );
+    case "refresh":
+      return (
+        <section className="panel settings-panel">
+          <PanelTitle title="Refresh" />
+          <Toggle
+            label="Auto refresh"
+            value={snapshot.autoRefreshEnabled}
+            patch="autoRefreshEnabled"
+          />
+          <label className="field">
+            <span>Interval minutes</span>
+            <input
+              type="number"
+              min={5}
+              max={1440}
+              value={snapshot.refreshIntervalMinutes}
+              onChange={(event) =>
+                void window.baseline.updatePreferences({
+                  refreshIntervalMinutes: Number(event.currentTarget.value)
+                })
+              }
+            />
+          </label>
+          <Toggle
+            label="Use mas for App Store updates"
+            value={snapshot.useMasForAppStoreUpdates}
+            patch="useMasForAppStoreUpdates"
+          />
+          <Toggle
+            label="Show menu bar icon"
+            value={snapshot.showMenuBarIcon}
+            patch="showMenuBarIcon"
+          />
+        </section>
+      );
+    case "scan-directories":
+      return (
+        <section className="panel settings-panel">
+          <PanelTitle
+            title="Scan Directories"
+            action={
+              <button
+                className="toolbar-button"
+                onClick={() => void window.baseline.chooseDirectory()}
+                title="Add directory"
+              >
+                <FolderPlus size={15} />
+              </button>
+            }
+          />
+          <div className="directory-list">
+            {snapshot.additionalDirectories.length === 0 && (
+              <Empty text="Using default Applications folders." />
+            )}
+            {snapshot.additionalDirectories.map((directory) => (
+              <div className="directory-row" key={directory}>
+                <span>{directory}</span>
+                <button
+                  className="toolbar-button"
+                  onClick={() => void window.baseline.removeDirectory(directory)}
+                  title="Remove"
+                >
+                  <XCircle size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    case "diagnostics":
+      return (
+        <section className="panel settings-panel">
+          <PanelTitle title="Diagnostics" />
+          <p className="muted panel-copy">
+            Copy a local report with counts, tool status, scan paths, and the latest non-sensitive
+            refresh message.
+          </p>
+          <div className="settings-action">
+            <button
+              className="primary-button wide"
+              onClick={() => {
+                void window.baseline.copyDiagnostics().then(() => onDiagnosticsCopiedChange(true));
+              }}
+            >
+              {diagnosticsCopied ? "Copied" : "Copy Report"}
+            </button>
+          </div>
+        </section>
+      );
+  }
 }
 
 type TogglePatch = Exclude<

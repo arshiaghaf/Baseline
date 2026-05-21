@@ -123,6 +123,7 @@ function installBaselineMock() {
 describe("renderer button parity", () => {
   beforeEach(() => {
     installBaselineMock();
+    window.location.hash = "";
   });
 
   it("shows app ignore/update actions and makes updating glyph non-clickable", () => {
@@ -404,7 +405,7 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
   });
 
-  it("keeps Settings sidebar badges fixed when a saved query is present", () => {
+  it("shows settings sections as sidebar tabs without search-filtered badges", () => {
     const installedApp: AppRecord = {
       ...app,
       id: "app:stable",
@@ -430,13 +431,28 @@ describe("renderer button parity", () => {
       />
     );
 
-    const [allButton, appsButton, homebrewButton] = Array.from(
-      container.querySelectorAll(".source-list button")
-    );
+    expect(within(container).getByRole("button", { name: "Back to App" })).toBeInTheDocument();
+    for (const label of [
+      "About",
+      "Readiness",
+      "Appearance",
+      "Refresh",
+      "Scan Directories",
+      "Diagnostics"
+    ]) {
+      expect(within(container).getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole("button", { name: "All" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
+    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+  });
 
-    expect(within(allButton as HTMLElement).getByText("2")).toBeInTheDocument();
-    expect(within(appsButton as HTMLElement).getByText("1")).toBeInTheDocument();
-    expect(within(homebrewButton as HTMLElement).getByText("1")).toBeInTheDocument();
+  it("returns from settings to the main app route", () => {
+    render(<SettingsView snapshot={snapshot()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to App" }));
+
+    expect(window.location.hash).toBe("#/main");
   });
 
   it("uses the same short search placeholder on every tab", () => {
@@ -1754,6 +1770,7 @@ describe("renderer button parity", () => {
   it("rechecks tool readiness from settings without running a refresh", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Readiness" }));
     fireEvent.click(screen.getByRole("button", { name: "Check Again" }));
 
     expect(window.baseline.refreshToolStatus).toHaveBeenCalledTimes(1);
@@ -1771,6 +1788,7 @@ describe("renderer button parity", () => {
   it("updates the appearance preference from settings", () => {
     render(<SettingsView snapshot={snapshot({ appearancePreference: "light" })} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
     expect(screen.getByRole("button", { name: "Light Mode" })).toHaveAttribute(
       "aria-pressed",
       "true"
@@ -1786,6 +1804,7 @@ describe("renderer button parity", () => {
   it("updates the menu bar icon preference from settings", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     fireEvent.click(screen.getByLabelText("Show menu bar icon"));
 
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({

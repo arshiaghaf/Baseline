@@ -175,7 +175,8 @@ button:disabled {
 
 @media (hover: hover) {
   .source-list button:not(.selected):hover,
-  .sidebar-footer button:not(.selected):hover {
+  .sidebar-footer button:not(.selected):hover,
+  .back-to-app-button:hover {
     background: rgba(60, 60, 67, 0.08);
   }
 }
@@ -184,6 +185,41 @@ button:disabled {
   display: grid;
   margin-top: auto;
   -webkit-app-region: no-drag;
+}
+
+.settings-sidebar {
+  gap: 18px;
+}
+
+.settings-sidebar-header {
+  display: grid;
+  -webkit-app-region: no-drag;
+}
+
+.settings-sidebar .source-list button,
+.back-to-app-button {
+  grid-template-columns: 18px minmax(0, 1fr);
+}
+
+.back-to-app-button {
+  display: grid;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #2c2c2e;
+  font-size: 13px;
+  font-weight: 300;
+  text-align: left;
+}
+
+.back-to-app-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace {
@@ -1319,6 +1355,14 @@ button:disabled {
   overflow: auto;
 }
 
+.settings-content {
+  display: block;
+}
+
+.settings-panel {
+  width: min(100%, 720px);
+}
+
 .wide-panel {
   grid-column: 1 / -1;
 }
@@ -1475,6 +1519,7 @@ button:disabled {
 
   .source-list button,
   .sidebar-footer button,
+  .back-to-app-button,
   .row-title strong,
   .toolbar-button,
   .icon-button,
@@ -1486,7 +1531,8 @@ button:disabled {
   }
 
   .source-list button,
-  .sidebar-footer button {
+  .sidebar-footer button,
+  .back-to-app-button {
     color: rgba(252, 252, 252, 0.7);
   }
 
@@ -1508,7 +1554,8 @@ button:disabled {
 
   @media (hover: hover) {
     .source-list button:not(.selected):hover,
-    .sidebar-footer button:not(.selected):hover {
+    .sidebar-footer button:not(.selected):hover,
+    .back-to-app-button:hover {
       background: rgba(235, 235, 245, 0.09);
     }
   }
