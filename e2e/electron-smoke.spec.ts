@@ -61,7 +61,9 @@ async function launchBaseline(options: { packaged?: boolean; userData?: string }
 }
 
 async function closeApp(app: Awaited<ReturnType<typeof electron.launch>>) {
-  await app.close();
+  await app.evaluate(async ({ app }) => {
+    app.exit(0);
+  });
 }
 
 test("launches the Electron shell and renders the dashboard", async () => {
