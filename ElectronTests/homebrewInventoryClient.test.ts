@@ -5,7 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandMock = vi.hoisted(() => ({
   calls: [] as string[][],
-  results: new Map<string, { success: boolean; status: number | null; output: string }>()
+  results: new Map<
+    string,
+    { success: boolean; status: number | null; output: string; stdout?: string; stderr?: string }
+  >()
 }));
 
 vi.mock("../src/main/commandRunner", () => ({
@@ -87,6 +90,35 @@ describe("HomebrewInventoryClient", () => {
     expect(result.warning).toContain("cask outdated");
     expect(result.items.find((item) => item.token === "ripgrep")?.isOutdated).toBe(true);
     expect(result.items.find((item) => item.token === "notion")?.isOutdated).toBe(false);
+  });
+
+  it("parses outdated JSON from stdout when Homebrew writes warnings to stderr", async () => {
+    commandMock.results.set("outdated --formula --json=v2", {
+      success: true,
+      status: 0,
+      output:
+        "Warning: Another active Homebrew process is already in progress.\n" +
+        JSON.stringify({ formulae: [{ name: "ripgrep", current_version: "14.1.0" }] }),
+      stdout: JSON.stringify({ formulae: [{ name: "ripgrep", current_version: "14.1.0" }] }),
+      stderr: "Warning: Another active Homebrew process is already in progress.\n"
+    });
+    commandMock.results.set("outdated --cask --greedy --json=v2", {
+      success: true,
+      status: 0,
+      output:
+        "Warning: Another active Homebrew process is already in progress.\n" +
+        JSON.stringify({ casks: [{ token: "notion", current_version: "4.1.0" }] }),
+      stdout: JSON.stringify({ casks: [{ token: "notion", current_version: "4.1.0" }] }),
+      stderr: "Warning: Another active Homebrew process is already in progress.\n"
+    });
+    const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+
+    const result = await new HomebrewInventoryClient().fetchInventory();
+
+    expect(result.outdatedDetectionSucceeded).toBe(true);
+    expect(result.warning).toBeUndefined();
+    expect(result.items.find((item) => item.token === "ripgrep")?.isOutdated).toBe(true);
+    expect(result.items.find((item) => item.token === "notion")?.isOutdated).toBe(true);
   });
 
   it("treats failed metadata updates as unreliable for both Homebrew kinds", async () => {
