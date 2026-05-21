@@ -6,6 +6,9 @@ import { MakerDMG } from "@electron-forge/maker-dmg";
 import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { execFileSync } from "node:child_process";
+import packageJSON from "./package.json";
+
+const buildNumberPattern = /^[0-9][0-9.]*$/u;
 
 function macOSMajorVersion(): number | undefined {
   if (process.platform !== "darwin") {
@@ -26,11 +29,14 @@ function macOSMajorVersion(): number | undefined {
 
 const appIcon =
   (macOSMajorVersion() ?? 26) >= 26 ? "assets/app-icon" : "assets/app-icon-legacy.icns";
+const buildNumber = releaseBuildNumber();
 
 const config: ForgeConfig = {
   packagerConfig: {
     name: "Baseline",
     executableName: "Baseline",
+    appVersion: packageJSON.version,
+    buildVersion: buildNumber,
     icon: appIcon,
     appBundleId: "com.arshiaghaf.baseline",
     appCategoryType: "public.app-category.utilities",
@@ -73,3 +79,29 @@ const config: ForgeConfig = {
 };
 
 export default config;
+
+function releaseBuildNumber(): string {
+  return (
+    validBuildNumber(process.env.BASELINE_BUILD_NUMBER ?? process.env.GITHUB_RUN_NUMBER) ??
+    gitCommitCount() ??
+    "1"
+  );
+}
+
+function gitCommitCount(): string | undefined {
+  try {
+    return validBuildNumber(
+      execFileSync("/usr/bin/git", ["rev-list", "--count", "HEAD"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"]
+      }).trim()
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function validBuildNumber(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed && buildNumberPattern.test(trimmed) ? trimmed : undefined;
+}

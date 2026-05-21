@@ -22,6 +22,24 @@ fi
 
 cd "$ROOT_DIR"
 
+command -v node >/dev/null 2>&1 || {
+  echo "node is required."
+  exit 1
+}
+
+PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+PACKAGE_LOCK_VERSION="$(node -p "require('./package-lock.json').version")"
+
+if [[ "$PACKAGE_VERSION" != "$VERSION" ]]; then
+  echo "package.json version ($PACKAGE_VERSION) must match release version ($VERSION)."
+  exit 1
+fi
+
+if [[ "$PACKAGE_LOCK_VERSION" != "$VERSION" ]]; then
+  echo "package-lock.json version ($PACKAGE_LOCK_VERSION) must match release version ($VERSION)."
+  exit 1
+fi
+
 if ! grep -Eq '^## (Unreleased|[0-9]+[.][0-9]+[.][0-9]+([-+][A-Za-z0-9._-]+)? — Unreleased)$' CHANGELOG.md; then
   echo "CHANGELOG.md must contain an Unreleased section heading before preparing a release."
   exit 1

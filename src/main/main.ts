@@ -14,6 +14,7 @@ import {
   Tray
 } from "electron";
 import path from "node:path";
+import { appMetadata } from "./appMetadata";
 import { renderDiagnostics } from "../shared/diagnostics";
 import type {
   AppearancePreference,
@@ -38,6 +39,7 @@ let trayBaseIcon: Electron.NativeImage | undefined;
 let trayRefreshIcon: Electron.NativeImage | undefined;
 let store: UpdateStore;
 let isQuitting = false;
+let metadata: ReturnType<typeof appMetadata>;
 
 const trayRefreshIconDataURL =
   "data:image/png;base64," +
@@ -63,7 +65,10 @@ if (!hasSingleInstanceLock) {
 
 if (hasSingleInstanceLock) {
   void app.whenReady().then(async () => {
+    metadata = appMetadata(app);
     app.setAboutPanelOptions({
+      applicationVersion: metadata.version,
+      version: metadata.buildNumber,
       copyright: "© 2026 Arshia Ghaffarian"
     });
 
@@ -336,8 +341,9 @@ function trayUpdateTitle(snapshot: BaselineSnapshot): string {
 
 function wireIpc(): void {
   ipcMain.handle(ipcChannels.getSnapshot, () => store.getSnapshot());
+  ipcMain.handle(ipcChannels.getAppMetadata, () => metadata);
   ipcMain.handle(ipcChannels.getDiagnostics, () =>
-    renderDiagnostics(store.getSnapshot(), app.getVersion(), process.platform)
+    renderDiagnostics(store.getSnapshot(), metadata, process.platform)
   );
   ipcMain.handle(ipcChannels.getToolStatus, () => {
     const snapshot = store.getSnapshot();
@@ -399,7 +405,7 @@ function wireIpc(): void {
     store.removeDirectory(String(directory))
   );
   ipcMain.handle(ipcChannels.copyDiagnostics, () => {
-    clipboard.writeText(renderDiagnostics(store.getSnapshot(), app.getVersion(), process.platform));
+    clipboard.writeText(renderDiagnostics(store.getSnapshot(), metadata, process.platform));
   });
   ipcMain.handle(ipcChannels.showMainWindow, () => showMainWindow("main"));
   ipcMain.handle(ipcChannels.showSettings, () => showMainWindow("settings"));

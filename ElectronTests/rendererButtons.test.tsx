@@ -87,6 +87,13 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
 function installBaselineMock() {
   window.baseline = {
     getSnapshot: vi.fn(),
+    getAppMetadata: vi.fn(() =>
+      Promise.resolve({
+        version: "0.1.0",
+        buildNumber: "224",
+        displayVersion: "0.1.0 (224)"
+      })
+    ),
     getDiagnostics: vi.fn(),
     getToolStatus: vi.fn(),
     refreshToolStatus: vi.fn(),
@@ -1751,6 +1758,14 @@ describe("renderer button parity", () => {
 
     expect(window.baseline.refreshToolStatus).toHaveBeenCalledTimes(1);
     expect(window.baseline.refresh).not.toHaveBeenCalled();
+  });
+
+  it("shows app version and build number in settings", async () => {
+    render(<SettingsView snapshot={snapshot()} />);
+
+    expect(await screen.findByText("0.1.0 (224)")).toBeInTheDocument();
+    expect(screen.getByText("Build")).toBeInTheDocument();
+    expect(screen.getByText("224")).toBeInTheDocument();
   });
 
   it("updates the appearance preference from settings", () => {

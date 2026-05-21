@@ -3,10 +3,11 @@
 
 import type { BaselineSnapshot, UpdateSource } from "./domain";
 import { sourceDisplayName } from "./domain";
+import { formatAppDisplayVersion, type AppMetadata } from "./appMetadata";
 
 export function renderDiagnostics(
   snapshot: BaselineSnapshot,
-  appVersion = "Unknown",
+  appMetadata: Pick<AppMetadata, "version" | "buildNumber"> | string = "Unknown",
   platform = process.platform
 ): string {
   const updatesBySource = new Map<UpdateSource, number>();
@@ -27,7 +28,7 @@ export function renderDiagnostics(
     "Baseline Diagnostics",
     `Generated: ${new Date().toISOString()}`,
     `Platform: ${platform}`,
-    `App version: ${appVersion}`,
+    `App version: ${diagnosticsAppVersion(appMetadata)}`,
     "",
     "Refresh",
     `- Last refresh: ${snapshot.lastRefreshDate ?? "Never"}`,
@@ -67,6 +68,14 @@ export function renderDiagnostics(
   );
 
   return lines.join("\n");
+}
+
+function diagnosticsAppVersion(
+  appMetadata: Pick<AppMetadata, "version" | "buildNumber"> | string
+): string {
+  return typeof appMetadata === "string"
+    ? appMetadata
+    : formatAppDisplayVersion(appMetadata.version, appMetadata.buildNumber);
 }
 
 function yesNo(value: boolean): string {

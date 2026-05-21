@@ -759,6 +759,34 @@ button:disabled {
   padding: 14px 12px;
 }
 
+.metadata-list {
+  display: grid;
+  gap: 10px;
+}
+
+.metadata-list div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.metadata-list span {
+  color: rgba(60, 60, 67, 0.5);
+  font-size: 12px;
+  font-weight: 300;
+}
+
+.metadata-list strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #1c1c1e;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+}
+
 .version-token {
   letter-spacing: 0.05em;
 }
