@@ -7,7 +7,7 @@ Unsigned DMGs are not notarized by Apple. macOS Gatekeeper may warn users before
 ## First Release Checklist
 
 1. Choose a version, for example `0.1.0`.
-2. Update `CHANGELOG.md`.
+2. Update `package.json` and `package-lock.json` to the release version, then update `CHANGELOG.md`.
 3. Run local validation:
 
 ```bash
@@ -41,7 +41,7 @@ git push baseline v0.1.0
 
 The release workflow accepts tags like `v0.1.0` and `v0.1.0-beta.1`.
 
-The user-facing app version maps to `CFBundleShortVersionString`. The build number in parentheses maps to `CFBundleVersion` and should be a monotonically increasing numeric value supplied by CI through `GITHUB_RUN_NUMBER` or overridden explicitly with `BASELINE_BUILD_NUMBER` for local artifact builds.
+The user-facing app version maps to `CFBundleShortVersionString` and is sourced from `package.json`. Release artifact preparation fails if the requested release version does not match `package.json`. The build number in parentheses maps to `CFBundleVersion` and should be a monotonically increasing numeric value supplied by CI through `GITHUB_RUN_NUMBER` or overridden explicitly with `BASELINE_BUILD_NUMBER` for local artifact builds.
 
 ## Future Signed Release Path
 
