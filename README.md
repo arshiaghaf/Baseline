@@ -6,7 +6,7 @@
 &nbsp;
 ![Minimum macOS version: 14.0+](https://img.shields.io/badge/macOS-14.0%2B-0a0a0c?style=flat-square)
 &nbsp;
-[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/baseline/blob/main/LICENSE)
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/Baseline/blob/main/LICENSE)
 
 Baseline is a macOS app for managing and updating installed Mac apps and Homebrew packages from one place. It supports App Store apps, direct downloads, Sparkle-enabled apps, and Homebrew casks and formulae.
 
@@ -47,7 +47,7 @@ Packaged unsigned DMGs are planned for the first public release.
 
 No packaged release is available yet. Build Baseline from source for now.
 
-Future unsigned DMG releases will be published on the [GitHub Releases](https://github.com/arshiaghaf/baseline/releases) page. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
+Future unsigned DMG releases will be published on the [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases) page. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
 
 ## Build from Source
 
