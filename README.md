@@ -1,12 +1,10 @@
 # Baseline
 
-[![Release: Pending](https://img.shields.io/badge/release-pending-0a0a0c?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
+[![Release: Pending](https://img.shields.io/badge/release-pending-0a0a0c?style=flat-square)]
 &nbsp;
-[![Project status: Beta](https://img.shields.io/badge/status-beta-blue?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
+[![Project status: Beta](https://img.shields.io/badge/status-beta-blue?style=flat-square)]
 &nbsp;
-[![Minimum macOS version: 14+](https://img.shields.io/badge/macOS-14.0%2B-0a0a0c?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
-&nbsp;
-[![Homebrew tap: arshiaghaf/tap/baseline](https://img.shields.io/badge/brew-arshiaghaf%2Ftap%2Fbaseline-orange?style=flat-square)](https://github.com/arshiaghaf/homebrew-tap)
+[![Minimum macOS version: 14+](https://img.shields.io/badge/macOS-14.0%2B-0a0a0c?style=flat-square)]
 &nbsp;
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/baseline/blob/main/LICENSE)
 
