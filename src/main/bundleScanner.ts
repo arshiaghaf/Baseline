@@ -253,7 +253,7 @@ async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
     await execFileAsync("/usr/bin/sips", ["-s", "format", "png", iconPath, "--out", pngPath], {
       maxBuffer: 4 * 1024 * 1024
     });
-    if (await isGrayscalePNG(pngPath)) {
+    if (await shouldPadGrayscaleIcon(iconPath, pngPath)) {
       return { dataURL: await paddedRasterIconDataURL(pngPath) };
     }
     const image = nativeImage.createFromPath(pngPath);
@@ -265,6 +265,14 @@ async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
       await rm(tempDirectory, { recursive: true, force: true });
     }
   }
+}
+
+async function shouldPadGrayscaleIcon(iconPath: string, pngPath: string): Promise<boolean> {
+  return isGenericElectronIconName(iconPath) && (await isGrayscalePNG(pngPath));
+}
+
+function isGenericElectronIconName(iconPath: string): boolean {
+  return path.basename(iconPath).toLowerCase() === "electron.icns";
 }
 
 async function paddedRasterIconDataURL(pngPath: string): Promise<string | undefined> {
@@ -288,5 +296,7 @@ async function paddedRasterIconDataURL(pngPath: string): Promise<string | undefi
 }
 
 export const testingExports = {
-  isGrayscaleSipsOutput
+  isGenericElectronIconName,
+  isGrayscaleSipsOutput,
+  shouldPadGrayscaleIcon
 };

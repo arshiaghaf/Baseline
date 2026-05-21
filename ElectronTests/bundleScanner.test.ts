@@ -125,6 +125,18 @@ describe("bundle scanner", () => {
     expect(testingExports.isGrayscaleSipsOutput("  space: RGB\n")).toBe(false);
     expect(testingExports.isGrayscaleSipsOutput("  profile: Generic Gray Gamma 2.2\n")).toBe(false);
   });
+
+  it("limits grayscale padding candidates to generic Electron bundle icons", () => {
+    expect(
+      testingExports.isGenericElectronIconName("/Applications/Example.app/electron.icns")
+    ).toBe(true);
+    expect(
+      testingExports.isGenericElectronIconName("/Applications/Example.app/Electron.icns")
+    ).toBe(true);
+    expect(testingExports.isGenericElectronIconName("/Applications/Example.app/Custom.icns")).toBe(
+      false
+    );
+  });
 });
 
 async function writeAppPlist(
