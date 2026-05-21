@@ -33,13 +33,15 @@ git tag v0.1.0
 git push baseline v0.1.0
 ```
 
-8. The GitHub Actions release workflow builds the Electron unsigned DMG, writes `dist/Baseline-0.1.0-unsigned.dmg.sha256`, creates the GitHub Release, and uploads both files.
+8. The GitHub Actions release workflow builds the Electron unsigned DMG with the GitHub run number as the macOS build number, writes `dist/Baseline-0.1.0-unsigned.dmg.sha256`, creates the GitHub Release, and uploads both files.
 9. Verify the GitHub Release contains:
    - `Baseline-0.1.0-unsigned.dmg`
    - `Baseline-0.1.0-unsigned.dmg.sha256`
    - release notes that clearly label the artifact as unsigned.
 
 The release workflow accepts tags like `v0.1.0` and `v0.1.0-beta.1`.
+
+The user-facing app version maps to `CFBundleShortVersionString`. The build number in parentheses maps to `CFBundleVersion` and should be a monotonically increasing numeric value supplied by CI through `GITHUB_RUN_NUMBER` or overridden explicitly with `BASELINE_BUILD_NUMBER` for local artifact builds.
 
 ## Future Signed Release Path
 

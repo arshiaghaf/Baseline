@@ -9,6 +9,7 @@ import path from "node:path";
 const expectedBaselineAPI = [
   "chooseDirectory",
   "copyDiagnostics",
+  "getAppMetadata",
   "getDiagnostics",
   "getSnapshot",
   "getToolStatus",
