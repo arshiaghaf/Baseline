@@ -1314,7 +1314,7 @@ button:disabled {
   align-items: center;
   gap: 7px;
   min-height: 30px;
-  padding: 0 10px;
+  padding: 16px 10px;
   border-top: 1px solid rgba(60, 60, 67, 0.08);
   color: #0d0d0d;
   font-size: 12px;
@@ -1360,29 +1360,26 @@ button:disabled {
 }
 
 .settings-panel {
+  display: grid;
+  gap: 10px;
   width: min(100%, 720px);
 }
 
 .theme-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-  padding: 16px;
+  padding: 0;
 }
 
 .theme-panel .panel-title {
   min-height: 0;
-  padding: 0;
 }
 
 .settings-panel .panel-title {
   min-height: 0;
-  padding: 0 12px 10px;
+  padding: 0 12px;
 }
 
 .settings-panel.theme-panel .panel-title {
-  padding: 0;
+  padding: 0 12px;
 }
 
 .settings-panel .panel-title h2,
@@ -1393,8 +1390,29 @@ button:disabled {
 }
 
 .theme-description {
-  margin-top: 6px;
+  margin: 0;
   font-size: 12px;
+}
+
+.settings-panel-box {
+  overflow: hidden;
+  margin: 0 12px;
+  padding: 4px;
+  border: 1px solid rgba(60, 60, 67, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.theme-panel-box {
+  display: block;
+}
+
+.theme-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 12px;
 }
 
 .wide-panel {
@@ -1408,7 +1426,7 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   min-height: 36px;
-  padding: 0 12px;
+  padding: 16px 12px;
   border-top: 1px solid rgba(60, 60, 67, 0.1);
   font-size: 13px;
 }
@@ -1452,6 +1470,18 @@ button:disabled {
 
 .toggle input:focus-visible {
   box-shadow: 0 0 0 3px rgba(var(--update-accent-rgb), 0.22);
+}
+
+.settings-panel-box > .ready-row:first-child,
+.settings-panel-box > .toggle:first-child,
+.settings-panel-box > .field:first-child,
+.directory-list > .directory-row:first-child {
+  border-top: 0;
+}
+
+.settings-panel-box > .metadata-list,
+.settings-panel-box > .empty {
+  padding: 16px 12px;
 }
 
 .field input {
@@ -1529,7 +1559,7 @@ button:disabled {
   align-items: center;
   gap: 8px;
   min-height: 38px;
-  padding: 0 10px 0 12px;
+  padding: 16px 10px 16px 12px;
   border-top: 1px solid rgba(60, 60, 67, 0.1);
   font-size: 12px;
 }
@@ -1726,11 +1756,16 @@ button:disabled {
 
   .stats div,
   .readiness,
+  .settings-panel-box,
   .ready-row,
   .toggle,
   .field,
   .directory-row {
     border-color: rgba(235, 235, 245, 0.1);
+  }
+
+  .settings-panel-box {
+    background: rgba(255, 255, 255, 0.04);
   }
 
   .row,

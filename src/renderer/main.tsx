@@ -2482,40 +2482,44 @@ function SettingsPane({
                 </button>
               }
             />
-            <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
-            <Readiness label="mas" ready={snapshot.isMasInstalled} />
+            <div className="settings-panel-box">
+              <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
+              <Readiness label="mas" ready={snapshot.isMasInstalled} />
+            </div>
           </section>
           <section className="panel settings-panel">
             <PanelTitle title="Refresh" />
-            <Toggle
-              label="Auto refresh"
-              value={snapshot.autoRefreshEnabled}
-              patch="autoRefreshEnabled"
-            />
-            <label className="field">
-              <span>Interval minutes</span>
-              <input
-                type="number"
-                min={5}
-                max={1440}
-                value={snapshot.refreshIntervalMinutes}
-                onChange={(event) =>
-                  void window.baseline.updatePreferences({
-                    refreshIntervalMinutes: Number(event.currentTarget.value)
-                  })
-                }
+            <div className="settings-panel-box">
+              <Toggle
+                label="Auto refresh"
+                value={snapshot.autoRefreshEnabled}
+                patch="autoRefreshEnabled"
               />
-            </label>
-            <Toggle
-              label="Use mas for App Store updates"
-              value={snapshot.useMasForAppStoreUpdates}
-              patch="useMasForAppStoreUpdates"
-            />
-            <Toggle
-              label="Show menu bar icon"
-              value={snapshot.showMenuBarIcon}
-              patch="showMenuBarIcon"
-            />
+              <label className="field">
+                <span>Interval minutes</span>
+                <input
+                  type="number"
+                  min={5}
+                  max={1440}
+                  value={snapshot.refreshIntervalMinutes}
+                  onChange={(event) =>
+                    void window.baseline.updatePreferences({
+                      refreshIntervalMinutes: Number(event.currentTarget.value)
+                    })
+                  }
+                />
+              </label>
+              <Toggle
+                label="Use mas for App Store updates"
+                value={snapshot.useMasForAppStoreUpdates}
+                patch="useMasForAppStoreUpdates"
+              />
+              <Toggle
+                label="Show menu bar icon"
+                value={snapshot.showMenuBarIcon}
+                patch="showMenuBarIcon"
+              />
+            </div>
           </section>
           <section className="panel settings-panel">
             <PanelTitle
@@ -2530,22 +2534,24 @@ function SettingsPane({
                 </button>
               }
             />
-            <div className="directory-list">
-              {snapshot.additionalDirectories.length === 0 && (
-                <Empty text="Using default Applications folders." />
-              )}
-              {snapshot.additionalDirectories.map((directory) => (
-                <div className="directory-row" key={directory}>
-                  <span>{directory}</span>
-                  <button
-                    className="toolbar-button"
-                    onClick={() => void window.baseline.removeDirectory(directory)}
-                    title="Remove"
-                  >
-                    <XCircle size={15} />
-                  </button>
-                </div>
-              ))}
+            <div className="settings-panel-box">
+              <div className="directory-list">
+                {snapshot.additionalDirectories.length === 0 && (
+                  <Empty text="Using default Applications folders." />
+                )}
+                {snapshot.additionalDirectories.map((directory) => (
+                  <div className="directory-row" key={directory}>
+                    <span>{directory}</span>
+                    <button
+                      className="toolbar-button"
+                      onClick={() => void window.baseline.removeDirectory(directory)}
+                      title="Remove"
+                    >
+                      <XCircle size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         </>
@@ -2553,11 +2559,13 @@ function SettingsPane({
     case "appearance":
       return (
         <section className="panel settings-panel theme-panel">
-          <div className="theme-panel-copy">
-            <PanelTitle title="Theme" />
-            <p className="muted theme-description">Use light, dark, or match your system</p>
+          <PanelTitle title="Theme" />
+          <div className="settings-panel-box theme-panel-box">
+            <div className="theme-row">
+              <p className="muted theme-description">Use light, dark, or match your system</p>
+              <AppearanceSelector value={snapshot.appearancePreference} />
+            </div>
           </div>
-          <AppearanceSelector value={snapshot.appearancePreference} />
         </section>
       );
     case "diagnostics":
@@ -2565,36 +2573,40 @@ function SettingsPane({
         <>
           <section className="panel settings-panel">
             <PanelTitle title="About" />
-            <div className="metadata-list">
-              <div>
-                <span>Version</span>
-                <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
-              </div>
-              {appMetadata?.buildNumber && (
+            <div className="settings-panel-box">
+              <div className="metadata-list">
                 <div>
-                  <span>Build</span>
-                  <strong>{appMetadata.buildNumber}</strong>
+                  <span>Version</span>
+                  <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
                 </div>
-              )}
+                {appMetadata?.buildNumber && (
+                  <div>
+                    <span>Build</span>
+                    <strong>{appMetadata.buildNumber}</strong>
+                  </div>
+                )}
+              </div>
             </div>
           </section>
           <section className="panel settings-panel">
             <PanelTitle title="Diagnostics" />
-            <p className="muted panel-copy">
-              Copy a local report with counts, tool status, scan paths, and the latest non-sensitive
-              refresh message.
-            </p>
-            <div className="settings-action">
-              <button
-                className="primary-button wide"
-                onClick={() => {
-                  void window.baseline
-                    .copyDiagnostics()
-                    .then(() => onDiagnosticsCopiedChange(true));
-                }}
-              >
-                {diagnosticsCopied ? "Copied" : "Copy Report"}
-              </button>
+            <div className="settings-panel-box">
+              <p className="muted panel-copy">
+                Copy a local report with counts, tool status, scan paths, and the latest
+                non-sensitive refresh message.
+              </p>
+              <div className="settings-action">
+                <button
+                  className="primary-button wide"
+                  onClick={() => {
+                    void window.baseline
+                      .copyDiagnostics()
+                      .then(() => onDiagnosticsCopiedChange(true));
+                  }}
+                >
+                  {diagnosticsCopied ? "Copied" : "Copy Report"}
+                </button>
+              </div>
             </div>
           </section>
         </>
