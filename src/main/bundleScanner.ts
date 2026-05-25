@@ -14,6 +14,28 @@ import { version } from "../shared/version";
 const execFileAsync = promisify(execFile);
 
 type InfoPlist = Record<string, unknown>;
+type IconLoadResult = { dataURL?: string };
+type IconExecFileAsync = (
+  file: string,
+  args: string[],
+  options?: { maxBuffer: number }
+) => Promise<{ stdout: string; stderr: string }>;
+type ResizedIconImage = Pick<NativeImage, "toDataURL">;
+type IconNativeImage = {
+  isEmpty: () => boolean;
+  resize: (options: Parameters<NativeImage["resize"]>[0]) => ResizedIconImage;
+  toDataURL: () => string;
+};
+
+const defaultIconRuntime = {
+  createFromPath: (imagePath: string): IconNativeImage => nativeImage.createFromPath(imagePath),
+  execFileAsync: execFileAsync as IconExecFileAsync
+};
+
+const iconRuntime: {
+  createFromPath: (imagePath: string) => IconNativeImage;
+  execFileAsync: IconExecFileAsync;
+} = { ...defaultIconRuntime };
 
 export class BundleScannerClient {
   async scanApplications(directories: string[]): Promise<AppRecord[]> {
@@ -131,8 +153,8 @@ export class BundleScannerClient {
 
   private async appIconDataURL(appPath: string): Promise<string | undefined> {
     const bundleIcon = await this.bundleIconDataURL(appPath);
-    if (bundleIcon) {
-      return bundleIcon;
+    if (bundleIcon.dataURL) {
+      return bundleIcon.dataURL;
     }
 
     try {
@@ -146,20 +168,20 @@ export class BundleScannerClient {
     }
   }
 
-  private async bundleIconDataURL(appPath: string): Promise<string | undefined> {
+  private async bundleIconDataURL(appPath: string): Promise<IconLoadResult> {
     const info = await this.readInfoPlist(appPath);
     if (!info) {
-      return undefined;
+      return {};
     }
 
     for (const iconPath of iconCandidatePaths(appPath, info)) {
-      const dataURL = await loadIconFileDataURL(iconPath);
-      if (dataURL) {
-        return dataURL;
+      const result = await loadIconFileDataURL(iconPath);
+      if (result.dataURL) {
+        return result;
       }
     }
 
-    return undefined;
+    return {};
   }
 }
 
@@ -220,30 +242,99 @@ function isWebAppBundle(info: InfoPlist): boolean {
   );
 }
 
-function resizedIconDataURL(image: NativeImage): string {
+function resizedIconDataURL(image: Pick<IconNativeImage, "resize">): string {
   return image.resize({ width: 64, height: 64, quality: "best" }).toDataURL();
 }
 
-async function loadIconFileDataURL(iconPath: string): Promise<string | undefined> {
+async function isGrayscalePNG(pngPath: string): Promise<boolean> {
+  try {
+    const { stdout } = await iconRuntime.execFileAsync("/usr/bin/sips", ["-g", "space", pngPath], {
+      maxBuffer: 1024 * 1024
+    });
+    return isGrayscaleSipsOutput(stdout);
+  } catch {
+    return false;
+  }
+}
+
+function isGrayscaleSipsOutput(output: string): boolean {
+  return /^\s*space:\s*Gray\s*$/m.test(output);
+}
+
+async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
   if (path.extname(iconPath).toLowerCase() !== ".icns") {
-    const image = nativeImage.createFromPath(iconPath);
-    return image.isEmpty() ? undefined : resizedIconDataURL(image);
+    const image = iconRuntime.createFromPath(iconPath);
+    return image.isEmpty() ? {} : { dataURL: resizedIconDataURL(image) };
   }
 
   let tempDirectory: string | undefined;
   try {
     tempDirectory = await mkdtemp(path.join(os.tmpdir(), "baseline-icon-"));
     const pngPath = path.join(tempDirectory, "icon.png");
-    await execFileAsync("/usr/bin/sips", ["-s", "format", "png", iconPath, "--out", pngPath], {
-      maxBuffer: 4 * 1024 * 1024
-    });
-    const image = nativeImage.createFromPath(pngPath);
-    return image.isEmpty() ? undefined : resizedIconDataURL(image);
+    await iconRuntime.execFileAsync(
+      "/usr/bin/sips",
+      ["-s", "format", "png", iconPath, "--out", pngPath],
+      {
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
+    if (await shouldPadGrayscaleIcon(iconPath, pngPath)) {
+      const paddedDataURL = await paddedRasterIconDataURL(pngPath);
+      if (paddedDataURL) {
+        return { dataURL: paddedDataURL };
+      }
+    }
+    const image = iconRuntime.createFromPath(pngPath);
+    return image.isEmpty() ? {} : { dataURL: resizedIconDataURL(image) };
   } catch {
-    return undefined;
+    return {};
   } finally {
     if (tempDirectory) {
       await rm(tempDirectory, { recursive: true, force: true });
     }
   }
 }
+
+async function shouldPadGrayscaleIcon(iconPath: string, pngPath: string): Promise<boolean> {
+  return isGenericElectronIconName(iconPath) && (await isGrayscalePNG(pngPath));
+}
+
+function isGenericElectronIconName(iconPath: string): boolean {
+  return path.basename(iconPath).toLowerCase() === "electron.icns";
+}
+
+async function paddedRasterIconDataURL(pngPath: string): Promise<string | undefined> {
+  const directory = path.dirname(pngPath);
+  const resizedPath = path.join(directory, "icon-resized.png");
+  const paddedPath = path.join(directory, "icon-padded.png");
+  try {
+    await iconRuntime.execFileAsync(
+      "/usr/bin/sips",
+      ["-z", "54", "54", pngPath, "--out", resizedPath],
+      {
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
+    await iconRuntime.execFileAsync(
+      "/usr/bin/sips",
+      ["--padToHeightWidth", "64", "64", "--padColor", "FFFFFF", resizedPath, "--out", paddedPath],
+      { maxBuffer: 4 * 1024 * 1024 }
+    );
+    const image = iconRuntime.createFromPath(paddedPath);
+    return image.isEmpty() ? undefined : image.toDataURL();
+  } catch {
+    return undefined;
+  }
+}
+
+export const testingExports = {
+  iconRuntime,
+  isGenericElectronIconName,
+  isGrayscaleSipsOutput,
+  loadIconFileDataURL,
+  resetIconRuntime: () => {
+    iconRuntime.createFromPath = defaultIconRuntime.createFromPath;
+    iconRuntime.execFileAsync = defaultIconRuntime.execFileAsync;
+  },
+  shouldPadGrayscaleIcon
+};

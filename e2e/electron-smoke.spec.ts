@@ -62,12 +62,23 @@ async function launchBaseline(options: { packaged?: boolean; userData?: string }
 }
 
 async function closeApp(app: Awaited<ReturnType<typeof electron.launch>>) {
-  await Promise.all([
-    app.waitForEvent("close"),
-    app.evaluate(async ({ app }) => {
+  const closePromise = app.waitForEvent("close");
+  await app
+    .evaluate(async ({ app }) => {
       app.quit();
     })
-  ]);
+    .catch((error: unknown) => {
+      if (
+        error instanceof Error &&
+        /Execution context was destroyed|Target page, context or browser has been closed/u.test(
+          error.message
+        )
+      ) {
+        return;
+      }
+      throw error;
+    });
+  await closePromise;
 }
 
 test("launches the Electron shell and renders the dashboard", async () => {
