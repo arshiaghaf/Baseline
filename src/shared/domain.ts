@@ -185,6 +185,7 @@ export type BaselineSnapshot = PersistedSnapshot &
     homebrewDiscoverFailedItemIDs: string[];
     homebrewDiscoverProgressByItemID: Record<string, number>;
     laggingHomebrewCaskTokens: string[];
+    defaultScanDirectories: string[];
   };
 
 export const emptyHomebrewCaskIndex: HomebrewCaskIndex = {

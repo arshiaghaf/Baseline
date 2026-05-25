@@ -294,6 +294,36 @@ describe("update store helpers", () => {
     });
   });
 
+  it("scans default directories before additional directories", async () => {
+    const scannedDirectories: string[][] = [];
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        additionalDirectories: ["/Users/example/Extra Apps"]
+      },
+      clients: {
+        scanner: {
+          scanApplications: async (directories) => {
+            scannedDirectories.push(directories);
+            return [];
+          }
+        }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().defaultScanDirectories).toEqual([
+      "/Applications",
+      path.join(os.homedir(), "Applications")
+    ]);
+    expect(scannedDirectories[0]).toEqual([
+      "/Applications",
+      path.join(os.homedir(), "Applications"),
+      "/Users/example/Extra Apps"
+    ]);
+  });
+
   it("passes Homebrew metadata update mode only for full refresh", async () => {
     const inventoryOptions: Array<{ updateMetadata?: boolean }> = [];
     const store = await makeStore({
