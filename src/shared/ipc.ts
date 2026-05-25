@@ -10,9 +10,11 @@ import type {
   ToolStatus
 } from "./domain";
 import type { HomebrewMaintenanceRunEvent } from "./homebrewProgress";
+import type { AppMetadata } from "./appMetadata";
 
 export const ipcChannels = {
   getSnapshot: "baseline:getSnapshot",
+  getAppMetadata: "baseline:getAppMetadata",
   getDiagnostics: "baseline:getDiagnostics",
   getToolStatus: "baseline:getToolStatus",
   refreshToolStatus: "baseline:refreshToolStatus",
@@ -52,6 +54,7 @@ export type PreferencePatch = Partial<{
 
 export type BaselineAPI = {
   getSnapshot(): Promise<BaselineSnapshot>;
+  getAppMetadata(): Promise<AppMetadata>;
   getDiagnostics(): Promise<string>;
   getToolStatus(): Promise<ToolStatus>;
   refreshToolStatus(): Promise<void>;
@@ -77,4 +80,10 @@ export type BaselineAPI = {
   onHomebrewCommandEvent(callback: (event: HomebrewMaintenanceRunEvent) => void): () => void;
 };
 
-export type { BaselineSnapshot, HomebrewCaskDiscoveryItem, HomebrewManagedItem, ToolStatus };
+export type {
+  AppMetadata,
+  BaselineSnapshot,
+  HomebrewCaskDiscoveryItem,
+  HomebrewManagedItem,
+  ToolStatus
+};

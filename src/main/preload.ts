@@ -8,6 +8,7 @@ import type { HomebrewMaintenanceRunEvent } from "../shared/homebrewProgress";
 
 const api: BaselineAPI = {
   getSnapshot: () => ipcRenderer.invoke(ipcChannels.getSnapshot),
+  getAppMetadata: () => ipcRenderer.invoke(ipcChannels.getAppMetadata),
   getDiagnostics: () => ipcRenderer.invoke(ipcChannels.getDiagnostics),
   getToolStatus: () => ipcRenderer.invoke(ipcChannels.getToolStatus),
   refreshToolStatus: () => ipcRenderer.invoke(ipcChannels.refreshToolStatus),

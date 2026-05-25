@@ -29,6 +29,7 @@ import {
   X,
   XCircle
 } from "lucide-react";
+import type { AppMetadata } from "../shared/appMetadata";
 import type {
   AppRecord,
   AppearancePreference,
@@ -2361,7 +2362,12 @@ function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): strin
 
 export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [appMetadata, setAppMetadata] = useState<AppMetadata>();
   const derived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
+
+  useEffect(() => {
+    void window.baseline.getAppMetadata().then(setAppMetadata);
+  }, []);
 
   return (
     <main className="app-shell">
@@ -2381,6 +2387,22 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
         </header>
 
         <section className="settings-grid">
+          <section className="panel">
+            <PanelTitle title="About" />
+            <div className="metadata-list">
+              <div>
+                <span>Version</span>
+                <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
+              </div>
+              {appMetadata?.buildNumber && (
+                <div>
+                  <span>Build</span>
+                  <strong>{appMetadata.buildNumber}</strong>
+                </div>
+              )}
+            </div>
+          </section>
+
           <section className="panel">
             <PanelTitle title="Readiness" />
             <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
