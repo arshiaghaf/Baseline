@@ -2573,7 +2573,10 @@ function SettingsPane({
             <PanelTitle title="Theme" />
             <div className="settings-panel-box">
               <div className="settings-row settings-row-action">
-                <p className="settings-row-subtext">Use light, dark, or match your system</p>
+                <SettingsRowText
+                  label="App theme"
+                  description="Use light, dark, or match your system."
+                />
                 <AppearanceSelector value={snapshot.appearancePreference} />
               </div>
             </div>
@@ -2597,28 +2600,34 @@ function SettingsPane({
           <section className="panel settings-panel">
             <PanelTitle title="About" />
             <div className="settings-panel-box">
-              <div className="settings-row settings-key-value-list">
-                <div>
-                  <span className="settings-row-subtext">Version</span>
-                  <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
-                </div>
-                {appMetadata?.buildNumber && (
-                  <div>
-                    <span className="settings-row-subtext">Build</span>
-                    <strong>{appMetadata.buildNumber}</strong>
-                  </div>
-                )}
+              <div className="settings-row settings-row-action">
+                <SettingsRowText
+                  label="App version"
+                  description="The Baseline release currently running on this Mac."
+                />
+                <strong className="settings-row-value">
+                  {appMetadata?.displayVersion ?? "Loading"}
+                </strong>
               </div>
+              {appMetadata?.buildNumber && (
+                <div className="settings-row settings-row-action">
+                  <SettingsRowText
+                    label="Build number"
+                    description="The internal build identifier for troubleshooting."
+                  />
+                  <strong className="settings-row-value">{appMetadata.buildNumber}</strong>
+                </div>
+              )}
             </div>
           </section>
           <section className="panel settings-panel">
             <PanelTitle title="Diagnostics" />
             <div className="settings-panel-box">
               <div className="settings-row settings-row-action">
-                <p className="settings-row-subtext">
-                  Copy a local report with counts, tool status, scan paths, and the latest
-                  non-sensitive refresh message.
-                </p>
+                <SettingsRowText
+                  label="Diagnostic report"
+                  description="Copy a local report with counts, tool status, scan paths, and the latest non-sensitive refresh message."
+                />
                 <button
                   className="primary-button wide"
                   onClick={() => {

@@ -822,6 +822,14 @@ button:disabled {
   text-align: right;
 }
 
+.settings-row-value {
+  min-width: max-content;
+  color: #1c1c1e;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: right;
+}
+
 .version-token {
   letter-spacing: 0.05em;
 }
@@ -1410,6 +1418,7 @@ button:disabled {
   font-size: 13px;
   font-weight: 400;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .settings-row-disabled {
@@ -1541,12 +1550,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-.settings-row-action > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .spin {
   animation: spin 0.8s linear infinite;
 }
@@ -1666,7 +1669,8 @@ button:disabled {
     color: rgba(235, 235, 245, 0.5);
   }
 
-  .settings-key-value-list strong {
+  .settings-key-value-list strong,
+  .settings-row-value {
     color: rgba(255, 255, 255, 0.86);
   }
 

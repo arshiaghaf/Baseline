@@ -1845,9 +1845,17 @@ describe("renderer button parity", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
+    expect(screen.getByText("App version")).toBeInTheDocument();
+    expect(
+      screen.getByText("The Baseline release currently running on this Mac.")
+    ).toBeInTheDocument();
     expect(await screen.findByText("0.1.0 (224)")).toBeInTheDocument();
-    expect(screen.getByText("Build")).toBeInTheDocument();
+    expect(screen.getByText("Build number")).toBeInTheDocument();
+    expect(
+      screen.getByText("The internal build identifier for troubleshooting.")
+    ).toBeInTheDocument();
     expect(screen.getByText("224")).toBeInTheDocument();
+    expect(screen.getByText("Diagnostic report")).toBeInTheDocument();
   });
 
   it("updates the appearance preference from settings", () => {
