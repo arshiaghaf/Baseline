@@ -1808,12 +1808,9 @@ describe("renderer button parity", () => {
     render(<SettingsView snapshot={snapshot({ appearancePreference: "light" })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
-    expect(screen.getByRole("button", { name: "Light Mode" })).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    );
+    expect(screen.getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Dark Mode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dark" }));
 
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
       appearancePreference: "dark"

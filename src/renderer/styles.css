@@ -1363,6 +1363,30 @@ button:disabled {
   width: min(100%, 720px);
 }
 
+.theme-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+
+.theme-panel .panel-title {
+  min-height: 0;
+  padding: 0;
+}
+
+.theme-panel .panel-title h2 {
+  color: #1c1c1e;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.theme-description {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
 .wide-panel {
   grid-column: 1 / -1;
 }
@@ -1442,13 +1466,13 @@ button:disabled {
 }
 
 .appearance-options {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 3px;
-  margin: 12px;
-  padding: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
   border-radius: 8px;
-  background: rgba(118, 118, 128, 0.12);
 }
 
 .appearance-options button {
@@ -1458,22 +1482,25 @@ button:disabled {
   justify-content: center;
   gap: 6px;
   min-height: 30px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 6px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   background: transparent;
   color: #2c2c2e;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   text-align: left;
 }
 
+.appearance-options button:not(.selected):hover {
+  border-color: rgba(60, 60, 67, 0.12);
+  background: rgba(60, 60, 67, 0.07);
+}
+
 .appearance-options button.selected {
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow:
-    0 0 0 0.5px rgba(60, 60, 67, 0.08),
-    0 1px 3px rgba(0, 0, 0, 0.1);
-  color: #0d0d0d;
+  border-color: rgba(60, 60, 67, 0.1);
+  background: rgba(60, 60, 67, 0.08);
+  color: #1c1c1e;
 }
 
 .appearance-options span {
@@ -1678,6 +1705,10 @@ button:disabled {
     color: rgba(235, 235, 245, 0.78);
   }
 
+  .theme-panel .panel-title h2 {
+    color: #ffffff;
+  }
+
   .section-toggle {
     color: rgba(235, 235, 245, 0.78);
   }
@@ -1744,20 +1775,19 @@ button:disabled {
     background: rgba(255, 255, 255, 0.08);
   }
 
-  .appearance-options {
-    background: rgba(118, 118, 128, 0.28);
-  }
-
   .appearance-options button {
     color: rgba(235, 235, 245, 0.78);
   }
 
+  .appearance-options button:not(.selected):hover {
+    border-color: rgba(235, 235, 245, 0.16);
+    background: rgba(235, 235, 245, 0.09);
+  }
+
   .appearance-options button.selected {
-    background: rgba(99, 99, 102, 0.78);
-    box-shadow:
-      0 0 0 0.5px rgba(255, 255, 255, 0.14),
-      0 1px 3px rgba(0, 0, 0, 0.4);
-    color: #ffffff;
+    border-color: rgba(235, 235, 245, 0.12);
+    background: rgba(235, 235, 245, 0.1);
+    color: rgba(255, 255, 255, 0.88);
   }
 
   .toolbar-button.refresh-button,

@@ -2552,8 +2552,11 @@ function SettingsPane({
       );
     case "appearance":
       return (
-        <section className="panel settings-panel">
-          <PanelTitle title="Appearance" />
+        <section className="panel settings-panel theme-panel">
+          <div className="theme-panel-copy">
+            <PanelTitle title="Theme" />
+            <p className="muted theme-description">Use light, dark, or match your system</p>
+          </div>
           <AppearanceSelector value={snapshot.appearancePreference} />
         </section>
       );
@@ -2609,9 +2612,9 @@ const appearanceOptions: Array<{
   label: string;
   icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
 }> = [
-  { value: "system", label: "System Default", icon: Monitor },
-  { value: "light", label: "Light Mode", icon: Sun },
-  { value: "dark", label: "Dark Mode", icon: Moon }
+  { value: "system", label: "System", icon: Monitor },
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon }
 ];
 
 function AppearanceSelector({ value }: { value: AppearancePreference }) {
