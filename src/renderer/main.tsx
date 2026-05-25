@@ -2495,10 +2495,11 @@ function SettingsPane({
                 description="Use the App Store helper when it is available."
                 missingDetail="The mas helper is not detected on this Mac. Without mas, Baseline opens App Store links instead of installing App Store updates directly."
                 ready={snapshot.isMasInstalled}
+                enabled={snapshot.useMasForAppStoreUpdates}
               />
               <Toggle
                 label="Use mas for App Store updates"
-                description="Install App Store updates through mas before falling back to links."
+                description="When enabled, Baseline can install App Store updates directly. When disabled, it opens App Store links instead."
                 value={snapshot.useMasForAppStoreUpdates}
                 patch="useMasForAppStoreUpdates"
               />
@@ -2842,21 +2843,22 @@ function Readiness({
   label,
   description,
   missingDetail,
-  ready
+  ready,
+  enabled = true
 }: {
   label: string;
   description: string;
   missingDetail: string;
   ready: boolean;
+  enabled?: boolean;
 }) {
-  const statusLabel = ready ? "Enabled" : "Not detected";
+  const active = ready && enabled;
+  const statusLabel = ready ? (enabled ? "Enabled" : "Not used") : "Not detected";
+  const detail = ready ? description : `${description} ${missingDetail}`;
   return (
     <div className="settings-row settings-row-status">
-      <SettingsRowText
-        label={label}
-        description={ready ? description : `${description} ${missingDetail}`}
-      />
-      <span className={ready ? "settings-status-label enabled" : "settings-status-label muted"}>
+      <SettingsRowText label={label} description={detail} />
+      <span className={active ? "settings-status-label enabled" : "settings-status-label muted"}>
         <span className="settings-status-glyph" aria-hidden="true" />
         <span>{statusLabel}</span>
       </span>
