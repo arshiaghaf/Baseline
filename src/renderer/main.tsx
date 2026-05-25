@@ -2483,8 +2483,16 @@ function SettingsPane({
               }
             />
             <div className="settings-panel-box">
-              <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
-              <Readiness label="mas" ready={snapshot.isMasInstalled} />
+              <Readiness
+                label="Homebrew"
+                description="Find updates for installed casks and formulae."
+                ready={snapshot.isHomebrewInstalled}
+              />
+              <Readiness
+                label="mas"
+                description="Use the App Store helper when it is available."
+                ready={snapshot.isMasInstalled}
+              />
             </div>
           </section>
           <section className="panel settings-panel">
@@ -2492,12 +2500,18 @@ function SettingsPane({
             <div className="settings-panel-box">
               <Toggle
                 label="Auto refresh"
+                description="Check for updates automatically in the background."
                 value={snapshot.autoRefreshEnabled}
                 patch="autoRefreshEnabled"
               />
-              <label className="field">
-                <span>Interval minutes</span>
+              <label className="settings-row settings-row-control">
+                <SettingsRowText
+                  label="Interval minutes"
+                  description="How often Baseline checks when auto refresh is on."
+                />
                 <input
+                  aria-label="Interval minutes"
+                  className="settings-number-input"
                   type="number"
                   min={5}
                   max={1440}
@@ -2511,11 +2525,13 @@ function SettingsPane({
               </label>
               <Toggle
                 label="Use mas for App Store updates"
+                description="Install App Store updates through mas before falling back to links."
                 value={snapshot.useMasForAppStoreUpdates}
                 patch="useMasForAppStoreUpdates"
               />
               <Toggle
                 label="Show menu bar icon"
+                description="Keep the compact update popover available in the menu bar."
                 value={snapshot.showMenuBarIcon}
                 patch="showMenuBarIcon"
               />
@@ -2535,12 +2551,14 @@ function SettingsPane({
               }
             />
             <div className="settings-panel-box">
-              <div className="directory-list">
+              <div className="settings-row-list">
                 {snapshot.additionalDirectories.length === 0 && (
-                  <Empty text="Using default Applications folders." />
+                  <p className="settings-row settings-row-subtext settings-empty-row">
+                    Using default Applications folders.
+                  </p>
                 )}
                 {snapshot.additionalDirectories.map((directory) => (
-                  <div className="directory-row" key={directory}>
+                  <div className="settings-row settings-row-action" key={directory}>
                     <span>{directory}</span>
                     <button
                       className="toolbar-button"
@@ -2558,11 +2576,11 @@ function SettingsPane({
       );
     case "appearance":
       return (
-        <section className="panel settings-panel theme-panel">
+        <section className="panel settings-panel">
           <PanelTitle title="Theme" />
-          <div className="settings-panel-box theme-panel-box">
-            <div className="theme-row">
-              <p className="muted theme-description">Use light, dark, or match your system</p>
+          <div className="settings-panel-box">
+            <div className="settings-row settings-row-action">
+              <p className="settings-row-subtext">Use light, dark, or match your system</p>
               <AppearanceSelector value={snapshot.appearancePreference} />
             </div>
           </div>
@@ -2574,14 +2592,14 @@ function SettingsPane({
           <section className="panel settings-panel">
             <PanelTitle title="About" />
             <div className="settings-panel-box">
-              <div className="metadata-list">
+              <div className="settings-row settings-key-value-list">
                 <div>
-                  <span>Version</span>
+                  <span className="settings-row-subtext">Version</span>
                   <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
                 </div>
                 {appMetadata?.buildNumber && (
                   <div>
-                    <span>Build</span>
+                    <span className="settings-row-subtext">Build</span>
                     <strong>{appMetadata.buildNumber}</strong>
                   </div>
                 )}
@@ -2591,11 +2609,11 @@ function SettingsPane({
           <section className="panel settings-panel">
             <PanelTitle title="Diagnostics" />
             <div className="settings-panel-box">
-              <p className="muted panel-copy">
-                Copy a local report with counts, tool status, scan paths, and the latest
-                non-sensitive refresh message.
-              </p>
-              <div className="settings-action">
+              <div className="settings-row settings-row-action">
+                <p className="settings-row-subtext">
+                  Copy a local report with counts, tool status, scan paths, and the latest
+                  non-sensitive refresh message.
+                </p>
                 <button
                   className="primary-button wide"
                   onClick={() => {
@@ -2654,11 +2672,23 @@ function AppearanceSelector({ value }: { value: AppearancePreference }) {
   );
 }
 
-function Toggle({ label, value, patch }: { label: string; value: boolean; patch: TogglePatch }) {
+function Toggle({
+  label,
+  description,
+  value,
+  patch
+}: {
+  label: string;
+  description: string;
+  value: boolean;
+  patch: TogglePatch;
+}) {
   return (
-    <label className="toggle">
-      <span>{label}</span>
+    <label className="settings-row settings-row-control">
+      <SettingsRowText label={label} description={description} />
       <input
+        aria-label={label}
+        className="settings-switch"
         type="checkbox"
         role="switch"
         checked={value}
@@ -2667,6 +2697,15 @@ function Toggle({ label, value, patch }: { label: string; value: boolean; patch:
         }
       />
     </label>
+  );
+}
+
+function SettingsRowText({ label, description }: { label: string; description: string }) {
+  return (
+    <span className="settings-row-text">
+      <span>{label}</span>
+      <span className="settings-row-subtext">{description}</span>
+    </span>
   );
 }
 
@@ -2723,16 +2762,23 @@ function VersionChange({ from, to }: { from: string; to: string }) {
   );
 }
 
-function Readiness({ label, ready }: { label: string; ready: boolean }) {
+function Readiness({
+  label,
+  description,
+  ready
+}: {
+  label: string;
+  description: string;
+  ready: boolean;
+}) {
   return (
-    <div className="ready-row">
+    <div className="settings-row settings-row-status">
+      <SettingsRowText label={label} description={description} />
       {ready ? (
-        <CheckCircle2 className="good" size={17} />
+        <CheckCircle2 className="settings-status-icon good" size={20} />
       ) : (
-        <XCircle className="muted-icon" size={17} />
+        <XCircle className="settings-status-icon muted-icon" size={20} />
       )}
-      <span>{label}</span>
-      <strong>{ready ? "Available" : "Not detected"}</strong>
     </div>
   );
 }
