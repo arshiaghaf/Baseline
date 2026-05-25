@@ -2487,11 +2487,13 @@ function SettingsPane({
               <Readiness
                 label="Homebrew"
                 description="Find updates for installed casks and formulae."
+                missingDetail="Homebrew is not detected on this Mac. Install Homebrew to enable this source."
                 ready={snapshot.isHomebrewInstalled}
               />
               <Readiness
                 label="mas"
                 description="Use the App Store helper when it is available."
+                missingDetail="The mas helper is not detected on this Mac. Without mas, Baseline opens App Store links instead of installing App Store updates directly."
                 ready={snapshot.isMasInstalled}
               />
               <Toggle
@@ -2765,11 +2767,20 @@ function Toggle({
   );
 }
 
-function SettingsRowText({ label, description }: { label: string; description: string }) {
+function SettingsRowText({
+  label,
+  description,
+  secondaryDescription
+}: {
+  label: string;
+  description: string;
+  secondaryDescription?: string;
+}) {
   return (
     <span className="settings-row-text">
       <span>{label}</span>
       <span className="settings-row-subtext">{description}</span>
+      {secondaryDescription && <span className="settings-row-subtext">{secondaryDescription}</span>}
     </span>
   );
 }
@@ -2830,20 +2841,25 @@ function VersionChange({ from, to }: { from: string; to: string }) {
 function Readiness({
   label,
   description,
+  missingDetail,
   ready
 }: {
   label: string;
   description: string;
+  missingDetail: string;
   ready: boolean;
 }) {
+  const statusLabel = ready ? "Enabled" : "Not detected";
   return (
     <div className="settings-row settings-row-status">
-      <SettingsRowText label={label} description={description} />
-      {ready ? (
-        <CheckCircle2 className="settings-status-icon good" size={20} />
-      ) : (
-        <XCircle className="settings-status-icon muted-icon" size={20} />
-      )}
+      <SettingsRowText
+        label={label}
+        description={ready ? description : `${description} ${missingDetail}`}
+      />
+      <span className={ready ? "settings-status-label enabled" : "settings-status-label muted"}>
+        <span className="settings-status-glyph" aria-hidden="true" />
+        <span>{statusLabel}</span>
+      </span>
     </div>
   );
 }

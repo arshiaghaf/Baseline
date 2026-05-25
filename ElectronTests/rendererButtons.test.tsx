@@ -1790,6 +1790,14 @@ describe("renderer button parity", () => {
   it("rechecks tool readiness from settings without running a refresh", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
+    expect(screen.getByText("Enabled")).toBeInTheDocument();
+    expect(screen.getByText("Not detected")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Use the App Store helper when it is available. The mas helper is not detected on this Mac. Without mas, Baseline opens App Store links instead of installing App Store updates directly."
+      )
+    ).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 
     expect(window.baseline.refreshToolStatus).toHaveBeenCalledTimes(1);

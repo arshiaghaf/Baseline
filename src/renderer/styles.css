@@ -1434,6 +1434,37 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.settings-status-label {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(60, 60, 67, 0.1);
+  border-radius: 999px;
+  background: rgba(60, 60, 67, 0.08);
+  color: #2c2c2e;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.settings-status-label.muted {
+  color: rgba(60, 60, 67, 0.64);
+}
+
+.settings-status-glyph {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgb(var(--update-accent-rgb));
+}
+
+.settings-status-label.muted .settings-status-glyph {
+  background: rgba(60, 60, 67, 0.42);
+}
+
 .settings-switch {
   position: relative;
   width: 38px;
@@ -1816,6 +1847,20 @@ button:disabled {
     border-color: rgba(235, 235, 245, 0.12);
     background: rgba(235, 235, 245, 0.1);
     color: rgba(255, 255, 255, 0.88);
+  }
+
+  .settings-status-label {
+    border-color: rgba(235, 235, 245, 0.12);
+    background: rgba(235, 235, 245, 0.1);
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .settings-status-label.muted {
+    color: rgba(235, 235, 245, 0.58);
+  }
+
+  .settings-status-label.muted .settings-status-glyph {
+    background: rgba(235, 235, 245, 0.42);
   }
 
   .toolbar-button.refresh-button,
