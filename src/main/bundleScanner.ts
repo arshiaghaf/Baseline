@@ -15,6 +15,27 @@ const execFileAsync = promisify(execFile);
 
 type InfoPlist = Record<string, unknown>;
 type IconLoadResult = { dataURL?: string };
+type IconExecFileAsync = (
+  file: string,
+  args: string[],
+  options?: { maxBuffer: number }
+) => Promise<{ stdout: string; stderr: string }>;
+type ResizedIconImage = Pick<NativeImage, "toDataURL">;
+type IconNativeImage = {
+  isEmpty: () => boolean;
+  resize: (options: Parameters<NativeImage["resize"]>[0]) => ResizedIconImage;
+  toDataURL: () => string;
+};
+
+const defaultIconRuntime = {
+  createFromPath: (imagePath: string): IconNativeImage => nativeImage.createFromPath(imagePath),
+  execFileAsync: execFileAsync as IconExecFileAsync
+};
+
+const iconRuntime: {
+  createFromPath: (imagePath: string) => IconNativeImage;
+  execFileAsync: IconExecFileAsync;
+} = { ...defaultIconRuntime };
 
 export class BundleScannerClient {
   async scanApplications(directories: string[]): Promise<AppRecord[]> {
@@ -221,13 +242,13 @@ function isWebAppBundle(info: InfoPlist): boolean {
   );
 }
 
-function resizedIconDataURL(image: NativeImage): string {
+function resizedIconDataURL(image: Pick<IconNativeImage, "resize">): string {
   return image.resize({ width: 64, height: 64, quality: "best" }).toDataURL();
 }
 
 async function isGrayscalePNG(pngPath: string): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync("/usr/bin/sips", ["-g", "space", pngPath], {
+    const { stdout } = await iconRuntime.execFileAsync("/usr/bin/sips", ["-g", "space", pngPath], {
       maxBuffer: 1024 * 1024
     });
     return isGrayscaleSipsOutput(stdout);
@@ -242,7 +263,7 @@ function isGrayscaleSipsOutput(output: string): boolean {
 
 async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
   if (path.extname(iconPath).toLowerCase() !== ".icns") {
-    const image = nativeImage.createFromPath(iconPath);
+    const image = iconRuntime.createFromPath(iconPath);
     return image.isEmpty() ? {} : { dataURL: resizedIconDataURL(image) };
   }
 
@@ -250,16 +271,20 @@ async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
   try {
     tempDirectory = await mkdtemp(path.join(os.tmpdir(), "baseline-icon-"));
     const pngPath = path.join(tempDirectory, "icon.png");
-    await execFileAsync("/usr/bin/sips", ["-s", "format", "png", iconPath, "--out", pngPath], {
-      maxBuffer: 4 * 1024 * 1024
-    });
+    await iconRuntime.execFileAsync(
+      "/usr/bin/sips",
+      ["-s", "format", "png", iconPath, "--out", pngPath],
+      {
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
     if (await shouldPadGrayscaleIcon(iconPath, pngPath)) {
       const paddedDataURL = await paddedRasterIconDataURL(pngPath);
       if (paddedDataURL) {
         return { dataURL: paddedDataURL };
       }
     }
-    const image = nativeImage.createFromPath(pngPath);
+    const image = iconRuntime.createFromPath(pngPath);
     return image.isEmpty() ? {} : { dataURL: resizedIconDataURL(image) };
   } catch {
     return {};
@@ -283,15 +308,19 @@ async function paddedRasterIconDataURL(pngPath: string): Promise<string | undefi
   const resizedPath = path.join(directory, "icon-resized.png");
   const paddedPath = path.join(directory, "icon-padded.png");
   try {
-    await execFileAsync("/usr/bin/sips", ["-z", "54", "54", pngPath, "--out", resizedPath], {
-      maxBuffer: 4 * 1024 * 1024
-    });
-    await execFileAsync(
+    await iconRuntime.execFileAsync(
+      "/usr/bin/sips",
+      ["-z", "54", "54", pngPath, "--out", resizedPath],
+      {
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
+    await iconRuntime.execFileAsync(
       "/usr/bin/sips",
       ["--padToHeightWidth", "64", "64", "--padColor", "FFFFFF", resizedPath, "--out", paddedPath],
       { maxBuffer: 4 * 1024 * 1024 }
     );
-    const image = nativeImage.createFromPath(paddedPath);
+    const image = iconRuntime.createFromPath(paddedPath);
     return image.isEmpty() ? undefined : image.toDataURL();
   } catch {
     return undefined;
@@ -299,7 +328,13 @@ async function paddedRasterIconDataURL(pngPath: string): Promise<string | undefi
 }
 
 export const testingExports = {
+  iconRuntime,
   isGenericElectronIconName,
   isGrayscaleSipsOutput,
+  loadIconFileDataURL,
+  resetIconRuntime: () => {
+    iconRuntime.createFromPath = defaultIconRuntime.createFromPath;
+    iconRuntime.execFileAsync = defaultIconRuntime.execFileAsync;
+  },
   shouldPadGrayscaleIcon
 };

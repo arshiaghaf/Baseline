@@ -32,6 +32,9 @@ let tempDirs: string[] = [];
 afterEach(async () => {
   await Promise.all(tempDirs.map((directory) => rm(directory, { recursive: true, force: true })));
   tempDirs = [];
+  electronMocks.getFileIcon.mockClear();
+  electronMocks.createFromPath.mockClear();
+  testingExports.resetIconRuntime();
 });
 
 describe("bundle scanner", () => {
@@ -135,6 +138,59 @@ describe("bundle scanner", () => {
     ).toBe(true);
     expect(testingExports.isGenericElectronIconName("/Applications/Example.app/Custom.icns")).toBe(
       false
+    );
+  });
+
+  it("uses the padded raster output for grayscale generic Electron bundle icons", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+    const iconPath = path.join(root, "Contents", "Resources", "electron.icns");
+
+    testingExports.iconRuntime.execFileAsync = vi.fn(async (file: string, args: string[]) => {
+      const execArgs = args;
+
+      if (file !== "/usr/bin/sips") {
+        throw new Error(`Unexpected executable: ${file}`);
+      }
+
+      if (execArgs.includes("-s") && execArgs.includes("format")) {
+        const outputPath = execArgs.at(-1);
+        await writeFile(String(outputPath), "converted png");
+        return { stdout: "", stderr: "" };
+      }
+
+      if (execArgs.includes("-g") && execArgs.includes("space")) {
+        return { stdout: `${execArgs.at(-1)}\n  space: Gray\n`, stderr: "" };
+      }
+
+      if (execArgs.includes("-z")) {
+        const outputPath = execArgs.at(-1);
+        await writeFile(String(outputPath), "resized png");
+        return { stdout: "", stderr: "" };
+      }
+
+      if (execArgs.includes("--padToHeightWidth")) {
+        const outputPath = execArgs.at(-1);
+        await writeFile(String(outputPath), "padded png");
+        return { stdout: "", stderr: "" };
+      }
+
+      throw new Error(`Unexpected sips arguments: ${execArgs.join(" ")}`);
+    });
+    testingExports.iconRuntime.createFromPath = vi.fn((imagePath: string) => ({
+      isEmpty: () => false,
+      resize: () => ({ toDataURL: () => `resized:${imagePath}` }),
+      toDataURL: () => `padded:${imagePath}`
+    }));
+
+    expect(await testingExports.shouldPadGrayscaleIcon(iconPath, "converted-icon.png")).toBe(true);
+
+    const result = await testingExports.loadIconFileDataURL(iconPath);
+
+    expect(result.dataURL).toMatch(/^padded:.*icon-padded\.png$/u);
+    expect(testingExports.iconRuntime.createFromPath).toHaveBeenCalledTimes(1);
+    expect(testingExports.iconRuntime.createFromPath).toHaveBeenCalledWith(
+      expect.stringMatching(/icon-padded\.png$/u)
     );
   });
 });
