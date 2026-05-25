@@ -84,6 +84,9 @@ const settingsSidebarItems: Array<{
   { id: "appearance", label: "Appearance", icon: Monitor },
   { id: "diagnostics", label: "Diagnostics", icon: Terminal }
 ];
+const primarySettingsSidebarItems = settingsSidebarItems.filter(
+  (item) => item.id !== "diagnostics"
+);
 
 const initialSnapshot: BaselineSnapshot = {
   ...defaultPersistedSnapshot(),
@@ -2423,7 +2426,7 @@ function SettingsSidebar({
         </button>
       </div>
       <nav className="source-list">
-        {settingsSidebarItems.map((item) => {
+        {primarySettingsSidebarItems.map((item) => {
           const Icon = item.icon;
           return (
             <button
@@ -2437,6 +2440,15 @@ function SettingsSidebar({
           );
         })}
       </nav>
+      <div className="sidebar-footer">
+        <button
+          className={selectedSection === "diagnostics" ? "selected" : ""}
+          onClick={() => onSelectSection("diagnostics")}
+        >
+          <Terminal size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <span>Diagnostics</span>
+        </button>
+      </div>
     </aside>
   );
 }

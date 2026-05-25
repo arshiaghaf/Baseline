@@ -438,6 +438,9 @@ describe("renderer button parity", () => {
     const settingsNav = container.querySelector(".source-list");
     expect(settingsNav).not.toBeNull();
     expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "Diagnostics" })
+    ).not.toBeInTheDocument();
+    expect(
       within(settingsNav as HTMLElement).queryByRole("button", { name: "About" })
     ).not.toBeInTheDocument();
     expect(
@@ -460,6 +463,15 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to app" }));
 
     expect(window.location.hash).toBe("#/main");
+  });
+
+  it("opens diagnostics from the settings sidebar footer", async () => {
+    render(<SettingsView snapshot={snapshot()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
+
+    expect(screen.getAllByRole("heading", { name: "Diagnostics" })).toHaveLength(2);
+    expect(await screen.findByText("0.1.0 (224)")).toBeInTheDocument();
   });
 
   it("uses the same short search placeholder on every tab", () => {

@@ -1617,8 +1617,13 @@ button:disabled {
   .muted,
   .empty,
   .stats dt,
+  .metadata-list span,
   .ready-row strong {
     color: rgba(235, 235, 245, 0.5);
+  }
+
+  .metadata-list strong {
+    color: rgba(255, 255, 255, 0.86);
   }
 
   .row-title span {
