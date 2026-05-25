@@ -123,7 +123,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       homebrewDiscoverInstalledPendingRefreshItemIDs: [],
       homebrewDiscoverFailedItemIDs: [],
       homebrewDiscoverProgressByItemID: {},
-      laggingHomebrewCaskTokens: []
+      laggingHomebrewCaskTokens: [],
+      defaultScanDirectories: this.defaultScanDirectories()
     };
   }
 
@@ -659,13 +660,11 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private scanDirectories(): string[] {
-    return [
-      ...new Set([
-        "/Applications",
-        path.join(os.homedir(), "Applications"),
-        ...this.state.additionalDirectories
-      ])
-    ];
+    return [...new Set([...this.defaultScanDirectories(), ...this.state.additionalDirectories])];
+  }
+
+  private defaultScanDirectories(): string[] {
+    return ["/Applications", path.join(os.homedir(), "Applications")];
   }
 
   private async routeExternalUpdate(appRecord: AppRecord, update: UpdateRecord): Promise<void> {

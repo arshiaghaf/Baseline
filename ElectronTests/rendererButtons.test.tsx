@@ -80,6 +80,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     homebrewDiscoverFailedItemIDs: [],
     homebrewDiscoverProgressByItemID: {},
     laggingHomebrewCaskTokens: [],
+    defaultScanDirectories: ["/Applications", "/Users/test/Applications"],
     ...patch
   };
 }
@@ -1795,6 +1796,51 @@ describe("renderer button parity", () => {
     expect(window.baseline.refresh).not.toHaveBeenCalled();
   });
 
+  it("edits refresh interval only when auto refresh is enabled", () => {
+    const { rerender } = render(
+      <SettingsView snapshot={snapshot({ autoRefreshEnabled: false })} />
+    );
+
+    const disabledInterval = screen.getByRole("textbox", { name: "Interval minutes" });
+    expect(disabledInterval).toHaveAttribute("type", "text");
+    expect(disabledInterval).toBeDisabled();
+
+    rerender(<SettingsView snapshot={snapshot({ autoRefreshEnabled: true })} />);
+
+    const enabledInterval = screen.getByRole("textbox", { name: "Interval minutes" });
+    fireEvent.change(enabledInterval, { target: { value: "30" } });
+
+    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
+      refreshIntervalMinutes: 30
+    });
+  });
+
+  it("shows default scan directories when custom directories are present", () => {
+    const { rerender } = render(<SettingsView snapshot={snapshot()} />);
+
+    expect(screen.getByText("Default Applications folders")).toBeInTheDocument();
+    expect(
+      screen.getByText("Baseline scans the system and user Applications folders automatically.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("/Applications")).not.toBeInTheDocument();
+
+    rerender(
+      <SettingsView
+        snapshot={snapshot({
+          additionalDirectories: ["/Users/test/Extra Apps"]
+        })}
+      />
+    );
+
+    expect(screen.getByText("System Applications")).toBeInTheDocument();
+    expect(screen.getByText("User Applications")).toBeInTheDocument();
+    expect(screen.getByText("/Applications")).toBeInTheDocument();
+    expect(screen.getByText("/Users/test/Applications")).toBeInTheDocument();
+    expect(screen.getByText("Custom folder")).toBeInTheDocument();
+    expect(screen.getByText("/Users/test/Extra Apps")).toBeInTheDocument();
+    expect(screen.getAllByTitle("Remove")).toHaveLength(1);
+  });
+
   it("shows app version and build number in settings", async () => {
     render(<SettingsView snapshot={snapshot()} />);
 
@@ -1819,6 +1865,8 @@ describe("renderer button parity", () => {
 
   it("updates the menu bar icon preference from settings", () => {
     render(<SettingsView snapshot={snapshot()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
 
     const menuBarSwitch = screen.getByRole("switch", { name: "Show menu bar icon" });
     expect(menuBarSwitch).toHaveAttribute("type", "checkbox");

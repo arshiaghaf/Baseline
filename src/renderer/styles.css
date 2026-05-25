@@ -46,7 +46,7 @@ button:disabled {
   --scrollbar-thumb: rgba(60, 60, 60, 0.07);
   --scrollbar-thumb-hover: rgba(60, 60, 60, 0.16);
   --scrollbar-track: transparent;
-  --update-accent-rgb: 0, 122, 255;
+  --update-accent-rgb: 1, 105, 204;
 
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
@@ -1412,6 +1412,10 @@ button:disabled {
   line-height: 1.45;
 }
 
+.settings-row-disabled {
+  opacity: 0.48;
+}
+
 .settings-empty-row {
   display: flex;
   align-items: center;
@@ -1451,7 +1455,7 @@ button:disabled {
 }
 
 .settings-switch:checked {
-  background: #0169cc;
+  background: rgb(var(--update-accent-rgb));
 }
 
 .settings-switch:checked::after {
@@ -1474,7 +1478,17 @@ button:disabled {
   border: 1px solid rgba(60, 60, 67, 0.18);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.86);
+  outline: 0;
   text-align: right;
+}
+
+.settings-number-input:focus-visible {
+  border-color: rgba(0, 0, 0, 0.72);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.18);
+}
+
+.settings-number-input:disabled {
+  cursor: not-allowed;
 }
 
 .small-button {
@@ -1677,6 +1691,11 @@ button:disabled {
   .toolbar-search input,
   .settings-number-input {
     color: #fcfcfc;
+  }
+
+  .settings-number-input:focus-visible {
+    border-color: rgba(255, 255, 255, 0.78);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
   }
 
   .search-box input::placeholder,

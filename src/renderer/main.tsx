@@ -110,7 +110,8 @@ const initialSnapshot: BaselineSnapshot = {
   homebrewDiscoverInstalledPendingRefreshItemIDs: [],
   homebrewDiscoverFailedItemIDs: [],
   homebrewDiscoverProgressByItemID: {},
-  laggingHomebrewCaskTokens: []
+  laggingHomebrewCaskTokens: [],
+  defaultScanDirectories: []
 };
 
 function App() {
@@ -2472,7 +2473,7 @@ function SettingsPane({
         <>
           <section className="panel settings-panel">
             <PanelTitle
-              title="Readiness"
+              title="Update Tools"
               action={
                 <button
                   className="ghost-button small-button"
@@ -2493,6 +2494,12 @@ function SettingsPane({
                 description="Use the App Store helper when it is available."
                 ready={snapshot.isMasInstalled}
               />
+              <Toggle
+                label="Use mas for App Store updates"
+                description="Install App Store updates through mas before falling back to links."
+                value={snapshot.useMasForAppStoreUpdates}
+                patch="useMasForAppStoreUpdates"
+              />
             </div>
           </section>
           <section className="panel settings-panel">
@@ -2504,36 +2511,9 @@ function SettingsPane({
                 value={snapshot.autoRefreshEnabled}
                 patch="autoRefreshEnabled"
               />
-              <label className="settings-row settings-row-control">
-                <SettingsRowText
-                  label="Interval minutes"
-                  description="How often Baseline checks when auto refresh is on."
-                />
-                <input
-                  aria-label="Interval minutes"
-                  className="settings-number-input"
-                  type="number"
-                  min={5}
-                  max={1440}
-                  value={snapshot.refreshIntervalMinutes}
-                  onChange={(event) =>
-                    void window.baseline.updatePreferences({
-                      refreshIntervalMinutes: Number(event.currentTarget.value)
-                    })
-                  }
-                />
-              </label>
-              <Toggle
-                label="Use mas for App Store updates"
-                description="Install App Store updates through mas before falling back to links."
-                value={snapshot.useMasForAppStoreUpdates}
-                patch="useMasForAppStoreUpdates"
-              />
-              <Toggle
-                label="Show menu bar icon"
-                description="Keep the compact update popover available in the menu bar."
-                value={snapshot.showMenuBarIcon}
-                patch="showMenuBarIcon"
+              <RefreshIntervalInput
+                value={snapshot.refreshIntervalMinutes}
+                disabled={!snapshot.autoRefreshEnabled}
               />
             </div>
           </section>
@@ -2552,14 +2532,26 @@ function SettingsPane({
             />
             <div className="settings-panel-box">
               <div className="settings-row-list">
-                {snapshot.additionalDirectories.length === 0 && (
-                  <p className="settings-row settings-row-subtext settings-empty-row">
-                    Using default Applications folders.
-                  </p>
+                {snapshot.additionalDirectories.length === 0 ? (
+                  <div className="settings-row settings-empty-row">
+                    <SettingsRowText
+                      label="Default Applications folders"
+                      description="Baseline scans the system and user Applications folders automatically."
+                    />
+                  </div>
+                ) : (
+                  snapshot.defaultScanDirectories.map((directory) => (
+                    <div className="settings-row settings-row-action" key={`default:${directory}`}>
+                      <SettingsRowText
+                        label={defaultScanDirectoryLabel(directory)}
+                        description={directory}
+                      />
+                    </div>
+                  ))
                 )}
                 {snapshot.additionalDirectories.map((directory) => (
                   <div className="settings-row settings-row-action" key={directory}>
-                    <span>{directory}</span>
+                    <SettingsRowText label="Custom folder" description={directory} />
                     <button
                       className="toolbar-button"
                       onClick={() => void window.baseline.removeDirectory(directory)}
@@ -2576,15 +2568,28 @@ function SettingsPane({
       );
     case "appearance":
       return (
-        <section className="panel settings-panel">
-          <PanelTitle title="Theme" />
-          <div className="settings-panel-box">
-            <div className="settings-row settings-row-action">
-              <p className="settings-row-subtext">Use light, dark, or match your system</p>
-              <AppearanceSelector value={snapshot.appearancePreference} />
+        <>
+          <section className="panel settings-panel">
+            <PanelTitle title="Theme" />
+            <div className="settings-panel-box">
+              <div className="settings-row settings-row-action">
+                <p className="settings-row-subtext">Use light, dark, or match your system</p>
+                <AppearanceSelector value={snapshot.appearancePreference} />
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+          <section className="panel settings-panel">
+            <PanelTitle title="Menu Bar" />
+            <div className="settings-panel-box">
+              <Toggle
+                label="Show menu bar icon"
+                description="Keep the compact update popover available in the menu bar."
+                value={snapshot.showMenuBarIcon}
+                patch="showMenuBarIcon"
+              />
+            </div>
+          </section>
+        </>
       );
     case "diagnostics":
       return (
@@ -2669,6 +2674,57 @@ function AppearanceSelector({ value }: { value: AppearancePreference }) {
         );
       })}
     </div>
+  );
+}
+
+function defaultScanDirectoryLabel(directory: string): string {
+  if (directory === "/Applications") {
+    return "System Applications";
+  }
+  return "User Applications";
+}
+
+function RefreshIntervalInput({ value, disabled }: { value: number; disabled: boolean }) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  return (
+    <label
+      className={
+        disabled
+          ? "settings-row settings-row-control settings-row-disabled"
+          : "settings-row settings-row-control"
+      }
+    >
+      <SettingsRowText
+        label="Interval minutes"
+        description="How often Baseline checks when auto refresh is on."
+      />
+      <input
+        aria-label="Interval minutes"
+        className="settings-number-input"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        disabled={disabled}
+        value={draft}
+        onChange={(event) => {
+          const nextValue = event.currentTarget.value;
+          if (!/^\d*$/u.test(nextValue)) {
+            return;
+          }
+          setDraft(nextValue);
+          if (nextValue) {
+            void window.baseline.updatePreferences({
+              refreshIntervalMinutes: Number.parseInt(nextValue, 10)
+            });
+          }
+        }}
+      />
+    </label>
   );
 }
 
