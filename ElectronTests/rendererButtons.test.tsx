@@ -472,7 +472,8 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
 
     expect(screen.getAllByRole("heading", { name: "Diagnostics" })).toHaveLength(2);
-    expect(await screen.findByText("0.1.0 (224)")).toBeInTheDocument();
+    expect(await screen.findByText("0.1.0")).toBeInTheDocument();
+    expect(screen.queryByText("0.1.0 (224)")).not.toBeInTheDocument();
   });
 
   it("uses the same short search placeholder on every tab", () => {
@@ -1864,16 +1865,11 @@ describe("renderer button parity", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
-    expect(screen.getByText("App version")).toBeInTheDocument();
-    expect(
-      screen.getByText("The Baseline release currently running on this Mac.")
-    ).toBeInTheDocument();
-    expect(await screen.findByText("0.1.0 (224)")).toBeInTheDocument();
-    expect(screen.getByText("Build number")).toBeInTheDocument();
-    expect(
-      screen.getByText("The internal build identifier for troubleshooting.")
-    ).toBeInTheDocument();
-    expect(screen.getByText("224")).toBeInTheDocument();
+    expect(screen.getByText("Current version")).toBeInTheDocument();
+    expect(await screen.findByText("0.1.0")).toBeInTheDocument();
+    expect(screen.queryByText("0.1.0 (224)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Build number")).not.toBeInTheDocument();
+    expect(screen.queryByText("224")).not.toBeInTheDocument();
     expect(screen.getByText("Diagnostic report")).toBeInTheDocument();
   });
 

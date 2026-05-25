@@ -24,6 +24,7 @@ import {
   Search,
   Server,
   Settings,
+  ShieldCogCorner,
   Sun,
   Terminal,
   Trash2,
@@ -2446,7 +2447,7 @@ function SettingsSidebar({
           className={selectedSection === "diagnostics" ? "selected" : ""}
           onClick={() => onSelectSection("diagnostics")}
         >
-          <Terminal size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <ShieldCogCorner size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Diagnostics</span>
         </button>
       </div>
@@ -2604,23 +2605,9 @@ function SettingsPane({
             <PanelTitle title="About" />
             <div className="settings-panel-box">
               <div className="settings-row settings-row-action">
-                <SettingsRowText
-                  label="App version"
-                  description="The Baseline release currently running on this Mac."
-                />
-                <strong className="settings-row-value">
-                  {appMetadata?.displayVersion ?? "Loading"}
-                </strong>
+                <span>Current version</span>
+                <strong className="settings-row-value">{appMetadata?.version ?? "Loading"}</strong>
               </div>
-              {appMetadata?.buildNumber && (
-                <div className="settings-row settings-row-action">
-                  <SettingsRowText
-                    label="Build number"
-                    description="The internal build identifier for troubleshooting."
-                  />
-                  <strong className="settings-row-value">{appMetadata.buildNumber}</strong>
-                </div>
-              )}
             </div>
           </section>
           <section className="panel settings-panel">
