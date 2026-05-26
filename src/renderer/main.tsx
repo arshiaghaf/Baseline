@@ -2186,7 +2186,7 @@ function RowMoreActionButton({
                   <ProgressRing value={updateAction.state.progress} />
                 )
               ) : updateAction.state.type === "done" ? (
-                <Check className="done-glyph" size={14} />
+                <Check className="done-glyph" size={14} strokeWidth={3} />
               ) : (
                 <span className="failure-glyph">!</span>
               )}
@@ -2238,7 +2238,7 @@ function ProgressRing({ value }: { value: number }) {
 }
 
 function DoneTransitionGlyph() {
-  return <Check className="done-glyph" size={15} />;
+  return <Check className="done-glyph" size={15} strokeWidth={3} />;
 }
 
 function UninstallActionGlyph() {
