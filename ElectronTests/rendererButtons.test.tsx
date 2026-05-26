@@ -146,6 +146,22 @@ describe("renderer button parity", () => {
     expect(window.baseline.performAppUpdate).not.toHaveBeenCalled();
   });
 
+  it("shows matched Homebrew cask progress on app update buttons", () => {
+    render(
+      <AppRow
+        app={app}
+        snapshot={snapshot({
+          homebrewUpdatingItemIDs: [cask.id],
+          homebrewBatchProgressByItemID: { [cask.id]: 0.4 }
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Updating" })).toBeInTheDocument();
+  });
+
   it("groups ignore and uninstall under row actions menu", () => {
     const { container, rerender } = render(
       <AppRow app={app} snapshot={snapshot()} recentlyUpdated={false} />
