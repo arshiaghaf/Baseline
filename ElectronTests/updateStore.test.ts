@@ -1248,6 +1248,7 @@ async function makeStore({
   runMasCommand = async () => ({ success: true, status: 0, output: "" }),
   openExternalURL = async () => true,
   openAppBundle = async () => undefined,
+  successRefreshDelayMS = 0,
   onUserData
 }: {
   persisted?: PersistedSnapshot;
@@ -1256,6 +1257,7 @@ async function makeStore({
   runMasCommand?: ConstructorParameters<typeof UpdateStore>[0]["runMasCommand"];
   openExternalURL?: ConstructorParameters<typeof UpdateStore>[0]["openExternalURL"];
   openAppBundle?: ConstructorParameters<typeof UpdateStore>[0]["openAppBundle"];
+  successRefreshDelayMS?: ConstructorParameters<typeof UpdateStore>[0]["successRefreshDelayMS"];
   onUserData?: (directory: string) => void;
 } = {}): Promise<UpdateStore> {
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-update-store-"));
@@ -1268,6 +1270,7 @@ async function makeStore({
     openAppBundle,
     runBrewCommand,
     runMasCommand,
+    successRefreshDelayMS,
     clients: {
       scanner: { scanApplications: async () => [] },
       appStore: { lookupOutcome: async () => ({ type: "completed" }) },

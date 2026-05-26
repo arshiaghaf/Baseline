@@ -949,22 +949,13 @@ function AppSection({
 function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
-  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
-  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
   const label = appSourceLabel(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
-  const actionState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
 
   return (
     <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
@@ -1170,21 +1161,12 @@ function CardGrid({
 function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
-  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
-  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
-  const actionState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
   const recentlyUpdatedRecord = snapshot.recentlyUpdated.find((record) => record.appID === app.id);
   const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
 
@@ -1248,22 +1230,13 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
 function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
-  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
-  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
   const label = appSourceLabel(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
-  const actionState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
 
   return (
     <article className="item-card ignored-card ignored-row">
@@ -1340,21 +1313,12 @@ export function AppRow({
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
-  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
-  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
-  const actionState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
   const recentlyUpdatedAt = recentlyUpdated
     ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)?.updatedAt
     : undefined;
@@ -2222,7 +2186,7 @@ function RowMoreActionButton({
                   <ProgressRing value={updateAction.state.progress} />
                 )
               ) : updateAction.state.type === "done" ? (
-                <Check size={14} />
+                <Check className="done-glyph" size={14} strokeWidth={3} />
               ) : (
                 <span className="failure-glyph">!</span>
               )}
@@ -2274,14 +2238,7 @@ function ProgressRing({ value }: { value: number }) {
 }
 
 function DoneTransitionGlyph() {
-  const [showCheckmark, setShowCheckmark] = useState(false);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setShowCheckmark(true), 320);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  return showCheckmark ? <Check size={15} /> : <ProgressRing value={1} />;
+  return <Check className="done-glyph" size={15} strokeWidth={3} />;
 }
 
 function UninstallActionGlyph() {
@@ -2357,11 +2314,11 @@ function actionStateFromFlags({
   if (failed) {
     return { type: "failed" };
   }
-  if (updating) {
-    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
-  }
   if (done) {
     return { type: "done" };
+  }
+  if (updating) {
+    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
   }
   return { type: "ready" };
 }
@@ -2374,6 +2331,46 @@ function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): strin
     return "Updated";
   }
   return "Update failed";
+}
+
+function appUpdateActionState(
+  app: AppRecord,
+  snapshot: BaselineSnapshot
+): { state: ActionState; isUpdating: boolean } {
+  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
+  const matchedHomebrewItem =
+    update?.source === "homebrew" ? uninstallableHomebrewItemForApp(app, snapshot) : undefined;
+  const isUpdating =
+    snapshot.appUpdatingIDs.includes(app.id) ||
+    Boolean(
+      matchedHomebrewItem && snapshot.homebrewUpdatingItemIDs.includes(matchedHomebrewItem.id)
+    );
+  const progress =
+    snapshot.homebrewFallbackProgressByAppID[app.id] ??
+    (matchedHomebrewItem
+      ? snapshot.homebrewBatchProgressByItemID[matchedHomebrewItem.id]
+      : undefined);
+  const failed =
+    snapshot.homebrewFallbackFailedAppIDs.includes(app.id) ||
+    Boolean(
+      matchedHomebrewItem && snapshot.homebrewBatchFailedItemIDs.includes(matchedHomebrewItem.id)
+    );
+  const done =
+    snapshot.appUpdatedPendingRefreshIDs.includes(app.id) ||
+    Boolean(
+      matchedHomebrewItem &&
+      snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(matchedHomebrewItem.id)
+    );
+
+  return {
+    isUpdating,
+    state: actionStateFromFlags({
+      failed,
+      updating: isUpdating,
+      progress,
+      done
+    })
+  };
 }
 
 export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
