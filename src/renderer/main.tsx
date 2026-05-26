@@ -2186,7 +2186,7 @@ function RowMoreActionButton({
                   <ProgressRing value={updateAction.state.progress} />
                 )
               ) : updateAction.state.type === "done" ? (
-                <Check size={14} />
+                <Check className="done-glyph" size={14} />
               ) : (
                 <span className="failure-glyph">!</span>
               )}
@@ -2238,14 +2238,7 @@ function ProgressRing({ value }: { value: number }) {
 }
 
 function DoneTransitionGlyph() {
-  const [showCheckmark, setShowCheckmark] = useState(false);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setShowCheckmark(true), 320);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  return showCheckmark ? <Check size={15} /> : <ProgressRing value={1} />;
+  return <Check className="done-glyph" size={15} />;
 }
 
 function UninstallActionGlyph() {
@@ -2321,11 +2314,11 @@ function actionStateFromFlags({
   if (failed) {
     return { type: "failed" };
   }
-  if (updating) {
-    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
-  }
   if (done) {
     return { type: "done" };
+  }
+  if (updating) {
+    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
   }
   return { type: "ready" };
 }

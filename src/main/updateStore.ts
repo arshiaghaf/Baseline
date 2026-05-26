@@ -51,6 +51,8 @@ type StoreEvents = {
   homebrewCommand: [HomebrewMaintenanceRunEvent];
 };
 
+const successfulUpdateHoldMs = 2000;
+
 export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly persistence: SnapshotPersistence;
   private readonly scanner: Pick<BundleScannerClient, "scanApplications">;
@@ -66,6 +68,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly runMasCommand: typeof defaultRunMasCommand;
   private readonly openExternalURL: (url: string) => Promise<boolean>;
   private readonly openAppBundle: (bundlePath: string) => Promise<void>;
+  private readonly successRefreshDelayMS: number;
   private refreshTask?: Promise<void>;
   private autoRefreshTimer?: NodeJS.Timeout;
   private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
@@ -88,6 +91,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }>;
     runBrewCommand?: typeof defaultRunBrewCommand;
     runMasCommand?: typeof defaultRunMasCommand;
+    successRefreshDelayMS?: number;
   }) {
     super();
     this.persistence = options.persistence;
@@ -101,6 +105,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.runMasCommand = options.runMasCommand ?? defaultRunMasCommand;
     this.openExternalURL = options.openExternalURL;
     this.openAppBundle = options.openAppBundle;
+    this.successRefreshDelayMS = options.successRefreshDelayMS ?? successfulUpdateHoldMs;
     this.state = {
       ...options.persisted,
       isMasInstalled: false,
@@ -281,6 +286,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           this.patch({
             appUpdatedPendingRefreshIDs: addToArray(this.state.appUpdatedPendingRefreshIDs, appID)
           });
+          await this.holdSuccessfulUpdate();
           await this.refresh();
         } else {
           await this.routeExternalUpdate(appRecord, update);
@@ -335,6 +341,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             [itemID]: 1
           }
         });
+        await this.holdSuccessfulUpdate();
       } else {
         this.patch({
           refreshErrorMessage: `Homebrew update failed for ${item.name}.`,
@@ -414,6 +421,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         : this.state.homebrewUpdatedPendingRefreshItemIDs,
       refreshErrorMessage: success ? undefined : "Homebrew maintenance cycle failed."
     });
+    if (success) {
+      await this.holdSuccessfulUpdate();
+    }
     await this.refresh();
   }
 
@@ -453,6 +463,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       refreshErrorMessage: success ? undefined : `Homebrew install failed for ${item.displayName}.`
     });
     if (success) {
+      await this.holdSuccessfulUpdate();
       await this.refresh();
     }
   }
@@ -697,6 +708,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           ? undefined
           : `Homebrew update failed for ${appRecord.displayName}.`
       });
+      if (success) {
+        await this.holdSuccessfulUpdate();
+      }
       await this.refresh();
     });
   }
@@ -892,6 +906,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         homebrewUpdatingItemIDs: removeFromArray(this.state.homebrewUpdatingItemIDs, itemID)
       });
     }
+  }
+
+  private async holdSuccessfulUpdate(): Promise<void> {
+    if (this.successRefreshDelayMS <= 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, this.successRefreshDelayMS));
   }
 
   private restartAutoRefreshLoop(): void {

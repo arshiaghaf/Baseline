@@ -1167,6 +1167,10 @@ button:disabled {
   line-height: 1;
 }
 
+.done-glyph {
+  animation: done-fade-in 180ms ease-out both;
+}
+
 .progress-ring {
   width: 16px;
   height: 16px;
@@ -1588,6 +1592,18 @@ button:disabled {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes done-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 

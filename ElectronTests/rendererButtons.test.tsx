@@ -162,6 +162,23 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Updating" })).toBeInTheDocument();
   });
 
+  it("shows matched Homebrew cask success on app update buttons before refresh", () => {
+    render(
+      <AppRow
+        app={app}
+        snapshot={snapshot({
+          homebrewUpdatingItemIDs: [cask.id],
+          homebrewUpdatedPendingRefreshItemIDs: [cask.id],
+          homebrewBatchProgressByItemID: { [cask.id]: 1 }
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Updating" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Updated" })).toBeInTheDocument();
+  });
+
   it("groups ignore and uninstall under row actions menu", () => {
     const { container, rerender } = render(
       <AppRow app={app} snapshot={snapshot()} recentlyUpdated={false} />
