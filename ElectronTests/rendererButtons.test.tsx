@@ -80,6 +80,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     homebrewDiscoverFailedItemIDs: [],
     homebrewDiscoverProgressByItemID: {},
     laggingHomebrewCaskTokens: [],
+    defaultScanDirectories: ["/Applications", "/Users/test/Applications"],
     ...patch
   };
 }
@@ -123,6 +124,7 @@ function installBaselineMock() {
 describe("renderer button parity", () => {
   beforeEach(() => {
     installBaselineMock();
+    window.location.hash = "";
   });
 
   it("shows app ignore/update actions and makes updating glyph non-clickable", () => {
@@ -142,6 +144,39 @@ describe("renderer button parity", () => {
     const updateGlyph = screen.getByRole("button", { name: "Updating" });
     fireEvent.click(updateGlyph);
     expect(window.baseline.performAppUpdate).not.toHaveBeenCalled();
+  });
+
+  it("shows matched Homebrew cask progress on app update buttons", () => {
+    render(
+      <AppRow
+        app={app}
+        snapshot={snapshot({
+          homebrewUpdatingItemIDs: [cask.id],
+          homebrewBatchProgressByItemID: { [cask.id]: 0.4 }
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Updating" })).toBeInTheDocument();
+  });
+
+  it("shows matched Homebrew cask success on app update buttons before refresh", () => {
+    render(
+      <AppRow
+        app={app}
+        snapshot={snapshot({
+          homebrewUpdatingItemIDs: [cask.id],
+          homebrewUpdatedPendingRefreshItemIDs: [cask.id],
+          homebrewBatchProgressByItemID: { [cask.id]: 1 }
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Updating" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Updated" })).toBeInTheDocument();
   });
 
   it("groups ignore and uninstall under row actions menu", () => {
@@ -404,7 +439,25 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
   });
 
-  it("keeps Settings sidebar badges fixed when a saved query is present", () => {
+  it("hides sidebar update badges when counts are zero", () => {
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ apps: [], updates: [], homebrewItems: [] })}
+      />
+    );
+
+    const [allButton, appsButton, homebrewButton] = Array.from(
+      container.querySelectorAll(".source-list button")
+    );
+
+    expect(within(allButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
+    expect(within(appsButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
+    expect(within(homebrewButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("shows settings sections as sidebar tabs without search-filtered badges", () => {
     const installedApp: AppRecord = {
       ...app,
       id: "app:stable",
@@ -430,13 +483,48 @@ describe("renderer button parity", () => {
       />
     );
 
-    const [allButton, appsButton, homebrewButton] = Array.from(
-      container.querySelectorAll(".source-list button")
-    );
+    expect(within(container).getByRole("button", { name: "Back to app" })).toBeInTheDocument();
+    for (const label of ["General", "Appearance", "Diagnostics"]) {
+      expect(within(container).getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    const settingsNav = container.querySelector(".source-list");
+    expect(settingsNav).not.toBeNull();
+    expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "Diagnostics" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "About" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "Readiness" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "Refresh" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "Scan Directories" })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "All" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
+    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+  });
 
-    expect(within(allButton as HTMLElement).getByText("2")).toBeInTheDocument();
-    expect(within(appsButton as HTMLElement).getByText("1")).toBeInTheDocument();
-    expect(within(homebrewButton as HTMLElement).getByText("1")).toBeInTheDocument();
+  it("returns from settings to the main app route", () => {
+    render(<SettingsView snapshot={snapshot()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to app" }));
+
+    expect(window.location.hash).toBe("#/main");
+  });
+
+  it("opens diagnostics from the settings sidebar footer", async () => {
+    render(<SettingsView snapshot={snapshot()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
+
+    expect(screen.getAllByRole("heading", { name: "Diagnostics" })).toHaveLength(2);
+    expect(await screen.findByText("0.1.0")).toBeInTheDocument();
+    expect(screen.queryByText("0.1.0 (224)")).not.toBeInTheDocument();
   });
 
   it("uses the same short search placeholder on every tab", () => {
@@ -1752,31 +1840,97 @@ describe("renderer button parity", () => {
   });
 
   it("rechecks tool readiness from settings without running a refresh", () => {
-    render(<SettingsView snapshot={snapshot()} />);
+    const { rerender } = render(<SettingsView snapshot={snapshot()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Check Again" }));
+    expect(screen.getByText("Enabled")).toBeInTheDocument();
+    expect(screen.getByText("Not detected")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Use the App Store helper when it is available. The mas helper is not detected on this Mac. Without mas, Baseline opens App Store links instead of installing App Store updates directly."
+      )
+    ).toBeInTheDocument();
+
+    rerender(
+      <SettingsView
+        snapshot={snapshot({
+          isMasInstalled: true,
+          useMasForAppStoreUpdates: false
+        })}
+      />
+    );
+    expect(screen.getByText("Not used")).toBeInTheDocument();
+    expect(screen.getByText("Use the App Store helper when it is available.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
 
     expect(window.baseline.refreshToolStatus).toHaveBeenCalledTimes(1);
     expect(window.baseline.refresh).not.toHaveBeenCalled();
   });
 
+  it("edits refresh interval only when auto refresh is enabled", () => {
+    const { rerender } = render(
+      <SettingsView snapshot={snapshot({ autoRefreshEnabled: false })} />
+    );
+
+    const disabledInterval = screen.getByRole("textbox", { name: "Interval minutes" });
+    expect(disabledInterval).toHaveAttribute("type", "text");
+    expect(disabledInterval).toBeDisabled();
+
+    rerender(<SettingsView snapshot={snapshot({ autoRefreshEnabled: true })} />);
+
+    const enabledInterval = screen.getByRole("textbox", { name: "Interval minutes" });
+    fireEvent.change(enabledInterval, { target: { value: "30" } });
+
+    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
+      refreshIntervalMinutes: 30
+    });
+  });
+
+  it("shows default scan directories when custom directories are present", () => {
+    const { rerender } = render(<SettingsView snapshot={snapshot()} />);
+
+    expect(screen.getByText("Default Applications folders")).toBeInTheDocument();
+    expect(
+      screen.getByText("Baseline scans the system and user Applications folders automatically.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("/Applications")).not.toBeInTheDocument();
+
+    rerender(
+      <SettingsView
+        snapshot={snapshot({
+          additionalDirectories: ["/Users/test/Extra Apps"]
+        })}
+      />
+    );
+
+    expect(screen.getByText("System Applications")).toBeInTheDocument();
+    expect(screen.getByText("User Applications")).toBeInTheDocument();
+    expect(screen.getByText("/Applications")).toBeInTheDocument();
+    expect(screen.getByText("/Users/test/Applications")).toBeInTheDocument();
+    expect(screen.getByText("Custom folder")).toBeInTheDocument();
+    expect(screen.getByText("/Users/test/Extra Apps")).toBeInTheDocument();
+    expect(screen.getAllByTitle("Remove")).toHaveLength(1);
+  });
+
   it("shows app version and build number in settings", async () => {
     render(<SettingsView snapshot={snapshot()} />);
 
-    expect(await screen.findByText("0.1.0 (224)")).toBeInTheDocument();
-    expect(screen.getByText("Build")).toBeInTheDocument();
-    expect(screen.getByText("224")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
+    expect(screen.getByText("Current version")).toBeInTheDocument();
+    expect(await screen.findByText("0.1.0")).toBeInTheDocument();
+    expect(screen.queryByText("0.1.0 (224)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Build number")).not.toBeInTheDocument();
+    expect(screen.queryByText("224")).not.toBeInTheDocument();
+    expect(screen.getByText("Diagnostic report")).toBeInTheDocument();
   });
 
   it("updates the appearance preference from settings", () => {
     render(<SettingsView snapshot={snapshot({ appearancePreference: "light" })} />);
 
-    expect(screen.getByRole("button", { name: "Light Mode" })).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    expect(screen.getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Dark Mode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Dark" }));
 
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
       appearancePreference: "dark"
@@ -1786,7 +1940,12 @@ describe("renderer button parity", () => {
   it("updates the menu bar icon preference from settings", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
-    fireEvent.click(screen.getByLabelText("Show menu bar icon"));
+    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+
+    const menuBarSwitch = screen.getByRole("switch", { name: "Show menu bar icon" });
+    expect(menuBarSwitch).toHaveAttribute("type", "checkbox");
+
+    fireEvent.click(menuBarSwitch);
 
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
       showMenuBarIcon: false

@@ -52,6 +52,7 @@ type StoreEvents = {
 };
 
 const TRANSIENT_HOMEBREW_FAILURE_MS = 4000;
+const successfulUpdateHoldMs = 2000;
 
 export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly persistence: SnapshotPersistence;
@@ -68,6 +69,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly runMasCommand: typeof defaultRunMasCommand;
   private readonly openExternalURL: (url: string) => Promise<boolean>;
   private readonly openAppBundle: (bundlePath: string) => Promise<void>;
+  private readonly successRefreshDelayMS: number;
   private refreshTask?: Promise<void>;
   private autoRefreshTimer?: NodeJS.Timeout;
   private readonly homebrewBatchFailureClearTimers = new Map<string, NodeJS.Timeout>();
@@ -92,6 +94,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }>;
     runBrewCommand?: typeof defaultRunBrewCommand;
     runMasCommand?: typeof defaultRunMasCommand;
+    successRefreshDelayMS?: number;
   }) {
     super();
     this.persistence = options.persistence;
@@ -105,6 +108,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.runMasCommand = options.runMasCommand ?? defaultRunMasCommand;
     this.openExternalURL = options.openExternalURL;
     this.openAppBundle = options.openAppBundle;
+    this.successRefreshDelayMS = options.successRefreshDelayMS ?? successfulUpdateHoldMs;
     this.state = {
       ...options.persisted,
       isMasInstalled: false,
@@ -127,7 +131,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       homebrewDiscoverInstalledPendingRefreshItemIDs: [],
       homebrewDiscoverFailedItemIDs: [],
       homebrewDiscoverProgressByItemID: {},
-      laggingHomebrewCaskTokens: []
+      laggingHomebrewCaskTokens: [],
+      defaultScanDirectories: this.defaultScanDirectories()
     };
   }
 
@@ -284,6 +289,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           this.patch({
             appUpdatedPendingRefreshIDs: addToArray(this.state.appUpdatedPendingRefreshIDs, appID)
           });
+          await this.holdSuccessfulUpdate();
           await this.refresh();
         } else {
           await this.routeExternalUpdate(appRecord, update);
@@ -342,6 +348,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             [itemID]: 1
           }
         });
+        await this.holdSuccessfulUpdate();
       } else {
         this.patch({
           refreshErrorMessage: `Homebrew update failed for ${item.name}.`,
@@ -363,8 +370,19 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
 
     const affected = this.state.homebrewItems.filter(
-      (item) => item.isOutdated && !this.state.ignoredHomebrewItemIDs.includes(item.id)
+      (item) =>
+        item.isOutdated &&
+        !this.state.ignoredHomebrewItemIDs.includes(item.id) &&
+        isValidHomebrewToken(item.token)
     );
+    if (affected.length === 0) {
+      return;
+    }
+
+    const formulaTokens = affected
+      .filter((item) => item.kind === "formula")
+      .map((item) => item.token);
+    const caskTokens = affected.filter((item) => item.kind === "cask").map((item) => item.token);
     const affectedIDs = affected.map((item) => item.id);
     const affectedByToken = new Map<string, string[]>();
     for (const item of affected) {
@@ -399,8 +417,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     );
     const sequence = [
       ["update"],
-      ["upgrade"],
-      ["upgrade", "--cask", "--greedy"],
+      ...(formulaTokens.length > 0 ? [["upgrade", ...formulaTokens]] : []),
+      ...(caskTokens.length > 0 ? [["upgrade", "--cask", "--greedy", ...caskTokens]] : []),
       ["autoremove"],
       ["cleanup"]
     ];
@@ -437,6 +455,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
     if (!success) {
       this.scheduleHomebrewBatchFailureClear(affectedIDs);
+    } else {
+      await this.holdSuccessfulUpdate();
     }
     await this.refresh();
   }
@@ -477,6 +497,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       refreshErrorMessage: success ? undefined : `Homebrew install failed for ${item.displayName}.`
     });
     if (success) {
+      await this.holdSuccessfulUpdate();
       await this.refresh();
     }
   }
@@ -684,13 +705,11 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private scanDirectories(): string[] {
-    return [
-      ...new Set([
-        "/Applications",
-        path.join(os.homedir(), "Applications"),
-        ...this.state.additionalDirectories
-      ])
-    ];
+    return [...new Set([...this.defaultScanDirectories(), ...this.state.additionalDirectories])];
+  }
+
+  private defaultScanDirectories(): string[] {
+    return ["/Applications", path.join(os.homedir(), "Applications")];
   }
 
   private async routeExternalUpdate(appRecord: AppRecord, update: UpdateRecord): Promise<void> {
@@ -732,6 +751,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       });
       if (!success) {
         this.scheduleHomebrewFallbackFailureClear([appRecord.id]);
+      } else {
+        await this.holdSuccessfulUpdate();
       }
       await this.refresh();
     });
@@ -939,7 +960,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           return;
         }
         this.patch({
-          homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID),
+          homebrewBatchFailedItemIDs: removeFromArray(
+            this.state.homebrewBatchFailedItemIDs,
+            itemID
+          ),
           homebrewBatchProgressByItemID: removeRecordKey(
             this.state.homebrewBatchProgressByItemID,
             itemID
@@ -989,6 +1013,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       clearTimeout(timer);
       this.homebrewFallbackFailureClearTimers.delete(appID);
     }
+  }
+
+  private async holdSuccessfulUpdate(): Promise<void> {
+    if (this.successRefreshDelayMS <= 0) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, this.successRefreshDelayMS));
   }
 
   private restartAutoRefreshLoop(): void {

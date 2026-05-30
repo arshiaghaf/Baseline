@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
   AppWindowMac,
+  ArrowLeft,
   Beer,
   Check,
   CheckCircle2,
@@ -23,6 +24,7 @@ import {
   Search,
   Server,
   Settings,
+  ShieldCogCorner,
   Sun,
   Terminal,
   Trash2,
@@ -69,10 +71,23 @@ type RowUpdateMenuAction = {
   disabled?: boolean;
   onAction: () => void;
 };
+type SettingsSectionID = "general" | "appearance" | "diagnostics";
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
 const toolbarIconStrokeWidth = 1.5;
+const settingsSidebarItems: Array<{
+  id: SettingsSectionID;
+  label: string;
+  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+}> = [
+  { id: "general", label: "General", icon: Settings },
+  { id: "appearance", label: "Appearance", icon: Monitor },
+  { id: "diagnostics", label: "Diagnostics", icon: Terminal }
+];
+const primarySettingsSidebarItems = settingsSidebarItems.filter(
+  (item) => item.id !== "diagnostics"
+);
 
 const initialSnapshot: BaselineSnapshot = {
   ...defaultPersistedSnapshot(),
@@ -96,7 +111,8 @@ const initialSnapshot: BaselineSnapshot = {
   homebrewDiscoverInstalledPendingRefreshItemIDs: [],
   homebrewDiscoverFailedItemIDs: [],
   homebrewDiscoverProgressByItemID: {},
-  laggingHomebrewCaskTokens: []
+  laggingHomebrewCaskTokens: [],
+  defaultScanDirectories: []
 };
 
 function App() {
@@ -417,7 +433,7 @@ function Sidebar({
         >
           <Server size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>All</span>
-          <strong>{combinedAvailableCount(derived)}</strong>
+          <SidebarBadge count={combinedAvailableCount(derived)} />
         </button>
         <button
           className={route === "main" && snapshot.selectedTab === "apps" ? "selected" : ""}
@@ -425,7 +441,7 @@ function Sidebar({
         >
           <AppWindowMac size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Apps</span>
-          <strong>{derived.availableApps.length}</strong>
+          <SidebarBadge count={derived.availableApps.length} />
         </button>
         <button
           className={route === "main" && snapshot.selectedTab === "homebrew" ? "selected" : ""}
@@ -433,7 +449,7 @@ function Sidebar({
         >
           <Beer size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Homebrew</span>
-          <strong>{derived.allHomebrewOutdated.length}</strong>
+          <SidebarBadge count={derived.allHomebrewOutdated.length} />
         </button>
       </nav>
       <nav className="source-list secondary-source-list">
@@ -466,6 +482,10 @@ function Sidebar({
       </div>
     </aside>
   );
+}
+
+function SidebarBadge({ count }: { count: number }) {
+  return count > 0 ? <strong>{count}</strong> : null;
 }
 
 function ToolbarSearch({
@@ -933,22 +953,13 @@ function AppSection({
 function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
-  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
-  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
   const label = appSourceLabel(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
-  const actionState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
 
   return (
     <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
@@ -1154,21 +1165,12 @@ function CardGrid({
 function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
-  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
-  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
-  const actionState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
   const recentlyUpdatedRecord = snapshot.recentlyUpdated.find((record) => record.appID === app.id);
   const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
 
@@ -1232,22 +1234,13 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
 function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
-  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
-  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
   const label = appSourceLabel(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
-  const actionState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
 
   return (
     <article className="item-card ignored-card ignored-row">
@@ -1324,21 +1317,12 @@ export function AppRow({
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isUpdating = snapshot.appUpdatingIDs.includes(app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const progress = snapshot.homebrewFallbackProgressByAppID[app.id];
-  const failed = snapshot.homebrewFallbackFailedAppIDs.includes(app.id);
-  const done = snapshot.appUpdatedPendingRefreshIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
-  const actionState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
   const recentlyUpdatedAt = recentlyUpdated
     ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)?.updatedAt
     : undefined;
@@ -2206,7 +2190,7 @@ function RowMoreActionButton({
                   <ProgressRing value={updateAction.state.progress} />
                 )
               ) : updateAction.state.type === "done" ? (
-                <Check size={14} />
+                <Check className="done-glyph" size={14} strokeWidth={3} />
               ) : (
                 <span className="failure-glyph">!</span>
               )}
@@ -2258,14 +2242,7 @@ function ProgressRing({ value }: { value: number }) {
 }
 
 function DoneTransitionGlyph() {
-  const [showCheckmark, setShowCheckmark] = useState(false);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setShowCheckmark(true), 320);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  return showCheckmark ? <Check size={15} /> : <ProgressRing value={1} />;
+  return <Check className="done-glyph" size={15} strokeWidth={3} />;
 }
 
 function UninstallActionGlyph() {
@@ -2341,11 +2318,11 @@ function actionStateFromFlags({
   if (failed) {
     return { type: "failed" };
   }
-  if (updating) {
-    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
-  }
   if (done) {
     return { type: "done" };
+  }
+  if (updating) {
+    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
   }
   return { type: "ready" };
 }
@@ -2360,102 +2337,192 @@ function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): strin
   return "Update failed";
 }
 
+function appUpdateActionState(
+  app: AppRecord,
+  snapshot: BaselineSnapshot
+): { state: ActionState; isUpdating: boolean } {
+  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
+  const matchedHomebrewItem =
+    update?.source === "homebrew" ? uninstallableHomebrewItemForApp(app, snapshot) : undefined;
+  const isUpdating =
+    snapshot.appUpdatingIDs.includes(app.id) ||
+    Boolean(
+      matchedHomebrewItem && snapshot.homebrewUpdatingItemIDs.includes(matchedHomebrewItem.id)
+    );
+  const progress =
+    snapshot.homebrewFallbackProgressByAppID[app.id] ??
+    (matchedHomebrewItem
+      ? snapshot.homebrewBatchProgressByItemID[matchedHomebrewItem.id]
+      : undefined);
+  const failed =
+    snapshot.homebrewFallbackFailedAppIDs.includes(app.id) ||
+    Boolean(
+      matchedHomebrewItem && snapshot.homebrewBatchFailedItemIDs.includes(matchedHomebrewItem.id)
+    );
+  const done =
+    snapshot.appUpdatedPendingRefreshIDs.includes(app.id) ||
+    Boolean(
+      matchedHomebrewItem &&
+      snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(matchedHomebrewItem.id)
+    );
+
+  return {
+    isUpdating,
+    state: actionStateFromFlags({
+      failed,
+      updating: isUpdating,
+      progress,
+      done
+    })
+  };
+}
+
 export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
+  const [selectedSection, setSelectedSection] = useState<SettingsSectionID>("general");
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [appMetadata, setAppMetadata] = useState<AppMetadata>();
-  const derived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
+  const selectedItem = settingsSidebarItems.find((item) => item.id === selectedSection);
 
   useEffect(() => {
     void window.baseline.getAppMetadata().then(setAppMetadata);
   }, []);
 
   return (
-    <main className="app-shell">
-      <Sidebar snapshot={snapshot} derived={derived} route="settings" />
+    <main className="app-shell settings-shell">
+      <SettingsSidebar selectedSection={selectedSection} onSelectSection={setSelectedSection} />
       <section className="workspace">
         <header className="topbar">
           <div>
-            <h1>Settings</h1>
-            <p>Scan paths, optional tools, and refresh behavior</p>
+            <h1>{selectedItem?.label ?? "Settings"}</h1>
           </div>
-          <button
-            className="toolbar-button text-button"
-            onClick={() => (window.location.hash = "/main")}
-          >
-            Done
-          </button>
         </header>
 
-        <section className="settings-grid">
-          <section className="panel">
-            <PanelTitle title="About" />
-            <div className="metadata-list">
-              <div>
-                <span>Version</span>
-                <strong>{appMetadata?.displayVersion ?? "Loading"}</strong>
-              </div>
-              {appMetadata?.buildNumber && (
-                <div>
-                  <span>Build</span>
-                  <strong>{appMetadata.buildNumber}</strong>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="panel">
-            <PanelTitle title="Readiness" />
-            <Readiness label="Homebrew" ready={snapshot.isHomebrewInstalled} />
-            <Readiness label="mas" ready={snapshot.isMasInstalled} />
-            <div className="settings-action">
-              <button
-                className="ghost-button wide"
-                onClick={() => void window.baseline.refreshToolStatus()}
-              >
-                Check Again
-              </button>
-            </div>
-          </section>
-
-          <section className="panel">
-            <PanelTitle title="Appearance" />
-            <AppearanceSelector value={snapshot.appearancePreference} />
-          </section>
-
-          <section className="panel">
-            <PanelTitle title="Refresh" />
-            <Toggle
-              label="Auto refresh"
-              value={snapshot.autoRefreshEnabled}
-              patch="autoRefreshEnabled"
+        <section className="content settings-content">
+          <section className="stack">
+            <SettingsPane
+              appMetadata={appMetadata}
+              diagnosticsCopied={diagnosticsCopied}
+              onDiagnosticsCopiedChange={setDiagnosticsCopied}
+              section={selectedSection}
+              snapshot={snapshot}
             />
-            <label className="field">
-              <span>Interval minutes</span>
-              <input
-                type="number"
-                min={5}
-                max={1440}
-                value={snapshot.refreshIntervalMinutes}
-                onChange={(event) =>
-                  void window.baseline.updatePreferences({
-                    refreshIntervalMinutes: Number(event.currentTarget.value)
-                  })
-                }
+          </section>
+        </section>
+      </section>
+    </main>
+  );
+}
+
+function SettingsSidebar({
+  selectedSection,
+  onSelectSection
+}: {
+  selectedSection: SettingsSectionID;
+  onSelectSection: (section: SettingsSectionID) => void;
+}) {
+  return (
+    <aside className="sidebar settings-sidebar">
+      <div className="settings-sidebar-header">
+        <button className="back-to-app-button" onClick={() => (window.location.hash = "/main")}>
+          <ArrowLeft size={15} strokeWidth={sidebarIconStrokeWidth} />
+          <span>Back to app</span>
+        </button>
+      </div>
+      <nav className="source-list">
+        {primarySettingsSidebarItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              className={selectedSection === item.id ? "selected" : ""}
+              key={item.id}
+              onClick={() => onSelectSection(item.id)}
+            >
+              <Icon size={16} strokeWidth={sidebarIconStrokeWidth} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+      <div className="sidebar-footer">
+        <button
+          className={selectedSection === "diagnostics" ? "selected" : ""}
+          onClick={() => onSelectSection("diagnostics")}
+        >
+          <ShieldCogCorner size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <span>Diagnostics</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function SettingsPane({
+  appMetadata,
+  diagnosticsCopied,
+  onDiagnosticsCopiedChange,
+  section,
+  snapshot
+}: {
+  appMetadata?: AppMetadata;
+  diagnosticsCopied: boolean;
+  onDiagnosticsCopiedChange: (copied: boolean) => void;
+  section: SettingsSectionID;
+  snapshot: BaselineSnapshot;
+}) {
+  switch (section) {
+    case "general":
+      return (
+        <>
+          <section className="panel settings-panel">
+            <PanelTitle
+              title="Update Tools"
+              action={
+                <button
+                  className="ghost-button small-button"
+                  onClick={() => void window.baseline.refreshToolStatus()}
+                >
+                  Refresh
+                </button>
+              }
+            />
+            <div className="settings-panel-box">
+              <Readiness
+                label="Homebrew"
+                description="Find updates for installed casks and formulae."
+                missingDetail="Homebrew is not detected on this Mac. Install Homebrew to enable this source."
+                ready={snapshot.isHomebrewInstalled}
               />
-            </label>
-            <Toggle
-              label="Use mas for App Store updates"
-              value={snapshot.useMasForAppStoreUpdates}
-              patch="useMasForAppStoreUpdates"
-            />
-            <Toggle
-              label="Show menu bar icon"
-              value={snapshot.showMenuBarIcon}
-              patch="showMenuBarIcon"
-            />
+              <Readiness
+                label="mas"
+                description="Use the App Store helper when it is available."
+                missingDetail="The mas helper is not detected on this Mac. Without mas, Baseline opens App Store links instead of installing App Store updates directly."
+                ready={snapshot.isMasInstalled}
+                enabled={snapshot.useMasForAppStoreUpdates}
+              />
+              <Toggle
+                label="Use mas for App Store updates"
+                description="When enabled, Baseline can install App Store updates directly. When disabled, it opens App Store links instead."
+                value={snapshot.useMasForAppStoreUpdates}
+                patch="useMasForAppStoreUpdates"
+              />
+            </div>
           </section>
-
-          <section className="panel wide-panel">
+          <section className="panel settings-panel">
+            <PanelTitle title="Refresh" />
+            <div className="settings-panel-box">
+              <Toggle
+                label="Auto refresh"
+                description="Check for updates automatically in the background."
+                value={snapshot.autoRefreshEnabled}
+                patch="autoRefreshEnabled"
+              />
+              <RefreshIntervalInput
+                value={snapshot.refreshIntervalMinutes}
+                disabled={!snapshot.autoRefreshEnabled}
+              />
+            </div>
+          </section>
+          <section className="panel settings-panel">
             <PanelTitle
               title="Scan Directories"
               action={
@@ -2468,46 +2535,106 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
                 </button>
               }
             />
-            <div className="directory-list">
-              {snapshot.additionalDirectories.length === 0 && (
-                <Empty text="Using default Applications folders." />
-              )}
-              {snapshot.additionalDirectories.map((directory) => (
-                <div className="directory-row" key={directory}>
-                  <span>{directory}</span>
-                  <button
-                    className="toolbar-button"
-                    onClick={() => void window.baseline.removeDirectory(directory)}
-                    title="Remove"
-                  >
-                    <XCircle size={15} />
-                  </button>
-                </div>
-              ))}
+            <div className="settings-panel-box">
+              <div className="settings-row-list">
+                {snapshot.additionalDirectories.length === 0 ? (
+                  <div className="settings-row settings-empty-row">
+                    <SettingsRowText
+                      label="Default Applications folders"
+                      description="Baseline scans the system and user Applications folders automatically."
+                    />
+                  </div>
+                ) : (
+                  snapshot.defaultScanDirectories.map((directory) => (
+                    <div className="settings-row settings-row-action" key={`default:${directory}`}>
+                      <SettingsRowText
+                        label={defaultScanDirectoryLabel(directory)}
+                        description={directory}
+                      />
+                    </div>
+                  ))
+                )}
+                {snapshot.additionalDirectories.map((directory) => (
+                  <div className="settings-row settings-row-action" key={directory}>
+                    <SettingsRowText label="Custom folder" description={directory} />
+                    <button
+                      className="toolbar-button"
+                      onClick={() => void window.baseline.removeDirectory(directory)}
+                      title="Remove"
+                    >
+                      <XCircle size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
-
-          <section className="panel">
+        </>
+      );
+    case "appearance":
+      return (
+        <>
+          <section className="panel settings-panel">
+            <PanelTitle title="Theme" />
+            <div className="settings-panel-box">
+              <div className="settings-row settings-row-action">
+                <SettingsRowText
+                  label="App theme"
+                  description="Use light, dark, or match your system."
+                />
+                <AppearanceSelector value={snapshot.appearancePreference} />
+              </div>
+            </div>
+          </section>
+          <section className="panel settings-panel">
+            <PanelTitle title="Menu Bar" />
+            <div className="settings-panel-box">
+              <Toggle
+                label="Show menu bar icon"
+                description="Keep the compact update popover available in the menu bar."
+                value={snapshot.showMenuBarIcon}
+                patch="showMenuBarIcon"
+              />
+            </div>
+          </section>
+        </>
+      );
+    case "diagnostics":
+      return (
+        <>
+          <section className="panel settings-panel">
+            <PanelTitle title="About" />
+            <div className="settings-panel-box">
+              <div className="settings-row settings-row-action">
+                <span>Current version</span>
+                <strong className="settings-row-value">{appMetadata?.version ?? "Loading"}</strong>
+              </div>
+            </div>
+          </section>
+          <section className="panel settings-panel">
             <PanelTitle title="Diagnostics" />
-            <p className="muted panel-copy">
-              Copy a local report with counts, tool status, scan paths, and the latest non-sensitive
-              refresh message.
-            </p>
-            <div className="settings-action">
-              <button
-                className="primary-button wide"
-                onClick={() => {
-                  void window.baseline.copyDiagnostics().then(() => setDiagnosticsCopied(true));
-                }}
-              >
-                {diagnosticsCopied ? "Copied" : "Copy Report"}
-              </button>
+            <div className="settings-panel-box">
+              <div className="settings-row settings-row-action">
+                <SettingsRowText
+                  label="Diagnostic report"
+                  description="Copy a local report with counts, tool status, scan paths, and the latest non-sensitive refresh message."
+                />
+                <button
+                  className="primary-button wide"
+                  onClick={() => {
+                    void window.baseline
+                      .copyDiagnostics()
+                      .then(() => onDiagnosticsCopiedChange(true));
+                  }}
+                >
+                  {diagnosticsCopied ? "Copied" : "Copy Report"}
+                </button>
+              </div>
             </div>
           </section>
-        </section>
-      </section>
-    </main>
-  );
+        </>
+      );
+  }
 }
 
 type TogglePatch = Exclude<
@@ -2520,9 +2647,9 @@ const appearanceOptions: Array<{
   label: string;
   icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
 }> = [
-  { value: "system", label: "System Default", icon: Monitor },
-  { value: "light", label: "Light Mode", icon: Sun },
-  { value: "dark", label: "Dark Mode", icon: Moon }
+  { value: "system", label: "System", icon: Monitor },
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon }
 ];
 
 function AppearanceSelector({ value }: { value: AppearancePreference }) {
@@ -2550,18 +2677,100 @@ function AppearanceSelector({ value }: { value: AppearancePreference }) {
   );
 }
 
-function Toggle({ label, value, patch }: { label: string; value: boolean; patch: TogglePatch }) {
+function defaultScanDirectoryLabel(directory: string): string {
+  if (directory === "/Applications") {
+    return "System Applications";
+  }
+  return "User Applications";
+}
+
+function RefreshIntervalInput({ value, disabled }: { value: number; disabled: boolean }) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
   return (
-    <label className="toggle">
-      <span>{label}</span>
+    <label
+      className={
+        disabled
+          ? "settings-row settings-row-control settings-row-disabled"
+          : "settings-row settings-row-control"
+      }
+    >
+      <SettingsRowText
+        label="Interval minutes"
+        description="How often Baseline checks when auto refresh is on."
+      />
       <input
+        aria-label="Interval minutes"
+        className="settings-number-input"
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        disabled={disabled}
+        value={draft}
+        onChange={(event) => {
+          const nextValue = event.currentTarget.value;
+          if (!/^\d*$/u.test(nextValue)) {
+            return;
+          }
+          setDraft(nextValue);
+          if (nextValue) {
+            void window.baseline.updatePreferences({
+              refreshIntervalMinutes: Number.parseInt(nextValue, 10)
+            });
+          }
+        }}
+      />
+    </label>
+  );
+}
+
+function Toggle({
+  label,
+  description,
+  value,
+  patch
+}: {
+  label: string;
+  description: string;
+  value: boolean;
+  patch: TogglePatch;
+}) {
+  return (
+    <label className="settings-row settings-row-control">
+      <SettingsRowText label={label} description={description} />
+      <input
+        aria-label={label}
+        className="settings-switch"
         type="checkbox"
+        role="switch"
         checked={value}
         onChange={(event) =>
           void window.baseline.updatePreferences({ [patch]: event.currentTarget.checked })
         }
       />
     </label>
+  );
+}
+
+function SettingsRowText({
+  label,
+  description,
+  secondaryDescription
+}: {
+  label: string;
+  description: string;
+  secondaryDescription?: string;
+}) {
+  return (
+    <span className="settings-row-text">
+      <span>{label}</span>
+      <span className="settings-row-subtext">{description}</span>
+      {secondaryDescription && <span className="settings-row-subtext">{secondaryDescription}</span>}
+    </span>
   );
 }
 
@@ -2618,16 +2827,29 @@ function VersionChange({ from, to }: { from: string; to: string }) {
   );
 }
 
-function Readiness({ label, ready }: { label: string; ready: boolean }) {
+function Readiness({
+  label,
+  description,
+  missingDetail,
+  ready,
+  enabled = true
+}: {
+  label: string;
+  description: string;
+  missingDetail: string;
+  ready: boolean;
+  enabled?: boolean;
+}) {
+  const active = ready && enabled;
+  const statusLabel = ready ? (enabled ? "Enabled" : "Not used") : "Not detected";
+  const detail = ready ? description : `${description} ${missingDetail}`;
   return (
-    <div className="ready-row">
-      {ready ? (
-        <CheckCircle2 className="good" size={17} />
-      ) : (
-        <XCircle className="muted-icon" size={17} />
-      )}
-      <span>{label}</span>
-      <strong>{ready ? "Available" : "Not detected"}</strong>
+    <div className="settings-row settings-row-status">
+      <SettingsRowText label={label} description={detail} />
+      <span className={active ? "settings-status-label enabled" : "settings-status-label muted"}>
+        <span className="settings-status-glyph" aria-hidden="true" />
+        <span>{statusLabel}</span>
+      </span>
     </div>
   );
 }

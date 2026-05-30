@@ -88,9 +88,9 @@ test("launches the Electron shell and renders the dashboard", async () => {
   const page = await app.firstWindow();
   await expect(page).toHaveTitle("Baseline");
   await expect(page.locator("h1")).toContainText("All");
-  await expect(page.getByRole("button", { name: /^All\s+\d+$/u })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Apps\s+\d+$/u })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Homebrew\s+\d+$/u })).toBeVisible();
+  await expect(page.getByRole("button", { name: "All", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apps", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Homebrew", exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => typeof window.baseline)).toBe("object");
   await expect(
     page.evaluate(() => typeof (window as Window & { require?: unknown }).require)
