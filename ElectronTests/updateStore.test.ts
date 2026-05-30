@@ -988,6 +988,98 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().refreshErrorMessage).toContain("Error: still running");
   });
 
+  it("updates only non-ignored Homebrew items in a batch run", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        ignoredHomebrewItemIDs: ["formula:ignored-formula", "cask:ignored-cask"],
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "formula:ignored-formula",
+            token: "ignored-formula",
+            name: "ignored-formula",
+            kind: "formula",
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "cask:visual-studio-code",
+            token: "visual-studio-code",
+            name: "Visual Studio Code",
+            kind: "cask",
+            latestVersion: version("1.100.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "cask:ignored-cask",
+            token: "ignored-cask",
+            name: "Ignored Cask",
+            kind: "cask",
+            latestVersion: version("3.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["upgrade", "--cask", "--greedy", "visual-studio-code"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+  });
+
+  it("does not run Homebrew maintenance when every outdated item is ignored", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        ignoredHomebrewItemIDs: ["formula:ripgrep"],
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand).not.toHaveBeenCalled();
+  });
+
   it("uses mas for App Store updates and falls back to safe external routes on failure", async () => {
     const app = appRecord({
       bundlePath: "/Applications/App Store Managed.app",

@@ -362,8 +362,19 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
 
     const affected = this.state.homebrewItems.filter(
-      (item) => item.isOutdated && !this.state.ignoredHomebrewItemIDs.includes(item.id)
+      (item) =>
+        item.isOutdated &&
+        !this.state.ignoredHomebrewItemIDs.includes(item.id) &&
+        isValidHomebrewToken(item.token)
     );
+    if (affected.length === 0) {
+      return;
+    }
+
+    const formulaTokens = affected
+      .filter((item) => item.kind === "formula")
+      .map((item) => item.token);
+    const caskTokens = affected.filter((item) => item.kind === "cask").map((item) => item.token);
     const affectedIDs = affected.map((item) => item.id);
     const affectedByToken = new Map<string, string[]>();
     for (const item of affected) {
@@ -392,8 +403,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     );
     const sequence = [
       ["update"],
-      ["upgrade"],
-      ["upgrade", "--cask", "--greedy"],
+      ...(formulaTokens.length > 0 ? [["upgrade", ...formulaTokens]] : []),
+      ...(caskTokens.length > 0 ? [["upgrade", "--cask", "--greedy", ...caskTokens]] : []),
       ["autoremove"],
       ["cleanup"]
     ];
