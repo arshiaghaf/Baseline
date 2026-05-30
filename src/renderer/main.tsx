@@ -2057,7 +2057,11 @@ export function UpdateActionButton({
   if (state.type === "ready") {
     return (
       <button
-        className={readyVariant === "outline" ? "primary-button outline-button" : "primary-button"}
+        className={
+          readyVariant === "outline"
+            ? "primary-button outline-button update-action-button"
+            : "primary-button update-action-button"
+        }
         disabled={disabled}
         onClick={onAction}
       >
