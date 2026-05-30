@@ -1,6 +1,7 @@
 name: Auto-label issues
 
 on:
+  workflow_dispatch:
   issues:
     types: [opened, edited, reopened]
 
@@ -16,50 +17,27 @@ jobs:
         uses: actions/github-script@v9
         with:
           script: |
-            const issue = context.payload.issue;
-            const text = `${issue.title || ""}\n\n${issue.body || ""}`.toLowerCase();
-
-            const desired = new Set();
             const escapeRegex = (value) => value.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
-
-            // Bug indicators.
-            if (
-              /\bbug\b|\berror\b|\bcrash\b|\bfail(?:ed|ing)?\b|\bregression\b/.test(text) ||
-              text.includes("steps to reproduce") ||
-              text.includes("actual behavior")
-            ) {
-              desired.add("bug");
-            }
-
-            // Feature request indicators.
-            if (
-              /\bfeature\b|\benhancement\b|\bproposal\b|\brequest\b/.test(text) ||
-              text.includes("proposed solution") ||
-              text.includes("alternatives considered")
-            ) {
-              desired.add("enhancement");
-            }
-
-            // Question indicators.
-            if (
-              /\bquestion\b|\bhow do i\b|\bhow to\b/.test(text) ||
-              (issue.title || "").trim().endsWith("?")
-            ) {
-              desired.add("question");
-            }
-
-            // Documentation indicators.
-            if (/\bdocs?\b|\bdocumentation\b|\breadme\b/.test(text)) {
-              desired.add("documentation");
-            }
-
-            // UI/theme indicators for common frontend issue tags.
-            if (/\bui\b|\bux\b|\binterface\b|\blayout\b/.test(text)) {
-              desired.add("ui");
-            }
-            if (/\btheme\b|\btheming\b|\bdark mode\b|\blight mode\b/.test(text)) {
-              desired.add("theme");
-            }
+            const bugPatterns = [
+              /\bbugs?\b/,
+              /\berrors?\b/,
+              /\bcrash(?:es|ed|ing)?\b/,
+              /\bfail(?:ed|ing|s|ure)?\b/,
+              /\bregress(?:ion|ed|ing)?\b/,
+              /\bstuck\b/,
+              /\bcannot\b|\bcan't\b|\bunable to\b/,
+              /\bdead[- ]end\b/,
+              /\brace\b|\bracing\b|\bconcurrent(?:ly)?\b|\boverlap(?:ping)?\b/,
+              /\boverwrite(?:s|n|ing)?\b/,
+              /\bwrong\b|\bincorrect\b|\bfalsely\b/,
+              /\bmissing\b/,
+              /\bnot (?:work|working|updated|retryable|available|detected)\b/,
+              /\bcorrupt(?:s|ed|ing)?\b/,
+              /\bclamp(?:s|ed|ing)?\b/,
+              /\breset(?:s|ting)?\b/,
+              /\bduplicate\b/,
+              /\bwarning(?:s)?\b/
+            ];
 
             const repoLabels = await github.paginate(
               github.rest.issues.listLabelsForRepo,
@@ -69,6 +47,7 @@ jobs:
                 per_page: 100
               }
             );
+            const available = new Set(repoLabels.map((label) => label.name));
 
             // Add labels when issue text explicitly mentions the label name.
             const skipAutoByName = new Set([
@@ -79,37 +58,105 @@ jobs:
               "help wanted"
             ]);
 
-            for (const label of repoLabels) {
-              const name = label.name.toLowerCase();
-              if (skipAutoByName.has(name)) {
-                continue;
+            const desiredLabelsForIssue = (issue) => {
+              const text = `${issue.title || ""}\n\n${issue.body || ""}`.toLowerCase();
+              const desired = new Set();
+
+              // Bug indicators. Include common audit/report phrasing so
+              // confirmed behavior defects do not need to literally say "bug".
+              if (
+                bugPatterns.some((pattern) => pattern.test(text)) ||
+                text.includes("steps to reproduce") ||
+                text.includes("actual behavior") ||
+                (text.includes("expected behavior") &&
+                  (text.includes("impact") || text.includes("evidence")))
+              ) {
+                desired.add("bug");
               }
 
-              const mentionPattern = new RegExp(`(^|\\W)${escapeRegex(name)}($|\\W)`, "i");
-              if (mentionPattern.test(text)) {
-                desired.add(label.name);
+              // Feature request indicators. Keep these specific so operational
+              // phrases like "manual refresh requests" are not labeled as
+              // enhancements.
+              if (
+                /\bfeature request\b|\bnew feature\b|\benhancement\b|\bproposal\b|\badd support for\b/.test(
+                  text
+                ) ||
+                text.includes("proposed solution") ||
+                text.includes("alternatives considered")
+              ) {
+                desired.add("enhancement");
+              }
+
+              // Question indicators.
+              if (
+                /\bquestion\b|\bhow do i\b|\bhow to\b/.test(text) ||
+                (issue.title || "").trim().endsWith("?")
+              ) {
+                desired.add("question");
+              }
+
+              // Documentation indicators.
+              if (/\bdocs?\b|\bdocumentation\b|\breadme\b/.test(text)) {
+                desired.add("documentation");
+              }
+
+              // UI/theme indicators for common frontend issue tags.
+              if (/\bui\b|\bux\b|\binterface\b|\blayout\b/.test(text)) {
+                desired.add("ui");
+              }
+              if (/\btheme\b|\btheming\b|\bdark mode\b|\blight mode\b/.test(text)) {
+                desired.add("theme");
+              }
+
+              for (const label of repoLabels) {
+                const name = label.name.toLowerCase();
+                if (skipAutoByName.has(name)) {
+                  continue;
+                }
+
+                const mentionPattern = new RegExp(`(^|\\W)${escapeRegex(name)}($|\\W)`, "i");
+                if (mentionPattern.test(text)) {
+                  desired.add(label.name);
+                }
+              }
+
+              if (desired.size === 0) {
+                desired.add("needs-triage");
+              }
+
+              return desired;
+            };
+
+            const issues =
+              context.payload.issue && !context.payload.issue.pull_request
+                ? [context.payload.issue]
+                : (
+                    await github.paginate(github.rest.issues.listForRepo, {
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      state: "open",
+                      per_page: 100
+                    })
+                  ).filter((issue) => !issue.pull_request);
+
+            for (const issue of issues) {
+              const desired = desiredLabelsForIssue(issue);
+              const existing = new Set(
+                issue.labels.map((label) => (typeof label === "string" ? label : label.name))
+              );
+              const toAdd = [...desired].filter(
+                (label) => available.has(label) && !existing.has(label)
+              );
+
+              if (toAdd.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: toAdd
+                });
+                core.info(`#${issue.number}: added labels: ${toAdd.join(", ")}`);
+              } else {
+                core.info(`#${issue.number}: no matching labels available to add.`);
               }
             }
-
-            if (desired.size === 0) {
-              desired.add("needs-triage");
-            }
-
-            const available = new Set(repoLabels.map((label) => label.name));
-            const existing = new Set(issue.labels.map((label) => label.name));
-            const toAdd = [...desired].filter(
-              (label) => available.has(label) && !existing.has(label)
-            );
-
-            if (toAdd.length > 0) {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                labels: toAdd
-              });
-              core.info(`Added labels: ${toAdd.join(", ")}`);
-            } else {
-              core.info("No matching labels available to add.");
-            }
-
