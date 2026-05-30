@@ -439,6 +439,24 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
   });
 
+  it("hides sidebar update badges when counts are zero", () => {
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ apps: [], updates: [], homebrewItems: [] })}
+      />
+    );
+
+    const [allButton, appsButton, homebrewButton] = Array.from(
+      container.querySelectorAll(".source-list button")
+    );
+
+    expect(within(allButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
+    expect(within(appsButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
+    expect(within(homebrewButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
+  });
+
   it("shows settings sections as sidebar tabs without search-filtered badges", () => {
     const installedApp: AppRecord = {
       ...app,

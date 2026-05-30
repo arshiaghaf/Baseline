@@ -433,7 +433,7 @@ function Sidebar({
         >
           <Server size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>All</span>
-          <strong>{combinedAvailableCount(derived)}</strong>
+          <SidebarBadge count={combinedAvailableCount(derived)} />
         </button>
         <button
           className={route === "main" && snapshot.selectedTab === "apps" ? "selected" : ""}
@@ -441,7 +441,7 @@ function Sidebar({
         >
           <AppWindowMac size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Apps</span>
-          <strong>{derived.availableApps.length}</strong>
+          <SidebarBadge count={derived.availableApps.length} />
         </button>
         <button
           className={route === "main" && snapshot.selectedTab === "homebrew" ? "selected" : ""}
@@ -449,7 +449,7 @@ function Sidebar({
         >
           <Beer size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Homebrew</span>
-          <strong>{derived.allHomebrewOutdated.length}</strong>
+          <SidebarBadge count={derived.allHomebrewOutdated.length} />
         </button>
       </nav>
       <nav className="source-list secondary-source-list">
@@ -482,6 +482,10 @@ function Sidebar({
       </div>
     </aside>
   );
+}
+
+function SidebarBadge({ count }: { count: number }) {
+  return count > 0 ? <strong>{count}</strong> : null;
 }
 
 function ToolbarSearch({
