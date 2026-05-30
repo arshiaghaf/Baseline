@@ -2486,13 +2486,13 @@ function SettingsPane({
               }
             />
             <div className="settings-panel-box">
-              <Readiness
+              <ToolStatus
                 label="Homebrew"
                 description="Find updates for installed casks and formulae."
                 missingDetail="Homebrew is not detected on this Mac. Install Homebrew to enable this source."
                 ready={snapshot.isHomebrewInstalled}
               />
-              <Readiness
+              <ToolStatus
                 label="mas"
                 description="Use the App Store helper when it is available."
                 missingDetail="The mas helper is not detected on this Mac. Without mas, Baseline opens App Store links instead of installing App Store updates directly."
@@ -2827,7 +2827,7 @@ function VersionChange({ from, to }: { from: string; to: string }) {
   );
 }
 
-function Readiness({
+function ToolStatus({
   label,
   description,
   missingDetail,

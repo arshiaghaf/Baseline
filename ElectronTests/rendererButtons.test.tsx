@@ -496,7 +496,7 @@ describe("renderer button parity", () => {
       within(settingsNav as HTMLElement).queryByRole("button", { name: "About" })
     ).not.toBeInTheDocument();
     expect(
-      within(settingsNav as HTMLElement).queryByRole("button", { name: "Readiness" })
+      within(settingsNav as HTMLElement).queryByRole("button", { name: "Update Tools" })
     ).not.toBeInTheDocument();
     expect(
       within(settingsNav as HTMLElement).queryByRole("button", { name: "Refresh" })
@@ -1839,7 +1839,7 @@ describe("renderer button parity", () => {
     });
   });
 
-  it("rechecks tool readiness from settings without running a refresh", () => {
+  it("rechecks update tools from settings without running a refresh", () => {
     const { rerender } = render(<SettingsView snapshot={snapshot()} />);
 
     expect(screen.getByText("Enabled")).toBeInTheDocument();
