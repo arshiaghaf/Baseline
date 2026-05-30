@@ -653,11 +653,12 @@ button:disabled {
 }
 
 .item-card .row-title strong {
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .item-card .row-title span {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .item-card .row-main p {
