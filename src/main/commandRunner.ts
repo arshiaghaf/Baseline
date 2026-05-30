@@ -14,6 +14,8 @@ export type CommandResult = {
   success: boolean;
   status: number | null;
   output: string;
+  stdout?: string;
+  stderr?: string;
 };
 
 export async function isExecutable(path: string): Promise<boolean> {
@@ -55,34 +57,57 @@ export async function runCommand(
       stdio: ["ignore", "pipe", "pipe"]
     });
     const output: string[] = [];
-    let buffered = "";
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    let stdoutBuffered = "";
+    let stderrBuffered = "";
 
-    const append = (chunk: Buffer) => {
+    const append = (chunk: Buffer, stream: string[], buffer: string): string => {
       const text = chunk.toString("utf8");
       output.push(text);
-      buffered += text;
-      let newline = buffered.indexOf("\n");
+      stream.push(text);
+      buffer += text;
+      let newline = buffer.indexOf("\n");
       while (newline !== -1) {
-        const line = buffered.slice(0, newline).trim();
-        buffered = buffered.slice(newline + 1);
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
         if (line) {
           onOutputLine(line);
         }
-        newline = buffered.indexOf("\n");
+        newline = buffer.indexOf("\n");
       }
+      return buffer;
     };
 
-    child.stdout.on("data", append);
-    child.stderr.on("data", append);
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutBuffered = append(chunk, stdout, stdoutBuffered);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrBuffered = append(chunk, stderr, stderrBuffered);
+    });
     child.on("error", () => {
-      resolve({ success: false, status: null, output: output.join("") });
+      resolve({
+        success: false,
+        status: null,
+        output: output.join(""),
+        stdout: stdout.join(""),
+        stderr: stderr.join("")
+      });
     });
     child.on("close", (status) => {
-      const line = buffered.trim();
-      if (line) {
-        onOutputLine(line);
+      for (const buffered of [stdoutBuffered, stderrBuffered]) {
+        const line = buffered.trim();
+        if (line) {
+          onOutputLine(line);
+        }
       }
-      resolve({ success: status === 0, status, output: output.join("") });
+      resolve({
+        success: status === 0,
+        status,
+        output: output.join(""),
+        stdout: stdout.join(""),
+        stderr: stderr.join("")
+      });
     });
   });
 }
@@ -93,7 +118,7 @@ export async function runBrewCommand(
 ): Promise<CommandResult> {
   const executable = await resolvedBrewExecutablePath();
   if (!executable) {
-    return { success: false, status: null, output: "" };
+    return { success: false, status: null, output: "", stdout: "", stderr: "" };
   }
   return runCommand(executable, args, onOutputLine);
 }
@@ -101,7 +126,7 @@ export async function runBrewCommand(
 export async function runMasCommand(args: string[]): Promise<CommandResult> {
   const executable = await resolvedMasExecutablePath();
   if (!executable) {
-    return { success: false, status: null, output: "" };
+    return { success: false, status: null, output: "", stdout: "", stderr: "" };
   }
   return runCommand(executable, args);
 }

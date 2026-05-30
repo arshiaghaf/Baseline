@@ -38,10 +38,10 @@ export class HomebrewInventoryClient {
 
     const metadataReady = !updateResult || updateResult.success;
     const parsed = this.parser.buildInventoryWithStatus(
-      formulaVersions.output,
-      caskVersions.output,
-      metadataReady && formulaOutdated.success ? formulaOutdated.output || "{}" : "{}",
-      metadataReady && caskOutdated.success ? caskOutdated.output || "{}" : "{}"
+      commandStdout(formulaVersions),
+      commandStdout(caskVersions),
+      metadataReady && formulaOutdated.success ? commandStdout(formulaOutdated) || "{}" : "{}",
+      metadataReady && caskOutdated.success ? commandStdout(caskOutdated) || "{}" : "{}"
     );
     const commandSucceeded =
       metadataReady &&
@@ -75,6 +75,10 @@ export class HomebrewInventoryClient {
       })
     };
   }
+}
+
+function commandStdout(result: CommandResult): string {
+  return result.stdout ?? result.output;
 }
 
 export class HomebrewInventoryParser {
