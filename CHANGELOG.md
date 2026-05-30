@@ -4,6 +4,11 @@
 
 ### Added
 
+- Settings now use a dedicated in-app sidebar with General, Appearance, and Diagnostics sections, including grouped Update Tools, refresh, scan-directory, and version details. [#87](https://github.com/arshiaghaf/Baseline/pull/87)
+- Version and build metadata now flow through shared app metadata, macOS `CFBundleVersion`, Settings, About, diagnostics, release preparation, and Electron smoke coverage. [#86](https://github.com/arshiaghaf/Baseline/pull/86)
+- Release validation now runs broader macOS CI coverage, production audit checks, deterministic Electron smoke coverage, unsigned preview validation, and stricter changelog heading guards for release preparation. [#78](https://github.com/arshiaghaf/Baseline/pull/78), [#81](https://github.com/arshiaghaf/Baseline/pull/81), [#74](https://github.com/arshiaghaf/Baseline/pull/74), [#76](https://github.com/arshiaghaf/Baseline/pull/76)
+- README polish, static GPL badge handling, refreshed badge cache behavior, and regenerated app icon packaging assets keep the public project presentation and packaged macOS icon current. [#85](https://github.com/arshiaghaf/Baseline/pull/85), [#80](https://github.com/arshiaghaf/Baseline/pull/80), [#77](https://github.com/arshiaghaf/Baseline/pull/77), [#79](https://github.com/arshiaghaf/Baseline/pull/79)
+- Dependency maintenance now covers newer Electron, Electron Forge, Vite/Vitest, TypeScript/ESLint tooling, React/Node types, PostCSS, and patched lockfile overrides for reported `tmp` and transitive audit alerts. [#71](https://github.com/arshiaghaf/Baseline/pull/71), [#72](https://github.com/arshiaghaf/Baseline/pull/72), [#89](https://github.com/arshiaghaf/Baseline/pull/89), [#90](https://github.com/arshiaghaf/Baseline/pull/90), [#94](https://github.com/arshiaghaf/Baseline/pull/94)
 - Installed app and installed Homebrew search matches now render as cards while Discover results keep the existing row layout. [#69](https://github.com/arshiaghaf/Baseline/pull/69)
 - Packaged macOS identity and icon assets were updated, including the Baseline Icon Composer source project, generated `.icns` packaging, refreshed app icon artwork, and the `com.arshiaghaf.baseline` bundle identifier. [#68](https://github.com/arshiaghaf/Baseline/pull/68), [#67](https://github.com/arshiaghaf/Baseline/pull/67), [#66](https://github.com/arshiaghaf/Baseline/pull/66)
 - Appearance settings now support System Default, Light Mode, and Dark Mode through Electron `nativeTheme`. [#65](https://github.com/arshiaghaf/Baseline/pull/65)
@@ -30,6 +35,12 @@
 
 ### Fixed
 
+- Homebrew outdated and inventory JSON parsing now reads valid JSON from stdout even when Homebrew emits warnings on stderr after wake or concurrent package-manager activity. [#88](https://github.com/arshiaghaf/Baseline/pull/88)
+- Failed Homebrew update indicators now clear for retries and fall back to a retryable Update state after a short delay. [#83](https://github.com/arshiaghaf/Baseline/pull/83)
+- Batch Homebrew updates now target only non-ignored, valid outdated tokens instead of letting a broad `brew upgrade` affect ignored items. [#92](https://github.com/arshiaghaf/Baseline/pull/92)
+- App rows/cards that update through matched Homebrew casks now show cask progress, completion, and failure states, including a brief successful state before refresh moves the item to Recently Updated. [#91](https://github.com/arshiaghaf/Baseline/pull/91)
+- Sidebar update badges are hidden when their count is zero. [#93](https://github.com/arshiaghaf/Baseline/pull/93)
+- Bundle icon extraction now preserves app icons when `sips` produces grayscale-only PNG output from ICNS conversion. [#82](https://github.com/arshiaghaf/Baseline/pull/82)
 - Toolbar search now works consistently across Apps, Homebrew, Installed, Ignored, and Discovery; selecting a sidebar tab or Settings exits active search while preserving the query for next use. [#70](https://github.com/arshiaghaf/Baseline/pull/70)
 - Sidebar update badges keep the All, Apps, and Homebrew counts stable while search filtering is active. [#60](https://github.com/arshiaghaf/Baseline/pull/60)
 - Ignored item action menus stay fully saturated while ignored card and row content remains visually muted. [#59](https://github.com/arshiaghaf/Baseline/pull/59)
@@ -42,6 +53,6 @@
 - Toolbar search collapse now handles outside clicks, ignores inside-control clicks, preserves active search text until cleared, and lets adjacent toolbar actions fire. [#27](https://github.com/arshiaghaf/Baseline/pull/27), [#28](https://github.com/arshiaghaf/Baseline/pull/28)
 - Compact menu bar window positioning now aligns to the tray item, clamps to the display work area, and shows as a focused popover. [#25](https://github.com/arshiaghaf/Baseline/pull/25)
 - Successful Homebrew single-item retries and maintenance cycles now clear affected failure markers. [#24](https://github.com/arshiaghaf/Baseline/pull/24)
-- Electron migration review fixes now recursively scan configured app directories without descending into discovered `.app` bundles and add a typed tool-readiness refresh IPC/preload API for Settings. [#20](https://github.com/arshiaghaf/Baseline/pull/20)
+- Electron migration review fixes now recursively scan configured app directories without descending into discovered `.app` bundles and add a typed tool status refresh IPC/preload API for Settings. [#20](https://github.com/arshiaghaf/Baseline/pull/20)
 - Homebrew placeholder icons now use explicit light/dark appearance, appearance-aware cache keys, and compact menu icon rendering that follows the SwiftUI color scheme. [#17](https://github.com/arshiaghaf/Baseline/pull/17)
 - Cached update results are preserved when lightweight refresh lookups fail transiently. [#16](https://github.com/arshiaghaf/Baseline/pull/16)
