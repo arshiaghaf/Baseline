@@ -1304,7 +1304,8 @@ button:disabled {
 }
 
 .settings-panel-box {
-  --settings-row-divider: rgba(60, 60, 67, 0.1);
+  --settings-panel-border: rgba(60, 60, 67, 0.1);
+  --settings-row-divider: rgba(60, 60, 67, 0.055);
   --settings-row-padding-block: 12px;
   --settings-row-padding-inline: 12px;
 
@@ -1312,7 +1313,7 @@ button:disabled {
   overflow: hidden;
   margin: 0 12px;
   padding: 0;
-  border: 1px solid var(--settings-row-divider);
+  border: 0.5px solid var(--settings-panel-border);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.34);
 }
@@ -1450,7 +1451,7 @@ button:disabled {
 
 .settings-row + .settings-row,
 .settings-row-list > .settings-row + .settings-row {
-  border-top: 1px solid var(--settings-row-divider);
+  border-top: 0.5px solid var(--settings-row-divider);
 }
 
 .settings-number-input {
@@ -1708,7 +1709,8 @@ button:disabled {
   }
 
   .settings-panel-box {
-    --settings-row-divider: rgba(235, 235, 245, 0.1);
+    --settings-panel-border: rgba(235, 235, 245, 0.1);
+    --settings-row-divider: rgba(235, 235, 245, 0.06);
 
     background: rgba(255, 255, 255, 0.04);
   }
