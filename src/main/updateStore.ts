@@ -365,21 +365,24 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
   }
 
-  async performHomebrewUpdateAll(): Promise<void> {
+  async performHomebrewUpdateAll(itemIDs?: string[]): Promise<void> {
     if (this.state.isRunningHomebrewMaintenance) {
       return;
     }
 
+    const requestedItemIDs = itemIDs ? new Set(itemIDs) : undefined;
     const updatesByAppID = new Map(this.state.updates.map((update) => [update.appID, update]));
     const appsRepresentedOutsideHomebrew = this.state.apps.filter(
       (app) => updatesByAppID.has(app.id) || this.state.ignoredIDs.includes(app.id)
     );
     const affected = this.state.homebrewItems.filter(
       (item) =>
+        (!requestedItemIDs || requestedItemIDs.has(item.id)) &&
         item.isOutdated &&
         !this.state.ignoredHomebrewItemIDs.includes(item.id) &&
         isValidHomebrewToken(item.token) &&
-        !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew, updatesByAppID)
+        (requestedItemIDs !== undefined ||
+          !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew, updatesByAppID))
     );
     if (affected.length === 0) {
       return;

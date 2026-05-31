@@ -1103,6 +1103,80 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("uses a caller-provided visible Homebrew batch scope", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Managed.app",
+      displayName: "Managed",
+      bundleIdentifier: "com.example.managed",
+      localVersion: version("1.0.0")
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "homebrew",
+            supportLevel: "supported",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            homebrewToken: "managed-cli",
+            checkedAt: "2026-04-30T12:00:00.000Z"
+          }
+        ],
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:managed-cli",
+            token: "managed-cli",
+            name: "Managed CLI",
+            kind: "cask",
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            installedVersion: version("14.0.0"),
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "formula:fd",
+            token: "fd",
+            name: "fd",
+            kind: "formula",
+            installedVersion: version("9.0.0"),
+            latestVersion: version("10.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll(["cask:managed-cli", "formula:ripgrep"]);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["upgrade", "--cask", "--greedy", "managed-cli"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+  });
+
   it("does not run Homebrew maintenance when every outdated item is ignored", async () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>

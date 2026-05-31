@@ -973,6 +973,11 @@ describe("renderer button parity", () => {
     expect(screen.getByText("14.1.0")).toBeInTheDocument();
     expect(screen.getByText("9.0.0")).toBeInTheDocument();
     expect(screen.getByText("10.0.0")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Update Brews" }));
+    expect(window.baseline.performHomebrewUpdateAll).toHaveBeenCalledWith([
+      "formula:fd",
+      "formula:ripgrep"
+    ]);
   });
 
   it("renders the Homebrew tab outdated section as a card grid", () => {
@@ -1035,6 +1040,46 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("Cask")).not.toBeInTheDocument();
     expect(screen.queryByText("1.0.0")).not.toBeInTheDocument();
     expect(screen.queryByText("2.0.0")).not.toBeInTheDocument();
+  });
+
+  it("updates the Homebrew rows currently visible in search results", () => {
+    const searchCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:example-cli",
+      token: "example-cli",
+      name: "Example CLI"
+    };
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep-cli",
+      token: "ripgrep-cli",
+      name: "ripgrep-cli",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    render(
+      <Dashboard
+        compact={false}
+        toolbarSearchOpen
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          searchText: "cli",
+          updates: [{ ...update, homebrewToken: searchCask.token }],
+          homebrewItems: [searchCask, formula]
+        })}
+      />
+    );
+
+    expect(screen.getByText("Example CLI")).toBeInTheDocument();
+    expect(screen.queryByText("App Updates")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Update Brews" }));
+
+    expect(window.baseline.performHomebrewUpdateAll).toHaveBeenCalledWith([
+      searchCask.id,
+      formula.id
+    ]);
   });
 
   it("moves installed apps and Homebrew into the Installed sidebar item", () => {

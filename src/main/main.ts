@@ -378,7 +378,11 @@ function wireIpc(): void {
   ipcMain.handle(ipcChannels.performHomebrewUpdate, (_event, itemID: string) =>
     store.performHomebrewUpdate(String(itemID))
   );
-  ipcMain.handle(ipcChannels.performHomebrewUpdateAll, () => store.performHomebrewUpdateAll());
+  ipcMain.handle(ipcChannels.performHomebrewUpdateAll, (_event, itemIDs?: unknown) =>
+    store.performHomebrewUpdateAll(
+      Array.isArray(itemIDs) ? itemIDs.map((itemID) => String(itemID)) : undefined
+    )
+  );
   ipcMain.handle(ipcChannels.installHomebrewItem, (_event, item: HomebrewCaskDiscoveryItem) =>
     store.installHomebrewItem(item)
   );

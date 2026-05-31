@@ -790,7 +790,7 @@ function AllUpdatesSection({
               }
               readyLabel="Update Brews"
               readyVariant="outline"
-              onAction={() => void window.baseline.performHomebrewUpdateAll()}
+              onAction={() => performHomebrewUpdateAllForItems(derived.allHomebrewOutdated)}
             />
           ) : undefined
         }
@@ -1621,7 +1621,7 @@ export function HomebrewSection({
               }
               readyLabel="Update Brews"
               readyVariant="outline"
-              onAction={() => void window.baseline.performHomebrewUpdateAll()}
+              onAction={() => performHomebrewUpdateAllForItems(items)}
             />
           ) : undefined
         }
@@ -2943,6 +2943,10 @@ function compareRecentRows(
 
 function combinedAvailableCount(derived: DerivedSections): number {
   return derived.availableApps.length + derived.allHomebrewOutdated.length;
+}
+
+function performHomebrewUpdateAllForItems(items: Pick<HomebrewManagedItem, "id">[]): void {
+  void window.baseline.performHomebrewUpdateAll(items.map((item) => item.id));
 }
 
 function toggleCollapsedSection(
