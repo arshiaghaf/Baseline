@@ -28,3 +28,9 @@ Confirm:
 - `dist/Baseline-<version>-unsigned.dmg` exists.
 - `dist/Baseline-<version>-unsigned-release-notes.md` contains only the `Added` and/or `Fixed` subsections from the finalized changelog section.
 - The DMG opens and `Baseline.app` can be copied to `/Applications`.
+
+After the GitHub Release is created, verify its published assets and notes:
+
+```bash
+scripts/check-release-assets.sh v<version>
+```
