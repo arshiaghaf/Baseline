@@ -71,6 +71,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly openAppBundle: (bundlePath: string) => Promise<void>;
   private readonly successRefreshDelayMS: number;
   private refreshTask?: Promise<void>;
+  private refreshSequence = 0;
   private autoRefreshTimer?: NodeJS.Timeout;
   private readonly homebrewBatchFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private readonly homebrewFallbackFailureClearTimers = new Map<string, NodeJS.Timeout>();
@@ -150,9 +151,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (this.refreshTask && lightweight) {
       return this.refreshTask;
     }
-    this.refreshTask = this.computeRefresh(lightweight);
-    return this.refreshTask.finally(() => {
-      this.refreshTask = undefined;
+    const sequence = ++this.refreshSequence;
+    const task = this.computeRefresh(lightweight, sequence);
+    this.refreshTask = task;
+    return task.finally(() => {
+      if (this.refreshTask === task) {
+        this.refreshTask = undefined;
+      }
     });
   }
 
@@ -542,7 +547,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
   }
 
-  private async computeRefresh(lightweight: boolean): Promise<void> {
+  private async computeRefresh(lightweight: boolean, sequence: number): Promise<void> {
     this.patch({
       isRefreshing: true,
       refreshErrorMessage: undefined,
@@ -557,6 +562,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight })
       ]);
       const homebrewItems = homebrewInventory.items;
+      if (sequence !== this.refreshSequence) {
+        return;
+      }
       this.latestHomebrewIndex = homebrewIndex;
       this.latestHomebrewFormulaIndex = homebrewFormulaIndex;
       const updates: UpdateRecord[] = [];
@@ -672,6 +680,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       await this.refreshHomebrewDiscoverItems();
       await this.persist();
     } catch (error) {
+      if (sequence !== this.refreshSequence) {
+        return;
+      }
       this.patch({
         isRefreshing: false,
         refreshErrorMessage: error instanceof Error ? error.message : "Refresh failed."

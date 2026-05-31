@@ -347,6 +347,44 @@ describe("update store helpers", () => {
     expect(inventoryOptions).toEqual([{ updateMetadata: true }, { updateMetadata: false }]);
   });
 
+  it("does not let an older overlapping full refresh overwrite a newer snapshot", async () => {
+    const olderApp = appRecord({
+      bundlePath: "/Applications/Refresh Race.app",
+      displayName: "Refresh Race",
+      localVersion: version("1.0.0")
+    });
+    const newerApp = appRecord({
+      bundlePath: "/Applications/Refresh Race.app",
+      displayName: "Refresh Race",
+      localVersion: version("2.0.0")
+    });
+    const scanResolutions: Array<(apps: AppRecord[]) => void> = [];
+    const store = await makeStore({
+      clients: {
+        scanner: {
+          scanApplications: () =>
+            new Promise<AppRecord[]>((resolve) => {
+              scanResolutions.push(resolve);
+            })
+        }
+      }
+    });
+
+    const firstRefresh = store.refresh(false);
+    const secondRefresh = store.refresh(false);
+
+    expect(scanResolutions).toHaveLength(2);
+    scanResolutions[1]?.([newerApp]);
+    await secondRefresh;
+
+    expect(store.getSnapshot().apps).toEqual([newerApp]);
+
+    scanResolutions[0]?.([olderApp]);
+    await firstRefresh;
+
+    expect(store.getSnapshot().apps).toEqual([newerApp]);
+  });
+
   it("preserves App Store, Sparkle, then Homebrew update source precedence", async () => {
     const precedenceApp = appRecord({
       bundlePath: "/Applications/Precedence.app",
