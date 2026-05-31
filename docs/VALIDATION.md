@@ -1,6 +1,6 @@
 # Validation
 
-Use this checklist before handing off a local preview build, opening a release PR, or cutting the first public release.
+Use this checklist before handing off a local preview build, preparing a release, or validating risky app behavior changes.
 
 ## Known-Good Preview
 
@@ -28,7 +28,7 @@ Validate at least one item in each category when possible:
 ## Release Artifact Check
 
 ```bash
-scripts/prepare-unsigned-release.sh 0.1.0
+scripts/prepare-unsigned-release.sh <version>
 ```
 
 Confirm:
