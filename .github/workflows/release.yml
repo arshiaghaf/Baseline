@@ -52,3 +52,18 @@ jobs:
             "dist/Baseline-${VERSION}-unsigned.dmg.sha256" \
             --title "Baseline ${VERSION} unsigned preview" \
             --notes-file "dist/Baseline-${VERSION}-unsigned-release-notes.md"
+
+      - name: Dispatch Homebrew tap update
+        env:
+          GH_TOKEN: ${{ secrets.TAP_WORKFLOW_TOKEN }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::notice::TAP_WORKFLOW_TOKEN is not configured; skipping Homebrew tap update."
+            exit 0
+          fi
+
+          gh workflow run update-baseline-cask.yml \
+            --repo arshiaghaf/homebrew-tap \
+            --ref main \
+            -f tag="$GITHUB_REF_NAME" \
+            -f repository="$GITHUB_REPOSITORY"
