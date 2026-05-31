@@ -37,7 +37,7 @@ git push baseline v0.1.0
 9. Verify the GitHub Release contains:
    - `Baseline-0.1.0-unsigned.dmg`
    - `Baseline-0.1.0-unsigned.dmg.sha256`
-   - release notes that include the finalized changelog section and an unsigned build note.
+   - release notes that contain only the `Added` and/or `Fixed` subsections from the finalized changelog section.
 
 The release workflow accepts tags like `v0.1.0` and `v0.1.0-beta.1`.
 

@@ -34,6 +34,5 @@ scripts/prepare-unsigned-release.sh 0.1.0
 Confirm:
 
 - `dist/Baseline-<version>-unsigned.dmg` exists.
-- `dist/Baseline-<version>-unsigned-release-notes.md` includes the SHA-256 checksum.
-- The release notes clearly describe the artifact as unsigned and not notarized.
+- `dist/Baseline-<version>-unsigned-release-notes.md` contains only the `Added` and/or `Fixed` subsections from the finalized changelog section.
 - The DMG opens and `Baseline.app` can be copied to `/Applications`.

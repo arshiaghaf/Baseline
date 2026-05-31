@@ -50,6 +50,7 @@ const version = process.env.VERSION;
 const outputPath = process.env.CHANGELOG_SECTION_PATH;
 const changelog = fs.readFileSync("CHANGELOG.md", "utf8");
 const lines = changelog.split(/\r?\n/);
+const releaseNoteHeadings = new Set(["### Added", "### Fixed"]);
 const headingPattern = new RegExp(
   `^## ${version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} — \\d{4}-\\d{2}-\\d{2}$`,
 );
@@ -71,6 +72,8 @@ if (nextHeadingIndex === -1) {
 }
 
 const sectionLines = lines.slice(headingIndex + 1, nextHeadingIndex);
+const releaseNoteLines = [];
+let includeCurrentSubsection = false;
 
 while (sectionLines.length > 0 && sectionLines[0].trim() === "") {
   sectionLines.shift();
@@ -88,7 +91,31 @@ if (sectionLines.length === 0) {
   process.exit(1);
 }
 
-fs.writeFileSync(outputPath, `${sectionLines.join("\n")}\n`);
+for (const line of sectionLines) {
+  if (line.startsWith("### ")) {
+    includeCurrentSubsection = releaseNoteHeadings.has(line);
+  }
+
+  if (includeCurrentSubsection) {
+    releaseNoteLines.push(line);
+  }
+}
+
+while (
+  releaseNoteLines.length > 0 &&
+  releaseNoteLines[releaseNoteLines.length - 1].trim() === ""
+) {
+  releaseNoteLines.pop();
+}
+
+if (releaseNoteLines.length === 0) {
+  console.error(
+    `CHANGELOG.md section for ${version} must contain an Added or Fixed section for release notes.`,
+  );
+  process.exit(1);
+}
+
+fs.writeFileSync(outputPath, `${releaseNoteLines.join("\n")}\n`);
 NODE
 
 scripts/create-unsigned-dmg.sh "$VERSION"
@@ -102,35 +129,7 @@ CHECKSUM="$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')"
 
 echo "${CHECKSUM}  ${APP_NAME}-${VERSION}-unsigned.dmg" > "$CHECKSUM_PATH"
 
-cat > "$NOTES_PATH" <<NOTES
-# Baseline ${VERSION}
-
-## What's Changed
-
-NOTES
-
-cat "$CHANGELOG_SECTION_PATH" >> "$NOTES_PATH"
-
-cat >> "$NOTES_PATH" <<NOTES
-
-## Download
-
-- ${APP_NAME}-${VERSION}-unsigned.dmg
-
-## SHA-256
-
-\`\`\`text
-${CHECKSUM}  ${APP_NAME}-${VERSION}-unsigned.dmg
-\`\`\`
-
-## Install
-
-Open the DMG and drag ${APP_NAME}.app to /Applications.
-
-## Build Note
-
-This release is not notarized by Apple, and macOS may show an unidentified-developer warning.
-NOTES
+cp "$CHANGELOG_SECTION_PATH" "$NOTES_PATH"
 
 echo "Prepared unsigned release artifact:"
 echo "$DMG_PATH"
