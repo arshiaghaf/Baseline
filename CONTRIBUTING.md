@@ -28,7 +28,7 @@ npm start
 - Create focused branches for each change.
 - Keep pull requests small enough to review.
 - Include tests for behavior changes.
-- Update docs when user-facing behavior, setup, or release steps change.
+- Update docs when user-facing behavior or setup changes.
 - Do not commit generated outputs such as `node_modules/`, `out/`, `.vite/`,
   `dist/`, `coverage/`, `test-results/`, or `playwright-report/`.
 

@@ -77,7 +77,6 @@ Developer documentation:
 - [Architecture](docs/ARCHITECTURE.md)
 - [Continuous Integration](docs/CI.md)
 - [Validation](docs/VALIDATION.md)
-- [Releasing](docs/RELEASING.md)
 
 ## License
 
