@@ -461,7 +461,7 @@ describe("ported clients", () => {
     }
   });
 
-  it("does not offer self-updates to prerelease development builds for the same release", async () => {
+  it("does not offer self-updates when the local build is already at the release version", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -474,10 +474,34 @@ describe("ported clients", () => {
 
     try {
       await expect(
-        new SelfUpdateClient().lookup(version("0.2.0-beta.1"), "2026-05-31T12:00:00.000Z")
+        new SelfUpdateClient().lookup(version("0.2.0"), "2026-05-31T12:00:00.000Z")
       ).resolves.toMatchObject({
         available: false,
-        currentVersion: version("0.2.0-beta.1"),
+        currentVersion: version("0.2.0"),
+        latestVersion: version("v0.2.0")
+      });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("does not offer self-updates when the local build is ahead of the latest release", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tag_name: "v0.2.0",
+          html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
+        }),
+        { status: 200 }
+      )
+    );
+
+    try {
+      await expect(
+        new SelfUpdateClient().lookup(version("0.3.0"), "2026-05-31T12:00:00.000Z")
+      ).resolves.toMatchObject({
+        available: false,
+        currentVersion: version("0.3.0"),
         latestVersion: version("v0.2.0")
       });
     } finally {
