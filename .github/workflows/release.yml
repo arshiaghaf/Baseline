@@ -52,3 +52,62 @@ jobs:
             "dist/Baseline-${VERSION}-unsigned.dmg.sha256" \
             --title "Baseline ${VERSION} unsigned preview" \
             --notes-file "dist/Baseline-${VERSION}-unsigned-release-notes.md"
+
+      - name: Dispatch Homebrew tap update
+        id: tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+
+          request_id="baseline-${GITHUB_REF_NAME}-${GITHUB_RUN_ID}"
+          echo "request_id=$request_id" >> "$GITHUB_OUTPUT"
+
+          for attempt in {1..6}; do
+            if gh workflow run update-baseline-cask.yml \
+              --repo arshiaghaf/homebrew-tap \
+              --ref main \
+              -f tag="$GITHUB_REF_NAME" \
+              -f request_id="$request_id"; then
+              exit 0
+            fi
+
+            if [[ "$attempt" -eq 6 ]]; then
+              echo "Failed to dispatch Homebrew tap update after ${attempt} attempts." >&2
+              exit 1
+            fi
+
+            sleep $((attempt * 30))
+          done
+
+      - name: Wait for Homebrew tap update
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          REQUEST_ID: ${{ steps.tap.outputs.request_id }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+
+          for _ in {1..20}; do
+            run_id="$(
+              gh run list \
+                --repo arshiaghaf/homebrew-tap \
+                --workflow update-baseline-cask.yml \
+                --json databaseId,displayTitle \
+                --jq '.[] | select(.displayTitle | contains(env.REQUEST_ID)) | .databaseId' \
+                2>/tmp/baseline-tap-run-list.err \
+                | head -n1 || true
+            )"
+
+            if [[ -n "$run_id" ]]; then
+              gh run watch "$run_id" --repo arshiaghaf/homebrew-tap --exit-status
+              exit 0
+            fi
+
+            cat /tmp/baseline-tap-run-list.err >&2 || true
+            sleep 5
+          done
+
+          echo "Timed out waiting for Homebrew tap workflow to appear." >&2
+          exit 1
