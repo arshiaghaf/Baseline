@@ -28,4 +28,4 @@ npm run build
 npm run test:electron
 ```
 
-Unsigned DMG release publishing is handled by `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
+Unsigned DMG release artifact builds are handled by `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
