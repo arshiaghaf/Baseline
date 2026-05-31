@@ -50,7 +50,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             "dist/Baseline-${VERSION}-unsigned.dmg" \
             "dist/Baseline-${VERSION}-unsigned.dmg.sha256" \
-            --title "Baseline ${VERSION} unsigned preview" \
+            --title "Baseline ${VERSION}" \
             --notes-file "dist/Baseline-${VERSION}-unsigned-release-notes.md"
 
       - name: Dispatch Homebrew tap update

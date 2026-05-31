@@ -103,7 +103,7 @@ CHECKSUM="$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')"
 echo "${CHECKSUM}  ${APP_NAME}-${VERSION}-unsigned.dmg" > "$CHECKSUM_PATH"
 
 cat > "$NOTES_PATH" <<NOTES
-# Baseline ${VERSION} unsigned preview
+# Baseline ${VERSION}
 
 This is an unsigned preview build. It is not notarized by Apple, and macOS may show an unidentified-developer warning.
 
