@@ -947,7 +947,7 @@ button:disabled {
 
 .self-update-toolbar-button {
   border-color: transparent;
-  background: rgb(var(--update-accent-rgb));
+  background: #007aff;
   color: white;
   box-shadow: none;
 }
