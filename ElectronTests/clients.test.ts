@@ -460,4 +460,28 @@ describe("ported clients", () => {
       fetchMock.mockRestore();
     }
   });
+
+  it("does not offer self-updates to prerelease development builds for the same release", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tag_name: "v0.2.0",
+          html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
+        }),
+        { status: 200 }
+      )
+    );
+
+    try {
+      await expect(
+        new SelfUpdateClient().lookup(version("0.2.0-beta.1"), "2026-05-31T12:00:00.000Z")
+      ).resolves.toMatchObject({
+        available: false,
+        currentVersion: version("0.2.0-beta.1"),
+        latestVersion: version("v0.2.0")
+      });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
 });

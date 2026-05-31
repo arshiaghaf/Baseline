@@ -3,7 +3,7 @@
 
 import type { SelfUpdateRecord } from "../shared/domain";
 import { sanitizeExternalURL } from "../shared/security";
-import { isVersionGreater, version, type VersionValue } from "../shared/version";
+import { compareVersions, version, type VersionValue } from "../shared/version";
 
 const latestReleaseURL = "https://api.github.com/repos/arshiaghaf/Baseline/releases/latest";
 const fallbackReleasePageURL = "https://github.com/arshiaghaf/Baseline/releases/latest";
@@ -25,7 +25,7 @@ export class SelfUpdateClient {
       const latestVersion = version(latestVersionString(raw));
       const releaseURL = sanitizeExternalURL(raw?.html_url) ?? fallbackReleasePageURL;
       return {
-        available: isVersionGreater(latestVersion, currentVersion),
+        available: isSelfUpdateAvailable(latestVersion, currentVersion),
         currentVersion,
         latestVersion,
         releaseURL,
@@ -39,6 +39,15 @@ export class SelfUpdateClient {
 
 function latestVersionString(raw: any): string {
   return typeof raw?.tag_name === "string" ? raw.tag_name : "";
+}
+
+function isSelfUpdateAvailable(latestVersion: VersionValue, currentVersion: VersionValue): boolean {
+  return compareVersions(releaseCoreVersion(latestVersion), releaseCoreVersion(currentVersion)) > 0;
+}
+
+function releaseCoreVersion(value: VersionValue): VersionValue {
+  const releaseCore = value.raw.trim().match(/^v?(\d+(?:\.\d+)*)/)?.[1];
+  return version(releaseCore ?? value.raw);
 }
 
 function unavailableSelfUpdate(currentVersion: VersionValue, checkedAt: string): SelfUpdateRecord {
