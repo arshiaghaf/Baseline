@@ -41,8 +41,6 @@ When the required local tooling is available, Baseline can run update and instal
 
 Baseline is currently in beta. The core app experience works end to end, with ongoing polish focused on UI, packaging, and release quality.
 
-Packaged unsigned DMGs are available on the [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases) page.
-
 ## Install
 
 ### Requirements
@@ -57,30 +55,6 @@ Download the latest unsigned DMG from <https://github.com/arshiaghaf/Baseline/re
 
 ```bash
 brew install --cask arshiaghaf/tap/baseline
-```
-
-## Build from Source
-
-Requirements:
-
-- macOS 14.0 or newer
-- Node.js 25 or newer
-- npm
-
-## Build and Test
-
-```bash
-npm ci
-npm run typecheck
-npm test
-npm run build
-npm run test:electron
-```
-
-Run the app during development:
-
-```bash
-npm start
 ```
 
 ## Limitations
@@ -98,46 +72,16 @@ The app may query public services such as Apple lookup endpoints, Sparkle or app
 
 Report suspected security issues using the process in [SECURITY.md](SECURITY.md).
 
-## Architecture
-
-Baseline keeps update logic outside React views:
-
-- `src/shared` defines domain contracts, persistence snapshots, security policy, and shared parsers.
-- `src/main` contains Electron lifecycle, windows/tray, privileged IO, scanning, network lookup, subprocess execution, persistence, and IPC.
-- `src/renderer` renders React state and dispatches user intents through the preload API.
-- `ElectronTests` covers parsers, version logic, security checks, renderer behavior, persistence, store behavior, Homebrew app linking, and source-client fixtures.
-- `e2e` covers Electron launch smoke tests.
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for more detail.
-See [docs/VALIDATION.md](docs/VALIDATION.md) for preview validation.
-
-## Release Tooling
-
-For a fuller local release preview, run:
-
-```bash
-scripts/validate-preview.sh 0.0.0-preview
-```
-
-This builds, tests, packages an unsigned DMG, installs `/Applications/Baseline.app`, and smoke-launches the installed copy.
-
-## Package an Unsigned DMG
-
-```bash
-scripts/create-unsigned-dmg.sh 0.1.0
-```
-
-The script builds a Release app, creates `dist/Baseline-0.1.0-unsigned.dmg`, and prints a SHA-256 checksum. See [docs/RELEASING.md](docs/RELEASING.md) for release steps and limitations.
-
-To create the unsigned DMG plus release-note checksum text:
-
-```bash
-scripts/prepare-unsigned-release.sh 0.1.0
-```
-
 ## Contributing
 
 Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow the pull request template, and run the validation commands before opening a PR.
+
+Developer documentation:
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Continuous Integration](docs/CI.md)
+- [Validation](docs/VALIDATION.md)
+- [Releasing](docs/RELEASING.md)
 
 ## License
 
