@@ -32,15 +32,6 @@ const app: AppRecord = {
   sourceHint: "unknown"
 };
 
-const baselineApp: AppRecord = {
-  id: "app:baseline",
-  bundlePath: "/Applications/Baseline.app",
-  displayName: "Baseline",
-  bundleIdentifier: "com.arshiaghaf.baseline",
-  localVersion: version("0.1.0"),
-  sourceHint: "unknown"
-};
-
 const cask: HomebrewManagedItem = {
   id: "cask:example",
   token: "example",
@@ -59,16 +50,6 @@ const update: UpdateRecord = {
   localVersion: version("1.0.0"),
   remoteVersion: version("2.0.0"),
   homebrewToken: "example",
-  checkedAt: "2026-04-30T12:00:00.000Z"
-};
-
-const baselineUpdate: UpdateRecord = {
-  id: baselineApp.id,
-  appID: baselineApp.id,
-  source: "web",
-  supportLevel: "limited",
-  localVersion: version("0.1.0"),
-  remoteVersion: version("0.2.0"),
   checkedAt: "2026-04-30T12:00:00.000Z"
 };
 
@@ -272,7 +253,7 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
   });
 
-  it("shows the main-window self-update shortcut only for Baseline updates", () => {
+  it("shows the main-window self-update shortcut only when self-update is available", () => {
     const { container, rerender } = render(
       <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={snapshot()} />
     );
@@ -284,8 +265,13 @@ describe("renderer button parity", () => {
         compact={false}
         onOpenSettings={() => undefined}
         snapshot={snapshot({
-          apps: [app, baselineApp],
-          updates: [update, baselineUpdate]
+          selfUpdate: {
+            available: true,
+            currentVersion: version("0.1.0"),
+            latestVersion: version("0.2.0"),
+            releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+            checkedAt: "2026-04-30T12:00:00.000Z"
+          }
         })}
       />
     );

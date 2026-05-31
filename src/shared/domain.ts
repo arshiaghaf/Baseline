@@ -130,6 +130,14 @@ export type HomebrewManagedItem = {
   appID?: string;
 };
 
+export type SelfUpdateRecord = {
+  available: boolean;
+  currentVersion: VersionValue;
+  latestVersion?: VersionValue;
+  releaseURL?: string;
+  checkedAt?: string;
+};
+
 export type PersistedSnapshot = {
   apps: AppRecord[];
   updates: UpdateRecord[];
@@ -186,6 +194,7 @@ export type BaselineSnapshot = PersistedSnapshot &
     homebrewDiscoverProgressByItemID: Record<string, number>;
     laggingHomebrewCaskTokens: string[];
     defaultScanDirectories: string[];
+    selfUpdate?: SelfUpdateRecord;
   };
 
 export const emptyHomebrewCaskIndex: HomebrewCaskIndex = {

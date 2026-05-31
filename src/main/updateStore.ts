@@ -16,6 +16,7 @@ import type {
   HomebrewRecentlyUpdatedRecord,
   MenuTab,
   PersistedSnapshot,
+  SelfUpdateRecord,
   UpdateRecord
 } from "../shared/domain";
 import {
@@ -32,7 +33,13 @@ import {
 } from "../shared/homebrewProgress";
 import type { PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
-import { compareVersions, isVersionEmpty, isVersionGreater } from "../shared/version";
+import {
+  compareVersions,
+  isVersionEmpty,
+  isVersionGreater,
+  version,
+  type VersionValue
+} from "../shared/version";
 import { AppStoreLookupClient } from "./appStoreLookupClient";
 import { BundleScannerClient } from "./bundleScanner";
 import {
@@ -44,6 +51,7 @@ import { HomebrewCaskClient } from "./homebrewCaskClient";
 import { HomebrewFormulaClient } from "./homebrewFormulaClient";
 import { HomebrewInventoryClient } from "./homebrewInventoryClient";
 import { SnapshotPersistence } from "./persistence";
+import { SelfUpdateClient } from "./selfUpdateClient";
 import { SparkleAppcastClient } from "./sparkleAppcastClient";
 
 type StoreEvents = {
@@ -65,6 +73,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   >;
   private readonly homebrewFormula: Pick<HomebrewFormulaClient, "fetchIndex" | "searchFormulae">;
   private readonly homebrewInventory: Pick<HomebrewInventoryClient, "fetchInventory">;
+  private readonly selfUpdate: Pick<SelfUpdateClient, "lookup">;
+  private readonly currentAppVersion: VersionValue;
   private readonly runBrewCommand: typeof defaultRunBrewCommand;
   private readonly runMasCommand: typeof defaultRunMasCommand;
   private readonly openExternalURL: (url: string) => Promise<boolean>;
@@ -91,7 +101,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       homebrew: Pick<HomebrewCaskClient, "fetchIndex" | "lookupUpdate" | "searchCasks">;
       homebrewFormula: Pick<HomebrewFormulaClient, "fetchIndex" | "searchFormulae">;
       homebrewInventory: Pick<HomebrewInventoryClient, "fetchInventory">;
+      selfUpdate: Pick<SelfUpdateClient, "lookup">;
     }>;
+    currentAppVersion?: string;
     runBrewCommand?: typeof defaultRunBrewCommand;
     runMasCommand?: typeof defaultRunMasCommand;
     successRefreshDelayMS?: number;
@@ -104,6 +116,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.homebrew = options.clients?.homebrew ?? new HomebrewCaskClient();
     this.homebrewFormula = options.clients?.homebrewFormula ?? new HomebrewFormulaClient();
     this.homebrewInventory = options.clients?.homebrewInventory ?? new HomebrewInventoryClient();
+    this.selfUpdate = options.clients?.selfUpdate ?? new SelfUpdateClient();
+    this.currentAppVersion = version(options.currentAppVersion);
     this.runBrewCommand = options.runBrewCommand ?? defaultRunBrewCommand;
     this.runMasCommand = options.runMasCommand ?? defaultRunMasCommand;
     this.openExternalURL = options.openExternalURL;
@@ -550,12 +564,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
     const now = new Date().toISOString();
     try {
-      const [apps, homebrewIndex, homebrewFormulaIndex, homebrewInventory] = await Promise.all([
-        this.scanner.scanApplications(this.scanDirectories()),
-        this.homebrew.fetchIndex(),
-        this.homebrewFormula.fetchIndex(),
-        this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight })
-      ]);
+      const [apps, homebrewIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
+        await Promise.all([
+          this.scanner.scanApplications(this.scanDirectories()),
+          this.homebrew.fetchIndex(),
+          this.homebrewFormula.fetchIndex(),
+          this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight }),
+          this.lookupSelfUpdate(now)
+        ]);
       const homebrewItems = homebrewInventory.items;
       this.latestHomebrewIndex = homebrewIndex;
       this.latestHomebrewFormulaIndex = homebrewFormulaIndex;
@@ -662,6 +678,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         homebrewDiscoverInstallingItemIDs: [],
         homebrewDiscoverInstalledPendingRefreshItemIDs: [],
         homebrewDiscoverProgressByItemID: {},
+        selfUpdate,
         laggingHomebrewCaskTokens: detectLaggingHomebrewCaskTokens(
           homebrewItems,
           updates,
@@ -702,6 +719,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       installedFormulae
     );
     this.patch({ homebrewDiscoverItems: [...casks, ...formulae].slice(0, 18) });
+  }
+
+  private async lookupSelfUpdate(now: string): Promise<SelfUpdateRecord | undefined> {
+    if (isVersionEmpty(this.currentAppVersion)) {
+      return undefined;
+    }
+    return this.selfUpdate.lookup(this.currentAppVersion, now);
   }
 
   private scanDirectories(): string[] {

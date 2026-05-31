@@ -76,8 +76,6 @@ type SettingsSectionID = "general" | "appearance" | "diagnostics";
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
 const toolbarIconStrokeWidth = 1.5;
-const baselineBundleIdentifier = "com.arshiaghaf.baseline";
-const baselineLatestReleaseURL = "https://github.com/arshiaghaf/Baseline/releases/latest";
 const settingsSidebarItems: Array<{
   id: SettingsSectionID;
   label: string;
@@ -303,7 +301,9 @@ export function Dashboard({
               <h1>{title}</h1>
             </div>
             <div className="topbar-actions">
-              {hasBaselineSelfUpdate(snapshot) ? <SelfUpdateToolbarButton /> : null}
+              {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
+                <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
+              ) : null}
               <ToolbarSearch
                 open={toolbarSearchOpen}
                 snapshot={snapshot}
@@ -491,20 +491,11 @@ function SidebarBadge({ count }: { count: number }) {
   return count > 0 ? <strong>{count}</strong> : null;
 }
 
-function hasBaselineSelfUpdate(snapshot: BaselineSnapshot): boolean {
-  const baselineAppIDs = new Set(
-    snapshot.apps
-      .filter((app) => app.bundleIdentifier?.toLowerCase() === baselineBundleIdentifier)
-      .map((app) => app.id)
-  );
-  return snapshot.updates.some((update) => baselineAppIDs.has(update.appID));
-}
-
-function SelfUpdateToolbarButton() {
+function SelfUpdateToolbarButton({ releaseURL }: { releaseURL: string }) {
   return (
     <button
       className="toolbar-button self-update-toolbar-button"
-      onClick={() => void window.baseline.openExternal(baselineLatestReleaseURL)}
+      onClick={() => void window.baseline.openExternal(releaseURL)}
       title="New Baseline Update Available"
       aria-label="New Baseline Update Available"
     >
