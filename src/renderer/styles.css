@@ -945,6 +945,13 @@ button:disabled {
   color: rgba(60, 60, 67, 0.78);
 }
 
+.self-update-toolbar-button {
+  border-color: transparent;
+  background: rgb(var(--update-accent-rgb));
+  color: white;
+  box-shadow: none;
+}
+
 @media (hover: hover) {
   .toolbar-button:not(:disabled):hover,
   .icon-button:not(:disabled):hover,
@@ -973,6 +980,13 @@ button:disabled {
     background: rgba(60, 60, 67, 0.08);
     box-shadow: none;
     color: #0d0d0d;
+  }
+
+  .self-update-toolbar-button:not(:disabled):hover {
+    border-color: transparent;
+    background: #0a84ff;
+    box-shadow: none;
+    color: white;
   }
 
   .compact .toolbar-button:not(:disabled):hover,
@@ -1802,6 +1816,13 @@ button:disabled {
     color: rgba(235, 235, 245, 0.78);
   }
 
+  .self-update-toolbar-button {
+    border-color: transparent;
+    background: #0a84ff;
+    color: white;
+    box-shadow: none;
+  }
+
   .compact .toolbar-button,
   .compact .toolbar-button.refresh-button,
   .compact .toolbar-search .toolbar-button {
@@ -1855,6 +1876,13 @@ button:disabled {
       background: rgba(255, 255, 255, 0.1);
       box-shadow: none;
       color: #fcfcfc;
+    }
+
+    .self-update-toolbar-button:not(:disabled):hover {
+      border-color: transparent;
+      background: #409cff;
+      box-shadow: none;
+      color: white;
     }
 
     .compact .toolbar-button:not(:disabled):hover,

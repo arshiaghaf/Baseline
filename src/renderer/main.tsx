@@ -76,6 +76,8 @@ type SettingsSectionID = "general" | "appearance" | "diagnostics";
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
 const toolbarIconStrokeWidth = 1.5;
+const showSelfUpdateToolbarButtonForTesting = true;
+const baselineLatestReleaseURL = "https://github.com/arshiaghaf/Baseline/releases/latest";
 const settingsSidebarItems: Array<{
   id: SettingsSectionID;
   label: string;
@@ -301,6 +303,7 @@ export function Dashboard({
               <h1>{title}</h1>
             </div>
             <div className="topbar-actions">
+              {showSelfUpdateToolbarButtonForTesting ? <SelfUpdateToolbarButton /> : null}
               <ToolbarSearch
                 open={toolbarSearchOpen}
                 snapshot={snapshot}
@@ -486,6 +489,19 @@ function Sidebar({
 
 function SidebarBadge({ count }: { count: number }) {
   return count > 0 ? <strong>{count}</strong> : null;
+}
+
+function SelfUpdateToolbarButton() {
+  return (
+    <button
+      className="toolbar-button self-update-toolbar-button"
+      onClick={() => void window.baseline.openExternal(baselineLatestReleaseURL)}
+      title="New Baseline Update Available"
+      aria-label="New Baseline Update Available"
+    >
+      <Download size={16} strokeWidth={2} />
+    </button>
+  );
 }
 
 function ToolbarSearch({

@@ -247,6 +247,29 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
   });
 
+  it("shows the main-window self-update shortcut before search", () => {
+    const { container, rerender } = render(
+      <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={snapshot()} />
+    );
+    const toolbarButtons = within(container.querySelector(".topbar-actions") as HTMLElement)
+      .getAllByRole("button")
+      .map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"));
+
+    expect(toolbarButtons).toEqual(["New Baseline Update Available", "Search", "Refresh"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "New Baseline Update Available" }));
+
+    expect(window.baseline.openExternal).toHaveBeenCalledWith(
+      "https://github.com/arshiaghaf/Baseline/releases/latest"
+    );
+
+    rerender(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
+
+    expect(
+      screen.queryByRole("button", { name: "New Baseline Update Available" })
+    ).not.toBeInTheDocument();
+  });
+
   it("closes search mode on sidebar tab clicks without clearing the saved query", () => {
     const formula: HomebrewManagedItem = {
       id: "formula:obsidian-cli",
