@@ -65,5 +65,4 @@ jobs:
           gh workflow run update-baseline-cask.yml \
             --repo arshiaghaf/homebrew-tap \
             --ref main \
-            -f tag="$GITHUB_REF_NAME" \
-            -f repository="$GITHUB_REPOSITORY"
+            -f tag="$GITHUB_REF_NAME"
