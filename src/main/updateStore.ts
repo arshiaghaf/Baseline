@@ -901,6 +901,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (!appRecord) {
         continue;
       }
+      if (!isVersionGreater(appRecord.localVersion, previousUpdate.localVersion)) {
+        continue;
+      }
       records.unshift({
         id: appID,
         appID,
