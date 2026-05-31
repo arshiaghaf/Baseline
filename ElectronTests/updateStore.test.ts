@@ -347,6 +347,32 @@ describe("update store helpers", () => {
     expect(inventoryOptions).toEqual([{ updateMetadata: true }, { updateMetadata: false }]);
   });
 
+  it("surfaces GitHub release self-update availability during refresh", async () => {
+    const lookup = vi.fn(async (currentVersion: ReturnType<typeof version>, checkedAt: string) => ({
+      available: true,
+      currentVersion,
+      latestVersion: version("0.2.0"),
+      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+      checkedAt
+    }));
+    const store = await makeStore({
+      currentAppVersion: "0.1.0",
+      clients: {
+        selfUpdate: { lookup }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(lookup).toHaveBeenCalledWith(version("0.1.0"), expect.any(String));
+    expect(store.getSnapshot().selfUpdate).toMatchObject({
+      available: true,
+      currentVersion: version("0.1.0"),
+      latestVersion: version("0.2.0"),
+      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest"
+    });
+  });
+
   it("preserves App Store, Sparkle, then Homebrew update source precedence", async () => {
     const precedenceApp = appRecord({
       bundlePath: "/Applications/Precedence.app",
@@ -1471,6 +1497,7 @@ async function makeStore({
   runMasCommand = async () => ({ success: true, status: 0, output: "" }),
   openExternalURL = async () => true,
   openAppBundle = async () => undefined,
+  currentAppVersion,
   successRefreshDelayMS = 0,
   onUserData
 }: {
@@ -1480,6 +1507,7 @@ async function makeStore({
   runMasCommand?: ConstructorParameters<typeof UpdateStore>[0]["runMasCommand"];
   openExternalURL?: ConstructorParameters<typeof UpdateStore>[0]["openExternalURL"];
   openAppBundle?: ConstructorParameters<typeof UpdateStore>[0]["openAppBundle"];
+  currentAppVersion?: ConstructorParameters<typeof UpdateStore>[0]["currentAppVersion"];
   successRefreshDelayMS?: ConstructorParameters<typeof UpdateStore>[0]["successRefreshDelayMS"];
   onUserData?: (directory: string) => void;
 } = {}): Promise<UpdateStore> {
@@ -1491,6 +1519,7 @@ async function makeStore({
     persisted,
     openExternalURL,
     openAppBundle,
+    currentAppVersion,
     runBrewCommand,
     runMasCommand,
     successRefreshDelayMS,
@@ -1512,6 +1541,14 @@ async function makeStore({
           items: [],
           outdatedDetectionSucceeded: true,
           outdatedDetectionSucceededByKind: { formula: true, cask: true }
+        })
+      },
+      selfUpdate: {
+        lookup: async (currentVersion, checkedAt) => ({
+          available: false,
+          currentVersion,
+          releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+          checkedAt
         })
       },
       ...clients

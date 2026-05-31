@@ -121,6 +121,12 @@ function installBaselineMock() {
   };
 }
 
+function toolbarButtonLabels(container: HTMLElement): Array<string | null> {
+  return within(container.querySelector(".topbar-actions") as HTMLElement)
+    .getAllByRole("button")
+    .map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"));
+}
+
 describe("renderer button parity", () => {
   beforeEach(() => {
     installBaselineMock();
@@ -245,6 +251,48 @@ describe("renderer button parity", () => {
     expect(screen.queryByTitle("Collapse Discover")).not.toBeInTheDocument();
     expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
+  });
+
+  it("shows the main-window self-update shortcut only when self-update is available", () => {
+    const { container, rerender } = render(
+      <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={snapshot()} />
+    );
+
+    expect(toolbarButtonLabels(container)).toEqual(["Search", "Refresh"]);
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selfUpdate: {
+            available: true,
+            currentVersion: version("0.1.0"),
+            latestVersion: version("0.2.0"),
+            releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+            checkedAt: "2026-04-30T12:00:00.000Z"
+          }
+        })}
+      />
+    );
+
+    expect(toolbarButtonLabels(container)).toEqual([
+      "New Baseline Update Available",
+      "Search",
+      "Refresh"
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "New Baseline Update Available" }));
+
+    expect(window.baseline.openExternal).toHaveBeenCalledWith(
+      "https://github.com/arshiaghaf/Baseline/releases/latest"
+    );
+
+    rerender(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
+
+    expect(
+      screen.queryByRole("button", { name: "New Baseline Update Available" })
+    ).not.toBeInTheDocument();
   });
 
   it("closes search mode on sidebar tab clicks without clearing the saved query", () => {

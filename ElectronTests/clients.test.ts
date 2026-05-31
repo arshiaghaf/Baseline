@@ -3,11 +3,12 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AppStoreLookupClient } from "../src/main/appStoreLookupClient";
 import { HomebrewCaskClient } from "../src/main/homebrewCaskClient";
 import { HomebrewFormulaClient } from "../src/main/homebrewFormulaClient";
 import { HomebrewInventoryParser } from "../src/main/homebrewInventoryClient";
+import { SelfUpdateClient } from "../src/main/selfUpdateClient";
 import { SparkleAppcastClient } from "../src/main/sparkleAppcastClient";
 import { version } from "../src/shared/version";
 
@@ -432,5 +433,79 @@ describe("ported clients", () => {
     const cursor = inventory.find((item) => item.token === "cursor");
     expect(cursor?.installedVersion.raw).toBe("3.2.11");
     expect(cursor?.latestVersion?.raw).toBe("3.2.16");
+  });
+
+  it("compares GitHub latest release metadata for Baseline self-updates", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tag_name: "v0.2.0",
+          html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
+        }),
+        { status: 200 }
+      )
+    );
+
+    try {
+      await expect(
+        new SelfUpdateClient().lookup(version("0.1.0"), "2026-05-31T12:00:00.000Z")
+      ).resolves.toMatchObject({
+        available: true,
+        currentVersion: version("0.1.0"),
+        latestVersion: version("v0.2.0"),
+        releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0",
+        checkedAt: "2026-05-31T12:00:00.000Z"
+      });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("does not offer self-updates when the local build is already at the release version", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tag_name: "v0.2.0",
+          html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
+        }),
+        { status: 200 }
+      )
+    );
+
+    try {
+      await expect(
+        new SelfUpdateClient().lookup(version("0.2.0"), "2026-05-31T12:00:00.000Z")
+      ).resolves.toMatchObject({
+        available: false,
+        currentVersion: version("0.2.0"),
+        latestVersion: version("v0.2.0")
+      });
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("does not offer self-updates when the local build is ahead of the latest release", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tag_name: "v0.2.0",
+          html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
+        }),
+        { status: 200 }
+      )
+    );
+
+    try {
+      await expect(
+        new SelfUpdateClient().lookup(version("0.3.0"), "2026-05-31T12:00:00.000Z")
+      ).resolves.toMatchObject({
+        available: false,
+        currentVersion: version("0.3.0"),
+        latestVersion: version("v0.2.0")
+      });
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 });

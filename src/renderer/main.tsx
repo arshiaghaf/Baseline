@@ -301,6 +301,9 @@ export function Dashboard({
               <h1>{title}</h1>
             </div>
             <div className="topbar-actions">
+              {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
+                <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
+              ) : null}
               <ToolbarSearch
                 open={toolbarSearchOpen}
                 snapshot={snapshot}
@@ -486,6 +489,19 @@ function Sidebar({
 
 function SidebarBadge({ count }: { count: number }) {
   return count > 0 ? <strong>{count}</strong> : null;
+}
+
+function SelfUpdateToolbarButton({ releaseURL }: { releaseURL: string }) {
+  return (
+    <button
+      className="toolbar-button self-update-toolbar-button"
+      onClick={() => void window.baseline.openExternal(releaseURL)}
+      title="New Baseline Update Available"
+      aria-label="New Baseline Update Available"
+    >
+      <Download size={16} strokeWidth={2} />
+    </button>
+  );
 }
 
 function ToolbarSearch({

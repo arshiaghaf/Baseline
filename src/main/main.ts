@@ -87,7 +87,8 @@ if (hasSingleInstanceLock) {
       },
       openAppBundle: async (bundlePath) => {
         await shell.openPath(bundlePath);
-      }
+      },
+      currentAppVersion: metadata.version
     });
 
     createMainWindow("main");
