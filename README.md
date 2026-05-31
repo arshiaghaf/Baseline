@@ -30,26 +30,22 @@ When the required local tooling is available, Baseline can run update and instal
 - Supports Homebrew search from the main window and menu bar tray to discover installable casks and formulae
 - Lets you search installed apps and filter available updates
 - Provides external fallback links when local CLI tooling is unavailable
-  
+
 ![Baseline Ignored tab showing app and Homebrew item actions](docs/images/baseline-ignored-updates.png)
 
 ![Baseline main window Homebrew search showing installable casks](docs/images/baseline-homebrew-search.png)
-  
+
 ![Baseline menu bar tray showing app and Homebrew updates](docs/images/baseline-menu-bar.png)
-
-## Project Status
-
-Baseline is currently in beta. The core app experience works end to end, with ongoing polish focused on UI, packaging, and release quality.
 
 ## Install
 
 ### Requirements
 
-- macOS 14.0 or newer
+- macOS 14+ (Sonoma)
 
 ### GitHub Releases
 
-Download the latest unsigned DMG from <https://github.com/arshiaghaf/Baseline/releases>. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
+Download: <https://github.com/arshiaghaf/Baseline/releases>
 
 ### Homebrew
 
@@ -62,7 +58,7 @@ brew install --cask arshiaghaf/tap/baseline
 - Update detection is best-effort and depends on public update sources exposed by installed apps, Apple lookup endpoints, and Homebrew metadata.
 - Homebrew actions require Homebrew to be installed. Without it, Baseline opens external Homebrew or app pages instead.
 - App Store update actions use optional local `mas` support when available. Without `mas`, Baseline opens the App Store page externally.
-- Packaged releases are not signed or notarized yet.
+- Packaged releases are not signed or notarized yet, so macOS Gatekeeper may warn when opening them.
 
 ## Privacy and Security
 
