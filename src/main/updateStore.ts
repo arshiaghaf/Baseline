@@ -30,6 +30,7 @@ import {
   HomebrewMaintenanceProgressStage,
   type HomebrewMaintenanceRunEvent
 } from "../shared/homebrewProgress";
+import { homebrewItemHasAppRepresentation } from "../shared/homebrewAppLinking";
 import type { PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
 import { compareVersions, isVersionEmpty, isVersionGreater } from "../shared/version";
@@ -369,11 +370,16 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return;
     }
 
+    const updatesByAppID = new Map(this.state.updates.map((update) => [update.appID, update]));
+    const appsRepresentedOutsideHomebrew = this.state.apps.filter(
+      (app) => updatesByAppID.has(app.id) || this.state.ignoredIDs.includes(app.id)
+    );
     const affected = this.state.homebrewItems.filter(
       (item) =>
         item.isOutdated &&
         !this.state.ignoredHomebrewItemIDs.includes(item.id) &&
-        isValidHomebrewToken(item.token)
+        isValidHomebrewToken(item.token) &&
+        !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew, updatesByAppID)
     );
     if (affected.length === 0) {
       return;
