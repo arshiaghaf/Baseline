@@ -45,7 +45,19 @@ Packaged unsigned DMGs are available on the [GitHub Releases](https://github.com
 
 ## Install
 
-Download the latest unsigned DMG from the [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases) page. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
+### Requirements
+
+- macOS 14.0 or newer
+
+### GitHub Releases
+
+Download the latest unsigned DMG from <https://github.com/arshiaghaf/Baseline/releases>. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
+
+### Homebrew
+
+```bash
+brew install --cask arshiaghaf/tap/baseline
+```
 
 ## Build from Source
 
