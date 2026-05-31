@@ -142,6 +142,51 @@ test("persists preferences across Electron relaunches", async () => {
   await closeApp(secondApp);
 });
 
+test("reuses the main window without duplicate setup", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  const app = await launchBaseline({ userData });
+  const page = await app.firstWindow();
+  await expect(page.locator("h1")).toContainText("All");
+
+  const ownMainCloseListenerCount = () =>
+    app.evaluate(
+      ({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]
+          ?.rawListeners("close")
+          .filter((listener) => listener.name === "handleMainWindowClose").length
+    );
+
+  const initialCloseListeners = await app.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (!window) {
+      throw new Error("Expected a main window.");
+    }
+    (globalThis as typeof globalThis & { __baselineLoadCount?: number }).__baselineLoadCount = 0;
+    window.webContents.on("did-start-loading", () => {
+      const globals = globalThis as typeof globalThis & { __baselineLoadCount?: number };
+      globals.__baselineLoadCount = (globals.__baselineLoadCount ?? 0) + 1;
+    });
+    return window
+      .rawListeners("close")
+      .filter((listener) => listener.name === "handleMainWindowClose").length;
+  });
+
+  await page.evaluate(async () => {
+    await window.baseline.showMainWindow();
+    await window.baseline.showMainWindow();
+  });
+  await page.waitForTimeout(250);
+
+  await expect(ownMainCloseListenerCount()).resolves.toBe(initialCloseListeners);
+  await expect(
+    app.evaluate(
+      () => (globalThis as typeof globalThis & { __baselineLoadCount?: number }).__baselineLoadCount
+    )
+  ).resolves.toBe(0);
+
+  await closeApp(app);
+});
+
 test("launches the packaged Electron app after build", async () => {
   const app = await launchBaseline({ packaged: true });
   const page = await app.firstWindow();
