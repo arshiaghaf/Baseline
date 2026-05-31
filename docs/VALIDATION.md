@@ -1,14 +1,6 @@
 # Validation
 
-Use this checklist before handing off a local preview build, preparing a release, or validating risky app behavior changes.
-
-## Known-Good Preview
-
-```bash
-scripts/validate-preview.sh 0.0.0-preview
-```
-
-The script checks ignored generated artifacts, lints release scripts, typechecks Electron code, runs Vitest and Playwright Electron tests, packages the app, creates an unsigned DMG, installs the packaged app to `/Applications/Baseline.app`, and smoke-launches the installed app.
+Use this checklist before preparing a release or validating risky app behavior changes.
 
 ## Manual Smoke Matrix
 

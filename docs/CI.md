@@ -28,12 +28,4 @@ npm run build
 npm run test:electron
 ```
 
-For full preview validation, run:
-
-```bash
-scripts/validate-preview.sh 0.0.0-preview
-```
-
-That command also creates an unsigned DMG and smoke-launches the installed `/Applications/Baseline.app` copy.
-
 Unsigned DMG release publishing is handled by `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.
