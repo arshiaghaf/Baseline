@@ -4,6 +4,8 @@
 
 ### Added
 
+- Baseline now checks GitHub Releases for app updates and shows a main-window toolbar shortcut when a newer release is available. [#115](https://github.com/arshiaghaf/Baseline/pull/115)
+- Renderer card typography, action menu sizing, and Settings dividers were refined for a cleaner full-window interface. [#95](https://github.com/arshiaghaf/Baseline/pull/95)
 - Settings now use a dedicated in-app sidebar with General, Appearance, and Diagnostics sections, including grouped Update Tools, refresh, scan-directory, and version details. [#87](https://github.com/arshiaghaf/Baseline/pull/87)
 - Version and build metadata now flow through shared app metadata, macOS `CFBundleVersion`, Settings, About, diagnostics, release preparation, and Electron smoke coverage. [#86](https://github.com/arshiaghaf/Baseline/pull/86)
 - Release validation now runs broader macOS CI coverage, production audit checks, deterministic Electron smoke coverage, unsigned preview validation, and stricter changelog heading guards for release preparation. [#78](https://github.com/arshiaghaf/Baseline/pull/78), [#81](https://github.com/arshiaghaf/Baseline/pull/81), [#74](https://github.com/arshiaghaf/Baseline/pull/74), [#76](https://github.com/arshiaghaf/Baseline/pull/76)
