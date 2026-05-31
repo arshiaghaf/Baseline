@@ -16,6 +16,7 @@ export type AppRecord = {
   displayName: string;
   bundleIdentifier?: string;
   localVersion: VersionValue;
+  bundleVersion?: VersionValue;
   sourceHint: UpdateSource;
   sparkleFeedURL?: string;
   iconDataURL?: string;

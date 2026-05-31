@@ -39,7 +39,8 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
     apps: (input.apps ?? []).map((app) => ({
       ...app,
       id: app.id ?? app.bundlePath,
-      localVersion: version(app.localVersion?.raw)
+      localVersion: version(app.localVersion?.raw),
+      bundleVersion: app.bundleVersion ? version(app.bundleVersion.raw) : undefined
     })),
     updates: (input.updates ?? []).map((update) => ({
       ...update,

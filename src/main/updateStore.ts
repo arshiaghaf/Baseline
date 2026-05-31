@@ -588,7 +588,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         if (appRecord.sparkleFeedURL) {
           const outcome = await this.sparkle.lookupOutcome(
             appRecord.sparkleFeedURL,
-            appRecord.localVersion
+            appRecord.localVersion,
+            appRecord.bundleVersion
           );
           if (outcome.type === "completed" && outcome.value) {
             updates.push({

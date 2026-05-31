@@ -123,6 +123,26 @@ describe("bundle scanner", () => {
     expect(records.map((record) => record.displayName)).toEqual(["Manifested"]);
   });
 
+  it("keeps the bundle build version alongside the marketing version", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    await writeAppPlist(path.join(root, "Build Versioned.app"), {
+      displayName: "Build Versioned",
+      bundleIdentifier: "com.example.build-versioned",
+      version: "1.0",
+      extraKeys: ["  <key>CFBundleVersion</key>", "  <string>100</string>"].join("\n")
+    });
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      displayName: "Build Versioned",
+      localVersion: { raw: "1.0" },
+      bundleVersion: { raw: "100" }
+    });
+  });
+
   it("detects grayscale icon conversion output", () => {
     expect(testingExports.isGrayscaleSipsOutput("  space: Gray\n")).toBe(true);
     expect(testingExports.isGrayscaleSipsOutput("  space: RGB\n")).toBe(false);

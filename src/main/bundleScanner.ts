@@ -96,8 +96,8 @@ export class BundleScannerClient {
       stringValue(info.CFBundleName) ??
       path.basename(appPath, ".app");
     const bundleIdentifier = stringValue(info.CFBundleIdentifier);
-    const rawVersion =
-      stringValue(info.CFBundleShortVersionString) ?? stringValue(info.CFBundleVersion);
+    const rawBundleVersion = stringValue(info.CFBundleVersion);
+    const rawVersion = stringValue(info.CFBundleShortVersionString) ?? rawBundleVersion;
     const sparkleFeedURL = this.sparkleFeedURL(info);
     const sourceHint: UpdateSource = (await this.hasMasReceipt(appPath))
       ? "appStore"
@@ -111,6 +111,7 @@ export class BundleScannerClient {
       displayName,
       bundleIdentifier,
       localVersion: version(rawVersion),
+      bundleVersion: rawBundleVersion ? version(rawBundleVersion) : undefined,
       sourceHint,
       sparkleFeedURL,
       iconDataURL: await this.appIconDataURL(appPath)
