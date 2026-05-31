@@ -32,6 +32,15 @@ const app: AppRecord = {
   sourceHint: "unknown"
 };
 
+const baselineApp: AppRecord = {
+  id: "app:baseline",
+  bundlePath: "/Applications/Baseline.app",
+  displayName: "Baseline",
+  bundleIdentifier: "com.arshiaghaf.baseline",
+  localVersion: version("0.1.0"),
+  sourceHint: "unknown"
+};
+
 const cask: HomebrewManagedItem = {
   id: "cask:example",
   token: "example",
@@ -50,6 +59,16 @@ const update: UpdateRecord = {
   localVersion: version("1.0.0"),
   remoteVersion: version("2.0.0"),
   homebrewToken: "example",
+  checkedAt: "2026-04-30T12:00:00.000Z"
+};
+
+const baselineUpdate: UpdateRecord = {
+  id: baselineApp.id,
+  appID: baselineApp.id,
+  source: "web",
+  supportLevel: "limited",
+  localVersion: version("0.1.0"),
+  remoteVersion: version("0.2.0"),
   checkedAt: "2026-04-30T12:00:00.000Z"
 };
 
@@ -119,6 +138,12 @@ function installBaselineMock() {
     onSnapshotChanged: vi.fn(() => () => undefined),
     onHomebrewCommandEvent: vi.fn(() => () => undefined)
   };
+}
+
+function toolbarButtonLabels(container: HTMLElement): Array<string | null> {
+  return within(container.querySelector(".topbar-actions") as HTMLElement)
+    .getAllByRole("button")
+    .map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"));
 }
 
 describe("renderer button parity", () => {
@@ -247,15 +272,29 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
   });
 
-  it("shows the main-window self-update shortcut before search", () => {
+  it("shows the main-window self-update shortcut only for Baseline updates", () => {
     const { container, rerender } = render(
       <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={snapshot()} />
     );
-    const toolbarButtons = within(container.querySelector(".topbar-actions") as HTMLElement)
-      .getAllByRole("button")
-      .map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"));
 
-    expect(toolbarButtons).toEqual(["New Baseline Update Available", "Search", "Refresh"]);
+    expect(toolbarButtonLabels(container)).toEqual(["Search", "Refresh"]);
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          apps: [app, baselineApp],
+          updates: [update, baselineUpdate]
+        })}
+      />
+    );
+
+    expect(toolbarButtonLabels(container)).toEqual([
+      "New Baseline Update Available",
+      "Search",
+      "Refresh"
+    ]);
 
     fireEvent.click(screen.getByRole("button", { name: "New Baseline Update Available" }));
 

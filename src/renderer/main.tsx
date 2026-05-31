@@ -76,7 +76,7 @@ type SettingsSectionID = "general" | "appearance" | "diagnostics";
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
 const toolbarIconStrokeWidth = 1.5;
-const showSelfUpdateToolbarButtonForTesting = true;
+const baselineBundleIdentifier = "com.arshiaghaf.baseline";
 const baselineLatestReleaseURL = "https://github.com/arshiaghaf/Baseline/releases/latest";
 const settingsSidebarItems: Array<{
   id: SettingsSectionID;
@@ -303,7 +303,7 @@ export function Dashboard({
               <h1>{title}</h1>
             </div>
             <div className="topbar-actions">
-              {showSelfUpdateToolbarButtonForTesting ? <SelfUpdateToolbarButton /> : null}
+              {hasBaselineSelfUpdate(snapshot) ? <SelfUpdateToolbarButton /> : null}
               <ToolbarSearch
                 open={toolbarSearchOpen}
                 snapshot={snapshot}
@@ -489,6 +489,15 @@ function Sidebar({
 
 function SidebarBadge({ count }: { count: number }) {
   return count > 0 ? <strong>{count}</strong> : null;
+}
+
+function hasBaselineSelfUpdate(snapshot: BaselineSnapshot): boolean {
+  const baselineAppIDs = new Set(
+    snapshot.apps
+      .filter((app) => app.bundleIdentifier?.toLowerCase() === baselineBundleIdentifier)
+      .map((app) => app.id)
+  );
+  return snapshot.updates.some((update) => baselineAppIDs.has(update.appID));
 }
 
 function SelfUpdateToolbarButton() {
