@@ -41,13 +41,11 @@ When the required local tooling is available, Baseline can run update and instal
 
 Baseline is currently in beta. The core app experience works end to end, with ongoing polish focused on UI, packaging, and release quality.
 
-Packaged unsigned DMGs are planned for the first public release.
+Packaged unsigned DMGs are available on the [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases) page.
 
 ## Install
 
-No packaged release is available yet. Build Baseline from source for now.
-
-Future unsigned DMG releases will be published on the [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases) page. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
+Download the latest unsigned DMG from the [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases) page. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
 
 ## Build from Source
 

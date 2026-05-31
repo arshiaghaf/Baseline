@@ -105,8 +105,6 @@ echo "${CHECKSUM}  ${APP_NAME}-${VERSION}-unsigned.dmg" > "$CHECKSUM_PATH"
 cat > "$NOTES_PATH" <<NOTES
 # Baseline ${VERSION}
 
-This is an unsigned preview build. It is not notarized by Apple, and macOS may show an unidentified-developer warning.
-
 ## What's Changed
 
 NOTES
@@ -128,6 +126,10 @@ ${CHECKSUM}  ${APP_NAME}-${VERSION}-unsigned.dmg
 ## Install
 
 Open the DMG and drag ${APP_NAME}.app to /Applications.
+
+## Build Note
+
+This release is not notarized by Apple, and macOS may show an unidentified-developer warning.
 NOTES
 
 echo "Prepared unsigned release artifact:"

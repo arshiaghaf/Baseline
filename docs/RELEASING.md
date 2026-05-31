@@ -1,6 +1,6 @@
 # Releasing Baseline
 
-Baseline currently supports Electron source builds and unsigned preview DMG release tooling. No public packaged release has been cut yet; use this process for the first public release and later unsigned preview releases.
+Baseline currently supports Electron source builds and unsigned DMG release tooling. Use this process for public unsigned releases.
 
 Unsigned DMGs are not notarized by Apple. macOS Gatekeeper may warn users before opening the app. Do not describe unsigned builds as signed, notarized, or production-grade.
 
@@ -18,7 +18,7 @@ npm run build
 npm run test:electron
 ```
 
-4. Optionally preview the unsigned release artifacts locally:
+4. Optionally build the unsigned release artifacts locally:
 
 ```bash
 scripts/prepare-unsigned-release.sh 0.1.0
@@ -37,7 +37,7 @@ git push baseline v0.1.0
 9. Verify the GitHub Release contains:
    - `Baseline-0.1.0-unsigned.dmg`
    - `Baseline-0.1.0-unsigned.dmg.sha256`
-   - release notes that include the finalized changelog section and clearly label the artifact as unsigned.
+   - release notes that include the finalized changelog section and an unsigned build note.
 
 The release workflow accepts tags like `v0.1.0` and `v0.1.0-beta.1`.
 
