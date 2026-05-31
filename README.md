@@ -1,12 +1,12 @@
 # Baseline
 
-![Release: Pending](https://img.shields.io/badge/release-pending-0a0a0c?style=flat-square)
+[![Release](https://img.shields.io/github/v/release/arshiaghaf/baseline?style=flat-square&label=release&color=0a0a0c)](https://github.com/arshiaghaf/baseline/releases/latest)
 &nbsp;
-![Project status: Beta](https://img.shields.io/badge/status-beta-blue?style=flat-square)
+[![Minimum macOS version: 14+](https://img.shields.io/badge/macOS-14.0%2B-0a0a0c?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
 &nbsp;
-![Minimum macOS version: 14.0+](https://img.shields.io/badge/macOS-14.0%2B-0a0a0c?style=flat-square)
+[![Homebrew tap: arshiaghaf/tap/baseline](https://img.shields.io/badge/brew-arshiaghaf%2Ftap%2Fbaseline-6f5f4a?style=flat-square)](https://github.com/arshiaghaf/homebrew-tap)
 &nbsp;
-[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/Baseline/blob/main/LICENSE)
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/baseline/blob/main/LICENSE)
 
 Baseline is a macOS app for managing and updating installed Mac apps and Homebrew packages from one place. It supports App Store apps, direct downloads, Sparkle-enabled apps, and Homebrew casks and formulae.
 
