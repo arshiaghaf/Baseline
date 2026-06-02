@@ -611,7 +611,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           const outcome = await this.appStore.lookupOutcome(
             appRecord.bundleIdentifier,
             appRecord.localVersion,
-            { includeCompatibleIOSMacSoftware: appRecord.sourceHint === "appStore" }
+            { includeIOSAppStoreSoftware: appRecord.isIOSAppOnMac === true }
           );
           if (outcome.type === "completed" && outcome.value) {
             updates.push({

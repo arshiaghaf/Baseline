@@ -143,6 +143,58 @@ describe("bundle scanner", () => {
     });
   });
 
+  it("marks direct iOS-on-Mac bundles as App Store apps", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    await writeAppPlist(path.join(root, "Designed for iPad.app"), {
+      displayName: "Designed for iPad",
+      bundleIdentifier: "com.example.ipad-direct",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>UIDeviceFamily</key>",
+        "  <array>",
+        "    <integer>2</integer>",
+        "  </array>",
+        "  <key>UIDesignRequiresCompatibility</key>",
+        "  <true/>"
+      ].join("\n")
+    });
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundlePath: path.join(root, "Designed for iPad.app"),
+      bundleIdentifier: "com.example.ipad-direct",
+      sourceHint: "appStore",
+      isIOSAppOnMac: true
+    });
+  });
+
+  it("scans App Store wrapper bundles for iOS-on-Mac apps", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+    const appPath = path.join(root, "Wrapped iPad App.app");
+
+    await writeWrappedIOSAppPlist(appPath, {
+      displayName: "Wrapped iPad App",
+      bundleIdentifier: "com.example.ipad-wrapper",
+      version: "3.22"
+    });
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      id: appPath,
+      bundlePath: appPath,
+      displayName: "Wrapped iPad App",
+      bundleIdentifier: "com.example.ipad-wrapper",
+      localVersion: { raw: "3.22" },
+      sourceHint: "appStore",
+      isIOSAppOnMac: true
+    });
+  });
+
   it("detects grayscale icon conversion output", () => {
     expect(testingExports.isGrayscaleSipsOutput("  space: Gray\n")).toBe(true);
     expect(testingExports.isGrayscaleSipsOutput("  space: RGB\n")).toBe(false);
@@ -238,6 +290,47 @@ async function writeAppPlist(
   <key>CFBundleShortVersionString</key>
   <string>${version}</string>
 ${extraKeys}
+</dict>
+</plist>
+`
+  );
+}
+
+async function writeWrappedIOSAppPlist(
+  appPath: string,
+  {
+    displayName,
+    bundleIdentifier,
+    version
+  }: { displayName: string; bundleIdentifier: string; version: string }
+): Promise<void> {
+  const wrappedAppPath = path.join(appPath, "Wrapper", `${displayName}.app`);
+  await mkdir(wrappedAppPath, { recursive: true });
+  await writeFile(
+    path.join(wrappedAppPath, "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>${displayName}</string>
+  <key>CFBundleIdentifier</key>
+  <string>${bundleIdentifier}</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${version}</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleSupportedPlatforms</key>
+  <array>
+    <string>iPhoneOS</string>
+  </array>
+  <key>LSRequiresIPhoneOS</key>
+  <true/>
+  <key>UIDeviceFamily</key>
+  <array>
+    <integer>1</integer>
+    <integer>2</integer>
+  </array>
 </dict>
 </plist>
 `

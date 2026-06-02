@@ -555,24 +555,26 @@ describe("update store helpers", () => {
     });
   });
 
-  it("only enables compatible iOS App Store lookup for MAS-receipted apps", async () => {
-    const appStoreApp = appRecord({
+  it("only enables iOS App Store lookup for installed iOS-on-Mac apps", async () => {
+    const iOSAppOnMac = appRecord({
       bundlePath: "/Applications/App Store iPad App.app",
       displayName: "App Store iPad App",
       bundleIdentifier: "com.example.ipad-app",
       localVersion: version("1.0.0"),
-      sourceHint: "appStore"
+      sourceHint: "appStore",
+      isIOSAppOnMac: true
     });
-    const unknownApp = appRecord({
-      bundlePath: "/Applications/Unknown iPad App.app",
-      displayName: "Unknown iPad App",
-      bundleIdentifier: "com.example.unknown-ipad-app",
+    const nativeMacApp = appRecord({
+      bundlePath: "/Applications/Native Mac App.app",
+      displayName: "Native Mac App",
+      bundleIdentifier: "com.example.native-mac-app",
+      sourceHint: "appStore",
       localVersion: version("1.0.0")
     });
     const lookupOutcome = vi.fn(async () => ({ type: "completed" as const }));
     const store = await makeStore({
       clients: {
-        scanner: { scanApplications: async () => [appStoreApp, unknownApp] },
+        scanner: { scanApplications: async () => [iOSAppOnMac, nativeMacApp] },
         appStore: { lookupOutcome }
       }
     });
@@ -581,15 +583,15 @@ describe("update store helpers", () => {
 
     expect(lookupOutcome).toHaveBeenNthCalledWith(
       1,
-      appStoreApp.bundleIdentifier,
-      appStoreApp.localVersion,
-      { includeCompatibleIOSMacSoftware: true }
+      iOSAppOnMac.bundleIdentifier,
+      iOSAppOnMac.localVersion,
+      { includeIOSAppStoreSoftware: true }
     );
     expect(lookupOutcome).toHaveBeenNthCalledWith(
       2,
-      unknownApp.bundleIdentifier,
-      unknownApp.localVersion,
-      { includeCompatibleIOSMacSoftware: false }
+      nativeMacApp.bundleIdentifier,
+      nativeMacApp.localVersion,
+      { includeIOSAppStoreSoftware: false }
     );
   });
 

@@ -22,7 +22,7 @@ describe("ported clients", () => {
     expect(result?.appStoreItemID).toBe(123456789);
   });
 
-  it("parses compatible iOS App Store records that support Mac desktop when enabled", () => {
+  it("parses iOS App Store records when enabled for installed iOS-on-Mac apps", () => {
     const data = Buffer.from(
       JSON.stringify({
         resultCount: 1,
@@ -30,7 +30,6 @@ describe("ported clients", () => {
           {
             kind: "software",
             bundleId: "com.example.ios-on-mac",
-            supportedDevices: ["iPadAir-iPadAir", "MacDesktop-MacDesktop"],
             trackId: 987654321,
             version: "2.0",
             trackViewUrl: "https://apps.apple.com/app/example/id987654321"
@@ -43,13 +42,13 @@ describe("ported clients", () => {
     expect(client.parseLookupResponse(data, version("1.0"))).toBeUndefined();
     expect(
       client.parseLookupResponse(data, version("1.0"), {
-        includeCompatibleIOSMacSoftware: true,
+        includeIOSAppStoreSoftware: true,
         bundleIdentifier: "com.example.other"
       })
     ).toBeUndefined();
 
     const result = client.parseLookupResponse(data, version("1.0"), {
-      includeCompatibleIOSMacSoftware: true,
+      includeIOSAppStoreSoftware: true,
       bundleIdentifier: "com.example.ios-on-mac"
     });
 
@@ -57,7 +56,7 @@ describe("ported clients", () => {
     expect(result?.appStoreItemID).toBe(987654321);
   });
 
-  it("rejects iOS App Store records that do not advertise Mac desktop support", () => {
+  it("rejects iOS App Store records when installed app evidence is not enabled", () => {
     const data = Buffer.from(
       JSON.stringify({
         resultCount: 1,
@@ -65,7 +64,6 @@ describe("ported clients", () => {
           {
             kind: "software",
             bundleId: "com.example.ios-only",
-            supportedDevices: ["iPadAir-iPadAir"],
             trackId: 123,
             version: "2.0"
           }
@@ -73,12 +71,7 @@ describe("ported clients", () => {
       })
     );
 
-    expect(
-      new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
-        includeCompatibleIOSMacSoftware: true,
-        bundleIdentifier: "com.example.ios-only"
-      })
-    ).toBeUndefined();
+    expect(new AppStoreLookupClient().parseLookupResponse(data, version("1.0"))).toBeUndefined();
   });
 
   it("parses Sparkle appcast fixtures", () => {

@@ -13,13 +13,12 @@ type LookupEntry = {
   trackId?: number;
   releaseNotes?: string;
   currentVersionReleaseDate?: string;
-  supportedDevices?: unknown;
 };
 
 export type LookupOutcome<T> = { type: "completed"; value?: T } | { type: "transientFailure" };
 
 type LookupOptions = {
-  includeCompatibleIOSMacSoftware?: boolean;
+  includeIOSAppStoreSoftware?: boolean;
 };
 
 export class AppStoreLookupClient {
@@ -62,8 +61,8 @@ export class AppStoreLookupClient {
     const results = response.results ?? [];
     const selected =
       results.find((entry) => entry.kind === "mac-software") ??
-      (options.includeCompatibleIOSMacSoftware
-        ? results.find((entry) => isCompatibleIOSMacSoftware(entry, options.bundleIdentifier))
+      (options.includeIOSAppStoreSoftware
+        ? results.find((entry) => isIOSAppStoreSoftware(entry, options.bundleIdentifier))
         : undefined) ??
       (results.length === 1 && !results[0]?.kind ? results[0] : undefined);
     if (!selected) {
@@ -85,14 +84,8 @@ export class AppStoreLookupClient {
   }
 }
 
-function isCompatibleIOSMacSoftware(
-  entry: LookupEntry,
-  bundleIdentifier: string | undefined
-): boolean {
+function isIOSAppStoreSoftware(entry: LookupEntry, bundleIdentifier: string | undefined): boolean {
   return (
-    entry.kind === "software" &&
-    entry.bundleId?.toLowerCase() === bundleIdentifier?.toLowerCase() &&
-    Array.isArray(entry.supportedDevices) &&
-    entry.supportedDevices.includes("MacDesktop-MacDesktop")
+    entry.kind === "software" && entry.bundleId?.toLowerCase() === bundleIdentifier?.toLowerCase()
   );
 }

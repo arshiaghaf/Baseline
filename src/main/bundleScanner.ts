@@ -14,6 +14,10 @@ import { version } from "../shared/version";
 const execFileAsync = promisify(execFile);
 
 type InfoPlist = Record<string, unknown>;
+type AppBundleInfo = {
+  info: InfoPlist;
+  isIOSAppOnMac: boolean;
+};
 type IconLoadResult = { dataURL?: string };
 type IconExecFileAsync = (
   file: string,
@@ -83,10 +87,11 @@ export class BundleScannerClient {
   }
 
   private async makeRecord(appPath: string): Promise<AppRecord | undefined> {
-    const info = await this.readInfoPlist(appPath);
-    if (!info) {
+    const bundleInfo = await this.readAppBundleInfo(appPath);
+    if (!bundleInfo) {
       return undefined;
     }
+    const { info, isIOSAppOnMac } = bundleInfo;
     if (isWebAppBundle(info)) {
       return undefined;
     }
@@ -101,9 +106,11 @@ export class BundleScannerClient {
     const sparkleFeedURL = this.sparkleFeedURL(info);
     const sourceHint: UpdateSource = (await this.hasMasReceipt(appPath))
       ? "appStore"
-      : sparkleFeedURL
-        ? "sparkle"
-        : "unknown";
+      : isIOSAppOnMac
+        ? "appStore"
+        : sparkleFeedURL
+          ? "sparkle"
+          : "unknown";
 
     return {
       id: appPath,
@@ -113,25 +120,41 @@ export class BundleScannerClient {
       localVersion: version(rawVersion),
       bundleVersion: rawBundleVersion ? version(rawBundleVersion) : undefined,
       sourceHint,
+      isIOSAppOnMac,
       sparkleFeedURL,
       iconDataURL: await this.appIconDataURL(appPath)
     };
   }
 
+  private async readAppBundleInfo(appPath: string): Promise<AppBundleInfo | undefined> {
+    const info = await this.readInfoPlist(appPath);
+    if (info) {
+      return { info, isIOSAppOnMac: isIOSAppOnMacInfo(info) };
+    }
+    return this.readWrappedIOSAppBundleInfo(appPath);
+  }
+
   private async readInfoPlist(appPath: string): Promise<InfoPlist | undefined> {
-    const infoPath = path.join(appPath, "Contents", "Info.plist");
+    return readInfoPlistAtPath(path.join(appPath, "Contents", "Info.plist"));
+  }
+
+  private async readWrappedIOSAppBundleInfo(appPath: string): Promise<AppBundleInfo | undefined> {
+    const wrapperPath = path.join(appPath, "Wrapper");
     try {
-      const { stdout } = await execFileAsync(
-        "/usr/bin/plutil",
-        ["-convert", "json", "-o", "-", infoPath],
-        {
-          maxBuffer: 4 * 1024 * 1024
+      const entries = await readdir(wrapperPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || !entry.name.endsWith(".app")) {
+          continue;
         }
-      );
-      return JSON.parse(stdout) as InfoPlist;
+        const info = await readInfoPlistAtPath(path.join(wrapperPath, entry.name, "Info.plist"));
+        if (info && isIOSAppOnMacInfo(info)) {
+          return { info, isIOSAppOnMac: true };
+        }
+      }
     } catch {
       return undefined;
     }
+    return undefined;
   }
 
   private async hasMasReceipt(appPath: string): Promise<boolean> {
@@ -190,10 +213,33 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
+async function readInfoPlistAtPath(infoPath: string): Promise<InfoPlist | undefined> {
+  try {
+    const { stdout } = await execFileAsync(
+      "/usr/bin/plutil",
+      ["-convert", "json", "-o", "-", infoPath],
+      {
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
+    return JSON.parse(stdout) as InfoPlist;
+  } catch {
+    return undefined;
+  }
+}
+
 function stringArrayValue(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function isIOSAppOnMacInfo(info: InfoPlist): boolean {
+  return (
+    info.LSRequiresIPhoneOS === true ||
+    info.UIDesignRequiresCompatibility === true ||
+    stringArrayValue(info.CFBundleSupportedPlatforms).includes("iPhoneOS")
+  );
 }
 
 function iconCandidatePaths(appPath: string, info: InfoPlist): string[] {
