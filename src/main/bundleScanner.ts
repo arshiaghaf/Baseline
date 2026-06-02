@@ -187,14 +187,12 @@ export class BundleScannerClient {
     info: InfoPlist
   ): Promise<boolean> {
     const wrapperPath = path.join(appPath, "Wrapper");
-    const metadata = await readInfoPlistAtPath(path.join(wrapperPath, "iTunesMetadata.plist"));
-    const metadataBundleID = stringValue(metadata?.softwareVersionBundleId);
+    const metadataBundleID = await readPlistRawValue(
+      path.join(wrapperPath, "iTunesMetadata.plist"),
+      "softwareVersionBundleId"
+    );
     const bundleIdentifier = stringValue(info.CFBundleIdentifier);
-    if (
-      !metadata ||
-      !bundleIdentifier ||
-      metadataBundleID?.toLowerCase() !== bundleIdentifier.toLowerCase()
-    ) {
+    if (!bundleIdentifier || metadataBundleID?.toLowerCase() !== bundleIdentifier.toLowerCase()) {
       return false;
     }
 
@@ -247,6 +245,22 @@ export class BundleScannerClient {
     }
 
     return {};
+  }
+}
+
+async function readPlistRawValue(plistPath: string, key: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync(
+      "/usr/bin/plutil",
+      ["-extract", key, "raw", "-o", "-", plistPath],
+      {
+        maxBuffer: 1024 * 1024
+      }
+    );
+    const value = stdout.trim();
+    return value ? value : undefined;
+  } catch {
+    return undefined;
   }
 }
 
