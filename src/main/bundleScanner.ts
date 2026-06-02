@@ -275,8 +275,18 @@ function iconCandidatePaths(resourcesPath: string, info: InfoPlist): string[] {
   add(stringValue(primaryIcon?.CFBundleIconName));
 
   return [...names].flatMap((name) => {
-    const withExtension = path.extname(name) ? name : `${name}.icns`;
-    return [path.join(resourcesPath, withExtension), path.join(resourcesPath, name)];
+    if (path.extname(name)) {
+      return [path.join(resourcesPath, name)];
+    }
+    return [
+      path.join(resourcesPath, `${name}.icns`),
+      path.join(resourcesPath, `${name}@3x.png`),
+      path.join(resourcesPath, `${name}@2x.png`),
+      path.join(resourcesPath, `${name}@3x~ipad.png`),
+      path.join(resourcesPath, `${name}@2x~ipad.png`),
+      path.join(resourcesPath, `${name}.png`),
+      path.join(resourcesPath, name)
+    ];
   });
 }
 
@@ -320,8 +330,7 @@ function isGrayscaleSipsOutput(output: string): boolean {
 
 async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
   if (path.extname(iconPath).toLowerCase() !== ".icns") {
-    const image = iconRuntime.createFromPath(iconPath);
-    return image.isEmpty() ? {} : { dataURL: resizedIconDataURL(image) };
+    return loadRasterIconDataURL(iconPath);
   }
 
   let tempDirectory: string | undefined;
@@ -343,6 +352,34 @@ async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
     }
     const image = iconRuntime.createFromPath(pngPath);
     return image.isEmpty() ? {} : { dataURL: resizedIconDataURL(image) };
+  } catch {
+    return {};
+  } finally {
+    if (tempDirectory) {
+      await rm(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+async function loadRasterIconDataURL(iconPath: string): Promise<IconLoadResult> {
+  const image = iconRuntime.createFromPath(iconPath);
+  if (!image.isEmpty()) {
+    return { dataURL: resizedIconDataURL(image) };
+  }
+
+  let tempDirectory: string | undefined;
+  try {
+    tempDirectory = await mkdtemp(path.join(os.tmpdir(), "baseline-icon-"));
+    const normalizedPath = path.join(tempDirectory, "icon-normalized.png");
+    await iconRuntime.execFileAsync(
+      "/usr/bin/sips",
+      ["-s", "format", "png", iconPath, "--out", normalizedPath],
+      {
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
+    const normalizedImage = iconRuntime.createFromPath(normalizedPath);
+    return normalizedImage.isEmpty() ? {} : { dataURL: resizedIconDataURL(normalizedImage) };
   } catch {
     return {};
   } finally {

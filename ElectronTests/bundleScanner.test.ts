@@ -275,6 +275,35 @@ describe("bundle scanner", () => {
       expect.stringMatching(/icon-padded\.png$/u)
     );
   });
+
+  it("normalizes unreadable raster app icons before falling back to system icons", async () => {
+    const iconPath = "/Applications/Wrapped.app/Wrapper/Wrapped.app/AppIcon60x60@2x.png";
+
+    testingExports.iconRuntime.execFileAsync = vi.fn(async (file: string, args: string[]) => {
+      if (file !== "/usr/bin/sips") {
+        throw new Error(`Unexpected executable: ${file}`);
+      }
+      if (args.includes("-s") && args.includes("format")) {
+        const outputPath = args.at(-1);
+        await writeFile(String(outputPath), "normalized png");
+        return { stdout: "", stderr: "" };
+      }
+      throw new Error(`Unexpected sips arguments: ${args.join(" ")}`);
+    });
+    testingExports.iconRuntime.createFromPath = vi.fn((imagePath: string) => ({
+      isEmpty: () => !imagePath.endsWith("icon-normalized.png"),
+      resize: () => ({ toDataURL: () => `normalized:${imagePath}` }),
+      toDataURL: () => `original:${imagePath}`
+    }));
+
+    const result = await testingExports.loadIconFileDataURL(iconPath);
+
+    expect(result.dataURL).toMatch(/^normalized:.*icon-normalized\.png$/u);
+    expect(testingExports.iconRuntime.createFromPath).toHaveBeenCalledWith(iconPath);
+    expect(testingExports.iconRuntime.createFromPath).toHaveBeenCalledWith(
+      expect.stringMatching(/icon-normalized\.png$/u)
+    );
+  });
 });
 
 async function writeAppPlist(
@@ -331,7 +360,7 @@ async function writeWrappedIOSAppPlist(
   <string>${version}</string>
   <key>CFBundleIconFiles</key>
   <array>
-    <string>AppIcon60x60@2x.png</string>
+    <string>AppIcon60x60</string>
   </array>
   <key>CFBundleVersion</key>
   <string>1</string>
