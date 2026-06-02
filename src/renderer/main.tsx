@@ -54,6 +54,7 @@ import {
   isCask,
   normalizedHomebrewAppName
 } from "../shared/homebrewAppLinking";
+import { compareVersions } from "../shared/version";
 import "./styles.css";
 
 type Route = "main" | "menubar" | "settings";
@@ -1027,8 +1028,8 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
         <p>
           {update ? (
             <VersionChange
-              from={app.localVersion.raw || "unknown"}
-              to={update.remoteVersion.raw || "unknown"}
+              from={appUpdateVersionChange(update).from}
+              to={appUpdateVersionChange(update).to}
             />
           ) : (
             app.localVersion.raw || "unknown"
@@ -1310,8 +1311,8 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
         <p>
           {update ? (
             <VersionChange
-              from={app.localVersion.raw || "unknown"}
-              to={update.remoteVersion.raw || "unknown"}
+              from={appUpdateVersionChange(update).from}
+              to={appUpdateVersionChange(update).to}
             />
           ) : (
             app.localVersion.raw || "unknown"
@@ -1373,8 +1374,8 @@ export function AppRow({
         <p>
           {update ? (
             <VersionChange
-              from={app.localVersion.raw || "unknown"}
-              to={update.remoteVersion.raw || "unknown"}
+              from={appUpdateVersionChange(update).from}
+              to={appUpdateVersionChange(update).to}
             />
           ) : recentlyUpdatedAt ? (
             updatedRelativeLabel(recentlyUpdatedAt)
@@ -2845,6 +2846,34 @@ function VersionChange({ from, to }: { from: string; to: string }) {
       <span className="version-token">{to}</span>
     </>
   );
+}
+
+function appUpdateVersionChange(update: UpdateRecord): { from: string; to: string } {
+  if (shouldShowAppBuildVersion(update)) {
+    return {
+      from: versionLabelWithBuild(update.localVersion.raw, update.localBuildVersion?.raw),
+      to: versionLabelWithBuild(update.remoteVersion.raw, update.remoteBuildVersion?.raw)
+    };
+  }
+  return {
+    from: update.localVersion.raw || "unknown",
+    to: update.remoteVersion.raw || "unknown"
+  };
+}
+
+function shouldShowAppBuildVersion(update: UpdateRecord): boolean {
+  return Boolean(
+    update.localBuildVersion?.raw.trim() &&
+    update.remoteBuildVersion?.raw.trim() &&
+    compareVersions(update.localVersion, update.remoteVersion) === 0 &&
+    compareVersions(update.localBuildVersion, update.remoteBuildVersion) !== 0
+  );
+}
+
+function versionLabelWithBuild(versionRaw: string, buildRaw?: string): string {
+  const displayVersion = versionRaw.trim() || "unknown";
+  const buildVersion = buildRaw?.trim();
+  return buildVersion ? `${displayVersion} (${buildVersion})` : displayVersion;
 }
 
 function ToolStatus({

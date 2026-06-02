@@ -29,6 +29,28 @@ describe("ported clients", () => {
     expect(result?.updateURL).toBe("https://example.com/download/2.0.0.zip");
   });
 
+  it("detects Sparkle updates when only the build version advances", () => {
+    const data = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <item>
+      <enclosure
+        url="https://example.com/download/1.0-build-101.zip"
+        sparkle:version="101"
+        sparkle:shortVersionString="1.0" />
+    </item>
+  </channel>
+</rss>`);
+
+    const result = new SparkleAppcastClient().parseAppcast(data, version("1.0"), version("100"));
+    expect(result?.remoteVersion.raw).toBe("1.0");
+    expect(result?.remoteBuildVersion?.raw).toBe("101");
+    expect(result?.updateURL).toBe("https://example.com/download/1.0-build-101.zip");
+    expect(
+      new SparkleAppcastClient().parseAppcast(data, version("1.0"), version("101"))
+    ).toBeUndefined();
+  });
+
   it("parses Homebrew cask schema drift fixtures", () => {
     const data = readFileSync(path.join(fixtures, "homebrew_cask_drift.json"));
     const index = new HomebrewCaskClient().parseIndex(data);

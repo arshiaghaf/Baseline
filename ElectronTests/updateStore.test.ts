@@ -461,6 +461,67 @@ describe("update store helpers", () => {
     });
   });
 
+  it("preserves Sparkle build-only update versions through update and recent history", async () => {
+    const installedApp = appRecord({
+      bundlePath: "/Applications/Build Only.app",
+      displayName: "Build Only",
+      bundleIdentifier: "com.example.build-only",
+      sparkleFeedURL: "https://updates.example.com/appcast.xml",
+      localVersion: version("1.0"),
+      bundleVersion: version("100")
+    });
+    const refreshedApp = {
+      ...installedApp,
+      bundleVersion: version("101")
+    };
+    let scanCount = 0;
+    const store = await makeStore({
+      clients: {
+        scanner: {
+          scanApplications: async () => {
+            scanCount += 1;
+            return scanCount === 1 ? [installedApp] : [refreshedApp];
+          }
+        },
+        appStore: { lookupOutcome: async () => ({ type: "completed" }) },
+        sparkle: {
+          lookupOutcome: async () =>
+            scanCount === 1
+              ? {
+                  type: "completed",
+                  value: {
+                    remoteVersion: version("1.0"),
+                    remoteBuildVersion: version("101"),
+                    updateURL: "https://updates.example.com/download"
+                  }
+                }
+              : { type: "completed" }
+        }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().updates[0]).toMatchObject({
+      source: "sparkle",
+      localVersion: version("1.0"),
+      remoteVersion: version("1.0"),
+      localBuildVersion: version("100"),
+      remoteBuildVersion: version("101")
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().updates).toEqual([]);
+    expect(store.getSnapshot().recentlyUpdated[0]).toMatchObject({
+      source: "sparkle",
+      fromVersion: version("1.0"),
+      toVersion: version("1.0"),
+      fromBuildVersion: version("100"),
+      toBuildVersion: version("101")
+    });
+  });
+
   it("surfaces unreliable Homebrew outdated detection and preserves previous outdated items", async () => {
     const previousItem = homebrewItem({
       id: "formula:ripgrep",
