@@ -347,6 +347,100 @@ describe("update store helpers", () => {
     expect(inventoryOptions).toEqual([{ updateMetadata: true }, { updateMetadata: false }]);
   });
 
+  it("does not let an older overlapping full refresh overwrite a newer snapshot", async () => {
+    const olderApp = appRecord({
+      bundlePath: "/Applications/Refresh Race.app",
+      displayName: "Refresh Race",
+      localVersion: version("1.0.0")
+    });
+    const newerApp = appRecord({
+      bundlePath: "/Applications/Refresh Race.app",
+      displayName: "Refresh Race",
+      localVersion: version("2.0.0")
+    });
+    const scanResolutions: Array<(apps: AppRecord[]) => void> = [];
+    const store = await makeStore({
+      clients: {
+        scanner: {
+          scanApplications: () =>
+            new Promise<AppRecord[]>((resolve) => {
+              scanResolutions.push(resolve);
+            })
+        }
+      }
+    });
+
+    const firstRefresh = store.refresh(false);
+    const secondRefresh = store.refresh(false);
+
+    expect(scanResolutions).toHaveLength(2);
+    scanResolutions[1]?.([newerApp]);
+    await secondRefresh;
+
+    expect(store.getSnapshot().apps).toEqual([newerApp]);
+
+    scanResolutions[0]?.([olderApp]);
+    await firstRefresh;
+
+    expect(store.getSnapshot().apps).toEqual([newerApp]);
+  });
+
+  it("does not let an older refresh overwrite state after later lookup work", async () => {
+    const olderApp = appRecord({
+      bundlePath: "/Applications/Refresh Lookup Race.app",
+      displayName: "Refresh Lookup Race",
+      bundleIdentifier: "com.example.refresh-lookup-race",
+      localVersion: version("1.0.0")
+    });
+    const newerApp = {
+      ...olderApp,
+      localVersion: version("2.0.0")
+    };
+    const completedLookup = { type: "completed" as const };
+    let scanCount = 0;
+    let lookupCount = 0;
+    let markFirstLookupStarted: () => void = () => undefined;
+    let resolveFirstLookup: (value: typeof completedLookup) => void = () => undefined;
+    const firstLookupStarted = new Promise<void>((resolve) => {
+      markFirstLookupStarted = resolve;
+    });
+    const store = await makeStore({
+      clients: {
+        scanner: {
+          scanApplications: async () => {
+            scanCount += 1;
+            return scanCount === 1 ? [olderApp] : [newerApp];
+          }
+        },
+        appStore: {
+          lookupOutcome: () => {
+            lookupCount += 1;
+            if (lookupCount === 1) {
+              markFirstLookupStarted();
+              return new Promise<typeof completedLookup>((resolve) => {
+                resolveFirstLookup = resolve;
+              });
+            }
+            return Promise.resolve(completedLookup);
+          }
+        }
+      }
+    });
+
+    const firstRefresh = store.refresh(false);
+    await firstLookupStarted;
+    const secondRefresh = store.refresh(false);
+
+    await secondRefresh;
+
+    expect(store.getSnapshot().apps).toEqual([newerApp]);
+
+    resolveFirstLookup(completedLookup);
+    await firstRefresh;
+
+    expect(store.getSnapshot().apps).toEqual([newerApp]);
+  });
+
   it("surfaces GitHub release self-update availability during refresh", async () => {
     const lookup = vi.fn(async (currentVersion: ReturnType<typeof version>, checkedAt: string) => ({
       available: true,
