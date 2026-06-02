@@ -743,10 +743,6 @@ button:disabled {
   transform: scale(1.18);
 }
 
-.app-icon.app-icon-image.ios-app-icon img {
-  transform: none;
-}
-
 .row-main {
   min-width: 0;
 }

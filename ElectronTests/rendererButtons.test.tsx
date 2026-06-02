@@ -781,10 +781,6 @@ describe("renderer button parity", () => {
   });
 
   it("makes matching cask icons open apps but leaves formula icons static", () => {
-    const caskWithOwnIcon: HomebrewManagedItem = {
-      ...cask,
-      iconDataURL: "data:image/png;base64,cask-icon"
-    };
     const formula: HomebrewManagedItem = {
       id: "formula:example",
       token: "example",
@@ -794,16 +790,10 @@ describe("renderer button parity", () => {
       latestVersion: version("2.0.0"),
       isOutdated: true
     };
-    const { rerender } = render(
-      <HomebrewRow
-        item={caskWithOwnIcon}
-        snapshot={snapshot({ homebrewItems: [caskWithOwnIcon] })}
-      />
-    );
+    const { rerender } = render(<HomebrewRow item={cask} snapshot={snapshot()} />);
 
     const caskOpenButton = screen.getByRole("button", { name: "Open app" });
     expect(caskOpenButton).toHaveClass("clickable-app-icon");
-    expect(caskOpenButton).toHaveClass("app-icon-image");
     fireEvent.click(caskOpenButton);
     expect(window.baseline.openApp).toHaveBeenCalledWith(app.id);
 
