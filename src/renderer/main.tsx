@@ -2014,7 +2014,9 @@ function HomebrewItemIcon({
     return (
       <button
         className={
-          iconDataURL ? appIconClassName(app, true) : `${fallbackClassName} clickable-app-icon`
+          iconDataURL
+            ? appIconClassName(app, { clickable: true, hasImage: true })
+            : `${fallbackClassName} clickable-app-icon`
         }
         onClick={() => void window.baseline.openApp(app.id)}
         title="Open app"
@@ -2036,8 +2038,16 @@ function HomebrewItemIcon({
   return <div className={fallbackClassName}>{fallbackIcon}</div>;
 }
 
-function appIconClassName(app: AppRecord, clickable = false): string {
-  const classNames = app.iconDataURL ? ["app-icon", "app-icon-image"] : ["app-icon"];
+function appIconClassName(
+  app: AppRecord,
+  options: boolean | { clickable?: boolean; hasImage?: boolean } = {}
+): string {
+  const clickable = typeof options === "boolean" ? options : (options.clickable ?? false);
+  const hasImage =
+    typeof options === "boolean"
+      ? Boolean(app.iconDataURL)
+      : (options.hasImage ?? Boolean(app.iconDataURL));
+  const classNames = hasImage ? ["app-icon", "app-icon-image"] : ["app-icon"];
   if (app.isIOSAppOnMac) {
     classNames.push("ios-app-icon");
   }
