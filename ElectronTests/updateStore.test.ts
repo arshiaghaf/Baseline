@@ -461,6 +461,41 @@ describe("update store helpers", () => {
     });
   });
 
+  it("does not mark apps recently updated when a lookup miss leaves the local version unchanged", async () => {
+    const unchangedApp = appRecord({
+      bundlePath: "/Applications/Lookup Miss.app",
+      displayName: "Lookup Miss",
+      bundleIdentifier: "com.example.lookup-miss",
+      localVersion: version("1.0.0")
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [unchangedApp],
+        updates: [
+          {
+            id: unchangedApp.id,
+            appID: unchangedApp.id,
+            source: "sparkle",
+            supportLevel: "supported",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            updateURL: "https://updates.example.com/download",
+            checkedAt: "2026-05-20T12:00:00.000Z"
+          }
+        ]
+      },
+      clients: {
+        scanner: { scanApplications: async () => [unchangedApp] }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().updates).toEqual([]);
+    expect(store.getSnapshot().recentlyUpdated).toEqual([]);
+  });
+
   it("preserves Sparkle build-only update versions through update and recent history", async () => {
     const installedApp = appRecord({
       bundlePath: "/Applications/Build Only.app",

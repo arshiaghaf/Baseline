@@ -949,6 +949,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (!appRecord) {
         continue;
       }
+      if (!hasInstalledAppAdvanced(appRecord, previousUpdate)) {
+        continue;
+      }
       records.unshift({
         id: appID,
         appID,
@@ -1273,6 +1276,16 @@ function reconcileHomebrewInventory(
       isOutdated: true
     };
   });
+}
+
+function hasInstalledAppAdvanced(appRecord: AppRecord, previousUpdate: UpdateRecord): boolean {
+  if (isVersionGreater(appRecord.localVersion, previousUpdate.localVersion)) {
+    return true;
+  }
+  if (!previousUpdate.localBuildVersion || !appRecord.bundleVersion) {
+    return false;
+  }
+  return isVersionGreater(appRecord.bundleVersion, previousUpdate.localBuildVersion);
 }
 
 export function mergeHomebrewRecentlyUpdatedRecords(
