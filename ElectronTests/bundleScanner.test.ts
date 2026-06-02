@@ -152,7 +152,8 @@ describe("bundle scanner", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
     tempDirs.push(root);
 
-    await writeAppPlist(path.join(root, "Designed for iPad.app"), {
+    const appPath = path.join(root, "Designed for iPad.app");
+    await writeAppPlist(appPath, {
       displayName: "Designed for iPad",
       bundleIdentifier: "com.example.ipad-direct",
       version: "1.0.0",
@@ -165,14 +166,17 @@ describe("bundle scanner", () => {
         "  <true/>"
       ].join("\n")
     });
+    await mkdir(path.join(appPath, "Contents", "_MASReceipt"), { recursive: true });
+    await writeFile(path.join(appPath, "Contents", "_MASReceipt", "receipt"), "receipt");
 
     const records = await new BundleScannerClient().scanApplications([root]);
 
     expect(records[0]).toMatchObject({
-      bundlePath: path.join(root, "Designed for iPad.app"),
+      bundlePath: appPath,
       bundleIdentifier: "com.example.ipad-direct",
       sourceHint: "appStore",
-      isIOSAppOnMac: true
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: true
     });
   });
 
@@ -201,7 +205,30 @@ describe("bundle scanner", () => {
       localVersion: { raw: "3.22" },
       sourceHint: "appStore",
       isIOSAppOnMac: true,
+      hasAppStoreEvidence: true,
       iconDataURL: `icon:${path.join(appPath, "Wrapper", "Wrapped iPad App.app", "AppIcon76x76@2x~ipad.png")}`
+    });
+  });
+
+  it("does not treat wrapper iOS apps without App Store metadata as App Store managed", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+    const appPath = path.join(root, "Sideloaded iPad App.app");
+
+    await writeWrappedIOSAppPlist(appPath, {
+      displayName: "Sideloaded iPad App",
+      bundleIdentifier: "com.example.sideloaded-ipad-wrapper",
+      version: "1.0",
+      includeAppStoreEvidence: false
+    });
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundleIdentifier: "com.example.sideloaded-ipad-wrapper",
+      sourceHint: "unknown",
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: false
     });
   });
 
@@ -340,8 +367,14 @@ async function writeWrappedIOSAppPlist(
   {
     displayName,
     bundleIdentifier,
-    version
-  }: { displayName: string; bundleIdentifier: string; version: string }
+    version,
+    includeAppStoreEvidence = true
+  }: {
+    displayName: string;
+    bundleIdentifier: string;
+    version: string;
+    includeAppStoreEvidence?: boolean;
+  }
 ): Promise<void> {
   const wrappedAppPath = path.join(appPath, "Wrapper", `${displayName}.app`);
   await mkdir(wrappedAppPath, { recursive: true });
@@ -393,4 +426,21 @@ async function writeWrappedIOSAppPlist(
 </plist>
 `
   );
+  if (includeAppStoreEvidence) {
+    await mkdir(path.join(wrappedAppPath, "SC_Info"), { recursive: true });
+    await writeFile(
+      path.join(appPath, "Wrapper", "iTunesMetadata.plist"),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>softwareVersionBundleId</key>
+  <string>${bundleIdentifier}</string>
+  <key>itemId</key>
+  <integer>123456789</integer>
+</dict>
+</plist>
+`
+    );
+  }
 }

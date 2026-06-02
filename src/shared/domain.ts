@@ -19,6 +19,7 @@ export type AppRecord = {
   bundleVersion?: VersionValue;
   sourceHint: UpdateSource;
   isIOSAppOnMac?: boolean;
+  hasAppStoreEvidence?: boolean;
   sparkleFeedURL?: string;
   iconDataURL?: string;
 };

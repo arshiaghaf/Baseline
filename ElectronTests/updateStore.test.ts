@@ -562,7 +562,17 @@ describe("update store helpers", () => {
       bundleIdentifier: "com.example.ipad-app",
       localVersion: version("1.0.0"),
       sourceHint: "appStore",
-      isIOSAppOnMac: true
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: true
+    });
+    const sideloadedIOSAppOnMac = appRecord({
+      bundlePath: "/Applications/Sideloaded iPad App.app",
+      displayName: "Sideloaded iPad App",
+      bundleIdentifier: "com.example.sideloaded-ipad-app",
+      sourceHint: "unknown",
+      localVersion: version("1.0.0"),
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: false
     });
     const nativeMacApp = appRecord({
       bundlePath: "/Applications/Native Mac App.app",
@@ -574,7 +584,9 @@ describe("update store helpers", () => {
     const lookupOutcome = vi.fn(async () => ({ type: "completed" as const }));
     const store = await makeStore({
       clients: {
-        scanner: { scanApplications: async () => [iOSAppOnMac, nativeMacApp] },
+        scanner: {
+          scanApplications: async () => [iOSAppOnMac, sideloadedIOSAppOnMac, nativeMacApp]
+        },
         appStore: { lookupOutcome }
       }
     });
@@ -589,6 +601,12 @@ describe("update store helpers", () => {
     );
     expect(lookupOutcome).toHaveBeenNthCalledWith(
       2,
+      sideloadedIOSAppOnMac.bundleIdentifier,
+      sideloadedIOSAppOnMac.localVersion,
+      { includeIOSAppStoreSoftware: false }
+    );
+    expect(lookupOutcome).toHaveBeenNthCalledWith(
+      3,
       nativeMacApp.bundleIdentifier,
       nativeMacApp.localVersion,
       { includeIOSAppStoreSoftware: false }

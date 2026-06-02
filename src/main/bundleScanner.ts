@@ -17,6 +17,7 @@ type InfoPlist = Record<string, unknown>;
 type AppBundleInfo = {
   info: InfoPlist;
   isIOSAppOnMac: boolean;
+  hasAppStoreEvidence: boolean;
   iconResourcesPath: string;
 };
 type IconLoadResult = { dataURL?: string };
@@ -92,7 +93,7 @@ export class BundleScannerClient {
     if (!bundleInfo) {
       return undefined;
     }
-    const { info, isIOSAppOnMac, iconResourcesPath } = bundleInfo;
+    const { info, isIOSAppOnMac, hasAppStoreEvidence, iconResourcesPath } = bundleInfo;
     if (isWebAppBundle(info)) {
       return undefined;
     }
@@ -105,9 +106,10 @@ export class BundleScannerClient {
     const rawBundleVersion = stringValue(info.CFBundleVersion);
     const rawVersion = stringValue(info.CFBundleShortVersionString) ?? rawBundleVersion;
     const sparkleFeedURL = this.sparkleFeedURL(info);
-    const sourceHint: UpdateSource = (await this.hasMasReceipt(appPath))
+    const hasMasReceipt = await this.hasMasReceipt(appPath);
+    const sourceHint: UpdateSource = hasMasReceipt
       ? "appStore"
-      : isIOSAppOnMac
+      : isIOSAppOnMac && hasAppStoreEvidence
         ? "appStore"
         : sparkleFeedURL
           ? "sparkle"
@@ -122,6 +124,7 @@ export class BundleScannerClient {
       bundleVersion: rawBundleVersion ? version(rawBundleVersion) : undefined,
       sourceHint,
       isIOSAppOnMac,
+      hasAppStoreEvidence: hasMasReceipt || hasAppStoreEvidence,
       sparkleFeedURL,
       iconDataURL: await this.appIconDataURL(appPath, iconResourcesPath, info)
     };
@@ -133,6 +136,7 @@ export class BundleScannerClient {
       return {
         info,
         isIOSAppOnMac: isIOSAppOnMacInfo(info),
+        hasAppStoreEvidence: await this.hasMasReceipt(appPath),
         iconResourcesPath: path.join(appPath, "Contents", "Resources")
       };
     }
@@ -156,6 +160,7 @@ export class BundleScannerClient {
           return {
             info,
             isIOSAppOnMac: true,
+            hasAppStoreEvidence: await this.hasWrappedAppStoreEvidence(appPath, entry.name, info),
             iconResourcesPath: path.join(wrapperPath, entry.name)
           };
         }
@@ -171,6 +176,31 @@ export class BundleScannerClient {
       const receipt = path.join(appPath, "Contents", "_MASReceipt", "receipt");
       const receiptStat = await stat(receipt);
       return receiptStat.isFile();
+    } catch {
+      return false;
+    }
+  }
+
+  private async hasWrappedAppStoreEvidence(
+    appPath: string,
+    wrappedAppName: string,
+    info: InfoPlist
+  ): Promise<boolean> {
+    const wrapperPath = path.join(appPath, "Wrapper");
+    const metadata = await readInfoPlistAtPath(path.join(wrapperPath, "iTunesMetadata.plist"));
+    const metadataBundleID = stringValue(metadata?.softwareVersionBundleId);
+    const bundleIdentifier = stringValue(info.CFBundleIdentifier);
+    if (
+      !metadata ||
+      !bundleIdentifier ||
+      metadataBundleID?.toLowerCase() !== bundleIdentifier.toLowerCase()
+    ) {
+      return false;
+    }
+
+    try {
+      const scInfo = await stat(path.join(wrapperPath, wrappedAppName, "SC_Info"));
+      return scInfo.isDirectory();
     } catch {
       return false;
     }
