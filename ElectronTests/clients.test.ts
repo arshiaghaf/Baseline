@@ -74,6 +74,44 @@ describe("ported clients", () => {
     expect(new AppStoreLookupClient().parseLookupResponse(data, version("1.0"))).toBeUndefined();
   });
 
+  it("keeps Mac App Store lookup requests filtered to Mac software by default", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 })
+      );
+
+    try {
+      await new AppStoreLookupClient().lookupOutcome("com.example.mac-app", version("1.0"));
+
+      const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
+      expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.mac-app");
+      expect(requestedURL.searchParams.get("entity")).toBe("macSoftware");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("omits the entity filter when iOS App Store software lookup is enabled", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 })
+      );
+
+    try {
+      await new AppStoreLookupClient().lookupOutcome("com.example.ios-on-mac", version("1.0"), {
+        includeIOSAppStoreSoftware: true
+      });
+
+      const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
+      expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.ios-on-mac");
+      expect(requestedURL.searchParams.has("entity")).toBe(false);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("parses Sparkle appcast fixtures", () => {
     const data = readFileSync(path.join(fixtures, "sparkle_appcast.xml"));
     const result = new SparkleAppcastClient().parseAppcast(data, version("1.0.0"));

@@ -29,7 +29,9 @@ export class AppStoreLookupClient {
   ): Promise<LookupOutcome<AppStoreLookupResult>> {
     const url = new URL("https://itunes.apple.com/lookup");
     url.searchParams.set("bundleId", bundleIdentifier);
-    url.searchParams.set("entity", "macSoftware");
+    if (!options.includeIOSAppStoreSoftware) {
+      url.searchParams.set("entity", "macSoftware");
+    }
 
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
