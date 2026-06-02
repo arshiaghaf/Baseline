@@ -978,11 +978,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
     <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
       <div className="item-card-top">
         <button
-          className={
-            app.iconDataURL
-              ? "app-icon app-icon-image clickable-app-icon"
-              : "app-icon clickable-app-icon"
-          }
+          className={appIconClassName(app, true)}
           onClick={() => void window.baseline.openApp(app.id)}
           title="Open app"
           aria-label="Open app"
@@ -1191,11 +1187,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
     <article className={isIgnored ? "item-card recent-card ignored-row" : "item-card recent-card"}>
       <div className="item-card-top">
         <button
-          className={
-            app.iconDataURL
-              ? "app-icon app-icon-image clickable-app-icon"
-              : "app-icon clickable-app-icon"
-          }
+          className={appIconClassName(app, true)}
           onClick={() => void window.baseline.openApp(app.id)}
           title="Open app"
           aria-label="Open app"
@@ -1259,11 +1251,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
     <article className="item-card ignored-card ignored-row">
       <div className="item-card-top">
         <button
-          className={
-            app.iconDataURL
-              ? "app-icon app-icon-image clickable-app-icon"
-              : "app-icon clickable-app-icon"
-          }
+          className={appIconClassName(app, true)}
           onClick={() => void window.baseline.openApp(app.id)}
           title="Open app"
           aria-label="Open app"
@@ -1347,11 +1335,7 @@ export function AppRow({
   return (
     <article className={isIgnored ? "row ignored-row" : "row"}>
       <button
-        className={
-          app.iconDataURL
-            ? "app-icon app-icon-image clickable-app-icon"
-            : "app-icon clickable-app-icon"
-        }
+        className={appIconClassName(app, true)}
         onClick={() => void window.baseline.openApp(app.id)}
         title="Open app"
         aria-label="Open app"
@@ -2030,9 +2014,7 @@ function HomebrewItemIcon({
     return (
       <button
         className={
-          iconDataURL
-            ? "app-icon app-icon-image clickable-app-icon"
-            : `${fallbackClassName} clickable-app-icon`
+          iconDataURL ? appIconClassName(app, true) : `${fallbackClassName} clickable-app-icon`
         }
         onClick={() => void window.baseline.openApp(app.id)}
         title="Open app"
@@ -2052,6 +2034,17 @@ function HomebrewItemIcon({
   }
 
   return <div className={fallbackClassName}>{fallbackIcon}</div>;
+}
+
+function appIconClassName(app: AppRecord, clickable = false): string {
+  const classNames = app.iconDataURL ? ["app-icon", "app-icon-image"] : ["app-icon"];
+  if (app.isIOSAppOnMac) {
+    classNames.push("ios-app-icon");
+  }
+  if (clickable) {
+    classNames.push("clickable-app-icon");
+  }
+  return classNames.join(" ");
 }
 
 export function UpdateActionButton({
