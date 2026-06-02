@@ -17,6 +17,7 @@ type InfoPlist = Record<string, unknown>;
 type AppBundleInfo = {
   info: InfoPlist;
   isIOSAppOnMac: boolean;
+  iconResourcesPath: string;
 };
 type IconLoadResult = { dataURL?: string };
 type IconExecFileAsync = (
@@ -91,7 +92,7 @@ export class BundleScannerClient {
     if (!bundleInfo) {
       return undefined;
     }
-    const { info, isIOSAppOnMac } = bundleInfo;
+    const { info, isIOSAppOnMac, iconResourcesPath } = bundleInfo;
     if (isWebAppBundle(info)) {
       return undefined;
     }
@@ -122,14 +123,18 @@ export class BundleScannerClient {
       sourceHint,
       isIOSAppOnMac,
       sparkleFeedURL,
-      iconDataURL: await this.appIconDataURL(appPath)
+      iconDataURL: await this.appIconDataURL(appPath, iconResourcesPath, info)
     };
   }
 
   private async readAppBundleInfo(appPath: string): Promise<AppBundleInfo | undefined> {
     const info = await this.readInfoPlist(appPath);
     if (info) {
-      return { info, isIOSAppOnMac: isIOSAppOnMacInfo(info) };
+      return {
+        info,
+        isIOSAppOnMac: isIOSAppOnMacInfo(info),
+        iconResourcesPath: path.join(appPath, "Contents", "Resources")
+      };
     }
     return this.readWrappedIOSAppBundleInfo(appPath);
   }
@@ -148,7 +153,11 @@ export class BundleScannerClient {
         }
         const info = await readInfoPlistAtPath(path.join(wrapperPath, entry.name, "Info.plist"));
         if (info && isIOSAppOnMacInfo(info)) {
-          return { info, isIOSAppOnMac: true };
+          return {
+            info,
+            isIOSAppOnMac: true,
+            iconResourcesPath: path.join(wrapperPath, entry.name)
+          };
         }
       }
     } catch {
@@ -175,8 +184,12 @@ export class BundleScannerClient {
     return feed && isAllowedFeedURL(feed) ? feed : undefined;
   }
 
-  private async appIconDataURL(appPath: string): Promise<string | undefined> {
-    const bundleIcon = await this.bundleIconDataURL(appPath);
+  private async appIconDataURL(
+    appPath: string,
+    iconResourcesPath: string,
+    info: InfoPlist
+  ): Promise<string | undefined> {
+    const bundleIcon = await this.bundleIconDataURL(iconResourcesPath, info);
     if (bundleIcon.dataURL) {
       return bundleIcon.dataURL;
     }
@@ -192,13 +205,11 @@ export class BundleScannerClient {
     }
   }
 
-  private async bundleIconDataURL(appPath: string): Promise<IconLoadResult> {
-    const info = await this.readInfoPlist(appPath);
-    if (!info) {
-      return {};
-    }
-
-    for (const iconPath of iconCandidatePaths(appPath, info)) {
+  private async bundleIconDataURL(
+    iconResourcesPath: string,
+    info: InfoPlist
+  ): Promise<IconLoadResult> {
+    for (const iconPath of iconCandidatePaths(iconResourcesPath, info)) {
       const result = await loadIconFileDataURL(iconPath);
       if (result.dataURL) {
         return result;
@@ -242,8 +253,7 @@ function isIOSAppOnMacInfo(info: InfoPlist): boolean {
   );
 }
 
-function iconCandidatePaths(appPath: string, info: InfoPlist): string[] {
-  const resourcesPath = path.join(appPath, "Contents", "Resources");
+function iconCandidatePaths(resourcesPath: string, info: InfoPlist): string[] {
   const names = new Set<string>();
   const add = (value: string | undefined) => {
     if (value) {

@@ -12,10 +12,15 @@ const electronMocks = vi.hoisted(() => ({
     isEmpty: () => true,
     resize: () => ({ toDataURL: () => "" })
   })),
-  createFromPath: vi.fn(() => ({
-    isEmpty: () => true,
-    resize: () => ({ toDataURL: () => "" })
-  }))
+  createFromPath: vi.fn(
+    (imagePath: string): { isEmpty: () => boolean; resize: () => { toDataURL: () => string } } => {
+      void imagePath;
+      return {
+        isEmpty: () => true,
+        resize: () => ({ toDataURL: () => "" })
+      };
+    }
+  )
 }));
 
 vi.mock("electron", () => ({
@@ -181,6 +186,10 @@ describe("bundle scanner", () => {
       bundleIdentifier: "com.example.ipad-wrapper",
       version: "3.22"
     });
+    electronMocks.createFromPath.mockImplementation((imagePath: string) => ({
+      isEmpty: () => !imagePath.endsWith("AppIcon60x60@2x.png"),
+      resize: () => ({ toDataURL: () => `icon:${imagePath}` })
+    }));
 
     const records = await new BundleScannerClient().scanApplications([root]);
 
@@ -191,7 +200,8 @@ describe("bundle scanner", () => {
       bundleIdentifier: "com.example.ipad-wrapper",
       localVersion: { raw: "3.22" },
       sourceHint: "appStore",
-      isIOSAppOnMac: true
+      isIOSAppOnMac: true,
+      iconDataURL: `icon:${path.join(appPath, "Wrapper", "Wrapped iPad App.app", "AppIcon60x60@2x.png")}`
     });
   });
 
@@ -306,6 +316,7 @@ async function writeWrappedIOSAppPlist(
 ): Promise<void> {
   const wrappedAppPath = path.join(appPath, "Wrapper", `${displayName}.app`);
   await mkdir(wrappedAppPath, { recursive: true });
+  await writeFile(path.join(wrappedAppPath, "AppIcon60x60@2x.png"), "icon");
   await writeFile(
     path.join(wrappedAppPath, "Info.plist"),
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -318,6 +329,10 @@ async function writeWrappedIOSAppPlist(
   <string>${bundleIdentifier}</string>
   <key>CFBundleShortVersionString</key>
   <string>${version}</string>
+  <key>CFBundleIconFiles</key>
+  <array>
+    <string>AppIcon60x60@2x.png</string>
+  </array>
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>CFBundleSupportedPlatforms</key>
