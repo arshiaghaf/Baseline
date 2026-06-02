@@ -66,7 +66,7 @@ export type BaselineAPI = {
   toggleIgnoredHomebrew(itemID: string): Promise<void>;
   performAppUpdate(appID: string): Promise<void>;
   performHomebrewUpdate(itemID: string): Promise<void>;
-  performHomebrewUpdateAll(): Promise<void>;
+  performHomebrewUpdateAll(itemIDs?: string[]): Promise<void>;
   installHomebrewItem(item: HomebrewCaskDiscoveryItem): Promise<void>;
   uninstallHomebrewItem(itemID: string): Promise<void>;
   openApp(appID: string): Promise<void>;

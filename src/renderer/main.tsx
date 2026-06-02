@@ -807,7 +807,7 @@ function AllUpdatesSection({
               }
               readyLabel="Update Brews"
               readyVariant="outline"
-              onAction={() => void window.baseline.performHomebrewUpdateAll()}
+              onAction={() => performHomebrewUpdateAllForItems(derived.allHomebrewOutdated)}
             />
           ) : undefined
         }
@@ -1638,7 +1638,7 @@ export function HomebrewSection({
               }
               readyLabel="Update Brews"
               readyVariant="outline"
-              onAction={() => void window.baseline.performHomebrewUpdateAll()}
+              onAction={() => performHomebrewUpdateAllForItems(items)}
             />
           ) : undefined
         }
@@ -2990,6 +2990,10 @@ function combinedAvailableCount(derived: DerivedSections): number {
   return derived.availableApps.length + derived.allHomebrewOutdated.length;
 }
 
+function performHomebrewUpdateAllForItems(items: Pick<HomebrewManagedItem, "id">[]): void {
+  void window.baseline.performHomebrewUpdateAll(items.map((item) => item.id));
+}
+
 function toggleCollapsedSection(
   kind: "app" | "homebrew",
   sectionID: string,
@@ -3049,8 +3053,9 @@ function deriveSections(snapshot: BaselineSnapshot) {
     .filter((item) => item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
     .filter(homebrewFilter)
     .sort(sortHomebrewOutdated);
+  const ignoredAppsUnfiltered = snapshot.apps.filter((app) => snapshot.ignoredIDs.includes(app.id));
   const appsRepresentedOutsideHomebrew = term
-    ? [...availableApps, ...ignoredApps]
+    ? [...availableApps, ...ignoredAppsUnfiltered]
     : snapshot.apps.filter(
         (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
       );
