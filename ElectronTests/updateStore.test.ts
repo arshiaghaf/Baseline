@@ -347,6 +347,32 @@ describe("update store helpers", () => {
     expect(inventoryOptions).toEqual([{ updateMetadata: true }, { updateMetadata: false }]);
   });
 
+  it("surfaces GitHub release self-update availability during refresh", async () => {
+    const lookup = vi.fn(async (currentVersion: ReturnType<typeof version>, checkedAt: string) => ({
+      available: true,
+      currentVersion,
+      latestVersion: version("0.2.0"),
+      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+      checkedAt
+    }));
+    const store = await makeStore({
+      currentAppVersion: "0.1.0",
+      clients: {
+        selfUpdate: { lookup }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(lookup).toHaveBeenCalledWith(version("0.1.0"), expect.any(String));
+    expect(store.getSnapshot().selfUpdate).toMatchObject({
+      available: true,
+      currentVersion: version("0.1.0"),
+      latestVersion: version("0.2.0"),
+      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest"
+    });
+  });
+
   it("preserves App Store, Sparkle, then Homebrew update source precedence", async () => {
     const precedenceApp = appRecord({
       bundlePath: "/Applications/Precedence.app",
@@ -468,6 +494,67 @@ describe("update store helpers", () => {
 
     expect(store.getSnapshot().updates).toEqual([]);
     expect(store.getSnapshot().recentlyUpdated).toEqual([]);
+  });
+
+  it("preserves Sparkle build-only update versions through update and recent history", async () => {
+    const installedApp = appRecord({
+      bundlePath: "/Applications/Build Only.app",
+      displayName: "Build Only",
+      bundleIdentifier: "com.example.build-only",
+      sparkleFeedURL: "https://updates.example.com/appcast.xml",
+      localVersion: version("1.0"),
+      bundleVersion: version("100")
+    });
+    const refreshedApp = {
+      ...installedApp,
+      bundleVersion: version("101")
+    };
+    let scanCount = 0;
+    const store = await makeStore({
+      clients: {
+        scanner: {
+          scanApplications: async () => {
+            scanCount += 1;
+            return scanCount === 1 ? [installedApp] : [refreshedApp];
+          }
+        },
+        appStore: { lookupOutcome: async () => ({ type: "completed" }) },
+        sparkle: {
+          lookupOutcome: async () =>
+            scanCount === 1
+              ? {
+                  type: "completed",
+                  value: {
+                    remoteVersion: version("1.0"),
+                    remoteBuildVersion: version("101"),
+                    updateURL: "https://updates.example.com/download"
+                  }
+                }
+              : { type: "completed" }
+        }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().updates[0]).toMatchObject({
+      source: "sparkle",
+      localVersion: version("1.0"),
+      remoteVersion: version("1.0"),
+      localBuildVersion: version("100"),
+      remoteBuildVersion: version("101")
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().updates).toEqual([]);
+    expect(store.getSnapshot().recentlyUpdated[0]).toMatchObject({
+      source: "sparkle",
+      fromVersion: version("1.0"),
+      toVersion: version("1.0"),
+      fromBuildVersion: version("100"),
+      toBuildVersion: version("101")
+    });
   });
 
   it("surfaces unreliable Homebrew outdated detection and preserves previous outdated items", async () => {
@@ -1084,6 +1171,188 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("excludes hidden app-backed casks from batch Homebrew updates", async () => {
+    const ignoredApp = appRecord({
+      bundlePath: "/Applications/Managed.app",
+      displayName: "Managed",
+      bundleIdentifier: "com.example.managed",
+      localVersion: version("1.0.0")
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [ignoredApp],
+        ignoredIDs: [ignoredApp.id],
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:managed",
+            token: "managed",
+            name: "Managed",
+            kind: "cask",
+            appID: ignoredApp.id,
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            installedVersion: version("14.0.0"),
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+  });
+
+  it("uses a caller-provided visible Homebrew batch scope", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Managed.app",
+      displayName: "Managed",
+      bundleIdentifier: "com.example.managed",
+      localVersion: version("1.0.0")
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "homebrew",
+            supportLevel: "supported",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            homebrewToken: "managed-cli",
+            checkedAt: "2026-04-30T12:00:00.000Z"
+          }
+        ],
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:managed-cli",
+            token: "managed-cli",
+            name: "Managed CLI",
+            kind: "cask",
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            installedVersion: version("14.0.0"),
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "formula:fd",
+            token: "fd",
+            name: "fd",
+            kind: "formula",
+            installedVersion: version("9.0.0"),
+            latestVersion: version("10.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll(["cask:managed-cli", "formula:ripgrep"]);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["upgrade", "--cask", "--greedy", "managed-cli"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+  });
+
+  it("excludes ignored app-backed casks from caller-provided Homebrew batch scopes", async () => {
+    const ignoredApp = appRecord({
+      bundlePath: "/Applications/Managed.app",
+      displayName: "Managed",
+      bundleIdentifier: "com.example.managed",
+      localVersion: version("1.0.0")
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [ignoredApp],
+        ignoredIDs: [ignoredApp.id],
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:managed-cli",
+            token: "managed-cli",
+            name: "Managed CLI",
+            kind: "cask",
+            appID: ignoredApp.id,
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            installedVersion: version("14.0.0"),
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll(["cask:managed-cli", "formula:ripgrep"]);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+  });
+
   it("does not run Homebrew maintenance when every outdated item is ignored", async () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
@@ -1497,6 +1766,36 @@ describe("update store helpers", () => {
       vi.useRealTimers();
     }
   });
+
+  it("returns failed Homebrew Discover installs to retryable state after a short delay", async () => {
+    const item = {
+      id: "cask:retryable-discover",
+      kind: "cask" as const,
+      token: "retryable-discover",
+      displayName: "Retryable Discover",
+      presentation: "app" as const,
+      version: version("1.0.0")
+    };
+    const store = await makeStore({
+      runBrewCommand: async (_args, onOutputLine = () => undefined) => {
+        onOutputLine("Downloading retryable-discover");
+        return { success: false, status: 1, output: "Error: install failed" };
+      }
+    });
+
+    vi.useFakeTimers();
+    try {
+      await store.installHomebrewItem(item);
+
+      expect(store.getSnapshot().homebrewDiscoverFailedItemIDs).toContain(item.id);
+
+      vi.advanceTimersByTime(4000);
+      expect(store.getSnapshot().homebrewDiscoverFailedItemIDs).not.toContain(item.id);
+      expect(store.getSnapshot().homebrewDiscoverProgressByItemID[item.id]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 async function makeStore({
@@ -1506,6 +1805,7 @@ async function makeStore({
   runMasCommand = async () => ({ success: true, status: 0, output: "" }),
   openExternalURL = async () => true,
   openAppBundle = async () => undefined,
+  currentAppVersion,
   successRefreshDelayMS = 0,
   onUserData
 }: {
@@ -1515,6 +1815,7 @@ async function makeStore({
   runMasCommand?: ConstructorParameters<typeof UpdateStore>[0]["runMasCommand"];
   openExternalURL?: ConstructorParameters<typeof UpdateStore>[0]["openExternalURL"];
   openAppBundle?: ConstructorParameters<typeof UpdateStore>[0]["openAppBundle"];
+  currentAppVersion?: ConstructorParameters<typeof UpdateStore>[0]["currentAppVersion"];
   successRefreshDelayMS?: ConstructorParameters<typeof UpdateStore>[0]["successRefreshDelayMS"];
   onUserData?: (directory: string) => void;
 } = {}): Promise<UpdateStore> {
@@ -1526,6 +1827,7 @@ async function makeStore({
     persisted,
     openExternalURL,
     openAppBundle,
+    currentAppVersion,
     runBrewCommand,
     runMasCommand,
     successRefreshDelayMS,
@@ -1547,6 +1849,14 @@ async function makeStore({
           items: [],
           outdatedDetectionSucceeded: true,
           outdatedDetectionSucceededByKind: { formula: true, cask: true }
+        })
+      },
+      selfUpdate: {
+        lookup: async (currentVersion, checkedAt) => ({
+          available: false,
+          currentVersion,
+          releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+          checkedAt
         })
       },
       ...clients

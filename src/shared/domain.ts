@@ -16,6 +16,7 @@ export type AppRecord = {
   displayName: string;
   bundleIdentifier?: string;
   localVersion: VersionValue;
+  bundleVersion?: VersionValue;
   sourceHint: UpdateSource;
   sparkleFeedURL?: string;
   iconDataURL?: string;
@@ -31,6 +32,7 @@ export type AppStoreLookupResult = {
 
 export type SparkleLookupResult = {
   remoteVersion: VersionValue;
+  remoteBuildVersion?: VersionValue;
   updateURL?: string;
   releaseNotesURL?: string;
   releaseDate?: string;
@@ -86,6 +88,8 @@ export type UpdateRecord = {
   supportLevel: SupportLevel;
   localVersion: VersionValue;
   remoteVersion: VersionValue;
+  localBuildVersion?: VersionValue;
+  remoteBuildVersion?: VersionValue;
   updateURL?: string;
   appStoreItemID?: number;
   homebrewToken?: string;
@@ -102,6 +106,8 @@ export type RecentlyUpdatedRecord = {
   source?: UpdateSource;
   fromVersion: VersionValue;
   toVersion: VersionValue;
+  fromBuildVersion?: VersionValue;
+  toBuildVersion?: VersionValue;
   updatedAt: string;
 };
 
@@ -128,6 +134,14 @@ export type HomebrewManagedItem = {
   releaseDate?: string;
   iconDataURL?: string;
   appID?: string;
+};
+
+export type SelfUpdateRecord = {
+  available: boolean;
+  currentVersion: VersionValue;
+  latestVersion?: VersionValue;
+  releaseURL?: string;
+  checkedAt?: string;
 };
 
 export type PersistedSnapshot = {
@@ -186,6 +200,7 @@ export type BaselineSnapshot = PersistedSnapshot &
     homebrewDiscoverProgressByItemID: Record<string, number>;
     laggingHomebrewCaskTokens: string[];
     defaultScanDirectories: string[];
+    selfUpdate?: SelfUpdateRecord;
   };
 
 export const emptyHomebrewCaskIndex: HomebrewCaskIndex = {

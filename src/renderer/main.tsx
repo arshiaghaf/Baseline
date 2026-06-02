@@ -54,6 +54,7 @@ import {
   isCask,
   normalizedHomebrewAppName
 } from "../shared/homebrewAppLinking";
+import { compareVersions } from "../shared/version";
 import "./styles.css";
 
 type Route = "main" | "menubar" | "settings";
@@ -152,11 +153,7 @@ function App() {
       onToolbarSearchOpenChange={setToolbarSearchOpen}
       onOpenSettings={() => {
         setToolbarSearchOpen(false);
-        if (route === "menubar") {
-          void window.baseline.showSettings();
-        } else {
-          window.location.hash = "/settings";
-        }
+        void window.baseline.showSettings();
       }}
     />
   );
@@ -301,6 +298,9 @@ export function Dashboard({
               <h1>{title}</h1>
             </div>
             <div className="topbar-actions">
+              {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
+                <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
+              ) : null}
               <ToolbarSearch
                 open={toolbarSearchOpen}
                 snapshot={snapshot}
@@ -473,7 +473,7 @@ function Sidebar({
           className={route === "settings" ? "selected" : ""}
           onClick={() => {
             onNavigate?.();
-            window.location.hash = "/settings";
+            void window.baseline.showSettings();
           }}
         >
           <Settings size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -486,6 +486,19 @@ function Sidebar({
 
 function SidebarBadge({ count }: { count: number }) {
   return count > 0 ? <strong>{count}</strong> : null;
+}
+
+function SelfUpdateToolbarButton({ releaseURL }: { releaseURL: string }) {
+  return (
+    <button
+      className="toolbar-button self-update-toolbar-button"
+      onClick={() => void window.baseline.openExternal(releaseURL)}
+      title="New Baseline Update Available"
+      aria-label="New Baseline Update Available"
+    >
+      <Download size={16} strokeWidth={2} />
+    </button>
+  );
 }
 
 function ToolbarSearch({
@@ -790,7 +803,7 @@ function AllUpdatesSection({
               }
               readyLabel="Update Brews"
               readyVariant="outline"
-              onAction={() => void window.baseline.performHomebrewUpdateAll()}
+              onAction={() => performHomebrewUpdateAllForItems(derived.allHomebrewOutdated)}
             />
           ) : undefined
         }
@@ -1011,8 +1024,8 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
         <p>
           {update ? (
             <VersionChange
-              from={app.localVersion.raw || "unknown"}
-              to={update.remoteVersion.raw || "unknown"}
+              from={appUpdateVersionChange(update).from}
+              to={appUpdateVersionChange(update).to}
             />
           ) : (
             app.localVersion.raw || "unknown"
@@ -1294,8 +1307,8 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
         <p>
           {update ? (
             <VersionChange
-              from={app.localVersion.raw || "unknown"}
-              to={update.remoteVersion.raw || "unknown"}
+              from={appUpdateVersionChange(update).from}
+              to={appUpdateVersionChange(update).to}
             />
           ) : (
             app.localVersion.raw || "unknown"
@@ -1357,8 +1370,8 @@ export function AppRow({
         <p>
           {update ? (
             <VersionChange
-              from={app.localVersion.raw || "unknown"}
-              to={update.remoteVersion.raw || "unknown"}
+              from={appUpdateVersionChange(update).from}
+              to={appUpdateVersionChange(update).to}
             />
           ) : recentlyUpdatedAt ? (
             updatedRelativeLabel(recentlyUpdatedAt)
@@ -1621,7 +1634,7 @@ export function HomebrewSection({
               }
               readyLabel="Update Brews"
               readyVariant="outline"
-              onAction={() => void window.baseline.performHomebrewUpdateAll()}
+              onAction={() => performHomebrewUpdateAllForItems(items)}
             />
           ) : undefined
         }
@@ -2427,7 +2440,10 @@ function SettingsSidebar({
   return (
     <aside className="sidebar settings-sidebar">
       <div className="settings-sidebar-header">
-        <button className="back-to-app-button" onClick={() => (window.location.hash = "/main")}>
+        <button
+          className="back-to-app-button"
+          onClick={() => void window.baseline.showMainWindow()}
+        >
           <ArrowLeft size={15} strokeWidth={sidebarIconStrokeWidth} />
           <span>Back to app</span>
         </button>
@@ -2831,6 +2847,34 @@ function VersionChange({ from, to }: { from: string; to: string }) {
   );
 }
 
+function appUpdateVersionChange(update: UpdateRecord): { from: string; to: string } {
+  if (shouldShowAppBuildVersion(update)) {
+    return {
+      from: versionLabelWithBuild(update.localVersion.raw, update.localBuildVersion?.raw),
+      to: versionLabelWithBuild(update.remoteVersion.raw, update.remoteBuildVersion?.raw)
+    };
+  }
+  return {
+    from: update.localVersion.raw || "unknown",
+    to: update.remoteVersion.raw || "unknown"
+  };
+}
+
+function shouldShowAppBuildVersion(update: UpdateRecord): boolean {
+  return Boolean(
+    update.localBuildVersion?.raw.trim() &&
+    update.remoteBuildVersion?.raw.trim() &&
+    compareVersions(update.localVersion, update.remoteVersion) === 0 &&
+    compareVersions(update.localBuildVersion, update.remoteBuildVersion) !== 0
+  );
+}
+
+function versionLabelWithBuild(versionRaw: string, buildRaw?: string): string {
+  const displayVersion = versionRaw.trim() || "unknown";
+  const buildVersion = buildRaw?.trim();
+  return buildVersion ? `${displayVersion} (${buildVersion})` : displayVersion;
+}
+
 function ToolStatus({
   label,
   description,
@@ -2945,6 +2989,10 @@ function combinedAvailableCount(derived: DerivedSections): number {
   return derived.availableApps.length + derived.allHomebrewOutdated.length;
 }
 
+function performHomebrewUpdateAllForItems(items: Pick<HomebrewManagedItem, "id">[]): void {
+  void window.baseline.performHomebrewUpdateAll(items.map((item) => item.id));
+}
+
 function toggleCollapsedSection(
   kind: "app" | "homebrew",
   sectionID: string,
@@ -3004,8 +3052,9 @@ function deriveSections(snapshot: BaselineSnapshot) {
     .filter((item) => item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
     .filter(homebrewFilter)
     .sort(sortHomebrewOutdated);
+  const ignoredAppsUnfiltered = snapshot.apps.filter((app) => snapshot.ignoredIDs.includes(app.id));
   const appsRepresentedOutsideHomebrew = term
-    ? [...availableApps, ...ignoredApps]
+    ? [...availableApps, ...ignoredAppsUnfiltered]
     : snapshot.apps.filter(
         (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
       );

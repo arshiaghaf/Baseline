@@ -131,6 +131,19 @@ describe("snapshot persistence", () => {
       ...defaultPersistedSnapshot(),
       ignoredIDs: ["app:ignored"],
       ignoredHomebrewItemIDs: ["formula:ripgrep"],
+      updates: [
+        {
+          id: "app:example",
+          appID: "app:example",
+          source: "sparkle",
+          supportLevel: "limited",
+          localVersion: version("1.0.0"),
+          remoteVersion: version("1.0.0"),
+          localBuildVersion: version("100"),
+          remoteBuildVersion: version("101"),
+          checkedAt: "2026-04-30T12:00:00.000Z"
+        }
+      ],
       recentlyUpdated: [
         {
           id: "app:example",
@@ -139,6 +152,8 @@ describe("snapshot persistence", () => {
           source: "sparkle",
           fromVersion: version("1.0.0"),
           toVersion: version("2.0.0"),
+          fromBuildVersion: version("100"),
+          toBuildVersion: version("101"),
           updatedAt: "2026-04-30T12:00:00.000Z"
         }
       ],
@@ -159,12 +174,24 @@ describe("snapshot persistence", () => {
     await expect(persistence.load()).resolves.toMatchObject({
       ignoredIDs: ["app:ignored"],
       ignoredHomebrewItemIDs: ["formula:ripgrep"],
+      updates: [
+        {
+          appID: "app:example",
+          source: "sparkle",
+          localVersion: { raw: "1.0.0" },
+          remoteVersion: { raw: "1.0.0" },
+          localBuildVersion: { raw: "100" },
+          remoteBuildVersion: { raw: "101" }
+        }
+      ],
       recentlyUpdated: [
         {
           appID: "app:example",
           source: "sparkle",
           fromVersion: { raw: "1.0.0" },
-          toVersion: { raw: "2.0.0" }
+          toVersion: { raw: "2.0.0" },
+          fromBuildVersion: { raw: "100" },
+          toBuildVersion: { raw: "101" }
         }
       ],
       homebrewRecentlyUpdated: [

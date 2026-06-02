@@ -16,6 +16,7 @@ import type {
   HomebrewRecentlyUpdatedRecord,
   MenuTab,
   PersistedSnapshot,
+  SelfUpdateRecord,
   UpdateRecord
 } from "../shared/domain";
 import {
@@ -30,9 +31,16 @@ import {
   HomebrewMaintenanceProgressStage,
   type HomebrewMaintenanceRunEvent
 } from "../shared/homebrewProgress";
+import { homebrewItemHasAppRepresentation } from "../shared/homebrewAppLinking";
 import type { PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
-import { compareVersions, isVersionEmpty, isVersionGreater } from "../shared/version";
+import {
+  compareVersions,
+  isVersionEmpty,
+  isVersionGreater,
+  version,
+  type VersionValue
+} from "../shared/version";
 import { AppStoreLookupClient } from "./appStoreLookupClient";
 import { BundleScannerClient } from "./bundleScanner";
 import {
@@ -44,6 +52,7 @@ import { HomebrewCaskClient } from "./homebrewCaskClient";
 import { HomebrewFormulaClient } from "./homebrewFormulaClient";
 import { HomebrewInventoryClient } from "./homebrewInventoryClient";
 import { SnapshotPersistence } from "./persistence";
+import { SelfUpdateClient } from "./selfUpdateClient";
 import { SparkleAppcastClient } from "./sparkleAppcastClient";
 
 type StoreEvents = {
@@ -65,6 +74,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   >;
   private readonly homebrewFormula: Pick<HomebrewFormulaClient, "fetchIndex" | "searchFormulae">;
   private readonly homebrewInventory: Pick<HomebrewInventoryClient, "fetchInventory">;
+  private readonly selfUpdate: Pick<SelfUpdateClient, "lookup">;
+  private readonly currentAppVersion: VersionValue;
   private readonly runBrewCommand: typeof defaultRunBrewCommand;
   private readonly runMasCommand: typeof defaultRunMasCommand;
   private readonly openExternalURL: (url: string) => Promise<boolean>;
@@ -74,6 +85,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private autoRefreshTimer?: NodeJS.Timeout;
   private readonly homebrewBatchFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private readonly homebrewFallbackFailureClearTimers = new Map<string, NodeJS.Timeout>();
+  private readonly homebrewDiscoverFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
   private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
 
@@ -91,7 +103,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       homebrew: Pick<HomebrewCaskClient, "fetchIndex" | "lookupUpdate" | "searchCasks">;
       homebrewFormula: Pick<HomebrewFormulaClient, "fetchIndex" | "searchFormulae">;
       homebrewInventory: Pick<HomebrewInventoryClient, "fetchInventory">;
+      selfUpdate: Pick<SelfUpdateClient, "lookup">;
     }>;
+    currentAppVersion?: string;
     runBrewCommand?: typeof defaultRunBrewCommand;
     runMasCommand?: typeof defaultRunMasCommand;
     successRefreshDelayMS?: number;
@@ -104,6 +118,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.homebrew = options.clients?.homebrew ?? new HomebrewCaskClient();
     this.homebrewFormula = options.clients?.homebrewFormula ?? new HomebrewFormulaClient();
     this.homebrewInventory = options.clients?.homebrewInventory ?? new HomebrewInventoryClient();
+    this.selfUpdate = options.clients?.selfUpdate ?? new SelfUpdateClient();
+    this.currentAppVersion = version(options.currentAppVersion);
     this.runBrewCommand = options.runBrewCommand ?? defaultRunBrewCommand;
     this.runMasCommand = options.runMasCommand ?? defaultRunMasCommand;
     this.openExternalURL = options.openExternalURL;
@@ -364,16 +380,28 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
   }
 
-  async performHomebrewUpdateAll(): Promise<void> {
+  async performHomebrewUpdateAll(itemIDs?: string[]): Promise<void> {
     if (this.state.isRunningHomebrewMaintenance) {
       return;
     }
 
+    const requestedItemIDs = itemIDs ? new Set(itemIDs) : undefined;
+    const updatesByAppID = new Map(this.state.updates.map((update) => [update.appID, update]));
+    const appsRepresentedOutsideHomebrew = this.state.apps.filter(
+      (app) => updatesByAppID.has(app.id) || this.state.ignoredIDs.includes(app.id)
+    );
+    const ignoredApps = this.state.apps.filter((app) => this.state.ignoredIDs.includes(app.id));
     const affected = this.state.homebrewItems.filter(
       (item) =>
+        (!requestedItemIDs || requestedItemIDs.has(item.id)) &&
         item.isOutdated &&
         !this.state.ignoredHomebrewItemIDs.includes(item.id) &&
-        isValidHomebrewToken(item.token)
+        isValidHomebrewToken(item.token) &&
+        !homebrewItemHasAppRepresentation(
+          item,
+          requestedItemIDs ? ignoredApps : appsRepresentedOutsideHomebrew,
+          updatesByAppID
+        )
     );
     if (affected.length === 0) {
       return;
@@ -467,11 +495,16 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return;
     }
     const itemID = item.id;
+    this.clearHomebrewDiscoverFailureTimer(itemID);
     const command =
       item.kind === "cask" ? ["install", "--cask", item.token] : ["install", item.token];
     this.patch({
       homebrewDiscoverInstallingItemIDs: addToArray(
         this.state.homebrewDiscoverInstallingItemIDs,
+        itemID
+      ),
+      homebrewDiscoverFailedItemIDs: removeFromArray(
+        this.state.homebrewDiscoverFailedItemIDs,
         itemID
       ),
       homebrewDiscoverProgressByItemID: {
@@ -499,6 +532,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (success) {
       await this.holdSuccessfulUpdate();
       await this.refresh();
+    } else {
+      this.scheduleHomebrewDiscoverFailureClear(itemID);
     }
   }
 
@@ -550,12 +585,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
     const now = new Date().toISOString();
     try {
-      const [apps, homebrewIndex, homebrewFormulaIndex, homebrewInventory] = await Promise.all([
-        this.scanner.scanApplications(this.scanDirectories()),
-        this.homebrew.fetchIndex(),
-        this.homebrewFormula.fetchIndex(),
-        this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight })
-      ]);
+      const [apps, homebrewIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
+        await Promise.all([
+          this.scanner.scanApplications(this.scanDirectories()),
+          this.homebrew.fetchIndex(),
+          this.homebrewFormula.fetchIndex(),
+          this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight }),
+          this.lookupSelfUpdate(now)
+        ]);
       const homebrewItems = homebrewInventory.items;
       this.latestHomebrewIndex = homebrewIndex;
       this.latestHomebrewFormulaIndex = homebrewFormulaIndex;
@@ -588,7 +625,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         if (appRecord.sparkleFeedURL) {
           const outcome = await this.sparkle.lookupOutcome(
             appRecord.sparkleFeedURL,
-            appRecord.localVersion
+            appRecord.localVersion,
+            appRecord.bundleVersion
           );
           if (outcome.type === "completed" && outcome.value) {
             updates.push({
@@ -598,6 +636,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
               supportLevel: "limited",
               localVersion: appRecord.localVersion,
               remoteVersion: outcome.value.remoteVersion,
+              localBuildVersion: appRecord.bundleVersion,
+              remoteBuildVersion: outcome.value.remoteBuildVersion,
               updateURL: outcome.value.updateURL,
               releaseNotesURL: outcome.value.releaseNotesURL,
               releaseDate: outcome.value.releaseDate,
@@ -662,6 +702,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         homebrewDiscoverInstallingItemIDs: [],
         homebrewDiscoverInstalledPendingRefreshItemIDs: [],
         homebrewDiscoverProgressByItemID: {},
+        selfUpdate,
         laggingHomebrewCaskTokens: detectLaggingHomebrewCaskTokens(
           homebrewItems,
           updates,
@@ -702,6 +743,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       installedFormulae
     );
     this.patch({ homebrewDiscoverItems: [...casks, ...formulae].slice(0, 18) });
+  }
+
+  private async lookupSelfUpdate(now: string): Promise<SelfUpdateRecord | undefined> {
+    if (isVersionEmpty(this.currentAppVersion)) {
+      return undefined;
+    }
+    return this.selfUpdate.lookup(this.currentAppVersion, now);
   }
 
   private scanDirectories(): string[] {
@@ -901,7 +949,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (!appRecord) {
         continue;
       }
-      if (!isVersionGreater(appRecord.localVersion, previousUpdate.localVersion)) {
+      if (!hasInstalledAppAdvanced(appRecord, previousUpdate)) {
         continue;
       }
       records.unshift({
@@ -911,6 +959,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         source: previousUpdate.source,
         fromVersion: previousUpdate.localVersion,
         toVersion: appRecord.localVersion,
+        fromBuildVersion: previousUpdate.localBuildVersion,
+        toBuildVersion: previousUpdate.localBuildVersion ? appRecord.bundleVersion : undefined,
         updatedAt: now
       });
     }
@@ -1002,6 +1052,28 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
   }
 
+  private scheduleHomebrewDiscoverFailureClear(itemID: string): void {
+    this.clearHomebrewDiscoverFailureTimer(itemID);
+    const timer = setTimeout(() => {
+      this.homebrewDiscoverFailureClearTimers.delete(itemID);
+      if (!this.state.homebrewDiscoverFailedItemIDs.includes(itemID)) {
+        return;
+      }
+      this.patch({
+        homebrewDiscoverFailedItemIDs: removeFromArray(
+          this.state.homebrewDiscoverFailedItemIDs,
+          itemID
+        ),
+        homebrewDiscoverProgressByItemID: removeRecordKey(
+          this.state.homebrewDiscoverProgressByItemID,
+          itemID
+        )
+      });
+    }, TRANSIENT_HOMEBREW_FAILURE_MS);
+    timer.unref?.();
+    this.homebrewDiscoverFailureClearTimers.set(itemID, timer);
+  }
+
   private clearHomebrewBatchFailureTimer(itemID: string): void {
     const timer = this.homebrewBatchFailureClearTimers.get(itemID);
     if (timer) {
@@ -1015,6 +1087,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (timer) {
       clearTimeout(timer);
       this.homebrewFallbackFailureClearTimers.delete(appID);
+    }
+  }
+
+  private clearHomebrewDiscoverFailureTimer(itemID: string): void {
+    const timer = this.homebrewDiscoverFailureClearTimers.get(itemID);
+    if (timer) {
+      clearTimeout(timer);
+      this.homebrewDiscoverFailureClearTimers.delete(itemID);
     }
   }
 
@@ -1196,6 +1276,16 @@ function reconcileHomebrewInventory(
       isOutdated: true
     };
   });
+}
+
+function hasInstalledAppAdvanced(appRecord: AppRecord, previousUpdate: UpdateRecord): boolean {
+  if (isVersionGreater(appRecord.localVersion, previousUpdate.localVersion)) {
+    return true;
+  }
+  if (!previousUpdate.localBuildVersion || !appRecord.bundleVersion) {
+    return false;
+  }
+  return isVersionGreater(appRecord.bundleVersion, previousUpdate.localBuildVersion);
 }
 
 export function mergeHomebrewRecentlyUpdatedRecords(

@@ -4,7 +4,13 @@
 import { XMLParser } from "fast-xml-parser";
 import type { SparkleLookupResult } from "../shared/domain";
 import { byteLimits, isAllowedFeedURL, sanitizeExternalURL } from "../shared/security";
-import { isVersionEmpty, isVersionGreater, type VersionValue, version } from "../shared/version";
+import {
+  compareVersions,
+  isVersionEmpty,
+  isVersionGreater,
+  type VersionValue,
+  version
+} from "../shared/version";
 import type { LookupOutcome } from "./appStoreLookupClient";
 
 type AppcastItem = {
@@ -24,7 +30,8 @@ const parser = new XMLParser({
 export class SparkleAppcastClient {
   async lookupOutcome(
     feedURL: string,
-    localVersion: VersionValue
+    localVersion: VersionValue,
+    localBuildVersion?: VersionValue
   ): Promise<LookupOutcome<SparkleLookupResult>> {
     if (!isAllowedFeedURL(feedURL)) {
       return { type: "completed" };
@@ -39,13 +46,20 @@ export class SparkleAppcastClient {
       if (buffer.byteLength > byteLimits.sparkleAppcastMaxBytes) {
         return { type: "completed" };
       }
-      return { type: "completed", value: this.parseAppcast(buffer, localVersion) };
+      return {
+        type: "completed",
+        value: this.parseAppcast(buffer, localVersion, localBuildVersion)
+      };
     } catch {
       return { type: "transientFailure" };
     }
   }
 
-  parseAppcast(data: Buffer, localVersion: VersionValue): SparkleLookupResult | undefined {
+  parseAppcast(
+    data: Buffer,
+    localVersion: VersionValue,
+    localBuildVersion?: VersionValue
+  ): SparkleLookupResult | undefined {
     if (data.byteLength > byteLimits.sparkleAppcastMaxBytes) {
       return undefined;
     }
@@ -61,14 +75,13 @@ export class SparkleAppcastClient {
     const best = items
       .map((item) => ({
         item,
+        buildVersion: version(item.buildVersion),
         parsedVersion: version(item.shortVersionString ?? item.buildVersion)
       }))
       .filter(({ parsedVersion }) => !isVersionEmpty(parsedVersion))
-      .sort(
-        (lhs, rhs) => -1 * (isVersionGreater(lhs.parsedVersion, rhs.parsedVersion) ? 1 : -1)
-      )[0];
+      .sort((lhs, rhs) => -1 * compareAppcastItems(lhs, rhs))[0];
 
-    if (!best || !isVersionGreater(best.parsedVersion, localVersion)) {
+    if (!best || !isAppcastItemNewer(best, localVersion, localBuildVersion)) {
       return undefined;
     }
 
@@ -80,11 +93,43 @@ export class SparkleAppcastClient {
 
     return {
       remoteVersion: best.parsedVersion,
+      remoteBuildVersion: isVersionEmpty(best.buildVersion) ? undefined : best.buildVersion,
       updateURL,
       releaseNotesURL,
       releaseDate: best.item.publicationDate
     };
   }
+}
+
+function compareAppcastItems(
+  lhs: { parsedVersion: VersionValue; buildVersion: VersionValue },
+  rhs: { parsedVersion: VersionValue; buildVersion: VersionValue }
+): number {
+  const versionComparison = compareVersions(lhs.parsedVersion, rhs.parsedVersion);
+  if (versionComparison !== 0) {
+    return versionComparison;
+  }
+  return compareVersions(lhs.buildVersion, rhs.buildVersion);
+}
+
+function isAppcastItemNewer(
+  item: { parsedVersion: VersionValue; buildVersion: VersionValue },
+  localVersion: VersionValue,
+  localBuildVersion?: VersionValue
+): boolean {
+  const marketingVersionComparison = compareVersions(item.parsedVersion, localVersion);
+  if (marketingVersionComparison > 0) {
+    return true;
+  }
+  if (
+    marketingVersionComparison < 0 ||
+    !localBuildVersion ||
+    isVersionEmpty(localBuildVersion) ||
+    isVersionEmpty(item.buildVersion)
+  ) {
+    return false;
+  }
+  return isVersionGreater(item.buildVersion, localBuildVersion);
 }
 
 function normalizeItem(item: any): AppcastItem {

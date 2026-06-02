@@ -23,7 +23,8 @@ const api: BaselineAPI = {
   performAppUpdate: (appID: string) => ipcRenderer.invoke(ipcChannels.performAppUpdate, appID),
   performHomebrewUpdate: (itemID: string) =>
     ipcRenderer.invoke(ipcChannels.performHomebrewUpdate, itemID),
-  performHomebrewUpdateAll: () => ipcRenderer.invoke(ipcChannels.performHomebrewUpdateAll),
+  performHomebrewUpdateAll: (itemIDs?: string[]) =>
+    ipcRenderer.invoke(ipcChannels.performHomebrewUpdateAll, itemIDs),
   installHomebrewItem: (item: HomebrewCaskDiscoveryItem) =>
     ipcRenderer.invoke(ipcChannels.installHomebrewItem, item),
   uninstallHomebrewItem: (itemID: string) =>

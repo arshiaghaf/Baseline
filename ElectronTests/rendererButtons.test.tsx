@@ -121,6 +121,12 @@ function installBaselineMock() {
   };
 }
 
+function toolbarButtonLabels(container: HTMLElement): Array<string | null> {
+  return within(container.querySelector(".topbar-actions") as HTMLElement)
+    .getAllByRole("button")
+    .map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"));
+}
+
 describe("renderer button parity", () => {
   beforeEach(() => {
     installBaselineMock();
@@ -144,6 +150,38 @@ describe("renderer button parity", () => {
     const updateGlyph = screen.getByRole("button", { name: "Updating" });
     fireEvent.click(updateGlyph);
     expect(window.baseline.performAppUpdate).not.toHaveBeenCalled();
+  });
+
+  it("shows Sparkle build-only update versions in app rows", () => {
+    const buildOnlyApp = {
+      ...app,
+      bundleVersion: version("100")
+    };
+    render(
+      <AppRow
+        app={buildOnlyApp}
+        snapshot={snapshot({
+          apps: [buildOnlyApp],
+          updates: [
+            {
+              id: buildOnlyApp.id,
+              appID: buildOnlyApp.id,
+              source: "sparkle",
+              supportLevel: "limited",
+              localVersion: version("1.0"),
+              remoteVersion: version("1.0"),
+              localBuildVersion: version("100"),
+              remoteBuildVersion: version("101"),
+              checkedAt: "2026-04-30T12:00:00.000Z"
+            }
+          ]
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    expect(screen.getByText("1.0 (100)")).toBeInTheDocument();
+    expect(screen.getByText("1.0 (101)")).toBeInTheDocument();
   });
 
   it("shows matched Homebrew cask progress on app update buttons", () => {
@@ -245,6 +283,48 @@ describe("renderer button parity", () => {
     expect(screen.queryByTitle("Collapse Discover")).not.toBeInTheDocument();
     expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
+  });
+
+  it("shows the main-window self-update shortcut only when self-update is available", () => {
+    const { container, rerender } = render(
+      <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={snapshot()} />
+    );
+
+    expect(toolbarButtonLabels(container)).toEqual(["Search", "Refresh"]);
+
+    rerender(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selfUpdate: {
+            available: true,
+            currentVersion: version("0.1.0"),
+            latestVersion: version("0.2.0"),
+            releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+            checkedAt: "2026-04-30T12:00:00.000Z"
+          }
+        })}
+      />
+    );
+
+    expect(toolbarButtonLabels(container)).toEqual([
+      "New Baseline Update Available",
+      "Search",
+      "Refresh"
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "New Baseline Update Available" }));
+
+    expect(window.baseline.openExternal).toHaveBeenCalledWith(
+      "https://github.com/arshiaghaf/Baseline/releases/latest"
+    );
+
+    rerender(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
+
+    expect(
+      screen.queryByRole("button", { name: "New Baseline Update Available" })
+    ).not.toBeInTheDocument();
   });
 
   it("closes search mode on sidebar tab clicks without clearing the saved query", () => {
@@ -509,12 +589,12 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
   });
 
-  it("returns from settings to the main app route", () => {
+  it("returns from settings through the main window bridge", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Back to app" }));
 
-    expect(window.location.hash).toBe("#/main");
+    expect(window.baseline.showMainWindow).toHaveBeenCalledTimes(1);
   });
 
   it("opens diagnostics from the settings sidebar footer", async () => {
@@ -973,6 +1053,11 @@ describe("renderer button parity", () => {
     expect(screen.getByText("14.1.0")).toBeInTheDocument();
     expect(screen.getByText("9.0.0")).toBeInTheDocument();
     expect(screen.getByText("10.0.0")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Update Brews" }));
+    expect(window.baseline.performHomebrewUpdateAll).toHaveBeenCalledWith([
+      "formula:fd",
+      "formula:ripgrep"
+    ]);
   });
 
   it("renders the Homebrew tab outdated section as a card grid", () => {
@@ -1035,6 +1120,80 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("Cask")).not.toBeInTheDocument();
     expect(screen.queryByText("1.0.0")).not.toBeInTheDocument();
     expect(screen.queryByText("2.0.0")).not.toBeInTheDocument();
+  });
+
+  it("updates the Homebrew rows currently visible in search results", () => {
+    const searchCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:example-cli",
+      token: "example-cli",
+      name: "Example CLI"
+    };
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep-cli",
+      token: "ripgrep-cli",
+      name: "ripgrep-cli",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    render(
+      <Dashboard
+        compact={false}
+        toolbarSearchOpen
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          searchText: "cli",
+          updates: [{ ...update, homebrewToken: searchCask.token }],
+          homebrewItems: [searchCask, formula]
+        })}
+      />
+    );
+
+    expect(screen.getByText("Example CLI")).toBeInTheDocument();
+    expect(screen.queryByText("App Updates")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Update Brews" }));
+
+    expect(window.baseline.performHomebrewUpdateAll).toHaveBeenCalledWith([
+      searchCask.id,
+      formula.id
+    ]);
+  });
+
+  it("hides ignored app-backed Homebrew casks from search results", () => {
+    const searchCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:example-cli",
+      token: "example-cli",
+      name: "Example CLI"
+    };
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep-cli",
+      token: "ripgrep-cli",
+      name: "ripgrep-cli",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    render(
+      <Dashboard
+        compact={false}
+        toolbarSearchOpen
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          searchText: "cli",
+          ignoredIDs: [app.id],
+          updates: [{ ...update, homebrewToken: searchCask.token }],
+          homebrewItems: [searchCask, formula]
+        })}
+      />
+    );
+
+    expect(screen.queryByText("Example CLI")).not.toBeInTheDocument();
+    expect(screen.getByText("ripgrep-cli")).toBeInTheDocument();
   });
 
   it("moves installed apps and Homebrew into the Installed sidebar item", () => {
