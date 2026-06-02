@@ -85,6 +85,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private autoRefreshTimer?: NodeJS.Timeout;
   private readonly homebrewBatchFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private readonly homebrewFallbackFailureClearTimers = new Map<string, NodeJS.Timeout>();
+  private readonly homebrewDiscoverFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
   private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
 
@@ -494,11 +495,16 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return;
     }
     const itemID = item.id;
+    this.clearHomebrewDiscoverFailureTimer(itemID);
     const command =
       item.kind === "cask" ? ["install", "--cask", item.token] : ["install", item.token];
     this.patch({
       homebrewDiscoverInstallingItemIDs: addToArray(
         this.state.homebrewDiscoverInstallingItemIDs,
+        itemID
+      ),
+      homebrewDiscoverFailedItemIDs: removeFromArray(
+        this.state.homebrewDiscoverFailedItemIDs,
         itemID
       ),
       homebrewDiscoverProgressByItemID: {
@@ -526,6 +532,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (success) {
       await this.holdSuccessfulUpdate();
       await this.refresh();
+    } else {
+      this.scheduleHomebrewDiscoverFailureClear(itemID);
     }
   }
 
@@ -1041,6 +1049,28 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
   }
 
+  private scheduleHomebrewDiscoverFailureClear(itemID: string): void {
+    this.clearHomebrewDiscoverFailureTimer(itemID);
+    const timer = setTimeout(() => {
+      this.homebrewDiscoverFailureClearTimers.delete(itemID);
+      if (!this.state.homebrewDiscoverFailedItemIDs.includes(itemID)) {
+        return;
+      }
+      this.patch({
+        homebrewDiscoverFailedItemIDs: removeFromArray(
+          this.state.homebrewDiscoverFailedItemIDs,
+          itemID
+        ),
+        homebrewDiscoverProgressByItemID: removeRecordKey(
+          this.state.homebrewDiscoverProgressByItemID,
+          itemID
+        )
+      });
+    }, TRANSIENT_HOMEBREW_FAILURE_MS);
+    timer.unref?.();
+    this.homebrewDiscoverFailureClearTimers.set(itemID, timer);
+  }
+
   private clearHomebrewBatchFailureTimer(itemID: string): void {
     const timer = this.homebrewBatchFailureClearTimers.get(itemID);
     if (timer) {
@@ -1054,6 +1084,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (timer) {
       clearTimeout(timer);
       this.homebrewFallbackFailureClearTimers.delete(appID);
+    }
+  }
+
+  private clearHomebrewDiscoverFailureTimer(itemID: string): void {
+    const timer = this.homebrewDiscoverFailureClearTimers.get(itemID);
+    if (timer) {
+      clearTimeout(timer);
+      this.homebrewDiscoverFailureClearTimers.delete(itemID);
     }
   }
 

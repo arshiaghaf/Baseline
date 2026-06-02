@@ -1731,6 +1731,36 @@ describe("update store helpers", () => {
       vi.useRealTimers();
     }
   });
+
+  it("returns failed Homebrew Discover installs to retryable state after a short delay", async () => {
+    const item = {
+      id: "cask:retryable-discover",
+      kind: "cask" as const,
+      token: "retryable-discover",
+      displayName: "Retryable Discover",
+      presentation: "app" as const,
+      version: version("1.0.0")
+    };
+    const store = await makeStore({
+      runBrewCommand: async (_args, onOutputLine = () => undefined) => {
+        onOutputLine("Downloading retryable-discover");
+        return { success: false, status: 1, output: "Error: install failed" };
+      }
+    });
+
+    vi.useFakeTimers();
+    try {
+      await store.installHomebrewItem(item);
+
+      expect(store.getSnapshot().homebrewDiscoverFailedItemIDs).toContain(item.id);
+
+      vi.advanceTimersByTime(4000);
+      expect(store.getSnapshot().homebrewDiscoverFailedItemIDs).not.toContain(item.id);
+      expect(store.getSnapshot().homebrewDiscoverProgressByItemID[item.id]).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 async function makeStore({
