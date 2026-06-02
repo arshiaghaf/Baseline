@@ -46,13 +46,21 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
       ...update,
       id: update.id ?? update.appID,
       localVersion: version(update.localVersion?.raw),
-      remoteVersion: version(update.remoteVersion?.raw)
+      remoteVersion: version(update.remoteVersion?.raw),
+      localBuildVersion: update.localBuildVersion
+        ? version(update.localBuildVersion.raw)
+        : undefined,
+      remoteBuildVersion: update.remoteBuildVersion
+        ? version(update.remoteBuildVersion.raw)
+        : undefined
     })),
     recentlyUpdated: (input.recentlyUpdated ?? []).map((record) => ({
       ...record,
       id: record.id ?? record.appID,
       fromVersion: version(record.fromVersion?.raw),
-      toVersion: version(record.toVersion?.raw)
+      toVersion: version(record.toVersion?.raw),
+      fromBuildVersion: record.fromBuildVersion ? version(record.fromBuildVersion.raw) : undefined,
+      toBuildVersion: record.toBuildVersion ? version(record.toBuildVersion.raw) : undefined
     })),
     homebrewItems: (input.homebrewItems ?? []).map((item) => ({
       ...item,

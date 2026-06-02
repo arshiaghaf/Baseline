@@ -599,6 +599,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
               supportLevel: "limited",
               localVersion: appRecord.localVersion,
               remoteVersion: outcome.value.remoteVersion,
+              localBuildVersion: appRecord.bundleVersion,
+              remoteBuildVersion: outcome.value.remoteBuildVersion,
               updateURL: outcome.value.updateURL,
               releaseNotesURL: outcome.value.releaseNotesURL,
               releaseDate: outcome.value.releaseDate,
@@ -909,6 +911,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         source: previousUpdate.source,
         fromVersion: previousUpdate.localVersion,
         toVersion: appRecord.localVersion,
+        fromBuildVersion: previousUpdate.localBuildVersion,
+        toBuildVersion: previousUpdate.localBuildVersion ? appRecord.bundleVersion : undefined,
         updatedAt: now
       });
     }

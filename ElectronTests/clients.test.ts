@@ -43,6 +43,7 @@ describe("ported clients", () => {
 
     const result = new SparkleAppcastClient().parseAppcast(data, version("1.0"), version("100"));
     expect(result?.remoteVersion.raw).toBe("1.0");
+    expect(result?.remoteBuildVersion?.raw).toBe("101");
     expect(result?.updateURL).toBe("https://example.com/download/1.0-build-101.zip");
     expect(
       new SparkleAppcastClient().parseAppcast(data, version("1.0"), version("101"))

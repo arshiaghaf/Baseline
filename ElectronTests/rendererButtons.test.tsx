@@ -146,6 +146,38 @@ describe("renderer button parity", () => {
     expect(window.baseline.performAppUpdate).not.toHaveBeenCalled();
   });
 
+  it("shows Sparkle build-only update versions in app rows", () => {
+    const buildOnlyApp = {
+      ...app,
+      bundleVersion: version("100")
+    };
+    render(
+      <AppRow
+        app={buildOnlyApp}
+        snapshot={snapshot({
+          apps: [buildOnlyApp],
+          updates: [
+            {
+              id: buildOnlyApp.id,
+              appID: buildOnlyApp.id,
+              source: "sparkle",
+              supportLevel: "limited",
+              localVersion: version("1.0"),
+              remoteVersion: version("1.0"),
+              localBuildVersion: version("100"),
+              remoteBuildVersion: version("101"),
+              checkedAt: "2026-04-30T12:00:00.000Z"
+            }
+          ]
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    expect(screen.getByText("1.0 (100)")).toBeInTheDocument();
+    expect(screen.getByText("1.0 (101)")).toBeInTheDocument();
+  });
+
   it("shows matched Homebrew cask progress on app update buttons", () => {
     render(
       <AppRow

@@ -32,6 +32,7 @@ export type AppStoreLookupResult = {
 
 export type SparkleLookupResult = {
   remoteVersion: VersionValue;
+  remoteBuildVersion?: VersionValue;
   updateURL?: string;
   releaseNotesURL?: string;
   releaseDate?: string;
@@ -87,6 +88,8 @@ export type UpdateRecord = {
   supportLevel: SupportLevel;
   localVersion: VersionValue;
   remoteVersion: VersionValue;
+  localBuildVersion?: VersionValue;
+  remoteBuildVersion?: VersionValue;
   updateURL?: string;
   appStoreItemID?: number;
   homebrewToken?: string;
@@ -103,6 +106,8 @@ export type RecentlyUpdatedRecord = {
   source?: UpdateSource;
   fromVersion: VersionValue;
   toVersion: VersionValue;
+  fromBuildVersion?: VersionValue;
+  toBuildVersion?: VersionValue;
   updatedAt: string;
 };
 
