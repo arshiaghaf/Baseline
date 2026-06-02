@@ -74,6 +74,39 @@ describe("ported clients", () => {
     expect(new AppStoreLookupClient().parseLookupResponse(data, version("1.0"))).toBeUndefined();
   });
 
+  it("prefers matching iOS App Store records for installed iOS-on-Mac apps", () => {
+    const data = Buffer.from(
+      JSON.stringify({
+        resultCount: 2,
+        results: [
+          {
+            kind: "mac-software",
+            bundleId: "com.example.shared",
+            trackId: 111,
+            version: "5.0",
+            trackViewUrl: "https://apps.apple.com/app/example-mac/id111"
+          },
+          {
+            kind: "software",
+            bundleId: "com.example.shared",
+            trackId: 222,
+            version: "2.0",
+            trackViewUrl: "https://apps.apple.com/app/example-ios/id222"
+          }
+        ]
+      })
+    );
+
+    const result = new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
+      includeIOSAppStoreSoftware: true,
+      bundleIdentifier: "com.example.shared"
+    });
+
+    expect(result?.remoteVersion.raw).toBe("2.0");
+    expect(result?.appStoreItemID).toBe(222);
+    expect(result?.updateURL).toBe("https://apps.apple.com/app/example-ios/id222");
+  });
+
   it("keeps Mac App Store lookup requests filtered to Mac software by default", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

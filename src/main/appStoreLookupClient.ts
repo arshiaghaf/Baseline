@@ -62,10 +62,10 @@ export class AppStoreLookupClient {
     const response = JSON.parse(data.toString("utf8")) as { results?: LookupEntry[] };
     const results = response.results ?? [];
     const selected =
-      results.find((entry) => entry.kind === "mac-software") ??
       (options.includeIOSAppStoreSoftware
         ? results.find((entry) => isIOSAppStoreSoftware(entry, options.bundleIdentifier))
         : undefined) ??
+      results.find((entry) => entry.kind === "mac-software") ??
       (results.length === 1 && !results[0]?.kind ? results[0] : undefined);
     if (!selected) {
       return undefined;
