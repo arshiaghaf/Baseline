@@ -187,7 +187,7 @@ describe("bundle scanner", () => {
       version: "3.22"
     });
     electronMocks.createFromPath.mockImplementation((imagePath: string) => ({
-      isEmpty: () => !imagePath.endsWith("AppIcon60x60@2x.png"),
+      isEmpty: () => !imagePath.endsWith("AppIcon76x76@2x~ipad.png"),
       resize: () => ({ toDataURL: () => `icon:${imagePath}` })
     }));
 
@@ -201,7 +201,7 @@ describe("bundle scanner", () => {
       localVersion: { raw: "3.22" },
       sourceHint: "appStore",
       isIOSAppOnMac: true,
-      iconDataURL: `icon:${path.join(appPath, "Wrapper", "Wrapped iPad App.app", "AppIcon60x60@2x.png")}`
+      iconDataURL: `icon:${path.join(appPath, "Wrapper", "Wrapped iPad App.app", "AppIcon76x76@2x~ipad.png")}`
     });
   });
 
@@ -346,6 +346,7 @@ async function writeWrappedIOSAppPlist(
   const wrappedAppPath = path.join(appPath, "Wrapper", `${displayName}.app`);
   await mkdir(wrappedAppPath, { recursive: true });
   await writeFile(path.join(wrappedAppPath, "AppIcon60x60@2x.png"), "icon");
+  await writeFile(path.join(wrappedAppPath, "AppIcon76x76@2x~ipad.png"), "icon");
   await writeFile(
     path.join(wrappedAppPath, "Info.plist"),
     `<?xml version="1.0" encoding="UTF-8"?>
@@ -362,6 +363,19 @@ async function writeWrappedIOSAppPlist(
   <array>
     <string>AppIcon60x60</string>
   </array>
+  <key>CFBundleIcons~ipad</key>
+  <dict>
+    <key>CFBundlePrimaryIcon</key>
+    <dict>
+      <key>CFBundleIconFiles</key>
+      <array>
+        <string>AppIcon60x60</string>
+        <string>AppIcon76x76</string>
+      </array>
+      <key>CFBundleIconName</key>
+      <string>AppIcon</string>
+    </dict>
+  </dict>
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>CFBundleSupportedPlatforms</key>

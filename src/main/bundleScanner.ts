@@ -267,9 +267,16 @@ function iconCandidatePaths(resourcesPath: string, info: InfoPlist): string[] {
     add(value);
   }
 
+  const ipadIcons = recordValue(info["CFBundleIcons~ipad"]);
+  const ipadPrimaryIcon = recordValue(ipadIcons?.CFBundlePrimaryIcon);
+  for (const value of sortedIconFileNames(stringArrayValue(ipadPrimaryIcon?.CFBundleIconFiles))) {
+    add(value);
+  }
+  add(stringValue(ipadPrimaryIcon?.CFBundleIconName));
+
   const icons = recordValue(info.CFBundleIcons);
   const primaryIcon = recordValue(icons?.CFBundlePrimaryIcon);
-  for (const value of stringArrayValue(primaryIcon?.CFBundleIconFiles)) {
+  for (const value of sortedIconFileNames(stringArrayValue(primaryIcon?.CFBundleIconFiles))) {
     add(value);
   }
   add(stringValue(primaryIcon?.CFBundleIconName));
@@ -288,6 +295,15 @@ function iconCandidatePaths(resourcesPath: string, info: InfoPlist): string[] {
       path.join(resourcesPath, name)
     ];
   });
+}
+
+function sortedIconFileNames(names: string[]): string[] {
+  return [...names].sort((lhs, rhs) => iconNameSize(rhs) - iconNameSize(lhs));
+}
+
+function iconNameSize(name: string): number {
+  const match = name.match(/(\d+)x\d+/u);
+  return match ? Number(match[1]) : 0;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | undefined {
