@@ -22,6 +22,65 @@ describe("ported clients", () => {
     expect(result?.appStoreItemID).toBe(123456789);
   });
 
+  it("parses compatible iOS App Store records that support Mac desktop when enabled", () => {
+    const data = Buffer.from(
+      JSON.stringify({
+        resultCount: 1,
+        results: [
+          {
+            kind: "software",
+            bundleId: "com.example.ios-on-mac",
+            supportedDevices: ["iPadAir-iPadAir", "MacDesktop-MacDesktop"],
+            trackId: 987654321,
+            version: "2.0",
+            trackViewUrl: "https://apps.apple.com/app/example/id987654321"
+          }
+        ]
+      })
+    );
+    const client = new AppStoreLookupClient();
+
+    expect(client.parseLookupResponse(data, version("1.0"))).toBeUndefined();
+    expect(
+      client.parseLookupResponse(data, version("1.0"), {
+        includeCompatibleIOSMacSoftware: true,
+        bundleIdentifier: "com.example.other"
+      })
+    ).toBeUndefined();
+
+    const result = client.parseLookupResponse(data, version("1.0"), {
+      includeCompatibleIOSMacSoftware: true,
+      bundleIdentifier: "com.example.ios-on-mac"
+    });
+
+    expect(result?.remoteVersion.raw).toBe("2.0");
+    expect(result?.appStoreItemID).toBe(987654321);
+  });
+
+  it("rejects iOS App Store records that do not advertise Mac desktop support", () => {
+    const data = Buffer.from(
+      JSON.stringify({
+        resultCount: 1,
+        results: [
+          {
+            kind: "software",
+            bundleId: "com.example.ios-only",
+            supportedDevices: ["iPadAir-iPadAir"],
+            trackId: 123,
+            version: "2.0"
+          }
+        ]
+      })
+    );
+
+    expect(
+      new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
+        includeCompatibleIOSMacSoftware: true,
+        bundleIdentifier: "com.example.ios-only"
+      })
+    ).toBeUndefined();
+  });
+
   it("parses Sparkle appcast fixtures", () => {
     const data = readFileSync(path.join(fixtures, "sparkle_appcast.xml"));
     const result = new SparkleAppcastClient().parseAppcast(data, version("1.0.0"));

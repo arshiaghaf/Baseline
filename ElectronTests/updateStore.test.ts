@@ -555,6 +555,44 @@ describe("update store helpers", () => {
     });
   });
 
+  it("only enables compatible iOS App Store lookup for MAS-receipted apps", async () => {
+    const appStoreApp = appRecord({
+      bundlePath: "/Applications/App Store iPad App.app",
+      displayName: "App Store iPad App",
+      bundleIdentifier: "com.example.ipad-app",
+      localVersion: version("1.0.0"),
+      sourceHint: "appStore"
+    });
+    const unknownApp = appRecord({
+      bundlePath: "/Applications/Unknown iPad App.app",
+      displayName: "Unknown iPad App",
+      bundleIdentifier: "com.example.unknown-ipad-app",
+      localVersion: version("1.0.0")
+    });
+    const lookupOutcome = vi.fn(async () => ({ type: "completed" as const }));
+    const store = await makeStore({
+      clients: {
+        scanner: { scanApplications: async () => [appStoreApp, unknownApp] },
+        appStore: { lookupOutcome }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(lookupOutcome).toHaveBeenNthCalledWith(
+      1,
+      appStoreApp.bundleIdentifier,
+      appStoreApp.localVersion,
+      { includeCompatibleIOSMacSoftware: true }
+    );
+    expect(lookupOutcome).toHaveBeenNthCalledWith(
+      2,
+      unknownApp.bundleIdentifier,
+      unknownApp.localVersion,
+      { includeCompatibleIOSMacSoftware: false }
+    );
+  });
+
   it("does not mark apps recently updated when a lookup miss leaves the local version unchanged", async () => {
     const unchangedApp = appRecord({
       bundlePath: "/Applications/Lookup Miss.app",
