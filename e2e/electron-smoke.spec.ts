@@ -187,6 +187,28 @@ test("reuses the main window without duplicate setup", async () => {
   await closeApp(app);
 });
 
+test("reopens settings after renderer-side back navigation", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  const app = await launchBaseline({ userData });
+  const page = await app.firstWindow();
+  await expect(page.locator("h1")).toContainText("All");
+
+  await page.evaluate(async () => {
+    await window.baseline.showSettings();
+  });
+  await expect(page.locator("h1")).toContainText("General");
+
+  await page.getByRole("button", { name: "Back to app" }).click();
+  await expect(page.locator("h1")).toContainText("All");
+
+  await page.evaluate(async () => {
+    await window.baseline.showSettings();
+  });
+  await expect(page.locator("h1")).toContainText("General");
+
+  await closeApp(app);
+});
+
 test("launches the packaged Electron app after build", async () => {
   const app = await launchBaseline({ packaged: true });
   const page = await app.firstWindow();

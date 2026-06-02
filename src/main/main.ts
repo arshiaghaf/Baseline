@@ -148,6 +148,8 @@ function createMainWindow(route: "main" | "settings"): BrowserWindow {
     mainWindow = undefined;
     mainWindowRoute = undefined;
   });
+  mainWindow.webContents.on("did-finish-load", () => syncMainWindowRoute(mainWindow));
+  mainWindow.webContents.on("did-navigate-in-page", () => syncMainWindowRoute(mainWindow));
 
   mainWindowRoute = route;
   void loadRenderer(mainWindow, route);
@@ -264,9 +266,32 @@ function handleMainWindowClose(event: Electron.Event): void {
   }
 }
 
+function syncMainWindowRoute(window?: BrowserWindow): void {
+  const route = mainWindowRouteFromURL(window?.webContents.getURL());
+  if (route) {
+    mainWindowRoute = route;
+  }
+}
+
+function mainWindowRouteFromURL(url?: string): "main" | "settings" | undefined {
+  if (!url) {
+    return undefined;
+  }
+  try {
+    const route = new URL(url).hash.replace(/^#\/?/u, "");
+    if (route === "main" || route === "settings") {
+      return route;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function showMainWindow(route: "main" | "settings"): void {
   const window = createMainWindow(route);
-  if (mainWindowRoute !== route) {
+  const currentRoute = mainWindowRouteFromURL(window.webContents.getURL()) ?? mainWindowRoute;
+  if (currentRoute !== route) {
     mainWindowRoute = route;
     void loadRenderer(window, route);
   }

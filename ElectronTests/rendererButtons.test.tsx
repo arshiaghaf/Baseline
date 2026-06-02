@@ -509,12 +509,12 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
   });
 
-  it("returns from settings to the main app route", () => {
+  it("returns from settings through the main window bridge", () => {
     render(<SettingsView snapshot={snapshot()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Back to app" }));
 
-    expect(window.location.hash).toBe("#/main");
+    expect(window.baseline.showMainWindow).toHaveBeenCalledTimes(1);
   });
 
   it("opens diagnostics from the settings sidebar footer", async () => {

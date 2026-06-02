@@ -152,11 +152,7 @@ function App() {
       onToolbarSearchOpenChange={setToolbarSearchOpen}
       onOpenSettings={() => {
         setToolbarSearchOpen(false);
-        if (route === "menubar") {
-          void window.baseline.showSettings();
-        } else {
-          window.location.hash = "/settings";
-        }
+        void window.baseline.showSettings();
       }}
     />
   );
@@ -473,7 +469,7 @@ function Sidebar({
           className={route === "settings" ? "selected" : ""}
           onClick={() => {
             onNavigate?.();
-            window.location.hash = "/settings";
+            void window.baseline.showSettings();
           }}
         >
           <Settings size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -2427,7 +2423,10 @@ function SettingsSidebar({
   return (
     <aside className="sidebar settings-sidebar">
       <div className="settings-sidebar-header">
-        <button className="back-to-app-button" onClick={() => (window.location.hash = "/main")}>
+        <button
+          className="back-to-app-button"
+          onClick={() => void window.baseline.showMainWindow()}
+        >
           <ArrowLeft size={15} strokeWidth={sidebarIconStrokeWidth} />
           <span>Back to app</span>
         </button>
