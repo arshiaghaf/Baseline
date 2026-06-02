@@ -1082,6 +1082,40 @@ describe("renderer button parity", () => {
     ]);
   });
 
+  it("hides ignored app-backed Homebrew casks from search results", () => {
+    const searchCask: HomebrewManagedItem = {
+      ...cask,
+      id: "cask:example-cli",
+      token: "example-cli",
+      name: "Example CLI"
+    };
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep-cli",
+      token: "ripgrep-cli",
+      name: "ripgrep-cli",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    render(
+      <Dashboard
+        compact={false}
+        toolbarSearchOpen
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          searchText: "cli",
+          ignoredIDs: [app.id],
+          updates: [{ ...update, homebrewToken: searchCask.token }],
+          homebrewItems: [searchCask, formula]
+        })}
+      />
+    );
+
+    expect(screen.queryByText("Example CLI")).not.toBeInTheDocument();
+    expect(screen.getByText("ripgrep-cli")).toBeInTheDocument();
+  });
+
   it("moves installed apps and Homebrew into the Installed sidebar item", () => {
     const installedApp: AppRecord = {
       ...app,

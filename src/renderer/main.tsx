@@ -3008,8 +3008,9 @@ function deriveSections(snapshot: BaselineSnapshot) {
     .filter((item) => item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
     .filter(homebrewFilter)
     .sort(sortHomebrewOutdated);
+  const ignoredAppsUnfiltered = snapshot.apps.filter((app) => snapshot.ignoredIDs.includes(app.id));
   const appsRepresentedOutsideHomebrew = term
-    ? [...availableApps, ...ignoredApps]
+    ? [...availableApps, ...ignoredAppsUnfiltered]
     : snapshot.apps.filter(
         (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
       );
