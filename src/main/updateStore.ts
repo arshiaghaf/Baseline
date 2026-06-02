@@ -375,14 +375,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const appsRepresentedOutsideHomebrew = this.state.apps.filter(
       (app) => updatesByAppID.has(app.id) || this.state.ignoredIDs.includes(app.id)
     );
+    const ignoredApps = this.state.apps.filter((app) => this.state.ignoredIDs.includes(app.id));
     const affected = this.state.homebrewItems.filter(
       (item) =>
         (!requestedItemIDs || requestedItemIDs.has(item.id)) &&
         item.isOutdated &&
         !this.state.ignoredHomebrewItemIDs.includes(item.id) &&
         isValidHomebrewToken(item.token) &&
-        (requestedItemIDs !== undefined ||
-          !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew, updatesByAppID))
+        !homebrewItemHasAppRepresentation(
+          item,
+          requestedItemIDs ? ignoredApps : appsRepresentedOutsideHomebrew,
+          updatesByAppID
+        )
     );
     if (affected.length === 0) {
       return;

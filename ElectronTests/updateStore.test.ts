@@ -1177,6 +1177,60 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("excludes ignored app-backed casks from caller-provided Homebrew batch scopes", async () => {
+    const ignoredApp = appRecord({
+      bundlePath: "/Applications/Managed.app",
+      displayName: "Managed",
+      bundleIdentifier: "com.example.managed",
+      localVersion: version("1.0.0")
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [ignoredApp],
+        ignoredIDs: [ignoredApp.id],
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:managed-cli",
+            token: "managed-cli",
+            name: "Managed CLI",
+            kind: "cask",
+            appID: ignoredApp.id,
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            installedVersion: version("14.0.0"),
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll(["cask:managed-cli", "formula:ripgrep"]);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+  });
+
   it("does not run Homebrew maintenance when every outdated item is ignored", async () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
