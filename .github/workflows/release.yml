@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   unsigned-dmg:
@@ -42,13 +42,11 @@ jobs:
       - name: Prepare unsigned release artifacts
         run: scripts/prepare-unsigned-release.sh "${{ steps.version.outputs.version }}"
 
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" \
-            "dist/Baseline-${VERSION}-unsigned.dmg" \
-            "dist/Baseline-${VERSION}-unsigned.dmg.sha256" \
-            --title "Baseline ${VERSION} unsigned preview" \
-            --notes-file "dist/Baseline-${VERSION}-unsigned-release-notes.md"
+      - name: Upload unsigned release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Baseline-${{ steps.version.outputs.version }}-unsigned-release
+          path: |
+            dist/Baseline-${{ steps.version.outputs.version }}-unsigned.dmg
+            dist/Baseline-${{ steps.version.outputs.version }}-unsigned.dmg.sha256
+            dist/Baseline-${{ steps.version.outputs.version }}-unsigned-release-notes.md

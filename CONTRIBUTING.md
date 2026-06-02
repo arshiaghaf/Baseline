@@ -28,7 +28,7 @@ npm start
 - Create focused branches for each change.
 - Keep pull requests small enough to review.
 - Include tests for behavior changes.
-- Update docs when user-facing behavior, setup, or release steps change.
+- Update docs when user-facing behavior or setup changes.
 - Do not commit generated outputs such as `node_modules/`, `out/`, `.vite/`,
   `dist/`, `coverage/`, `test-results/`, or `playwright-report/`.
 
@@ -68,12 +68,6 @@ npm audit --omit=dev --audit-level=high
 
 If a command cannot run in your environment, mention that in the PR and include
 the failure output.
-
-For preview or release-candidate handoff, run:
-
-```bash
-scripts/validate-preview.sh 0.0.0-preview
-```
 
 ## Security-Sensitive Changes
 

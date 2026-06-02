@@ -2,7 +2,9 @@
 
 This repository uses GitHub Actions for pull request and `main` branch validation.
 
-Baseline is now an Electron app that still targets macOS first, so CI runs on GitHub's `macos-26` hosted runner.
+Baseline is an Electron app that targets macOS first, so CI runs across
+GitHub's macOS hosted runners: `macos-26`, `macos-26-intel`, `macos-15`,
+`macos-15-intel`, and `macos-14`.
 
 The CI workflow:
 
@@ -12,6 +14,7 @@ The CI workflow:
 - Runs Vitest unit tests.
 - Packages the unsigned Electron app.
 - Runs a Playwright Electron smoke test with initial refresh disabled.
+- Runs a production dependency audit.
 
 CI intentionally does not launch the app or interact with the tray. Installed-app smoke validation still requires the local desktop session.
 
@@ -25,12 +28,4 @@ npm run build
 npm run test:electron
 ```
 
-For full preview validation, run:
-
-```bash
-scripts/validate-preview.sh 0.0.0-preview
-```
-
-That command also creates an unsigned DMG and smoke-launches the installed `/Applications/Baseline.app` copy.
-
-Unsigned DMG release publishing is handled by `.github/workflows/release.yml` when the first `vX.Y.Z` tag, or a later release tag, is pushed.
+Unsigned DMG release artifact builds are handled by `.github/workflows/release.yml` when a `vX.Y.Z` tag is pushed.

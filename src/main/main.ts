@@ -33,6 +33,7 @@ declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
 
 let mainWindow: BrowserWindow | undefined;
+let mainWindowRoute: "main" | "settings" | undefined;
 let menuWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let trayBaseIcon: Electron.NativeImage | undefined;
@@ -87,7 +88,8 @@ if (hasSingleInstanceLock) {
       },
       openAppBundle: async (bundlePath) => {
         await shell.openPath(bundlePath);
-      }
+      },
+      currentAppVersion: metadata.version
     });
 
     createMainWindow("main");
@@ -117,67 +119,76 @@ app.on("before-quit", () => {
 app.on("did-resign-active", hideMenuWindowForNativeDismissal);
 
 function createMainWindow(route: "main" | "settings"): BrowserWindow {
-  mainWindow =
-    mainWindow ??
-    new BrowserWindow({
-      width: 1020,
-      height: 760,
-      minWidth: 660,
-      minHeight: 620,
-      title: "Baseline",
-      titleBarStyle: "hiddenInset",
-      trafficLightPosition: { x: 14, y: 14 },
-      vibrancy: "sidebar",
-      visualEffectState: "active",
-      transparent: true,
-      backgroundColor: "#00000000",
-      show: false,
-      webPreferences: {
-        preload: path.join(__dirname, "preload.js"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false
-      }
-    });
+  if (mainWindow) {
+    return mainWindow;
+  }
 
-  mainWindow.on("close", (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow?.hide();
+  mainWindow = new BrowserWindow({
+    width: 1020,
+    height: 760,
+    minWidth: 660,
+    minHeight: 620,
+    title: "Baseline",
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 14, y: 14 },
+    vibrancy: "sidebar",
+    visualEffectState: "active",
+    transparent: true,
+    backgroundColor: "#00000000",
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
     }
   });
 
+  mainWindow.on("close", handleMainWindowClose);
+  mainWindow.on("closed", () => {
+    mainWindow = undefined;
+    mainWindowRoute = undefined;
+  });
+  mainWindow.webContents.on("did-finish-load", () => syncMainWindowRoute(mainWindow));
+  mainWindow.webContents.on("did-navigate-in-page", () => syncMainWindowRoute(mainWindow));
+
+  mainWindowRoute = route;
   void loadRenderer(mainWindow, route);
   mainWindow.once("ready-to-show", () => showWindow(mainWindow));
   return mainWindow;
 }
 
 function createMenuWindow(): BrowserWindow {
-  menuWindow =
-    menuWindow ??
-    new BrowserWindow({
-      width: 440,
-      height: 560,
-      resizable: false,
-      movable: true,
-      title: "Baseline",
-      vibrancy: "popover",
-      visualEffectState: "active",
-      transparent: true,
-      backgroundColor: "#00000000",
-      show: false,
-      frame: false,
-      fullscreenable: false,
-      skipTaskbar: true,
-      webPreferences: {
-        preload: path.join(__dirname, "preload.js"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false
-      }
-    });
+  if (menuWindow) {
+    return menuWindow;
+  }
+
+  menuWindow = new BrowserWindow({
+    width: 440,
+    height: 560,
+    resizable: false,
+    movable: true,
+    title: "Baseline",
+    vibrancy: "popover",
+    visualEffectState: "active",
+    transparent: true,
+    backgroundColor: "#00000000",
+    show: false,
+    frame: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
 
   menuWindow.on("blur", hideMenuWindowForNativeDismissal);
+  menuWindow.on("closed", () => {
+    menuWindow = undefined;
+  });
 
   void loadRenderer(menuWindow, "menubar");
   return menuWindow;
@@ -249,9 +260,42 @@ function hideMenuWindowForNativeDismissal(): void {
   }
 }
 
+function handleMainWindowClose(event: Electron.Event): void {
+  if (!isQuitting) {
+    event.preventDefault();
+    mainWindow?.hide();
+  }
+}
+
+function syncMainWindowRoute(window?: BrowserWindow): void {
+  const route = mainWindowRouteFromURL(window?.webContents.getURL());
+  if (route) {
+    mainWindowRoute = route;
+  }
+}
+
+function mainWindowRouteFromURL(url?: string): "main" | "settings" | undefined {
+  if (!url) {
+    return undefined;
+  }
+  try {
+    const route = new URL(url).hash.replace(/^#\/?/u, "");
+    if (route === "main" || route === "settings") {
+      return route;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function showMainWindow(route: "main" | "settings"): void {
   const window = createMainWindow(route);
-  void loadRenderer(window, route);
+  const currentRoute = mainWindowRouteFromURL(window.webContents.getURL()) ?? mainWindowRoute;
+  if (currentRoute !== route) {
+    mainWindowRoute = route;
+    void loadRenderer(window, route);
+  }
   showWindow(window);
 }
 
@@ -378,7 +422,11 @@ function wireIpc(): void {
   ipcMain.handle(ipcChannels.performHomebrewUpdate, (_event, itemID: string) =>
     store.performHomebrewUpdate(String(itemID))
   );
-  ipcMain.handle(ipcChannels.performHomebrewUpdateAll, () => store.performHomebrewUpdateAll());
+  ipcMain.handle(ipcChannels.performHomebrewUpdateAll, (_event, itemIDs?: unknown) =>
+    store.performHomebrewUpdateAll(
+      Array.isArray(itemIDs) ? itemIDs.map((itemID) => String(itemID)) : undefined
+    )
+  );
   ipcMain.handle(ipcChannels.installHomebrewItem, (_event, item: HomebrewCaskDiscoveryItem) =>
     store.installHomebrewItem(item)
   );

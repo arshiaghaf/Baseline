@@ -1,12 +1,12 @@
 # Baseline
 
-![Release: Pending](https://img.shields.io/badge/release-pending-0a0a0c?style=flat-square)
+[![Release](https://img.shields.io/github/v/release/arshiaghaf/baseline?style=flat-square&label=release&color=0a0a0c)](https://github.com/arshiaghaf/baseline/releases/latest)
 &nbsp;
-![Project status: Beta](https://img.shields.io/badge/status-beta-blue?style=flat-square)
+[![Minimum macOS version: 14+](https://img.shields.io/badge/macOS-14.0%2B-0a0a0c?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
 &nbsp;
-![Minimum macOS version: 14.0+](https://img.shields.io/badge/macOS-14.0%2B-0a0a0c?style=flat-square)
+[![Homebrew tap: arshiaghaf/tap/baseline](https://img.shields.io/badge/brew-arshiaghaf%2Ftap%2Fbaseline-6f5f4a?style=flat-square)](https://github.com/arshiaghaf/homebrew-tap)
 &nbsp;
-[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/Baseline/blob/main/LICENSE)
+[![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/baseline/blob/main/LICENSE)
 
 Baseline is a macOS app for managing and updating installed Mac apps and Homebrew packages from one place. It supports App Store apps, direct downloads, Sparkle-enabled apps, and Homebrew casks and formulae.
 
@@ -30,47 +30,27 @@ When the required local tooling is available, Baseline can run update and instal
 - Supports Homebrew search from the main window and menu bar tray to discover installable casks and formulae
 - Lets you search installed apps and filter available updates
 - Provides external fallback links when local CLI tooling is unavailable
-  
+
 ![Baseline Ignored tab showing app and Homebrew item actions](docs/images/baseline-ignored-updates.png)
 
 ![Baseline main window Homebrew search showing installable casks](docs/images/baseline-homebrew-search.png)
-  
+
 ![Baseline menu bar tray showing app and Homebrew updates](docs/images/baseline-menu-bar.png)
-
-## Project Status
-
-Baseline is currently in beta. The core app experience works end to end, with ongoing polish focused on UI, packaging, and release quality.
-
-Packaged unsigned DMGs are planned for the first public release.
 
 ## Install
 
-No packaged release is available yet. Build Baseline from source for now.
+### Requirements
 
-Future unsigned DMG releases will be published on the [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases) page. Unsigned builds are not notarized by Apple, so macOS Gatekeeper may warn when opening them.
+- macOS 14+ (Sonoma)
 
-## Build from Source
+### GitHub Releases
 
-Requirements:
+Download: <https://github.com/arshiaghaf/Baseline/releases>
 
-- macOS 14.0 or newer
-- Node.js 25 or newer
-- npm
-
-## Build and Test
+### Homebrew
 
 ```bash
-npm ci
-npm run typecheck
-npm test
-npm run build
-npm run test:electron
-```
-
-Run the app during development:
-
-```bash
-npm start
+brew install --cask arshiaghaf/tap/baseline
 ```
 
 ## Limitations
@@ -78,7 +58,7 @@ npm start
 - Update detection is best-effort and depends on public update sources exposed by installed apps, Apple lookup endpoints, and Homebrew metadata.
 - Homebrew actions require Homebrew to be installed. Without it, Baseline opens external Homebrew or app pages instead.
 - App Store update actions use optional local `mas` support when available. Without `mas`, Baseline opens the App Store page externally.
-- Packaged releases are not signed or notarized yet.
+- Packaged releases are not signed or notarized yet, so macOS Gatekeeper may warn when opening them.
 
 ## Privacy and Security
 
@@ -88,46 +68,15 @@ The app may query public services such as Apple lookup endpoints, Sparkle or app
 
 Report suspected security issues using the process in [SECURITY.md](SECURITY.md).
 
-## Architecture
-
-Baseline keeps update logic outside React views:
-
-- `src/shared` defines domain contracts, persistence snapshots, security policy, and shared parsers.
-- `src/main` contains Electron lifecycle, windows/tray, privileged IO, scanning, network lookup, subprocess execution, persistence, and IPC.
-- `src/renderer` renders React state and dispatches user intents through the preload API.
-- `ElectronTests` covers parsers, version logic, security checks, renderer behavior, persistence, store behavior, Homebrew app linking, and source-client fixtures.
-- `e2e` covers Electron launch smoke tests.
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for more detail.
-See [docs/VALIDATION.md](docs/VALIDATION.md) for preview validation.
-
-## Release Tooling
-
-For a fuller local release preview, run:
-
-```bash
-scripts/validate-preview.sh 0.0.0-preview
-```
-
-This builds, tests, packages an unsigned DMG, installs `/Applications/Baseline.app`, and smoke-launches the installed copy.
-
-## Package an Unsigned DMG
-
-```bash
-scripts/create-unsigned-dmg.sh 0.1.0
-```
-
-The script builds a Release app, creates `dist/Baseline-0.1.0-unsigned.dmg`, and prints a SHA-256 checksum. See [docs/RELEASING.md](docs/RELEASING.md) for release steps and limitations.
-
-To create the unsigned DMG plus release-note checksum text:
-
-```bash
-scripts/prepare-unsigned-release.sh 0.1.0
-```
-
 ## Contributing
 
 Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow the pull request template, and run the validation commands before opening a PR.
+
+Developer documentation:
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Continuous Integration](docs/CI.md)
+- [Validation](docs/VALIDATION.md)
 
 ## License
 

@@ -1,14 +1,6 @@
 # Validation
 
-Use this checklist before handing off a local preview build, opening a release PR, or cutting the first public release.
-
-## Known-Good Preview
-
-```bash
-scripts/validate-preview.sh 0.0.0-preview
-```
-
-The script checks ignored generated artifacts, lints release scripts, typechecks Electron code, runs Vitest and Playwright Electron tests, packages the app, creates an unsigned DMG, installs the packaged app to `/Applications/Baseline.app`, and smoke-launches the installed app.
+Use this checklist before preparing a release or validating risky app behavior changes.
 
 ## Manual Smoke Matrix
 
@@ -28,12 +20,17 @@ Validate at least one item in each category when possible:
 ## Release Artifact Check
 
 ```bash
-scripts/prepare-unsigned-release.sh 0.1.0
+scripts/prepare-unsigned-release.sh <version>
 ```
 
 Confirm:
 
 - `dist/Baseline-<version>-unsigned.dmg` exists.
-- `dist/Baseline-<version>-unsigned-release-notes.md` includes the SHA-256 checksum.
-- The release notes clearly describe the artifact as unsigned and not notarized.
+- `dist/Baseline-<version>-unsigned-release-notes.md` contains only the `Added` and/or `Fixed` subsections from the finalized changelog section.
 - The DMG opens and `Baseline.app` can be copied to `/Applications`.
+
+After the GitHub Release is created, verify its published assets and notes:
+
+```bash
+scripts/check-release-assets.sh v<version>
+```

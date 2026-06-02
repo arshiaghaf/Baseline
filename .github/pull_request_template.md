@@ -9,7 +9,6 @@ Describe the change and why it is needed.
 - [ ] `npm run lint`
 - [ ] `npm run build`
 - [ ] `npm run test:electron`
-- [ ] Preview handoff only: `scripts/validate-preview.sh 0.0.0-preview`
 
 If any validation was not run, explain why.
 
