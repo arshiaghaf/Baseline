@@ -14,6 +14,12 @@ import { version } from "../shared/version";
 const execFileAsync = promisify(execFile);
 
 type InfoPlist = Record<string, unknown>;
+type AppBundleInfo = {
+  info: InfoPlist;
+  isIOSAppOnMac: boolean;
+  hasAppStoreEvidence: boolean;
+  iconResourcesPath: string;
+};
 type IconLoadResult = { dataURL?: string };
 type IconExecFileAsync = (
   file: string,
@@ -83,10 +89,11 @@ export class BundleScannerClient {
   }
 
   private async makeRecord(appPath: string): Promise<AppRecord | undefined> {
-    const info = await this.readInfoPlist(appPath);
-    if (!info) {
+    const bundleInfo = await this.readAppBundleInfo(appPath);
+    if (!bundleInfo) {
       return undefined;
     }
+    const { info, isIOSAppOnMac, hasAppStoreEvidence, iconResourcesPath } = bundleInfo;
     if (isWebAppBundle(info)) {
       return undefined;
     }
@@ -99,11 +106,14 @@ export class BundleScannerClient {
     const rawBundleVersion = stringValue(info.CFBundleVersion);
     const rawVersion = stringValue(info.CFBundleShortVersionString) ?? rawBundleVersion;
     const sparkleFeedURL = this.sparkleFeedURL(info);
-    const sourceHint: UpdateSource = (await this.hasMasReceipt(appPath))
+    const hasMasReceipt = await this.hasMasReceipt(appPath);
+    const sourceHint: UpdateSource = hasMasReceipt
       ? "appStore"
-      : sparkleFeedURL
-        ? "sparkle"
-        : "unknown";
+      : isIOSAppOnMac && hasAppStoreEvidence
+        ? "appStore"
+        : sparkleFeedURL
+          ? "sparkle"
+          : "unknown";
 
     return {
       id: appPath,
@@ -113,25 +123,52 @@ export class BundleScannerClient {
       localVersion: version(rawVersion),
       bundleVersion: rawBundleVersion ? version(rawBundleVersion) : undefined,
       sourceHint,
+      isIOSAppOnMac,
+      hasAppStoreEvidence: hasMasReceipt || hasAppStoreEvidence,
       sparkleFeedURL,
-      iconDataURL: await this.appIconDataURL(appPath)
+      iconDataURL: await this.appIconDataURL(appPath, iconResourcesPath, info)
     };
   }
 
+  private async readAppBundleInfo(appPath: string): Promise<AppBundleInfo | undefined> {
+    const info = await this.readInfoPlist(appPath);
+    if (info) {
+      return {
+        info,
+        isIOSAppOnMac: isIOSAppOnMacInfo(info),
+        hasAppStoreEvidence: await this.hasMasReceipt(appPath),
+        iconResourcesPath: path.join(appPath, "Contents", "Resources")
+      };
+    }
+    return this.readWrappedIOSAppBundleInfo(appPath);
+  }
+
   private async readInfoPlist(appPath: string): Promise<InfoPlist | undefined> {
-    const infoPath = path.join(appPath, "Contents", "Info.plist");
+    return readInfoPlistAtPath(path.join(appPath, "Contents", "Info.plist"));
+  }
+
+  private async readWrappedIOSAppBundleInfo(appPath: string): Promise<AppBundleInfo | undefined> {
+    const wrapperPath = path.join(appPath, "Wrapper");
     try {
-      const { stdout } = await execFileAsync(
-        "/usr/bin/plutil",
-        ["-convert", "json", "-o", "-", infoPath],
-        {
-          maxBuffer: 4 * 1024 * 1024
+      const entries = await readdir(wrapperPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || !entry.name.endsWith(".app")) {
+          continue;
         }
-      );
-      return JSON.parse(stdout) as InfoPlist;
+        const info = await readInfoPlistAtPath(path.join(wrapperPath, entry.name, "Info.plist"));
+        if (info && isIOSAppOnMacInfo(info)) {
+          return {
+            info,
+            isIOSAppOnMac: true,
+            hasAppStoreEvidence: await this.hasWrappedAppStoreEvidence(appPath, entry.name, info),
+            iconResourcesPath: path.join(wrapperPath, entry.name)
+          };
+        }
+      }
     } catch {
       return undefined;
     }
+    return undefined;
   }
 
   private async hasMasReceipt(appPath: string): Promise<boolean> {
@@ -139,6 +176,29 @@ export class BundleScannerClient {
       const receipt = path.join(appPath, "Contents", "_MASReceipt", "receipt");
       const receiptStat = await stat(receipt);
       return receiptStat.isFile();
+    } catch {
+      return false;
+    }
+  }
+
+  private async hasWrappedAppStoreEvidence(
+    appPath: string,
+    wrappedAppName: string,
+    info: InfoPlist
+  ): Promise<boolean> {
+    const wrapperPath = path.join(appPath, "Wrapper");
+    const metadataBundleID = await readPlistRawValue(
+      path.join(wrapperPath, "iTunesMetadata.plist"),
+      "softwareVersionBundleId"
+    );
+    const bundleIdentifier = stringValue(info.CFBundleIdentifier);
+    if (!bundleIdentifier || metadataBundleID?.toLowerCase() !== bundleIdentifier.toLowerCase()) {
+      return false;
+    }
+
+    try {
+      const scInfo = await stat(path.join(wrapperPath, wrappedAppName, "SC_Info"));
+      return scInfo.isDirectory();
     } catch {
       return false;
     }
@@ -152,8 +212,12 @@ export class BundleScannerClient {
     return feed && isAllowedFeedURL(feed) ? feed : undefined;
   }
 
-  private async appIconDataURL(appPath: string): Promise<string | undefined> {
-    const bundleIcon = await this.bundleIconDataURL(appPath);
+  private async appIconDataURL(
+    appPath: string,
+    iconResourcesPath: string,
+    info: InfoPlist
+  ): Promise<string | undefined> {
+    const bundleIcon = await this.bundleIconDataURL(iconResourcesPath, info);
     if (bundleIcon.dataURL) {
       return bundleIcon.dataURL;
     }
@@ -169,13 +233,11 @@ export class BundleScannerClient {
     }
   }
 
-  private async bundleIconDataURL(appPath: string): Promise<IconLoadResult> {
-    const info = await this.readInfoPlist(appPath);
-    if (!info) {
-      return {};
-    }
-
-    for (const iconPath of iconCandidatePaths(appPath, info)) {
+  private async bundleIconDataURL(
+    iconResourcesPath: string,
+    info: InfoPlist
+  ): Promise<IconLoadResult> {
+    for (const iconPath of iconCandidatePaths(iconResourcesPath, info)) {
       const result = await loadIconFileDataURL(iconPath);
       if (result.dataURL) {
         return result;
@@ -186,8 +248,39 @@ export class BundleScannerClient {
   }
 }
 
+async function readPlistRawValue(plistPath: string, key: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync(
+      "/usr/bin/plutil",
+      ["-extract", key, "raw", "-o", "-", plistPath],
+      {
+        maxBuffer: 1024 * 1024
+      }
+    );
+    const value = stdout.trim();
+    return value ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+async function readInfoPlistAtPath(infoPath: string): Promise<InfoPlist | undefined> {
+  try {
+    const { stdout } = await execFileAsync(
+      "/usr/bin/plutil",
+      ["-convert", "json", "-o", "-", infoPath],
+      {
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
+    return JSON.parse(stdout) as InfoPlist;
+  } catch {
+    return undefined;
+  }
 }
 
 function stringArrayValue(value: unknown): string[] {
@@ -196,8 +289,15 @@ function stringArrayValue(value: unknown): string[] {
     : [];
 }
 
-function iconCandidatePaths(appPath: string, info: InfoPlist): string[] {
-  const resourcesPath = path.join(appPath, "Contents", "Resources");
+function isIOSAppOnMacInfo(info: InfoPlist): boolean {
+  return (
+    info.LSRequiresIPhoneOS === true ||
+    info.UIDesignRequiresCompatibility === true ||
+    stringArrayValue(info.CFBundleSupportedPlatforms).includes("iPhoneOS")
+  );
+}
+
+function iconCandidatePaths(resourcesPath: string, info: InfoPlist): string[] {
   const names = new Set<string>();
   const add = (value: string | undefined) => {
     if (value) {
@@ -219,8 +319,18 @@ function iconCandidatePaths(appPath: string, info: InfoPlist): string[] {
   add(stringValue(primaryIcon?.CFBundleIconName));
 
   return [...names].flatMap((name) => {
-    const withExtension = path.extname(name) ? name : `${name}.icns`;
-    return [path.join(resourcesPath, withExtension), path.join(resourcesPath, name)];
+    if (path.extname(name)) {
+      return [path.join(resourcesPath, name)];
+    }
+    return [
+      path.join(resourcesPath, `${name}.icns`),
+      path.join(resourcesPath, `${name}@3x.png`),
+      path.join(resourcesPath, `${name}@2x.png`),
+      path.join(resourcesPath, `${name}@3x~ipad.png`),
+      path.join(resourcesPath, `${name}@2x~ipad.png`),
+      path.join(resourcesPath, `${name}.png`),
+      path.join(resourcesPath, name)
+    ];
   });
 }
 
@@ -264,8 +374,7 @@ function isGrayscaleSipsOutput(output: string): boolean {
 
 async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
   if (path.extname(iconPath).toLowerCase() !== ".icns") {
-    const image = iconRuntime.createFromPath(iconPath);
-    return image.isEmpty() ? {} : { dataURL: resizedIconDataURL(image) };
+    return loadRasterIconDataURL(iconPath);
   }
 
   let tempDirectory: string | undefined;
@@ -287,6 +396,34 @@ async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
     }
     const image = iconRuntime.createFromPath(pngPath);
     return image.isEmpty() ? {} : { dataURL: resizedIconDataURL(image) };
+  } catch {
+    return {};
+  } finally {
+    if (tempDirectory) {
+      await rm(tempDirectory, { recursive: true, force: true });
+    }
+  }
+}
+
+async function loadRasterIconDataURL(iconPath: string): Promise<IconLoadResult> {
+  const image = iconRuntime.createFromPath(iconPath);
+  if (!image.isEmpty()) {
+    return { dataURL: resizedIconDataURL(image) };
+  }
+
+  let tempDirectory: string | undefined;
+  try {
+    tempDirectory = await mkdtemp(path.join(os.tmpdir(), "baseline-icon-"));
+    const normalizedPath = path.join(tempDirectory, "icon-normalized.png");
+    await iconRuntime.execFileAsync(
+      "/usr/bin/sips",
+      ["-s", "format", "png", iconPath, "--out", normalizedPath],
+      {
+        maxBuffer: 4 * 1024 * 1024
+      }
+    );
+    const normalizedImage = iconRuntime.createFromPath(normalizedPath);
+    return normalizedImage.isEmpty() ? {} : { dataURL: resizedIconDataURL(normalizedImage) };
   } catch {
     return {};
   } finally {

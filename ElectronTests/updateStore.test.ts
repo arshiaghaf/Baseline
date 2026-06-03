@@ -555,6 +555,64 @@ describe("update store helpers", () => {
     });
   });
 
+  it("only enables iOS App Store lookup for installed iOS-on-Mac apps", async () => {
+    const iOSAppOnMac = appRecord({
+      bundlePath: "/Applications/App Store iPad App.app",
+      displayName: "App Store iPad App",
+      bundleIdentifier: "com.example.ipad-app",
+      localVersion: version("1.0.0"),
+      sourceHint: "appStore",
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: true
+    });
+    const sideloadedIOSAppOnMac = appRecord({
+      bundlePath: "/Applications/Sideloaded iPad App.app",
+      displayName: "Sideloaded iPad App",
+      bundleIdentifier: "com.example.sideloaded-ipad-app",
+      sourceHint: "unknown",
+      localVersion: version("1.0.0"),
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: false
+    });
+    const nativeMacApp = appRecord({
+      bundlePath: "/Applications/Native Mac App.app",
+      displayName: "Native Mac App",
+      bundleIdentifier: "com.example.native-mac-app",
+      sourceHint: "appStore",
+      localVersion: version("1.0.0")
+    });
+    const lookupOutcome = vi.fn(async () => ({ type: "completed" as const }));
+    const store = await makeStore({
+      clients: {
+        scanner: {
+          scanApplications: async () => [iOSAppOnMac, sideloadedIOSAppOnMac, nativeMacApp]
+        },
+        appStore: { lookupOutcome }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(lookupOutcome).toHaveBeenNthCalledWith(
+      1,
+      iOSAppOnMac.bundleIdentifier,
+      iOSAppOnMac.localVersion,
+      { includeIOSAppStoreSoftware: true }
+    );
+    expect(lookupOutcome).toHaveBeenNthCalledWith(
+      2,
+      sideloadedIOSAppOnMac.bundleIdentifier,
+      sideloadedIOSAppOnMac.localVersion,
+      { includeIOSAppStoreSoftware: false }
+    );
+    expect(lookupOutcome).toHaveBeenNthCalledWith(
+      3,
+      nativeMacApp.bundleIdentifier,
+      nativeMacApp.localVersion,
+      { includeIOSAppStoreSoftware: false }
+    );
+  });
+
   it("does not mark apps recently updated when a lookup miss leaves the local version unchanged", async () => {
     const unchangedApp = appRecord({
       bundlePath: "/Applications/Lookup Miss.app",

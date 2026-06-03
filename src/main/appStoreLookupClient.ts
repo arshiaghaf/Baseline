@@ -6,6 +6,7 @@ import { byteLimits, sanitizeExternalURL } from "../shared/security";
 import { isVersionGreater, type VersionValue, version } from "../shared/version";
 
 type LookupEntry = {
+  bundleId?: string;
   kind?: string;
   version?: string;
   trackViewUrl?: string;
@@ -16,14 +17,21 @@ type LookupEntry = {
 
 export type LookupOutcome<T> = { type: "completed"; value?: T } | { type: "transientFailure" };
 
+type LookupOptions = {
+  includeIOSAppStoreSoftware?: boolean;
+};
+
 export class AppStoreLookupClient {
   async lookupOutcome(
     bundleIdentifier: string,
-    localVersion: VersionValue
+    localVersion: VersionValue,
+    options: LookupOptions = {}
   ): Promise<LookupOutcome<AppStoreLookupResult>> {
     const url = new URL("https://itunes.apple.com/lookup");
     url.searchParams.set("bundleId", bundleIdentifier);
-    url.searchParams.set("entity", "macSoftware");
+    if (!options.includeIOSAppStoreSoftware) {
+      url.searchParams.set("entity", "macSoftware");
+    }
 
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -31,19 +39,32 @@ export class AppStoreLookupClient {
         return { type: "transientFailure" };
       }
       const buffer = Buffer.from(await response.arrayBuffer());
-      return { type: "completed", value: this.parseLookupResponse(buffer, localVersion) };
+      return {
+        type: "completed",
+        value: this.parseLookupResponse(buffer, localVersion, {
+          ...options,
+          bundleIdentifier
+        })
+      };
     } catch {
       return { type: "transientFailure" };
     }
   }
 
-  parseLookupResponse(data: Buffer, localVersion: VersionValue): AppStoreLookupResult | undefined {
+  parseLookupResponse(
+    data: Buffer,
+    localVersion: VersionValue,
+    options: LookupOptions & { bundleIdentifier?: string } = {}
+  ): AppStoreLookupResult | undefined {
     if (data.byteLength > byteLimits.appStoreLookupMaxBytes) {
       return undefined;
     }
     const response = JSON.parse(data.toString("utf8")) as { results?: LookupEntry[] };
     const results = response.results ?? [];
     const selected =
+      (options.includeIOSAppStoreSoftware
+        ? results.find((entry) => isIOSAppStoreSoftware(entry, options.bundleIdentifier))
+        : undefined) ??
       results.find((entry) => entry.kind === "mac-software") ??
       (results.length === 1 && !results[0]?.kind ? results[0] : undefined);
     if (!selected) {
@@ -63,4 +84,10 @@ export class AppStoreLookupClient {
       appStoreItemID: selected.trackId
     };
   }
+}
+
+function isIOSAppStoreSoftware(entry: LookupEntry, bundleIdentifier: string | undefined): boolean {
+  return (
+    entry.kind === "software" && entry.bundleId?.toLowerCase() === bundleIdentifier?.toLowerCase()
+  );
 }

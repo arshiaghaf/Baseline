@@ -22,6 +22,129 @@ describe("ported clients", () => {
     expect(result?.appStoreItemID).toBe(123456789);
   });
 
+  it("parses iOS App Store records when enabled for installed iOS-on-Mac apps", () => {
+    const data = Buffer.from(
+      JSON.stringify({
+        resultCount: 1,
+        results: [
+          {
+            kind: "software",
+            bundleId: "com.example.ios-on-mac",
+            trackId: 987654321,
+            version: "2.0",
+            trackViewUrl: "https://apps.apple.com/app/example/id987654321"
+          }
+        ]
+      })
+    );
+    const client = new AppStoreLookupClient();
+
+    expect(client.parseLookupResponse(data, version("1.0"))).toBeUndefined();
+    expect(
+      client.parseLookupResponse(data, version("1.0"), {
+        includeIOSAppStoreSoftware: true,
+        bundleIdentifier: "com.example.other"
+      })
+    ).toBeUndefined();
+
+    const result = client.parseLookupResponse(data, version("1.0"), {
+      includeIOSAppStoreSoftware: true,
+      bundleIdentifier: "com.example.ios-on-mac"
+    });
+
+    expect(result?.remoteVersion.raw).toBe("2.0");
+    expect(result?.appStoreItemID).toBe(987654321);
+  });
+
+  it("rejects iOS App Store records when installed app evidence is not enabled", () => {
+    const data = Buffer.from(
+      JSON.stringify({
+        resultCount: 1,
+        results: [
+          {
+            kind: "software",
+            bundleId: "com.example.ios-only",
+            trackId: 123,
+            version: "2.0"
+          }
+        ]
+      })
+    );
+
+    expect(new AppStoreLookupClient().parseLookupResponse(data, version("1.0"))).toBeUndefined();
+  });
+
+  it("prefers matching iOS App Store records for installed iOS-on-Mac apps", () => {
+    const data = Buffer.from(
+      JSON.stringify({
+        resultCount: 2,
+        results: [
+          {
+            kind: "mac-software",
+            bundleId: "com.example.shared",
+            trackId: 111,
+            version: "5.0",
+            trackViewUrl: "https://apps.apple.com/app/example-mac/id111"
+          },
+          {
+            kind: "software",
+            bundleId: "com.example.shared",
+            trackId: 222,
+            version: "2.0",
+            trackViewUrl: "https://apps.apple.com/app/example-ios/id222"
+          }
+        ]
+      })
+    );
+
+    const result = new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
+      includeIOSAppStoreSoftware: true,
+      bundleIdentifier: "com.example.shared"
+    });
+
+    expect(result?.remoteVersion.raw).toBe("2.0");
+    expect(result?.appStoreItemID).toBe(222);
+    expect(result?.updateURL).toBe("https://apps.apple.com/app/example-ios/id222");
+  });
+
+  it("keeps Mac App Store lookup requests filtered to Mac software by default", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 })
+      );
+
+    try {
+      await new AppStoreLookupClient().lookupOutcome("com.example.mac-app", version("1.0"));
+
+      const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
+      expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.mac-app");
+      expect(requestedURL.searchParams.get("entity")).toBe("macSoftware");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("omits the entity filter when iOS App Store software lookup is enabled", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 })
+      );
+
+    try {
+      await new AppStoreLookupClient().lookupOutcome("com.example.ios-on-mac", version("1.0"), {
+        includeIOSAppStoreSoftware: true
+      });
+
+      const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
+      expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.ios-on-mac");
+      expect(requestedURL.searchParams.has("entity")).toBe(false);
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("parses Sparkle appcast fixtures", () => {
     const data = readFileSync(path.join(fixtures, "sparkle_appcast.xml"));
     const result = new SparkleAppcastClient().parseAppcast(data, version("1.0.0"));

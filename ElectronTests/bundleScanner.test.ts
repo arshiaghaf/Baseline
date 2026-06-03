@@ -12,10 +12,15 @@ const electronMocks = vi.hoisted(() => ({
     isEmpty: () => true,
     resize: () => ({ toDataURL: () => "" })
   })),
-  createFromPath: vi.fn(() => ({
-    isEmpty: () => true,
-    resize: () => ({ toDataURL: () => "" })
-  }))
+  createFromPath: vi.fn(
+    (imagePath: string): { isEmpty: () => boolean; resize: () => { toDataURL: () => string } } => {
+      void imagePath;
+      return {
+        isEmpty: () => true,
+        resize: () => ({ toDataURL: () => "" })
+      };
+    }
+  )
 }));
 
 vi.mock("electron", () => ({
@@ -143,6 +148,90 @@ describe("bundle scanner", () => {
     });
   });
 
+  it("marks direct iOS-on-Mac bundles as App Store apps", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    const appPath = path.join(root, "Designed for iPad.app");
+    await writeAppPlist(appPath, {
+      displayName: "Designed for iPad",
+      bundleIdentifier: "com.example.ipad-direct",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>UIDeviceFamily</key>",
+        "  <array>",
+        "    <integer>2</integer>",
+        "  </array>",
+        "  <key>UIDesignRequiresCompatibility</key>",
+        "  <true/>"
+      ].join("\n")
+    });
+    await mkdir(path.join(appPath, "Contents", "_MASReceipt"), { recursive: true });
+    await writeFile(path.join(appPath, "Contents", "_MASReceipt", "receipt"), "receipt");
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundlePath: appPath,
+      bundleIdentifier: "com.example.ipad-direct",
+      sourceHint: "appStore",
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: true
+    });
+  });
+
+  it("scans App Store wrapper bundles for iOS-on-Mac apps", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+    const appPath = path.join(root, "Wrapped iPad App.app");
+
+    await writeWrappedIOSAppPlist(appPath, {
+      displayName: "Wrapped iPad App",
+      bundleIdentifier: "com.example.ipad-wrapper",
+      version: "3.22"
+    });
+    electronMocks.createFromPath.mockImplementation((imagePath: string) => ({
+      isEmpty: () => !imagePath.endsWith("AppIcon60x60@2x.png"),
+      resize: () => ({ toDataURL: () => `icon:${imagePath}` })
+    }));
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      id: appPath,
+      bundlePath: appPath,
+      displayName: "Wrapped iPad App",
+      bundleIdentifier: "com.example.ipad-wrapper",
+      localVersion: { raw: "3.22" },
+      sourceHint: "appStore",
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: true,
+      iconDataURL: `icon:${path.join(appPath, "Wrapper", "Wrapped iPad App.app", "AppIcon60x60@2x.png")}`
+    });
+  });
+
+  it("does not treat wrapper iOS apps without App Store metadata as App Store managed", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+    const appPath = path.join(root, "Sideloaded iPad App.app");
+
+    await writeWrappedIOSAppPlist(appPath, {
+      displayName: "Sideloaded iPad App",
+      bundleIdentifier: "com.example.sideloaded-ipad-wrapper",
+      version: "1.0",
+      includeAppStoreEvidence: false
+    });
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundleIdentifier: "com.example.sideloaded-ipad-wrapper",
+      sourceHint: "unknown",
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: false
+    });
+  });
+
   it("detects grayscale icon conversion output", () => {
     expect(testingExports.isGrayscaleSipsOutput("  space: Gray\n")).toBe(true);
     expect(testingExports.isGrayscaleSipsOutput("  space: RGB\n")).toBe(false);
@@ -213,6 +302,35 @@ describe("bundle scanner", () => {
       expect.stringMatching(/icon-padded\.png$/u)
     );
   });
+
+  it("normalizes unreadable raster app icons before falling back to system icons", async () => {
+    const iconPath = "/Applications/Wrapped.app/Wrapper/Wrapped.app/AppIcon60x60@2x.png";
+
+    testingExports.iconRuntime.execFileAsync = vi.fn(async (file: string, args: string[]) => {
+      if (file !== "/usr/bin/sips") {
+        throw new Error(`Unexpected executable: ${file}`);
+      }
+      if (args.includes("-s") && args.includes("format")) {
+        const outputPath = args.at(-1);
+        await writeFile(String(outputPath), "normalized png");
+        return { stdout: "", stderr: "" };
+      }
+      throw new Error(`Unexpected sips arguments: ${args.join(" ")}`);
+    });
+    testingExports.iconRuntime.createFromPath = vi.fn((imagePath: string) => ({
+      isEmpty: () => !imagePath.endsWith("icon-normalized.png"),
+      resize: () => ({ toDataURL: () => `normalized:${imagePath}` }),
+      toDataURL: () => `original:${imagePath}`
+    }));
+
+    const result = await testingExports.loadIconFileDataURL(iconPath);
+
+    expect(result.dataURL).toMatch(/^normalized:.*icon-normalized\.png$/u);
+    expect(testingExports.iconRuntime.createFromPath).toHaveBeenCalledWith(iconPath);
+    expect(testingExports.iconRuntime.createFromPath).toHaveBeenCalledWith(
+      expect.stringMatching(/icon-normalized\.png$/u)
+    );
+  });
 });
 
 async function writeAppPlist(
@@ -242,4 +360,73 @@ ${extraKeys}
 </plist>
 `
   );
+}
+
+async function writeWrappedIOSAppPlist(
+  appPath: string,
+  {
+    displayName,
+    bundleIdentifier,
+    version,
+    includeAppStoreEvidence = true
+  }: {
+    displayName: string;
+    bundleIdentifier: string;
+    version: string;
+    includeAppStoreEvidence?: boolean;
+  }
+): Promise<void> {
+  const wrappedAppPath = path.join(appPath, "Wrapper", `${displayName}.app`);
+  await mkdir(wrappedAppPath, { recursive: true });
+  await writeFile(path.join(wrappedAppPath, "AppIcon60x60@2x.png"), "icon");
+  await writeFile(
+    path.join(wrappedAppPath, "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>${displayName}</string>
+  <key>CFBundleIdentifier</key>
+  <string>${bundleIdentifier}</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${version}</string>
+  <key>CFBundleIconFiles</key>
+  <array>
+    <string>AppIcon60x60</string>
+  </array>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleSupportedPlatforms</key>
+  <array>
+    <string>iPhoneOS</string>
+  </array>
+  <key>LSRequiresIPhoneOS</key>
+  <true/>
+  <key>UIDeviceFamily</key>
+  <array>
+    <integer>1</integer>
+    <integer>2</integer>
+  </array>
+</dict>
+</plist>
+`
+  );
+  if (includeAppStoreEvidence) {
+    await mkdir(path.join(wrappedAppPath, "SC_Info"), { recursive: true });
+    await writeFile(
+      path.join(appPath, "Wrapper", "iTunesMetadata.plist"),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>softwareVersionBundleId</key>
+  <string>${bundleIdentifier}</string>
+  <key>itemId</key>
+  <integer>123456789</integer>
+</dict>
+</plist>
+`
+    );
+  }
 }
