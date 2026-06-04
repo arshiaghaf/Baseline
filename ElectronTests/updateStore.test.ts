@@ -390,6 +390,48 @@ describe("update store helpers", () => {
     expect(runBrewCommand).toHaveBeenCalledWith(["--version"]);
   });
 
+  it("refreshes Homebrew inventory after a successful install when Homebrew was previously absent", async () => {
+    const installedItem = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      installedVersion: version("14.1.0")
+    });
+    const fetchInventory = vi.fn(async () => ({
+      items: [installedItem],
+      outdatedDetectionSucceeded: true,
+      outdatedDetectionSucceededByKind: { formula: true, cask: true }
+    }));
+    const runBrewCommand = vi.fn(async (command: string[]) => ({
+      success: command[0] !== "--version",
+      status: command[0] === "--version" ? null : 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      runBrewCommand,
+      clients: {
+        homebrewInventory: { fetchInventory }
+      }
+    });
+
+    await store.refreshToolStatus();
+    await store.installHomebrewItem({
+      id: "formula:ripgrep",
+      kind: "formula",
+      token: "ripgrep",
+      displayName: "ripgrep",
+      presentation: "formula",
+      version: version("14.1.0")
+    });
+
+    const snapshot = store.getSnapshot();
+    expect(snapshot.isHomebrewInstalled).toBe(true);
+    expect(fetchInventory).toHaveBeenCalledWith({ updateMetadata: true });
+    expect(snapshot.homebrewItems).toEqual([installedItem]);
+    expect(snapshot.homebrewDiscoverInstallingItemIDs).toEqual([]);
+    expect(snapshot.homebrewDiscoverInstalledPendingRefreshItemIDs).toEqual([]);
+  });
+
   it("does not let an older overlapping full refresh overwrite a newer snapshot", async () => {
     const olderApp = appRecord({
       bundlePath: "/Applications/Refresh Race.app",

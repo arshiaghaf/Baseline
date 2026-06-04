@@ -852,6 +852,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.emit("homebrewCommand", event);
       onEvent(event);
     });
+    if (result.success && !this.state.isHomebrewInstalled) {
+      this.hasCheckedHomebrewAvailability = true;
+      this.patch({ isHomebrewInstalled: true });
+    }
     const finished: HomebrewMaintenanceRunEvent = {
       type: "commandFinished",
       command,
