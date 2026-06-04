@@ -1641,6 +1641,66 @@ describe("update store helpers", () => {
     );
   });
 
+  it("uses external fallback for unmanaged Homebrew-backed app updates", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Manual Homebrew Match.app",
+      displayName: "Manual Homebrew Match",
+      bundleIdentifier: "com.example.manual-homebrew-match",
+      localVersion: version("1.0.0")
+    });
+    const fallbackURL = "https://formulae.brew.sh/cask/manual-homebrew-match";
+    const openExternalURL = vi.fn(async () => true);
+    const openAppBundle = vi.fn(async () => undefined);
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      openExternalURL,
+      openAppBundle,
+      runBrewCommand,
+      clients: {
+        scanner: { scanApplications: async () => [app] },
+        homebrew: {
+          fetchIndex: async () => emptyHomebrewCaskIndex,
+          lookupUpdate: () => ({
+            remoteVersion: version("2.0.0"),
+            token: "manual-homebrew-match",
+            homepageURL: fallbackURL
+          }),
+          searchCasks: () => []
+        },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "formula:manual-homebrew-match",
+                token: "manual-homebrew-match",
+                name: "manual-homebrew-match",
+                kind: "formula",
+                installedVersion: version("1.0.0"),
+                latestVersion: version("2.0.0"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await store.refresh(false);
+    expect(store.getSnapshot().updates[0]).toMatchObject({
+      source: "homebrew",
+      homebrewToken: "manual-homebrew-match",
+      updateURL: fallbackURL
+    });
+
+    await store.performAppUpdate(app.id);
+
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(openExternalURL).toHaveBeenCalledWith(fallbackURL);
+    expect(openAppBundle).not.toHaveBeenCalled();
+  });
+
   it("rejects unsafe Homebrew-backed app update tokens", async () => {
     const app = appRecord({
       bundlePath: "/Applications/Unsafe Managed.app",
@@ -1845,75 +1905,6 @@ describe("update store helpers", () => {
       expect(store.getSnapshot().homebrewItems.find((item) => item.id === itemID)?.isOutdated).toBe(
         true
       );
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("returns failed Homebrew app fallback updates to retryable state after a short delay", async () => {
-    const app = appRecord({
-      bundlePath: "/Applications/Homebrew Fallback.app",
-      displayName: "Homebrew Fallback",
-      bundleIdentifier: "com.example.homebrew-fallback",
-      localVersion: version("1.0.0")
-    });
-    const store = await makeStore({
-      persisted: {
-        ...defaultPersistedSnapshot(),
-        apps: [app],
-        updates: [
-          {
-            id: app.id,
-            appID: app.id,
-            source: "homebrew",
-            supportLevel: "limited",
-            localVersion: version("1.0.0"),
-            remoteVersion: version("2.0.0"),
-            homebrewToken: "homebrew-fallback",
-            checkedAt: "2026-05-20T12:00:00.000Z"
-          }
-        ]
-      },
-      clients: {
-        scanner: { scanApplications: async () => [app] },
-        appStore: { lookupOutcome: async () => ({ type: "completed" }) },
-        sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
-        homebrew: {
-          fetchIndex: async () => emptyHomebrewCaskIndex,
-          lookupUpdate: () => ({
-            remoteVersion: version("2.0.0"),
-            token: "homebrew-fallback"
-          }),
-          searchCasks: () => []
-        },
-        homebrewFormula: {
-          fetchIndex: async () => emptyHomebrewFormulaIndex,
-          searchFormulae: () => []
-        },
-        homebrewInventory: {
-          fetchInventory: async () => ({
-            items: [],
-            outdatedDetectionSucceeded: true,
-            outdatedDetectionSucceededByKind: { formula: true, cask: true }
-          })
-        }
-      },
-      runBrewCommand: async (_args, onOutputLine = () => undefined) => {
-        onOutputLine("Downloading homebrew-fallback");
-        return { success: false, status: 1, output: "Error: update failed" };
-      }
-    });
-
-    vi.useFakeTimers();
-    try {
-      await store.performAppUpdate(app.id);
-
-      expect(store.getSnapshot().homebrewFallbackFailedAppIDs).toContain(app.id);
-
-      vi.advanceTimersByTime(4000);
-      expect(store.getSnapshot().homebrewFallbackFailedAppIDs).not.toContain(app.id);
-      expect(store.getSnapshot().homebrewFallbackProgressByAppID[app.id]).toBeUndefined();
-      expect(store.getSnapshot().updates.find((update) => update.appID === app.id)).toBeDefined();
     } finally {
       vi.useRealTimers();
     }
