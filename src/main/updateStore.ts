@@ -33,7 +33,11 @@ import {
 } from "../shared/homebrewProgress";
 import { homebrewItemHasAppRepresentation } from "../shared/homebrewAppLinking";
 import type { PreferencePatch } from "../shared/ipc";
-import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
+import {
+  isAllowedExternalURL,
+  isValidHomebrewToken,
+  sanitizeExternalURL
+} from "../shared/security";
 import {
   compareVersions,
   isVersionEmpty,
@@ -332,7 +336,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         await this.performHomebrewItemUpdate(item);
         return;
       }
-      await this.routeExternalUpdate(appRecord, update);
+      await this.routeExternalUpdate(appRecord, {
+        ...update,
+        updateURL: update.updateURL ?? homebrewCaskPageURL(update.homebrewToken)
+      });
       return;
     }
 
@@ -1117,6 +1124,10 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     showMenuBarIcon: snapshot.showMenuBarIcon,
     lastRefreshDate: snapshot.lastRefreshDate
   };
+}
+
+function homebrewCaskPageURL(token: string): string | undefined {
+  return sanitizeExternalURL(`https://formulae.brew.sh/cask/${token}`);
 }
 
 function toggleSet(set: Set<string>, value: string): void {

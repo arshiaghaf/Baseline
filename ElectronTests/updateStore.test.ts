@@ -1886,6 +1886,47 @@ describe("update store helpers", () => {
     expect(openAppBundle).not.toHaveBeenCalled();
   });
 
+  it("derives external fallback URLs for persisted Homebrew-backed app updates without URLs", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Persisted Homebrew Match.app",
+      displayName: "Persisted Homebrew Match",
+      bundleIdentifier: "com.example.persisted-homebrew-match",
+      localVersion: version("1.0.0")
+    });
+    const openExternalURL = vi.fn(async () => true);
+    const openAppBundle = vi.fn(async () => undefined);
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      openExternalURL,
+      openAppBundle,
+      runBrewCommand,
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "homebrew",
+            supportLevel: "limited",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            homebrewToken: "persisted-homebrew-match",
+            checkedAt: "2026-05-20T12:00:00.000Z"
+          }
+        ]
+      }
+    });
+
+    await store.performAppUpdate(app.id);
+
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(openExternalURL).toHaveBeenCalledWith(
+      "https://formulae.brew.sh/cask/persisted-homebrew-match"
+    );
+    expect(openAppBundle).not.toHaveBeenCalled();
+  });
+
   it("rejects unsafe Homebrew-backed app update tokens", async () => {
     const app = appRecord({
       bundlePath: "/Applications/Unsafe Managed.app",
