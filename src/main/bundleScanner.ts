@@ -3,7 +3,7 @@
 
 import { execFile } from "node:child_process";
 import { app as electronApp, nativeImage, type NativeImage } from "electron";
-import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
+import { mkdtemp, readdir, realpath, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -51,10 +51,11 @@ export class BundleScannerClient {
     for (const directory of directories) {
       const apps = await this.findApps(directory);
       for (const appPath of apps) {
-        if (seen.has(appPath)) {
+        const canonicalPath = await canonicalAppPath(appPath);
+        if (seen.has(canonicalPath)) {
           continue;
         }
-        seen.add(appPath);
+        seen.add(canonicalPath);
         const record = await this.makeRecord(appPath);
         if (record) {
           records.push(record);
@@ -72,12 +73,14 @@ export class BundleScannerClient {
       const entries = await readdir(directory, { withFileTypes: true });
       const apps: string[] = [];
       for (const entry of entries) {
-        if (!entry.isDirectory()) {
-          continue;
-        }
         const entryPath = path.join(directory, entry.name);
         if (entry.name.endsWith(".app")) {
-          apps.push(entryPath);
+          if (entry.isDirectory() || (entry.isSymbolicLink() && (await isDirectory(entryPath)))) {
+            apps.push(entryPath);
+          }
+          continue;
+        }
+        if (!entry.isDirectory()) {
           continue;
         }
         apps.push(...(await this.findApps(entryPath)));
@@ -247,6 +250,22 @@ export class BundleScannerClient {
     }
 
     return {};
+  }
+}
+
+async function canonicalAppPath(appPath: string): Promise<string> {
+  try {
+    return await realpath(appPath);
+  } catch {
+    return appPath;
+  }
+}
+
+async function isDirectory(candidatePath: string): Promise<boolean> {
+  try {
+    return (await stat(candidatePath)).isDirectory();
+  } catch {
+    return false;
   }
 }
 
