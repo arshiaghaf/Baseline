@@ -221,6 +221,76 @@ describe("bundle scanner", () => {
     });
   });
 
+  it("marks App Store UIKit Mac bundles with Mac idiom device family as lookup eligible", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    const appPath = path.join(root, "UIKit Mac Idiom App.app");
+    await writeAppPlist(appPath, {
+      displayName: "UIKit Mac Idiom App",
+      bundleIdentifier: "com.example.uikit-mac-idiom",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>UIApplicationSceneManifest</key>",
+        "  <dict>",
+        "    <key>UIApplicationSupportsMultipleScenes</key>",
+        "    <false/>",
+        "  </dict>",
+        "  <key>UIDeviceFamily</key>",
+        "  <array>",
+        "    <integer>6</integer>",
+        "  </array>",
+        "  <key>UILaunchStoryboardName</key>",
+        "  <string>LaunchScreen</string>"
+      ].join("\n")
+    });
+    await mkdir(path.join(appPath, "Contents", "_MASReceipt"), { recursive: true });
+    await writeFile(path.join(appPath, "Contents", "_MASReceipt", "receipt"), "receipt");
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundleIdentifier: "com.example.uikit-mac-idiom",
+      sourceHint: "appStore",
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: true
+    });
+  });
+
+  it("marks App Store UIKit Mac bundles with scalar device family as lookup eligible", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    const appPath = path.join(root, "UIKit Scalar Device Family.app");
+    await writeAppPlist(appPath, {
+      displayName: "UIKit Scalar Device Family",
+      bundleIdentifier: "com.example.uikit-scalar-device-family",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>UIApplicationSceneManifest</key>",
+        "  <dict>",
+        "    <key>UIApplicationSupportsMultipleScenes</key>",
+        "    <false/>",
+        "  </dict>",
+        "  <key>UIDeviceFamily</key>",
+        "  <integer>2</integer>",
+        "  <key>UILaunchStoryboardName</key>",
+        "  <string>LaunchScreen</string>"
+      ].join("\n")
+    });
+    await mkdir(path.join(appPath, "Contents", "_MASReceipt"), { recursive: true });
+    await writeFile(path.join(appPath, "Contents", "_MASReceipt", "receipt"), "receipt");
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundleIdentifier: "com.example.uikit-scalar-device-family",
+      sourceHint: "appStore",
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: true
+    });
+  });
+
   it("does not enable iOS software lookup for UIKit-style Mac bundles without App Store evidence", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
     tempDirs.push(root);

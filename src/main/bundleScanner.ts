@@ -292,6 +292,9 @@ function stringArrayValue(value: unknown): string[] {
 }
 
 function numberArrayValue(value: unknown): number[] {
+  if (typeof value === "number") {
+    return [value];
+  }
   return Array.isArray(value)
     ? value.filter((item): item is number => typeof item === "number")
     : [];
@@ -307,7 +310,8 @@ function isIOSAppOnMacInfo(info: InfoPlist): boolean {
 
 function isUIKitMacAppStoreInfo(info: InfoPlist): boolean {
   const deviceFamily = numberArrayValue(info.UIDeviceFamily);
-  const hasUIKitDeviceFamily = deviceFamily.includes(1) || deviceFamily.includes(2);
+  const hasUIKitDeviceFamily =
+    deviceFamily.includes(1) || deviceFamily.includes(2) || deviceFamily.includes(6);
   const hasUIKitLifecycle =
     recordValue(info.UIApplicationSceneManifest) !== undefined ||
     stringValue(info.UIMainStoryboardFile) !== undefined ||
