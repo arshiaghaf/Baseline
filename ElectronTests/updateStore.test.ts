@@ -2079,6 +2079,32 @@ describe("update store helpers", () => {
       vi.useRealTimers();
     }
   });
+
+  it("does not run Discover installs when Homebrew is unavailable", async () => {
+    const item = {
+      id: "cask:missing-brew-discover",
+      kind: "cask" as const,
+      token: "missing-brew-discover",
+      displayName: "Missing Brew Discover",
+      presentation: "app" as const,
+      version: version("1.0.0")
+    };
+    const runBrewCommand = vi.fn(async () => ({ success: false, status: null, output: "" }));
+    const store = await makeStore({ runBrewCommand });
+
+    await store.refreshToolStatus();
+    await store.installHomebrewItem(item);
+
+    const snapshot = store.getSnapshot();
+    expect(runBrewCommand).toHaveBeenCalledOnce();
+    expect(runBrewCommand).toHaveBeenCalledWith(["--version"]);
+    expect(snapshot.isHomebrewInstalled).toBe(false);
+    expect(snapshot.homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
+    expect(snapshot.homebrewDiscoverFailedItemIDs).not.toContain(item.id);
+    expect(snapshot.refreshErrorMessage).toBe(
+      "Homebrew is not installed. Install Homebrew to install Discover items."
+    );
+  });
 });
 
 async function makeStore({

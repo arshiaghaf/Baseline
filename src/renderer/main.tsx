@@ -1559,6 +1559,7 @@ export function DiscoverRow({
   const failed = snapshot.homebrewDiscoverFailedItemIDs.includes(item.id);
   const done = snapshot.homebrewDiscoverInstalledPendingRefreshItemIDs.includes(item.id);
   const progress = snapshot.homebrewDiscoverProgressByItemID[item.id];
+  const canInstall = snapshot.isHomebrewInstalled;
 
   return (
     <article className="row">
@@ -1568,13 +1569,22 @@ export function DiscoverRow({
           <strong>{item.displayName}</strong>
           <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
-        <p>{item.version.raw || item.token}</p>
+        <p>
+          {canInstall
+            ? item.version.raw || item.token
+            : "Homebrew is not installed. Install Homebrew to enable this source."}
+        </p>
       </div>
       <div className="row-actions">
         <UpdateActionButton
           state={actionStateFromFlags({ failed, updating: installing, progress, done })}
-          readyLabel="Install"
-          onAction={() => requestActionConfirmation({ type: "install", item })}
+          readyLabel={canInstall ? "Install" : "Needs Homebrew"}
+          disabled={!canInstall}
+          onAction={() => {
+            if (canInstall) {
+              requestActionConfirmation({ type: "install", item });
+            }
+          }}
         />
         {item.homepageURL && (
           <button

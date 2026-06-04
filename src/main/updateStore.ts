@@ -501,6 +501,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({ refreshErrorMessage: `Blocked unsafe Homebrew token for ${item.displayName}.` });
       return;
     }
+    if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
+      this.patch({
+        refreshErrorMessage:
+          "Homebrew is not installed. Install Homebrew to install Discover items."
+      });
+      return;
+    }
     const itemID = item.id;
     this.clearHomebrewDiscoverFailureTimer(itemID);
     const command =
