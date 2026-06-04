@@ -326,8 +326,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         return;
       }
       const item = this.matchingHomebrewItemForApp(appRecord);
-      if (item?.isOutdated) {
-        await this.performHomebrewUpdate(item.id);
+      if (item) {
+        await this.performHomebrewItemUpdate(item);
         return;
       }
       await this.routeExternalUpdate(appRecord, update);
@@ -342,7 +342,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!item?.isOutdated || !isValidHomebrewToken(item.token)) {
       return;
     }
+    await this.performHomebrewItemUpdate(item);
+  }
 
+  private async performHomebrewItemUpdate(item: HomebrewManagedItem): Promise<void> {
+    if (!isValidHomebrewToken(item.token)) {
+      return;
+    }
+    const itemID = item.id;
     const command =
       item.kind === "cask" ? ["upgrade", "--cask", item.token] : ["upgrade", item.token];
     await this.withHomebrewUpdating(itemID, async () => {

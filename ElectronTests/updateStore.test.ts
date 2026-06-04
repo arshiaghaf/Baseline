@@ -1641,6 +1641,53 @@ describe("update store helpers", () => {
     );
   });
 
+  it("routes Homebrew-backed app updates through installed casks even when cask outdated metadata is missing", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Homebrew Managed.app",
+      displayName: "Homebrew Managed",
+      bundleIdentifier: "com.example.homebrew",
+      localVersion: version("1.0.0")
+    });
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "homebrew",
+            supportLevel: "limited",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            homebrewToken: "homebrew-managed",
+            updateURL: "https://formulae.brew.sh/cask/homebrew-managed",
+            checkedAt: "2026-05-20T12:00:00.000Z"
+          }
+        ],
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:homebrew-managed",
+            token: "homebrew-managed",
+            name: "Homebrew Managed",
+            kind: "cask",
+            installedVersion: version("1.0.0"),
+            isOutdated: false
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performAppUpdate(app.id);
+
+    expect(runBrewCommand).toHaveBeenCalledWith(
+      ["upgrade", "--cask", "homebrew-managed"],
+      expect.any(Function)
+    );
+  });
+
   it("uses external fallback for unmanaged Homebrew-backed app updates", async () => {
     const app = appRecord({
       bundlePath: "/Applications/Manual Homebrew Match.app",
