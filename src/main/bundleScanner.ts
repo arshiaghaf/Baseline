@@ -133,10 +133,12 @@ export class BundleScannerClient {
   private async readAppBundleInfo(appPath: string): Promise<AppBundleInfo | undefined> {
     const info = await this.readInfoPlist(appPath);
     if (info) {
+      const hasAppStoreEvidence = await this.hasMasReceipt(appPath);
       return {
         info,
-        isIOSAppOnMac: isIOSAppOnMacInfo(info),
-        hasAppStoreEvidence: await this.hasMasReceipt(appPath),
+        isIOSAppOnMac:
+          isIOSAppOnMacInfo(info) || (hasAppStoreEvidence && isUIKitMacAppStoreInfo(info)),
+        hasAppStoreEvidence,
         iconResourcesPath: path.join(appPath, "Contents", "Resources")
       };
     }
@@ -289,12 +291,28 @@ function stringArrayValue(value: unknown): string[] {
     : [];
 }
 
+function numberArrayValue(value: unknown): number[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is number => typeof item === "number")
+    : [];
+}
+
 function isIOSAppOnMacInfo(info: InfoPlist): boolean {
   return (
     info.LSRequiresIPhoneOS === true ||
     info.UIDesignRequiresCompatibility === true ||
     stringArrayValue(info.CFBundleSupportedPlatforms).includes("iPhoneOS")
   );
+}
+
+function isUIKitMacAppStoreInfo(info: InfoPlist): boolean {
+  const deviceFamily = numberArrayValue(info.UIDeviceFamily);
+  const hasUIKitDeviceFamily = deviceFamily.includes(1) || deviceFamily.includes(2);
+  const hasUIKitLifecycle =
+    recordValue(info.UIApplicationSceneManifest) !== undefined ||
+    stringValue(info.UIMainStoryboardFile) !== undefined ||
+    stringValue(info.UILaunchStoryboardName) !== undefined;
+  return hasUIKitDeviceFamily && hasUIKitLifecycle;
 }
 
 function iconCandidatePaths(resourcesPath: string, info: InfoPlist): string[] {

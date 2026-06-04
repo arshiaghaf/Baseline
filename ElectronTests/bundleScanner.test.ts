@@ -180,6 +180,80 @@ describe("bundle scanner", () => {
     });
   });
 
+  it("marks App Store UIKit Mac bundles as App Store software lookup eligible", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    const appPath = path.join(root, "UIKit Mac App.app");
+    await writeAppPlist(appPath, {
+      displayName: "UIKit Mac App",
+      bundleIdentifier: "com.example.uikit-mac",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>CFBundleSupportedPlatforms</key>",
+        "  <array>",
+        "    <string>MacOSX</string>",
+        "  </array>",
+        "  <key>UIApplicationSceneManifest</key>",
+        "  <dict>",
+        "    <key>UIApplicationSupportsMultipleScenes</key>",
+        "    <false/>",
+        "  </dict>",
+        "  <key>UIDeviceFamily</key>",
+        "  <array>",
+        "    <integer>2</integer>",
+        "  </array>",
+        "  <key>UILaunchStoryboardName</key>",
+        "  <string>LaunchScreen</string>"
+      ].join("\n")
+    });
+    await mkdir(path.join(appPath, "Contents", "_MASReceipt"), { recursive: true });
+    await writeFile(path.join(appPath, "Contents", "_MASReceipt", "receipt"), "receipt");
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundlePath: appPath,
+      bundleIdentifier: "com.example.uikit-mac",
+      sourceHint: "appStore",
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: true
+    });
+  });
+
+  it("does not enable iOS software lookup for UIKit-style Mac bundles without App Store evidence", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    await writeAppPlist(path.join(root, "Sideloaded UIKit Mac App.app"), {
+      displayName: "Sideloaded UIKit Mac App",
+      bundleIdentifier: "com.example.sideloaded-uikit-mac",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>UIApplicationSceneManifest</key>",
+        "  <dict>",
+        "    <key>UIApplicationSupportsMultipleScenes</key>",
+        "    <false/>",
+        "  </dict>",
+        "  <key>UIDeviceFamily</key>",
+        "  <array>",
+        "    <integer>2</integer>",
+        "  </array>",
+        "  <key>UILaunchStoryboardName</key>",
+        "  <string>LaunchScreen</string>"
+      ].join("\n")
+    });
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundleIdentifier: "com.example.sideloaded-uikit-mac",
+      sourceHint: "unknown",
+      isIOSAppOnMac: false,
+      hasAppStoreEvidence: false
+    });
+  });
+
   it("scans App Store wrapper bundles for iOS-on-Mac apps", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
     tempDirs.push(root);
