@@ -774,7 +774,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private async fetchHomebrewInventory(lightweight: boolean): Promise<HomebrewInventoryResult> {
     if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
-      return emptyHomebrewInventoryResult();
+      const brew = await this.runBrewCommand(["--version"]);
+      this.hasCheckedHomebrewAvailability = true;
+      if (!brew.success) {
+        return emptyHomebrewInventoryResult();
+      }
+      this.patch({ isHomebrewInstalled: true });
     }
     return this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight });
   }

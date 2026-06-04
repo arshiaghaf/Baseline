@@ -386,8 +386,54 @@ describe("update store helpers", () => {
     expect(fetchInventory).not.toHaveBeenCalled();
     expect(snapshot.homebrewItems).toEqual([]);
     expect(snapshot.lastRefreshNoticeMessage).toBeUndefined();
-    expect(runBrewCommand).toHaveBeenCalledOnce();
-    expect(runBrewCommand).toHaveBeenCalledWith(["--version"]);
+    expect(runBrewCommand).toHaveBeenCalledTimes(2);
+    expect(runBrewCommand).toHaveBeenNthCalledWith(1, ["--version"]);
+    expect(runBrewCommand).toHaveBeenNthCalledWith(2, ["--version"]);
+  });
+
+  it("rechecks Homebrew availability during refresh after Homebrew was absent", async () => {
+    const installedItem = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      installedVersion: version("14.1.0")
+    });
+    const fetchInventory = vi.fn(async () => ({
+      items: [installedItem],
+      outdatedDetectionSucceeded: true,
+      outdatedDetectionSucceededByKind: { formula: true, cask: true }
+    }));
+    let brewVersionChecks = 0;
+    const runBrewCommand = vi.fn(async (command: string[]) => {
+      if (command[0] === "--version") {
+        brewVersionChecks += 1;
+        return {
+          success: brewVersionChecks >= 3,
+          status: brewVersionChecks >= 3 ? 0 : null,
+          output: ""
+        };
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({
+      runBrewCommand,
+      clients: {
+        homebrewInventory: { fetchInventory }
+      }
+    });
+
+    await store.refreshToolStatus();
+    await store.refresh(false);
+
+    expect(store.getSnapshot().isHomebrewInstalled).toBe(false);
+    expect(fetchInventory).not.toHaveBeenCalled();
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().isHomebrewInstalled).toBe(true);
+    expect(fetchInventory).toHaveBeenCalledWith({ updateMetadata: true });
+    expect(store.getSnapshot().homebrewItems).toEqual([installedItem]);
+    expect(runBrewCommand).toHaveBeenCalledTimes(3);
   });
 
   it("refreshes Homebrew inventory after a successful install when Homebrew was previously absent", async () => {
