@@ -89,6 +89,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly homebrewDiscoverFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
   private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
+  private hasCheckedHomebrewAvailability = false;
 
   private state: BaselineSnapshot;
 
@@ -183,6 +184,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.runMasCommand(["version"]),
       this.runBrewCommand(["--version"])
     ]);
+    this.hasCheckedHomebrewAvailability = true;
     this.patch({
       isMasInstalled: mas.success,
       isHomebrewInstalled: brew.success,
@@ -497,6 +499,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   async installHomebrewItem(item: HomebrewCaskDiscoveryItem): Promise<void> {
     if (!isValidHomebrewToken(item.token)) {
       this.patch({ refreshErrorMessage: `Blocked unsafe Homebrew token for ${item.displayName}.` });
+      return;
+    }
+    if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
+      this.patch({
+        refreshErrorMessage:
+          "Homebrew is not installed. Install Homebrew to install Discover items."
+      });
       return;
     }
     const itemID = item.id;
