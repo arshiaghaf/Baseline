@@ -588,6 +588,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({ isHomebrewInstalled: true });
     }
     const itemID = item.id;
+    if (
+      this.state.homebrewDiscoverInstallingItemIDs.includes(itemID) ||
+      this.isHomebrewCommandActive()
+    ) {
+      return;
+    }
     this.clearHomebrewDiscoverFailureTimer(itemID);
     const command =
       item.kind === "cask" ? ["install", "--cask", item.token] : ["install", item.token];
@@ -1012,6 +1018,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             appRecord,
             this.latestHomebrewIndex.byToken[token]
           ))
+    );
+  }
+
+  private isHomebrewCommandActive(): boolean {
+    return (
+      this.state.isRunningHomebrewMaintenance ||
+      this.state.homebrewUpdatingItemIDs.length > 0 ||
+      this.state.homebrewUninstallingItemIDs.length > 0 ||
+      this.state.homebrewDiscoverInstallingItemIDs.length > 0
     );
   }
 

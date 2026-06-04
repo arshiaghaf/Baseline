@@ -2867,6 +2867,95 @@ describe("update store helpers", () => {
       "Homebrew is not installed. Install Homebrew to install Discover items."
     );
   });
+
+  it("suppresses duplicate Homebrew Discover install dispatches", async () => {
+    const item = {
+      id: "formula:ripgrep",
+      kind: "formula" as const,
+      token: "ripgrep",
+      displayName: "ripgrep",
+      presentation: "formula" as const,
+      version: version("14.1.0")
+    };
+    let resolveCommand!: (result: { success: boolean; status: number; output: string }) => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(
+      async () =>
+        await new Promise((resolve) => {
+          resolveCommand = resolve;
+        })
+    );
+    const store = await makeStore({ runBrewCommand });
+
+    const firstInstall = store.installHomebrewItem(item);
+    const secondInstall = store.installHomebrewItem(item);
+
+    expect(runBrewCommand).toHaveBeenCalledOnce();
+    expect(runBrewCommand).toHaveBeenCalledWith(["install", "ripgrep"], expect.any(Function));
+
+    resolveCommand({ success: true, status: 0, output: "" });
+    await Promise.all([firstInstall, secondInstall]);
+
+    expect(runBrewCommand).toHaveBeenCalledOnce();
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
+  });
+
+  it("does not start Discover installs during active Homebrew maintenance", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    let releaseMaintenance!: () => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => {
+      if (runBrewCommand.mock.calls.length === 1) {
+        await new Promise<void>((resolve) => {
+          releaseMaintenance = resolve;
+        });
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    const maintenance = store.performHomebrewUpdateAll();
+    expect(store.getSnapshot().isRunningHomebrewMaintenance).toBe(true);
+
+    await store.installHomebrewItem(discoverItem);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["update"]]);
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(discoverItem.id);
+
+    releaseMaintenance();
+    await maintenance;
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+  });
 });
 
 async function makeStore({

@@ -1340,6 +1340,35 @@ describe("renderer button parity", () => {
     expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
   });
 
+  it("disables discover installs while Homebrew maintenance is active", () => {
+    const requestConfirmation = vi.fn();
+    const item: HomebrewCaskDiscoveryItem = {
+      id: "cask:raycast",
+      token: "raycast",
+      displayName: "Raycast",
+      kind: "cask",
+      version: version("1.2.3")
+    };
+
+    render(
+      <ActionConfirmationContext.Provider value={requestConfirmation}>
+        <DiscoverRow
+          item={item}
+          snapshot={snapshot({
+            isRunningHomebrewMaintenance: true,
+            homebrewDiscoverItems: [item]
+          })}
+        />
+      </ActionConfirmationContext.Provider>
+    );
+
+    const busyButton = screen.getByRole("button", { name: "Busy" });
+    expect(busyButton).toBeDisabled();
+    fireEvent.click(busyButton);
+    expect(requestConfirmation).not.toHaveBeenCalled();
+    expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
+  });
+
   it("orders discover actions as install then open page", () => {
     const item: HomebrewCaskDiscoveryItem = {
       id: "cask:raycast",

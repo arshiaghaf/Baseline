@@ -1523,6 +1523,7 @@ export function DiscoverRow({
   const done = snapshot.homebrewDiscoverInstalledPendingRefreshItemIDs.includes(item.id);
   const progress = snapshot.homebrewDiscoverProgressByItemID[item.id];
   const canInstall = snapshot.isHomebrewInstalled;
+  const busy = canInstall && !installing && !failed && !done && isHomebrewCommandActive(snapshot);
 
   return (
     <article className="row">
@@ -1541,10 +1542,10 @@ export function DiscoverRow({
       <div className="row-actions">
         <UpdateActionButton
           state={actionStateFromFlags({ failed, updating: installing, progress, done })}
-          readyLabel={canInstall ? "Install" : "Needs Homebrew"}
-          disabled={!canInstall}
+          readyLabel={canInstall ? (busy ? "Busy" : "Install") : "Needs Homebrew"}
+          disabled={!canInstall || busy}
           onAction={() => {
-            if (canInstall) {
+            if (canInstall && !busy) {
               requestActionConfirmation({ type: "install", item });
             }
           }}
@@ -2320,6 +2321,15 @@ function actionStateFromFlags({
     return progress === undefined ? { type: "updating" } : { type: "updating", progress };
   }
   return { type: "ready" };
+}
+
+function isHomebrewCommandActive(snapshot: BaselineSnapshot): boolean {
+  return (
+    snapshot.isRunningHomebrewMaintenance ||
+    snapshot.homebrewUpdatingItemIDs.length > 0 ||
+    snapshot.homebrewUninstallingItemIDs.length > 0 ||
+    snapshot.homebrewDiscoverInstallingItemIDs.length > 0
+  );
 }
 
 function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): string {
