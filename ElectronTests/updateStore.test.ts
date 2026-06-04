@@ -448,11 +448,18 @@ describe("update store helpers", () => {
       outdatedDetectionSucceeded: true,
       outdatedDetectionSucceededByKind: { formula: true, cask: true }
     }));
-    const runBrewCommand = vi.fn(async (command: string[]) => ({
-      success: command[0] !== "--version",
-      status: command[0] === "--version" ? null : 0,
-      output: ""
-    }));
+    let brewVersionChecks = 0;
+    const runBrewCommand = vi.fn(async (command: string[]) => {
+      if (command[0] === "--version") {
+        brewVersionChecks += 1;
+        return {
+          success: brewVersionChecks >= 2,
+          status: brewVersionChecks >= 2 ? 0 : null,
+          output: ""
+        };
+      }
+      return { success: true, status: 0, output: "" };
+    });
     const store = await makeStore({
       runBrewCommand,
       clients: {
@@ -2134,8 +2141,9 @@ describe("update store helpers", () => {
     await store.installHomebrewItem(item);
 
     const snapshot = store.getSnapshot();
-    expect(runBrewCommand).toHaveBeenCalledOnce();
-    expect(runBrewCommand).toHaveBeenCalledWith(["--version"]);
+    expect(runBrewCommand).toHaveBeenCalledTimes(2);
+    expect(runBrewCommand).toHaveBeenNthCalledWith(1, ["--version"]);
+    expect(runBrewCommand).toHaveBeenNthCalledWith(2, ["--version"]);
     expect(snapshot.isHomebrewInstalled).toBe(false);
     expect(snapshot.homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
     expect(snapshot.homebrewDiscoverFailedItemIDs).not.toContain(item.id);

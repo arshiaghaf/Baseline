@@ -514,11 +514,16 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return;
     }
     if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
-      this.patch({
-        refreshErrorMessage:
-          "Homebrew is not installed. Install Homebrew to install Discover items."
-      });
-      return;
+      const brew = await this.runBrewCommand(["--version"]);
+      this.hasCheckedHomebrewAvailability = true;
+      if (!brew.success) {
+        this.patch({
+          refreshErrorMessage:
+            "Homebrew is not installed. Install Homebrew to install Discover items."
+        });
+        return;
+      }
+      this.patch({ isHomebrewInstalled: true });
     }
     const itemID = item.id;
     this.clearHomebrewDiscoverFailureTimer(itemID);
@@ -556,6 +561,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       refreshErrorMessage: success ? undefined : `Homebrew install failed for ${item.displayName}.`
     });
     if (success) {
+      this.hasCheckedHomebrewAvailability = true;
+      this.patch({ isHomebrewInstalled: true });
       await this.holdSuccessfulUpdate();
       await this.refresh();
     } else {
