@@ -221,7 +221,7 @@ describe("bundle scanner", () => {
     });
   });
 
-  it("marks App Store UIKit Mac bundles with Mac idiom device family as lookup eligible", async () => {
+  it("does not enable iOS software lookup for App Store UIKit bundles with Mac idiom", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
     tempDirs.push(root);
 
@@ -252,7 +252,7 @@ describe("bundle scanner", () => {
     expect(records[0]).toMatchObject({
       bundleIdentifier: "com.example.uikit-mac-idiom",
       sourceHint: "appStore",
-      isIOSAppOnMac: true,
+      isIOSAppOnMac: false,
       hasAppStoreEvidence: true
     });
   });
