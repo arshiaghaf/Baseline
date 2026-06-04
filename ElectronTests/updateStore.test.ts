@@ -347,6 +347,137 @@ describe("update store helpers", () => {
     expect(inventoryOptions).toEqual([{ updateMetadata: true }, { updateMetadata: false }]);
   });
 
+  it("skips Homebrew inventory and warnings when Homebrew is absent", async () => {
+    const previousItem = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    });
+    const fetchInventory = vi.fn(async () => ({
+      items: [],
+      outdatedDetectionSucceeded: false,
+      outdatedDetectionSucceededByKind: { formula: false, cask: false },
+      warning: "Homebrew outdated status could not be read reliably."
+    }));
+    const runBrewCommand = vi.fn(async () => ({
+      success: false,
+      status: null,
+      output: ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [previousItem]
+      },
+      runBrewCommand,
+      clients: {
+        homebrewInventory: { fetchInventory }
+      }
+    });
+
+    await store.refreshToolStatus();
+    await store.refresh(false);
+
+    const snapshot = store.getSnapshot();
+    expect(snapshot.isHomebrewInstalled).toBe(false);
+    expect(fetchInventory).not.toHaveBeenCalled();
+    expect(snapshot.homebrewItems).toEqual([]);
+    expect(snapshot.lastRefreshNoticeMessage).toBeUndefined();
+    expect(runBrewCommand).toHaveBeenCalledTimes(2);
+    expect(runBrewCommand).toHaveBeenNthCalledWith(1, ["--version"]);
+    expect(runBrewCommand).toHaveBeenNthCalledWith(2, ["--version"]);
+  });
+
+  it("rechecks Homebrew availability during refresh after Homebrew was absent", async () => {
+    const installedItem = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      installedVersion: version("14.1.0")
+    });
+    const fetchInventory = vi.fn(async () => ({
+      items: [installedItem],
+      outdatedDetectionSucceeded: true,
+      outdatedDetectionSucceededByKind: { formula: true, cask: true }
+    }));
+    let brewVersionChecks = 0;
+    const runBrewCommand = vi.fn(async (command: string[]) => {
+      if (command[0] === "--version") {
+        brewVersionChecks += 1;
+        return {
+          success: brewVersionChecks >= 3,
+          status: brewVersionChecks >= 3 ? 0 : null,
+          output: ""
+        };
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({
+      runBrewCommand,
+      clients: {
+        homebrewInventory: { fetchInventory }
+      }
+    });
+
+    await store.refreshToolStatus();
+    await store.refresh(false);
+
+    expect(store.getSnapshot().isHomebrewInstalled).toBe(false);
+    expect(fetchInventory).not.toHaveBeenCalled();
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().isHomebrewInstalled).toBe(true);
+    expect(fetchInventory).toHaveBeenCalledWith({ updateMetadata: true });
+    expect(store.getSnapshot().homebrewItems).toEqual([installedItem]);
+    expect(runBrewCommand).toHaveBeenCalledTimes(3);
+  });
+
+  it("refreshes Homebrew inventory after a successful install when Homebrew was previously absent", async () => {
+    const installedItem = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      installedVersion: version("14.1.0")
+    });
+    const fetchInventory = vi.fn(async () => ({
+      items: [installedItem],
+      outdatedDetectionSucceeded: true,
+      outdatedDetectionSucceededByKind: { formula: true, cask: true }
+    }));
+    const runBrewCommand = vi.fn(async (command: string[]) => ({
+      success: command[0] !== "--version",
+      status: command[0] === "--version" ? null : 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      runBrewCommand,
+      clients: {
+        homebrewInventory: { fetchInventory }
+      }
+    });
+
+    await store.refreshToolStatus();
+    await store.installHomebrewItem({
+      id: "formula:ripgrep",
+      kind: "formula",
+      token: "ripgrep",
+      displayName: "ripgrep",
+      presentation: "formula",
+      version: version("14.1.0")
+    });
+
+    const snapshot = store.getSnapshot();
+    expect(snapshot.isHomebrewInstalled).toBe(true);
+    expect(fetchInventory).toHaveBeenCalledWith({ updateMetadata: true });
+    expect(snapshot.homebrewItems).toEqual([installedItem]);
+    expect(snapshot.homebrewDiscoverInstallingItemIDs).toEqual([]);
+    expect(snapshot.homebrewDiscoverInstalledPendingRefreshItemIDs).toEqual([]);
+  });
+
   it("does not let an older overlapping full refresh overwrite a newer snapshot", async () => {
     const olderApp = appRecord({
       bundlePath: "/Applications/Refresh Race.app",
@@ -1985,6 +2116,32 @@ describe("update store helpers", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not run Discover installs when Homebrew is unavailable", async () => {
+    const item = {
+      id: "cask:missing-brew-discover",
+      kind: "cask" as const,
+      token: "missing-brew-discover",
+      displayName: "Missing Brew Discover",
+      presentation: "app" as const,
+      version: version("1.0.0")
+    };
+    const runBrewCommand = vi.fn(async () => ({ success: false, status: null, output: "" }));
+    const store = await makeStore({ runBrewCommand });
+
+    await store.refreshToolStatus();
+    await store.installHomebrewItem(item);
+
+    const snapshot = store.getSnapshot();
+    expect(runBrewCommand).toHaveBeenCalledOnce();
+    expect(runBrewCommand).toHaveBeenCalledWith(["--version"]);
+    expect(snapshot.isHomebrewInstalled).toBe(false);
+    expect(snapshot.homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
+    expect(snapshot.homebrewDiscoverFailedItemIDs).not.toContain(item.id);
+    expect(snapshot.refreshErrorMessage).toBe(
+      "Homebrew is not installed. Install Homebrew to install Discover items."
+    );
   });
 });
 

@@ -925,6 +925,38 @@ describe("renderer button parity", () => {
     expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
   });
 
+  it("disables discover installs when Homebrew is unavailable", () => {
+    const requestConfirmation = vi.fn();
+    const item: HomebrewCaskDiscoveryItem = {
+      id: "cask:raycast",
+      token: "raycast",
+      displayName: "Raycast",
+      kind: "cask",
+      version: version("1.2.3")
+    };
+
+    render(
+      <ActionConfirmationContext.Provider value={requestConfirmation}>
+        <DiscoverRow
+          item={item}
+          snapshot={snapshot({
+            isHomebrewInstalled: false,
+            homebrewDiscoverItems: [item]
+          })}
+        />
+      </ActionConfirmationContext.Provider>
+    );
+
+    const installButton = screen.getByRole("button", { name: "Needs Homebrew" });
+    expect(installButton).toBeDisabled();
+    expect(
+      screen.getByText("Homebrew is not installed. Install Homebrew to enable this source.")
+    ).toBeInTheDocument();
+    fireEvent.click(installButton);
+    expect(requestConfirmation).not.toHaveBeenCalled();
+    expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
+  });
+
   it("orders discover actions as install then open page", () => {
     const item: HomebrewCaskDiscoveryItem = {
       id: "cask:raycast",

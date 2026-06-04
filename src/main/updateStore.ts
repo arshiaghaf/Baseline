@@ -50,7 +50,7 @@ import {
 } from "./commandRunner";
 import { HomebrewCaskClient } from "./homebrewCaskClient";
 import { HomebrewFormulaClient } from "./homebrewFormulaClient";
-import { HomebrewInventoryClient } from "./homebrewInventoryClient";
+import { HomebrewInventoryClient, type HomebrewInventoryResult } from "./homebrewInventoryClient";
 import { SnapshotPersistence } from "./persistence";
 import { SelfUpdateClient } from "./selfUpdateClient";
 import { SparkleAppcastClient } from "./sparkleAppcastClient";
@@ -88,6 +88,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly homebrewDiscoverFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
   private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
+  private hasCheckedHomebrewAvailability = false;
 
   private state: BaselineSnapshot;
 
@@ -182,6 +183,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.runMasCommand(["version"]),
       this.runBrewCommand(["--version"])
     ]);
+    this.hasCheckedHomebrewAvailability = true;
     this.patch({
       isMasInstalled: mas.success,
       isHomebrewInstalled: brew.success,
@@ -511,6 +513,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({ refreshErrorMessage: `Blocked unsafe Homebrew token for ${item.displayName}.` });
       return;
     }
+    if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
+      this.patch({
+        refreshErrorMessage:
+          "Homebrew is not installed. Install Homebrew to install Discover items."
+      });
+      return;
+    }
     const itemID = item.id;
     this.clearHomebrewDiscoverFailureTimer(itemID);
     const command =
@@ -607,7 +616,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           this.scanner.scanApplications(this.scanDirectories()),
           this.homebrew.fetchIndex(),
           this.homebrewFormula.fetchIndex(),
-          this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight }),
+          this.fetchHomebrewInventory(lightweight),
           this.lookupSelfUpdate(now)
         ]);
       const homebrewItems = homebrewInventory.items;
@@ -783,6 +792,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     return this.selfUpdate.lookup(this.currentAppVersion, now);
   }
 
+  private async fetchHomebrewInventory(lightweight: boolean): Promise<HomebrewInventoryResult> {
+    if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
+      const brew = await this.runBrewCommand(["--version"]);
+      this.hasCheckedHomebrewAvailability = true;
+      if (!brew.success) {
+        return emptyHomebrewInventoryResult();
+      }
+      this.patch({ isHomebrewInstalled: true });
+    }
+    return this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight });
+  }
+
   private scanDirectories(): string[] {
     return [...new Set([...this.defaultScanDirectories(), ...this.state.additionalDirectories])];
   }
@@ -817,6 +838,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.emit("homebrewCommand", event);
       onEvent(event);
     });
+    if (result.success && !this.state.isHomebrewInstalled) {
+      this.hasCheckedHomebrewAvailability = true;
+      this.patch({ isHomebrewInstalled: true });
+    }
     const finished: HomebrewMaintenanceRunEvent = {
       type: "commandFinished",
       command,
@@ -1107,6 +1132,14 @@ function removeRecordKey<T>(record: Record<string, T>, key: string): Record<stri
   const next = { ...record };
   delete next[key];
   return next;
+}
+
+function emptyHomebrewInventoryResult(): HomebrewInventoryResult {
+  return {
+    items: [],
+    outdatedDetectionSucceeded: true,
+    outdatedDetectionSucceededByKind: { formula: true, cask: true }
+  };
 }
 
 export function preservePreviousHomebrewOutdatedState(
