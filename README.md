@@ -8,7 +8,9 @@
 &nbsp;
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/baseline/blob/main/LICENSE)
 
-Baseline is a macOS app for managing and updating installed Mac apps and Homebrew packages from one place. It supports App Store apps, direct downloads, Sparkle-enabled apps, and Homebrew casks and formulae.
+Baseline is a macOS app for managing and updating installed Mac apps and Homebrew packages from one place.
+
+It supports App Store apps, direct downloads, Sparkle-enabled apps, and Homebrew casks and formulae.
 
 You can check for app updates, run Homebrew upgrades, search and install Homebrew packages, ignore specific items so they no longer appear as available updates, and open update pages for apps that require manual action.
 
