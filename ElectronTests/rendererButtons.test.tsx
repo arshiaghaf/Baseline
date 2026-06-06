@@ -2093,6 +2093,46 @@ describe("renderer button parity", () => {
     expect(window.baseline.refresh).not.toHaveBeenCalled();
   });
 
+  it("keeps the mas preference checked but disabled until mas is detected", () => {
+    const { rerender } = render(
+      <SettingsView
+        snapshot={snapshot({
+          isMasInstalled: false,
+          useMasForAppStoreUpdates: true
+        })}
+      />
+    );
+
+    const unavailableMasSwitch = screen.getByRole("switch", {
+      name: "Use mas for App Store updates"
+    });
+    expect(unavailableMasSwitch).toBeChecked();
+    expect(unavailableMasSwitch).toBeDisabled();
+
+    fireEvent.click(unavailableMasSwitch);
+    expect(window.baseline.updatePreferences).not.toHaveBeenCalled();
+
+    rerender(
+      <SettingsView
+        snapshot={snapshot({
+          isMasInstalled: true,
+          useMasForAppStoreUpdates: true
+        })}
+      />
+    );
+
+    const availableMasSwitch = screen.getByRole("switch", {
+      name: "Use mas for App Store updates"
+    });
+    expect(availableMasSwitch).toBeChecked();
+    expect(availableMasSwitch).toBeEnabled();
+
+    fireEvent.click(availableMasSwitch);
+    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
+      useMasForAppStoreUpdates: false
+    });
+  });
+
   it("edits refresh interval only when auto refresh is enabled", () => {
     const { rerender } = render(
       <SettingsView snapshot={snapshot({ autoRefreshEnabled: false })} />

@@ -2534,6 +2534,7 @@ function SettingsPane({
                 description="When enabled, Baseline can install App Store updates directly. When disabled, it opens App Store links instead."
                 value={snapshot.useMasForAppStoreUpdates}
                 patch="useMasForAppStoreUpdates"
+                disabled={!snapshot.isMasInstalled}
               />
             </div>
           </section>
@@ -2762,15 +2763,23 @@ function Toggle({
   label,
   description,
   value,
-  patch
+  patch,
+  disabled = false
 }: {
   label: string;
   description: string;
   value: boolean;
   patch: TogglePatch;
+  disabled?: boolean;
 }) {
   return (
-    <label className="settings-row settings-row-control">
+    <label
+      className={
+        disabled
+          ? "settings-row settings-row-control settings-row-disabled"
+          : "settings-row settings-row-control"
+      }
+    >
       <SettingsRowText label={label} description={description} />
       <input
         aria-label={label}
@@ -2778,9 +2787,13 @@ function Toggle({
         type="checkbox"
         role="switch"
         checked={value}
-        onChange={(event) =>
-          void window.baseline.updatePreferences({ [patch]: event.currentTarget.checked })
-        }
+        disabled={disabled}
+        onChange={(event) => {
+          if (disabled) {
+            return;
+          }
+          void window.baseline.updatePreferences({ [patch]: event.currentTarget.checked });
+        }}
       />
     </label>
   );
