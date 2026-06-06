@@ -537,6 +537,41 @@ describe("renderer button parity", () => {
     expect(within(homebrewButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
   });
 
+  it("keeps unowned Sparkle Homebrew fallback casks visible as Homebrew updates", () => {
+    const sparkleApp: AppRecord = {
+      ...app,
+      sourceHint: "sparkle",
+      sparkleFeedURL: "https://updates.example.com/appcast.xml"
+    };
+    const fallbackUpdate: UpdateRecord = {
+      ...update,
+      supportLevel: "limited",
+      appID: sparkleApp.id,
+      id: sparkleApp.id
+    };
+    const fallbackCask: HomebrewManagedItem = {
+      ...cask,
+      name: "example-cask",
+      presentation: "app"
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          apps: [sparkleApp],
+          updates: [fallbackUpdate],
+          homebrewItems: [fallbackCask]
+        })}
+      />
+    );
+
+    expect(screen.getByText("Example")).toBeInTheDocument();
+    expect(screen.getByText("example-cask")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Open app" })).toHaveLength(1);
+  });
+
   it("shows settings sections as sidebar tabs without search-filtered badges", () => {
     const installedApp: AppRecord = {
       ...app,

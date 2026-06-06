@@ -693,6 +693,87 @@ describe("update store helpers", () => {
     });
   });
 
+  it("does not create Homebrew fallback updates for Sparkle-origin apps without installed cask ownership", async () => {
+    const sparkleApp = appRecord({
+      bundlePath: "/Applications/Sparkle App.app",
+      displayName: "Sparkle App",
+      bundleIdentifier: "com.example.sparkle-app",
+      sparkleFeedURL: "https://updates.example.com/appcast.xml",
+      sourceHint: "sparkle",
+      localVersion: version("1.0.0")
+    });
+    const homebrewCaskEntry = {
+      token: "sparkle-app",
+      version: version("2.0.0"),
+      homepageURL: "https://formulae.brew.sh/cask/sparkle-app",
+      presentation: "app" as const,
+      bundleIdentifiers: ["com.example.sparkle-app"],
+      appBundleNames: ["sparkle app.app"]
+    };
+    const homebrewIndex = {
+      byToken: { "sparkle-app": homebrewCaskEntry },
+      byBundleIdentifier: { "com.example.sparkle-app": homebrewCaskEntry },
+      byAppBundleName: { "sparkle app.app": [homebrewCaskEntry] }
+    };
+    const lookupUpdate = vi.fn(() => ({
+      remoteVersion: version("2.0.0"),
+      token: "sparkle-app",
+      homepageURL: "https://formulae.brew.sh/cask/sparkle-app"
+    }));
+    const clients = {
+      scanner: { scanApplications: async () => [sparkleApp] },
+      appStore: { lookupOutcome: async () => ({ type: "completed" as const }) },
+      sparkle: { lookupOutcome: async () => ({ type: "completed" as const }) },
+      homebrew: {
+        fetchIndex: async () => homebrewIndex,
+        lookupUpdate,
+        searchCasks: () => []
+      }
+    };
+    const unmanagedStore = await makeStore({ clients });
+
+    await unmanagedStore.refresh(false);
+
+    expect(lookupUpdate).toHaveBeenCalled();
+    expect(unmanagedStore.getSnapshot().updates).toEqual([]);
+
+    const managedStore = await makeStore({
+      clients: {
+        ...clients,
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:sparkle-app",
+                token: "sparkle-app",
+                name: "Sparkle App",
+                kind: "cask",
+                installedVersion: version("1.0.0"),
+                latestVersion: version("2.0.0"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+
+    await managedStore.refresh(false);
+
+    expect(managedStore.getSnapshot().updates[0]).toMatchObject({
+      source: "homebrew",
+      remoteVersion: version("2.0.0"),
+      homebrewToken: "sparkle-app"
+    });
+    expect(managedStore.getSnapshot().homebrewItems[0]).toMatchObject({
+      id: "cask:sparkle-app",
+      appID: sparkleApp.id,
+      presentation: "app"
+    });
+  });
+
   it("only enables iOS App Store lookup for installed iOS-on-Mac apps", async () => {
     const iOSAppOnMac = appRecord({
       bundlePath: "/Applications/App Store iPad App.app",
@@ -1884,6 +1965,75 @@ describe("update store helpers", () => {
     expect(runBrewCommand).not.toHaveBeenCalled();
     expect(openExternalURL).toHaveBeenCalledWith(fallbackURL);
     expect(openAppBundle).not.toHaveBeenCalled();
+  });
+
+  it("does not route stale token-only Homebrew updates through Homebrew for Sparkle-origin apps", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Sparkle Managed.app",
+      displayName: "Sparkle Managed",
+      bundleIdentifier: "com.example.sparkle-managed",
+      sparkleFeedURL: "https://updates.example.com/appcast.xml",
+      sourceHint: "sparkle",
+      localVersion: version("1.0.0")
+    });
+    const caskItem = homebrewItem({
+      id: "cask:sparkle-managed",
+      token: "sparkle-managed",
+      name: "Sparkle Managed",
+      kind: "cask",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("2.0.0"),
+      isOutdated: true
+    });
+    const persisted = {
+      ...defaultPersistedSnapshot(),
+      apps: [app],
+      updates: [
+        {
+          id: app.id,
+          appID: app.id,
+          source: "homebrew" as const,
+          supportLevel: "limited" as const,
+          localVersion: version("1.0.0"),
+          remoteVersion: version("2.0.0"),
+          homebrewToken: "sparkle-managed",
+          updateURL: "https://formulae.brew.sh/cask/sparkle-managed",
+          checkedAt: "2026-05-20T12:00:00.000Z"
+        }
+      ],
+      homebrewItems: [caskItem]
+    };
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const openExternalURL = vi.fn(async () => true);
+    const openAppBundle = vi.fn(async () => undefined);
+    const staleFallbackStore = await makeStore({
+      persisted,
+      runBrewCommand,
+      openExternalURL,
+      openAppBundle
+    });
+
+    await staleFallbackStore.performAppUpdate(app.id);
+
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(openExternalURL).not.toHaveBeenCalled();
+    expect(openAppBundle).toHaveBeenCalledWith(app.bundlePath);
+
+    const linkedBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const linkedStore = await makeStore({
+      persisted: {
+        ...persisted,
+        homebrewItems: [{ ...caskItem, appID: app.id }]
+      },
+      runBrewCommand: linkedBrewCommand
+    });
+
+    await linkedStore.performAppUpdate(app.id);
+
+    expect(linkedBrewCommand).toHaveBeenCalledWith(
+      ["upgrade", "--cask", "sparkle-managed"],
+      expect.any(Function)
+    );
   });
 
   it("derives external fallback URLs for persisted Homebrew-backed app updates without URLs", async () => {

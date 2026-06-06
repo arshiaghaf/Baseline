@@ -336,6 +336,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         await this.performHomebrewItemUpdate(item);
         return;
       }
+      if (requiresHomebrewOwnershipProof(appRecord)) {
+        await this.routeExternalUpdate(appRecord, { ...update, updateURL: undefined });
+        return;
+      }
       await this.routeExternalUpdate(appRecord, {
         ...update,
         updateURL: update.updateURL ?? homebrewCaskPageURL(update.homebrewToken)
@@ -701,18 +705,22 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           homebrewIndex
         );
         if (homebrewUpdate && isValidHomebrewToken(homebrewUpdate.token)) {
-          updates.push({
-            id: appRecord.id,
-            appID: appRecord.id,
-            source: "homebrew",
-            supportLevel: "limited",
-            localVersion: appRecord.localVersion,
-            remoteVersion: homebrewUpdate.remoteVersion,
-            homebrewToken: homebrewUpdate.token,
-            updateURL: homebrewUpdate.homepageURL,
-            releaseNotesSummary: `Token: ${homebrewUpdate.token}`,
-            checkedAt: now
-          });
+          if (
+            canUseHomebrewAppUpdate(appRecord, homebrewUpdate.token, homebrewItems, homebrewIndex)
+          ) {
+            updates.push({
+              id: appRecord.id,
+              appID: appRecord.id,
+              source: "homebrew",
+              supportLevel: "limited",
+              localVersion: appRecord.localVersion,
+              remoteVersion: homebrewUpdate.remoteVersion,
+              homebrewToken: homebrewUpdate.token,
+              updateURL: homebrewUpdate.homepageURL,
+              releaseNotesSummary: `Token: ${homebrewUpdate.token}`,
+              checkedAt: now
+            });
+          }
         }
       }
 
@@ -933,11 +941,20 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private matchingHomebrewItemForApp(appRecord: AppRecord): HomebrewManagedItem | undefined {
     const update = this.state.updates.find((candidate) => candidate.appID === appRecord.id);
     const token = update?.homebrewToken?.toLowerCase();
-    return token
-      ? this.state.homebrewItems.find(
-          (item) => item.kind === "cask" && item.token.toLowerCase() === token
-        )
-      : undefined;
+    if (!token) {
+      return undefined;
+    }
+    return this.state.homebrewItems.find(
+      (item) =>
+        item.kind === "cask" &&
+        item.token.toLowerCase() === token &&
+        (!requiresHomebrewOwnershipProof(appRecord) ||
+          homebrewCaskItemProvesAppOwnership(
+            item,
+            appRecord,
+            this.latestHomebrewIndex.byToken[token]
+          ))
+    );
   }
 
   private mergeRecentlyUpdated(
@@ -1192,6 +1209,42 @@ export function preservePreviousHomebrewOutdatedState(
       iconDataURL: previous.iconDataURL ?? item.iconDataURL
     };
   });
+}
+
+function canUseHomebrewAppUpdate(
+  appRecord: AppRecord,
+  homebrewToken: string,
+  homebrewItems: HomebrewManagedItem[],
+  caskIndex: HomebrewCaskIndex
+): boolean {
+  if (!requiresHomebrewOwnershipProof(appRecord)) {
+    return true;
+  }
+  const token = homebrewToken.toLowerCase();
+  return homebrewItems.some(
+    (item) =>
+      item.kind === "cask" &&
+      item.token.toLowerCase() === token &&
+      homebrewCaskItemProvesAppOwnership(item, appRecord, caskIndex.byToken[token])
+  );
+}
+
+function requiresHomebrewOwnershipProof(appRecord: AppRecord): boolean {
+  return appRecord.sourceHint === "sparkle";
+}
+
+function homebrewCaskItemProvesAppOwnership(
+  item: HomebrewManagedItem,
+  appRecord: AppRecord,
+  caskEntry: HomebrewCaskEntry | undefined
+): boolean {
+  if (item.appID === appRecord.id) {
+    return true;
+  }
+  if (item.kind !== "cask" || !caskEntry) {
+    return false;
+  }
+  return appMatchesCaskEntry(appRecord, caskEntry);
 }
 
 function reconcileHomebrewInventory(

@@ -53,6 +53,34 @@ describe("Homebrew app linking", () => {
     expect(homebrewItemHasAppRepresentation(codeCask, [app], new Map())).toBe(false);
   });
 
+  it("does not use token-only Homebrew updates as app-backed proof for Sparkle-origin apps", () => {
+    const sparkleApp = {
+      ...app,
+      sourceHint: "sparkle" as const
+    };
+    const update: UpdateRecord = {
+      id: sparkleApp.id,
+      appID: sparkleApp.id,
+      source: "homebrew",
+      supportLevel: "limited",
+      localVersion: version("1.0.0"),
+      remoteVersion: version("2.0.0"),
+      homebrewToken: "visual-studio-code",
+      checkedAt: "2026-04-30T12:00:00.000Z"
+    };
+
+    expect(
+      homebrewItemHasAppRepresentation(codeCask, [sparkleApp], new Map([[sparkleApp.id, update]]))
+    ).toBe(false);
+    expect(
+      homebrewItemHasAppRepresentation(
+        { ...codeCask, appID: sparkleApp.id },
+        [sparkleApp],
+        new Map([[sparkleApp.id, update]])
+      )
+    ).toBe(true);
+  });
+
   it("does not treat formulae as app-backed items", () => {
     const formula: HomebrewManagedItem = {
       id: "formula:visual-studio-code",

@@ -2926,6 +2926,13 @@ function appSourceLabel(
 ): string | undefined {
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
   if (update) {
+    if (
+      update.source === "homebrew" &&
+      app.sourceHint === "sparkle" &&
+      !uninstallableHomebrewItemForApp(app, snapshot)
+    ) {
+      return sourceDisplayName(app.sourceHint);
+    }
     return sourceLabel(update);
   }
 
@@ -3122,6 +3129,9 @@ function matchingAppForHomebrewItem(
   const appFromUpdate = matchingUpdate
     ? snapshot.apps.find((app) => app.id === matchingUpdate.appID)
     : undefined;
+  if (appFromUpdate?.sourceHint === "sparkle") {
+    return undefined;
+  }
   if (appFromUpdate?.iconDataURL) {
     return appFromUpdate;
   }
@@ -3138,6 +3148,9 @@ function uninstallableHomebrewItemForApp(
   );
   if (matchedByExplicitLink) {
     return matchedByExplicitLink;
+  }
+  if (app.sourceHint === "sparkle") {
+    return undefined;
   }
 
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
