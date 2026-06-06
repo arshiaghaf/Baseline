@@ -97,6 +97,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
   private hasCheckedHomebrewAvailability = false;
   private profileStatsMutationQueue: Promise<void> = Promise.resolve();
+  private activeHomebrewCommandCount = 0;
 
   private state: BaselineSnapshot;
 
@@ -578,73 +579,74 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({ refreshErrorMessage: `Blocked unsafe Homebrew token for ${item.displayName}.` });
       return;
     }
-    const itemID = item.id;
-    if (this.isHomebrewCommandActive()) {
-      return;
-    }
-    this.clearHomebrewDiscoverFailureTimer(itemID);
-    this.patch({
-      homebrewDiscoverInstallingItemIDs: addToArray(
-        this.state.homebrewDiscoverInstallingItemIDs,
-        itemID
-      ),
-      homebrewDiscoverFailedItemIDs: removeFromArray(
-        this.state.homebrewDiscoverFailedItemIDs,
-        itemID
-      ),
-      homebrewDiscoverProgressByItemID: {
-        ...this.state.homebrewDiscoverProgressByItemID,
-        [itemID]: HomebrewMaintenanceProgressStage.queued
+    await this.withHomebrewCommandLock(async () => {
+      const itemID = item.id;
+      this.clearHomebrewDiscoverFailureTimer(itemID);
+      this.patch({
+        homebrewDiscoverInstallingItemIDs: addToArray(
+          this.state.homebrewDiscoverInstallingItemIDs,
+          itemID
+        ),
+        homebrewDiscoverFailedItemIDs: removeFromArray(
+          this.state.homebrewDiscoverFailedItemIDs,
+          itemID
+        ),
+        homebrewDiscoverProgressByItemID: {
+          ...this.state.homebrewDiscoverProgressByItemID,
+          [itemID]: HomebrewMaintenanceProgressStage.queued
+        }
+      });
+      if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
+        const brew = await this.runBrewCommand(["--version"]);
+        this.hasCheckedHomebrewAvailability = true;
+        if (!brew.success) {
+          this.patch({
+            homebrewDiscoverInstallingItemIDs: removeFromArray(
+              this.state.homebrewDiscoverInstallingItemIDs,
+              itemID
+            ),
+            homebrewDiscoverProgressByItemID: removeRecordKey(
+              this.state.homebrewDiscoverProgressByItemID,
+              itemID
+            ),
+            refreshErrorMessage:
+              "Homebrew is not installed. Install Homebrew to install Discover items."
+          });
+          return;
+        }
+        this.patch({ isHomebrewInstalled: true });
+      }
+      const command =
+        item.kind === "cask" ? ["install", "--cask", item.token] : ["install", item.token];
+      const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
+      const success = await this.runBrewWithEvents(command, (event) => {
+        this.applyDiscoverInstallEvent(event, parser, itemID, item.token.toLowerCase());
+      });
+      this.patch({
+        homebrewDiscoverInstallingItemIDs: removeFromArray(
+          this.state.homebrewDiscoverInstallingItemIDs,
+          itemID
+        ),
+        homebrewDiscoverInstalledPendingRefreshItemIDs: success
+          ? addToArray(this.state.homebrewDiscoverInstalledPendingRefreshItemIDs, itemID)
+          : this.state.homebrewDiscoverInstalledPendingRefreshItemIDs,
+        homebrewDiscoverFailedItemIDs: success
+          ? removeFromArray(this.state.homebrewDiscoverFailedItemIDs, itemID)
+          : addToArray(this.state.homebrewDiscoverFailedItemIDs, itemID),
+        refreshErrorMessage: success
+          ? undefined
+          : `Homebrew install failed for ${item.displayName}.`
+      });
+      if (success) {
+        this.hasCheckedHomebrewAvailability = true;
+        this.patch({ isHomebrewInstalled: true });
+        await this.recordProfileStatsEvents([homebrewInstallProfileStatsEvent(item)]);
+        await this.holdSuccessfulUpdate();
+        await this.refresh();
+      } else {
+        this.scheduleHomebrewDiscoverFailureClear(itemID);
       }
     });
-    if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
-      const brew = await this.runBrewCommand(["--version"]);
-      this.hasCheckedHomebrewAvailability = true;
-      if (!brew.success) {
-        this.patch({
-          homebrewDiscoverInstallingItemIDs: removeFromArray(
-            this.state.homebrewDiscoverInstallingItemIDs,
-            itemID
-          ),
-          homebrewDiscoverProgressByItemID: removeRecordKey(
-            this.state.homebrewDiscoverProgressByItemID,
-            itemID
-          ),
-          refreshErrorMessage:
-            "Homebrew is not installed. Install Homebrew to install Discover items."
-        });
-        return;
-      }
-      this.patch({ isHomebrewInstalled: true });
-    }
-    const command =
-      item.kind === "cask" ? ["install", "--cask", item.token] : ["install", item.token];
-    const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
-    const success = await this.runBrewWithEvents(command, (event) => {
-      this.applyDiscoverInstallEvent(event, parser, itemID, item.token.toLowerCase());
-    });
-    this.patch({
-      homebrewDiscoverInstallingItemIDs: removeFromArray(
-        this.state.homebrewDiscoverInstallingItemIDs,
-        itemID
-      ),
-      homebrewDiscoverInstalledPendingRefreshItemIDs: success
-        ? addToArray(this.state.homebrewDiscoverInstalledPendingRefreshItemIDs, itemID)
-        : this.state.homebrewDiscoverInstalledPendingRefreshItemIDs,
-      homebrewDiscoverFailedItemIDs: success
-        ? removeFromArray(this.state.homebrewDiscoverFailedItemIDs, itemID)
-        : addToArray(this.state.homebrewDiscoverFailedItemIDs, itemID),
-      refreshErrorMessage: success ? undefined : `Homebrew install failed for ${item.displayName}.`
-    });
-    if (success) {
-      this.hasCheckedHomebrewAvailability = true;
-      this.patch({ isHomebrewInstalled: true });
-      await this.recordProfileStatsEvents([homebrewInstallProfileStatsEvent(item)]);
-      await this.holdSuccessfulUpdate();
-      await this.refresh();
-    } else {
-      this.scheduleHomebrewDiscoverFailureClear(itemID);
-    }
   }
 
   async uninstallHomebrewItem(itemID: string): Promise<void> {
@@ -680,6 +682,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({
         refreshErrorMessage: homebrewUninstallFailureMessage(item, output)
       });
+    }
+  }
+
+  private async withHomebrewCommandLock(operation: () => Promise<void>): Promise<void> {
+    if (this.isHomebrewCommandActive()) {
+      return;
+    }
+    this.activeHomebrewCommandCount += 1;
+    try {
+      await operation();
+    } finally {
+      this.activeHomebrewCommandCount = Math.max(0, this.activeHomebrewCommandCount - 1);
     }
   }
 
@@ -1027,6 +1041,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private isHomebrewCommandActive(): boolean {
     return (
+      this.activeHomebrewCommandCount > 0 ||
       this.state.isRunningHomebrewMaintenance ||
       this.state.homebrewUpdatingItemIDs.length > 0 ||
       this.state.homebrewUninstallingItemIDs.length > 0 ||

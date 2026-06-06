@@ -3008,6 +3008,58 @@ describe("update store helpers", () => {
     await install;
   });
 
+  it("keeps Homebrew commands locked when refresh clears active Discover install state", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    let resolveInstall!: (result: { success: boolean; status: number; output: string }) => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "install") {
+        return await new Promise((resolve) => {
+          resolveInstall = resolve;
+        });
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    const install = store.installHomebrewItem(discoverItem);
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
+
+    await store.refresh(false);
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(discoverItem.id);
+
+    await store.performHomebrewUpdate("formula:ripgrep");
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
+
+    resolveInstall({ success: true, status: 0, output: "" });
+    await install;
+  });
+
   it("does not start Discover installs during active Homebrew maintenance", async () => {
     const discoverItem = {
       id: "formula:fd",
