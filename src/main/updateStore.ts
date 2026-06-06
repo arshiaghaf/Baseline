@@ -66,6 +66,10 @@ type StoreEvents = {
   homebrewCommand: [HomebrewMaintenanceRunEvent];
 };
 
+type RefreshOptions = {
+  allowHomebrewInventoryDuringActiveCommand?: boolean;
+};
+
 const TRANSIENT_HOMEBREW_FAILURE_MS = 4000;
 const successfulUpdateHoldMs = 2000;
 
@@ -190,12 +194,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
   }
 
-  async refresh(lightweight = false): Promise<void> {
+  async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
     if (this.refreshTask && lightweight) {
       return this.refreshTask;
     }
     const sequence = ++this.refreshSequence;
-    const task = this.computeRefresh(lightweight, sequence);
+    const task = this.computeRefresh(lightweight, sequence, options);
     this.refreshTask = task;
     return task.finally(() => {
       if (this.refreshTask === task) {
@@ -431,7 +435,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         });
         this.scheduleHomebrewBatchFailureClear([itemID]);
       }
-      await this.refresh();
+      await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
     });
   }
 
@@ -642,7 +646,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.patch({ isHomebrewInstalled: true });
         await this.recordProfileStatsEvents([homebrewInstallProfileStatsEvent(item)]);
         await this.holdSuccessfulUpdate();
-        await this.refresh();
+        await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
       } else {
         this.scheduleHomebrewDiscoverFailureClear(itemID);
       }
@@ -697,7 +701,11 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
   }
 
-  private async computeRefresh(lightweight: boolean, sequence: number): Promise<void> {
+  private async computeRefresh(
+    lightweight: boolean,
+    sequence: number,
+    options: RefreshOptions
+  ): Promise<void> {
     this.patch({
       isRefreshing: true,
       refreshErrorMessage: undefined,
@@ -710,7 +718,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           this.scanner.scanApplications(this.scanDirectories()),
           this.homebrew.fetchIndex(),
           this.homebrewFormula.fetchIndex(),
-          this.fetchHomebrewInventory(lightweight),
+          this.fetchHomebrewInventory(lightweight, options),
           this.lookupSelfUpdate(now)
         ]);
       const homebrewItems = homebrewInventory.items;
@@ -890,7 +898,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     return this.selfUpdate.lookup(this.currentAppVersion, now);
   }
 
-  private async fetchHomebrewInventory(lightweight: boolean): Promise<HomebrewInventoryResult> {
+  private async fetchHomebrewInventory(
+    lightweight: boolean,
+    options: RefreshOptions
+  ): Promise<HomebrewInventoryResult> {
+    if (this.isHomebrewCommandActive() && !options.allowHomebrewInventoryDuringActiveCommand) {
+      return {
+        items: this.state.homebrewItems,
+        outdatedDetectionSucceeded: false,
+        outdatedDetectionSucceededByKind: { formula: false, cask: false }
+      };
+    }
     if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
       const brew = await this.runBrewCommand(["--version"]);
       this.hasCheckedHomebrewAvailability = true;
