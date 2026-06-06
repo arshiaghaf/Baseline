@@ -379,6 +379,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!isValidHomebrewToken(item.token)) {
       return;
     }
+    if (this.isHomebrewCommandActive()) {
+      return;
+    }
     const itemID = item.id;
     const command =
       item.kind === "cask" ? ["upgrade", "--cask", item.token] : ["upgrade", item.token];
@@ -432,7 +435,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async performHomebrewUpdateAll(itemIDs?: string[]): Promise<void> {
-    if (this.state.isRunningHomebrewMaintenance) {
+    if (this.isHomebrewCommandActive()) {
       return;
     }
 
@@ -575,6 +578,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({ refreshErrorMessage: `Blocked unsafe Homebrew token for ${item.displayName}.` });
       return;
     }
+    const itemID = item.id;
+    if (this.isHomebrewCommandActive()) {
+      return;
+    }
     if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
       const brew = await this.runBrewCommand(["--version"]);
       this.hasCheckedHomebrewAvailability = true;
@@ -586,13 +593,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         return;
       }
       this.patch({ isHomebrewInstalled: true });
-    }
-    const itemID = item.id;
-    if (
-      this.state.homebrewDiscoverInstallingItemIDs.includes(itemID) ||
-      this.isHomebrewCommandActive()
-    ) {
-      return;
     }
     this.clearHomebrewDiscoverFailureTimer(itemID);
     const command =
@@ -648,11 +648,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({ refreshErrorMessage: `Blocked unsafe Homebrew token for ${item.name}.` });
       return;
     }
-    if (
-      this.state.isRunningHomebrewMaintenance ||
-      this.state.homebrewUninstallingItemIDs.includes(itemID) ||
-      this.state.homebrewUpdatingItemIDs.includes(itemID)
-    ) {
+    if (this.isHomebrewCommandActive()) {
       return;
     }
     this.patch({

@@ -1451,6 +1451,41 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Update Brews" })).toBeInTheDocument();
   });
 
+  it("disables Homebrew update actions while a Discover install is active", () => {
+    const second: HomebrewManagedItem = {
+      ...cask,
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula"
+    };
+
+    render(
+      <HomebrewSection
+        sectionID="outdated"
+        title="Outdated"
+        items={[cask, second]}
+        snapshot={snapshot({
+          homebrewItems: [cask, second],
+          homebrewDiscoverInstallingItemIDs: ["formula:fd"]
+        })}
+        empty="No updates."
+        showUpdateAll
+      />
+    );
+
+    const batchButton = screen.getByRole("button", { name: "Updating" });
+    expect(batchButton).toBeDisabled();
+    fireEvent.click(batchButton);
+    expect(window.baseline.performHomebrewUpdateAll).not.toHaveBeenCalled();
+
+    for (const updateButton of screen.getAllByRole("button", { name: "Update" })) {
+      expect(updateButton).toBeDisabled();
+      fireEvent.click(updateButton);
+    }
+    expect(window.baseline.performHomebrewUpdate).not.toHaveBeenCalled();
+  });
+
   it("renders full-window update sections as card grids with inline update actions", () => {
     const formula: HomebrewManagedItem = {
       id: "formula:ripgrep",

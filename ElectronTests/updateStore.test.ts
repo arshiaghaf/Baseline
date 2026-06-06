@@ -2901,6 +2901,54 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
   });
 
+  it("does not start other Homebrew commands during an active Discover install", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    let resolveInstall!: (result: { success: boolean; status: number; output: string }) => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(
+      async () =>
+        await new Promise((resolve) => {
+          resolveInstall = resolve;
+        })
+    );
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:raycast",
+            token: "raycast",
+            name: "Raycast",
+            kind: "cask",
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    const install = store.installHomebrewItem(discoverItem);
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
+
+    await store.performHomebrewUpdate("cask:raycast");
+    await store.performHomebrewUpdateAll();
+    await store.uninstallHomebrewItem("cask:raycast");
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
+
+    resolveInstall({ success: true, status: 0, output: "" });
+    await install;
+  });
+
   it("does not start Discover installs during active Homebrew maintenance", async () => {
     const discoverItem = {
       id: "formula:fd",
