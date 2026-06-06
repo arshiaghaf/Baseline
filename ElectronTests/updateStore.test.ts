@@ -2901,6 +2901,65 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
   });
 
+  it("suppresses duplicate Discover installs while rechecking Homebrew availability", async () => {
+    const item = {
+      id: "formula:ripgrep",
+      kind: "formula" as const,
+      token: "ripgrep",
+      displayName: "ripgrep",
+      presentation: "formula" as const,
+      version: version("14.1.0")
+    };
+    let resolveAvailability!: (result: {
+      success: boolean;
+      status: number | null;
+      output: string;
+    }) => void;
+    let resolveInstall!: (result: { success: boolean; status: number; output: string }) => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "--version") {
+        if (runBrewCommand.mock.calls.length === 1) {
+          return { success: false, status: null, output: "" };
+        }
+        return await new Promise((resolve) => {
+          resolveAvailability = resolve;
+        });
+      }
+      return await new Promise((resolve) => {
+        resolveInstall = resolve;
+      });
+    });
+    const store = await makeStore({ runBrewCommand });
+
+    await store.refreshToolStatus();
+    expect(store.getSnapshot().isHomebrewInstalled).toBe(false);
+
+    const firstInstall = store.installHomebrewItem(item);
+    const secondInstall = store.installHomebrewItem(item);
+
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(item.id);
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["--version"],
+      ["--version"]
+    ]);
+
+    resolveAvailability({ success: true, status: 0, output: "" });
+    await vi.waitFor(() => {
+      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+        ["--version"],
+        ["--version"],
+        ["install", "ripgrep"]
+      ]);
+    });
+
+    resolveInstall({ success: true, status: 0, output: "" });
+    await Promise.all([firstInstall, secondInstall]);
+
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
+  });
+
   it("does not start other Homebrew commands during an active Discover install", async () => {
     const discoverItem = {
       id: "formula:fd",

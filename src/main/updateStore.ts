@@ -582,21 +582,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (this.isHomebrewCommandActive()) {
       return;
     }
-    if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
-      const brew = await this.runBrewCommand(["--version"]);
-      this.hasCheckedHomebrewAvailability = true;
-      if (!brew.success) {
-        this.patch({
-          refreshErrorMessage:
-            "Homebrew is not installed. Install Homebrew to install Discover items."
-        });
-        return;
-      }
-      this.patch({ isHomebrewInstalled: true });
-    }
     this.clearHomebrewDiscoverFailureTimer(itemID);
-    const command =
-      item.kind === "cask" ? ["install", "--cask", item.token] : ["install", item.token];
     this.patch({
       homebrewDiscoverInstallingItemIDs: addToArray(
         this.state.homebrewDiscoverInstallingItemIDs,
@@ -611,6 +597,28 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         [itemID]: HomebrewMaintenanceProgressStage.queued
       }
     });
+    if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
+      const brew = await this.runBrewCommand(["--version"]);
+      this.hasCheckedHomebrewAvailability = true;
+      if (!brew.success) {
+        this.patch({
+          homebrewDiscoverInstallingItemIDs: removeFromArray(
+            this.state.homebrewDiscoverInstallingItemIDs,
+            itemID
+          ),
+          homebrewDiscoverProgressByItemID: removeRecordKey(
+            this.state.homebrewDiscoverProgressByItemID,
+            itemID
+          ),
+          refreshErrorMessage:
+            "Homebrew is not installed. Install Homebrew to install Discover items."
+        });
+        return;
+      }
+      this.patch({ isHomebrewInstalled: true });
+    }
+    const command =
+      item.kind === "cask" ? ["install", "--cask", item.token] : ["install", item.token];
     const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
     const success = await this.runBrewWithEvents(command, (event) => {
       this.applyDiscoverInstallEvent(event, parser, itemID, item.token.toLowerCase());
