@@ -26,6 +26,9 @@ export function homebrewItemHasAppRepresentation(
   const identifiers = homebrewItemIdentifiers(item);
   return apps.some((app) => {
     const update = updatesByAppID.get(app.id);
+    if (app.sourceHint === "sparkle") {
+      return false;
+    }
     if (update?.homebrewToken && identifiers.has(normalizedHomebrewAppName(update.homebrewToken))) {
       return true;
     }

@@ -3129,6 +3129,9 @@ function matchingAppForHomebrewItem(
   const appFromUpdate = matchingUpdate
     ? snapshot.apps.find((app) => app.id === matchingUpdate.appID)
     : undefined;
+  if (appFromUpdate?.sourceHint === "sparkle") {
+    return undefined;
+  }
   if (appFromUpdate?.iconDataURL) {
     return appFromUpdate;
   }
