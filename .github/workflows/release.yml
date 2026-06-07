@@ -43,7 +43,7 @@ jobs:
         run: scripts/prepare-unsigned-release.sh "${{ steps.version.outputs.version }}"
 
       - name: Upload unsigned release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Baseline-${{ steps.version.outputs.version }}-unsigned-release
           path: |
