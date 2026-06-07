@@ -150,6 +150,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       isRefreshing: false,
       searchText: "",
       isRunningHomebrewMaintenance: false,
+      isHomebrewCommandLocked: false,
       appUpdatingIDs: [],
       appUpdatedPendingRefreshIDs: [],
       homebrewUpdatingItemIDs: [],
@@ -694,10 +695,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return;
     }
     this.activeHomebrewCommandCount += 1;
+    this.patch({ isHomebrewCommandLocked: true });
     try {
       await operation();
     } finally {
       this.activeHomebrewCommandCount = Math.max(0, this.activeHomebrewCommandCount - 1);
+      this.patch({ isHomebrewCommandLocked: this.activeHomebrewCommandCount > 0 });
     }
   }
 
@@ -831,10 +834,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         reconciledHomebrewItems,
         now
       );
-      const preserveDiscoverInstallState =
-        this.activeHomebrewCommandCount > 0 &&
-        !options.allowHomebrewInventoryDuringActiveCommand &&
-        this.state.homebrewDiscoverInstallingItemIDs.length > 0;
+      const preserveHomebrewCommandState =
+        this.isHomebrewCommandActive() && !options.allowHomebrewInventoryDuringActiveCommand;
       this.patch({
         apps,
         updates,
@@ -845,14 +846,16 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         isRefreshing: false,
         lastRefreshNoticeMessage: homebrewInventory.warning,
         appUpdatedPendingRefreshIDs: [],
-        homebrewUpdatedPendingRefreshItemIDs: [],
-        homebrewDiscoverInstallingItemIDs: preserveDiscoverInstallState
+        homebrewUpdatedPendingRefreshItemIDs: preserveHomebrewCommandState
+          ? this.state.homebrewUpdatedPendingRefreshItemIDs
+          : [],
+        homebrewDiscoverInstallingItemIDs: preserveHomebrewCommandState
           ? this.state.homebrewDiscoverInstallingItemIDs
           : [],
-        homebrewDiscoverInstalledPendingRefreshItemIDs: preserveDiscoverInstallState
+        homebrewDiscoverInstalledPendingRefreshItemIDs: preserveHomebrewCommandState
           ? this.state.homebrewDiscoverInstalledPendingRefreshItemIDs
           : [],
-        homebrewDiscoverProgressByItemID: preserveDiscoverInstallState
+        homebrewDiscoverProgressByItemID: preserveHomebrewCommandState
           ? this.state.homebrewDiscoverProgressByItemID
           : {},
         selfUpdate,

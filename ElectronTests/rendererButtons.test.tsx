@@ -64,6 +64,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     isRefreshing: false,
     searchText: "",
     isRunningHomebrewMaintenance: false,
+    isHomebrewCommandLocked: false,
     appUpdatingIDs: [],
     appUpdatedPendingRefreshIDs: [],
     homebrewUpdatingItemIDs: [],
@@ -1357,6 +1358,43 @@ describe("renderer button parity", () => {
           snapshot={snapshot({
             isRunningHomebrewMaintenance: true,
             homebrewDiscoverItems: [item]
+          })}
+        />
+      </ActionConfirmationContext.Provider>
+    );
+
+    const busyButton = screen.getByRole("button", { name: "Busy" });
+    expect(busyButton).toBeDisabled();
+    fireEvent.click(busyButton);
+    expect(requestConfirmation).not.toHaveBeenCalled();
+    expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
+  });
+
+  it("disables other discover installs while a Homebrew command lock is active", () => {
+    const requestConfirmation = vi.fn();
+    const doneItem: HomebrewCaskDiscoveryItem = {
+      id: "formula:fd",
+      token: "fd",
+      displayName: "fd",
+      kind: "formula",
+      version: version("10.0.0")
+    };
+    const otherItem: HomebrewCaskDiscoveryItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      displayName: "ripgrep",
+      kind: "formula",
+      version: version("14.1.0")
+    };
+
+    render(
+      <ActionConfirmationContext.Provider value={requestConfirmation}>
+        <DiscoverRow
+          item={otherItem}
+          snapshot={snapshot({
+            isHomebrewCommandLocked: true,
+            homebrewDiscoverItems: [doneItem, otherItem],
+            homebrewDiscoverInstalledPendingRefreshItemIDs: [doneItem.id]
           })}
         />
       </ActionConfirmationContext.Provider>

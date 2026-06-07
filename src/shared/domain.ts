@@ -223,6 +223,7 @@ export type BaselineSnapshot = PersistedSnapshot &
   RefreshState & {
     searchText: string;
     isRunningHomebrewMaintenance: boolean;
+    isHomebrewCommandLocked: boolean;
     appUpdatingIDs: string[];
     appUpdatedPendingRefreshIDs: string[];
     homebrewUpdatingItemIDs: string[];

@@ -102,6 +102,7 @@ const initialSnapshot: BaselineSnapshot = {
   isRefreshing: false,
   searchText: "",
   isRunningHomebrewMaintenance: false,
+  isHomebrewCommandLocked: false,
   appUpdatingIDs: [],
   appUpdatedPendingRefreshIDs: [],
   homebrewUpdatingItemIDs: [],
@@ -2374,6 +2375,7 @@ function actionStateFromFlags({
 
 function isHomebrewCommandActive(snapshot: BaselineSnapshot): boolean {
   return (
+    snapshot.isHomebrewCommandLocked ||
     snapshot.isRunningHomebrewMaintenance ||
     snapshot.homebrewUpdatingItemIDs.length > 0 ||
     snapshot.homebrewUninstallingItemIDs.length > 0 ||

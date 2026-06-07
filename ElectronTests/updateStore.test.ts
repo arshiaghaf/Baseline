@@ -3062,6 +3062,64 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(discoverItem.id);
   });
 
+  it("keeps the Homebrew command lock visible during a successful Discover install hold", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    const existingItem = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [existingItem]
+      },
+      runBrewCommand,
+      successRefreshDelayMS: 100
+    });
+
+    vi.useFakeTimers();
+    try {
+      const install = store.installHomebrewItem(discoverItem);
+
+      await vi.waitFor(() => {
+        expect(store.getSnapshot().homebrewDiscoverInstalledPendingRefreshItemIDs).toContain(
+          discoverItem.id
+        );
+      });
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+
+      await store.refresh(false);
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+      expect(store.getSnapshot().homebrewDiscoverInstalledPendingRefreshItemIDs).toContain(
+        discoverItem.id
+      );
+
+      await store.performHomebrewUpdate("formula:ripgrep");
+      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
+
+      await vi.advanceTimersByTimeAsync(100);
+      await install;
+
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("skips Homebrew inventory during unrelated refreshes while a Discover install is active", async () => {
     const discoverItem = {
       id: "formula:fd",
