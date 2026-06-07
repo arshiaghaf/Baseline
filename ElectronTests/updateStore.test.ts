@@ -2960,6 +2960,91 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
   });
 
+  it("does not run tool-status Homebrew checks during an active Discover install", async () => {
+    const item = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    let resolveInstall!: (result: { success: boolean; status: number; output: string }) => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "--version") {
+        return { success: true, status: 0, output: "" };
+      }
+      return await new Promise((resolve) => {
+        resolveInstall = resolve;
+      });
+    });
+    const runMasCommand = vi.fn(async () => ({ success: false, status: null, output: "" }));
+    const store = await makeStore({ runBrewCommand, runMasCommand });
+
+    await store.refreshToolStatus();
+    expect(store.getSnapshot().isHomebrewInstalled).toBe(true);
+
+    const install = store.installHomebrewItem(item);
+    await vi.waitFor(() => {
+      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+        ["--version"],
+        ["install", "fd"]
+      ]);
+    });
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(item.id);
+
+    await store.refreshToolStatus();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["--version"],
+      ["install", "fd"]
+    ]);
+    expect(runMasCommand).toHaveBeenCalledTimes(2);
+    expect(store.getSnapshot().isHomebrewInstalled).toBe(true);
+
+    resolveInstall({ success: true, status: 0, output: "" });
+    await install;
+  });
+
+  it("blocks Discover installs while a tool-status Homebrew check is active", async () => {
+    const item = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    let resolveStatus!: (result: { success: boolean; status: number; output: string }) => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(
+      async () =>
+        await new Promise((resolve) => {
+          resolveStatus = resolve;
+        })
+    );
+    const store = await makeStore({ runBrewCommand });
+
+    const status = store.refreshToolStatus();
+    await vi.waitFor(() => {
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+    });
+
+    await store.installHomebrewItem(item);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["--version"]]);
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
+
+    resolveStatus({ success: true, status: 0, output: "" });
+    await status;
+
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+    expect(store.getSnapshot().isHomebrewInstalled).toBe(true);
+  });
+
   it("does not start other Homebrew commands during an active Discover install", async () => {
     const discoverItem = {
       id: "formula:fd",

@@ -212,14 +212,21 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   async refreshToolStatus(): Promise<void> {
     this.patch({ isChecking: true });
-    const [mas, brew] = await Promise.all([
-      this.runMasCommand(["version"]),
-      this.runBrewCommand(["--version"])
-    ]);
-    this.hasCheckedHomebrewAvailability = true;
+    const masStatus = this.runMasCommand(["version"]);
+    const releaseHomebrewCommandLock = this.reserveHomebrewCommandLock();
+    let brew: CommandResult | undefined;
+    try {
+      brew = releaseHomebrewCommandLock ? await this.runBrewCommand(["--version"]) : undefined;
+    } finally {
+      releaseHomebrewCommandLock?.();
+    }
+    if (brew) {
+      this.hasCheckedHomebrewAvailability = true;
+    }
+    const mas = await masStatus;
     this.patch({
       isMasInstalled: mas.success,
-      isHomebrewInstalled: brew.success,
+      ...(brew ? { isHomebrewInstalled: brew.success } : {}),
       isChecking: false
     });
   }
