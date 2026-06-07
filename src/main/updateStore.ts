@@ -831,6 +831,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         reconciledHomebrewItems,
         now
       );
+      const preserveDiscoverInstallState =
+        this.activeHomebrewCommandCount > 0 &&
+        !options.allowHomebrewInventoryDuringActiveCommand &&
+        this.state.homebrewDiscoverInstallingItemIDs.length > 0;
       this.patch({
         apps,
         updates,
@@ -842,9 +846,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         lastRefreshNoticeMessage: homebrewInventory.warning,
         appUpdatedPendingRefreshIDs: [],
         homebrewUpdatedPendingRefreshItemIDs: [],
-        homebrewDiscoverInstallingItemIDs: [],
-        homebrewDiscoverInstalledPendingRefreshItemIDs: [],
-        homebrewDiscoverProgressByItemID: {},
+        homebrewDiscoverInstallingItemIDs: preserveDiscoverInstallState
+          ? this.state.homebrewDiscoverInstallingItemIDs
+          : [],
+        homebrewDiscoverInstalledPendingRefreshItemIDs: preserveDiscoverInstallState
+          ? this.state.homebrewDiscoverInstalledPendingRefreshItemIDs
+          : [],
+        homebrewDiscoverProgressByItemID: preserveDiscoverInstallState
+          ? this.state.homebrewDiscoverProgressByItemID
+          : {},
         selfUpdate,
         laggingHomebrewCaskTokens: detectLaggingHomebrewCaskTokens(
           homebrewItems,

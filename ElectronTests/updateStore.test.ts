@@ -3008,7 +3008,7 @@ describe("update store helpers", () => {
     await install;
   });
 
-  it("keeps Homebrew commands locked when refresh clears active Discover install state", async () => {
+  it("keeps Discover install state visible during unrelated refreshes", async () => {
     const discoverItem = {
       id: "formula:fd",
       kind: "formula" as const,
@@ -3049,7 +3049,7 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
 
     await store.refresh(false);
-    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(discoverItem.id);
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
 
     await store.performHomebrewUpdate("formula:ripgrep");
     await store.performHomebrewUpdateAll();
@@ -3058,6 +3058,8 @@ describe("update store helpers", () => {
 
     resolveInstall({ success: true, status: 0, output: "" });
     await install;
+
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(discoverItem.id);
   });
 
   it("skips Homebrew inventory during unrelated refreshes while a Discover install is active", async () => {
