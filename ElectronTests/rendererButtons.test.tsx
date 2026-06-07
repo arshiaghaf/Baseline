@@ -2050,7 +2050,7 @@ describe("renderer button parity", () => {
   });
 
   it("lets refresh interval edits build multi-digit values before committing", () => {
-    render(<SettingsView snapshot={snapshot({ refreshIntervalMinutes: 60 })} />);
+    const { rerender } = render(<SettingsView snapshot={snapshot({ refreshIntervalMinutes: 60 })} />);
 
     const interval = screen.getByRole("textbox", { name: "Interval minutes" });
     fireEvent.change(interval, { target: { value: "" } });
@@ -2070,6 +2070,7 @@ describe("renderer button parity", () => {
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
       refreshIntervalMinutes: 15
     });
+    rerender(<SettingsView snapshot={snapshot({ refreshIntervalMinutes: 15 })} />);
     fireEvent.blur(interval);
     expect(window.baseline.updatePreferences).toHaveBeenCalledTimes(1);
   });

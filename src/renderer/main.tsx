@@ -2709,8 +2709,11 @@ function RefreshIntervalInput({ value, disabled }: { value: number; disabled: bo
   const lastCommittedDraftRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    setDraft(String(value));
-    lastCommittedDraftRef.current = undefined;
+    const nextDraft = String(value);
+    setDraft(nextDraft);
+    if (lastCommittedDraftRef.current !== nextDraft) {
+      lastCommittedDraftRef.current = undefined;
+    }
   }, [value]);
 
   const commitDraft = () => {
