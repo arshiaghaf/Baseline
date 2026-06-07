@@ -102,6 +102,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private hasCheckedHomebrewAvailability = false;
   private profileStatsMutationQueue: Promise<void> = Promise.resolve();
   private activeHomebrewCommandCount = 0;
+  private activeHomebrewInventoryCount = 0;
 
   private state: BaselineSnapshot;
 
@@ -695,12 +696,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return;
     }
     this.activeHomebrewCommandCount += 1;
-    this.patch({ isHomebrewCommandLocked: true });
+    this.updateHomebrewCommandLockState();
     try {
       await operation();
     } finally {
       this.activeHomebrewCommandCount = Math.max(0, this.activeHomebrewCommandCount - 1);
-      this.patch({ isHomebrewCommandLocked: this.activeHomebrewCommandCount > 0 });
+      this.updateHomebrewCommandLockState();
     }
   }
 
@@ -922,15 +923,22 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         outdatedDetectionSucceededByKind: { formula: false, cask: false }
       };
     }
-    if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
-      const brew = await this.runBrewCommand(["--version"]);
-      this.hasCheckedHomebrewAvailability = true;
-      if (!brew.success) {
-        return emptyHomebrewInventoryResult();
+    this.activeHomebrewInventoryCount += 1;
+    this.updateHomebrewCommandLockState();
+    try {
+      if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
+        const brew = await this.runBrewCommand(["--version"]);
+        this.hasCheckedHomebrewAvailability = true;
+        if (!brew.success) {
+          return emptyHomebrewInventoryResult();
+        }
+        this.patch({ isHomebrewInstalled: true });
       }
-      this.patch({ isHomebrewInstalled: true });
+      return await this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight });
+    } finally {
+      this.activeHomebrewInventoryCount = Math.max(0, this.activeHomebrewInventoryCount - 1);
+      this.updateHomebrewCommandLockState();
     }
-    return this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight });
   }
 
   private scanDirectories(): string[] {
@@ -1073,6 +1081,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private isHomebrewCommandActive(): boolean {
     return (
       this.activeHomebrewCommandCount > 0 ||
+      this.activeHomebrewInventoryCount > 0 ||
       this.state.isRunningHomebrewMaintenance ||
       this.state.homebrewUpdatingItemIDs.length > 0 ||
       this.state.homebrewUninstallingItemIDs.length > 0 ||
@@ -1307,6 +1316,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private patch(patch: Partial<BaselineSnapshot>): void {
     this.state = { ...this.state, ...patch };
     this.emit("snapshot", this.getSnapshot());
+  }
+
+  private updateHomebrewCommandLockState(): void {
+    this.patch({
+      isHomebrewCommandLocked:
+        this.activeHomebrewCommandCount > 0 || this.activeHomebrewInventoryCount > 0
+    });
   }
 }
 

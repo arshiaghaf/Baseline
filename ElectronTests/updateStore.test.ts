@@ -3176,6 +3176,60 @@ describe("update store helpers", () => {
     expect(fetchInventory).toHaveBeenCalledOnce();
   });
 
+  it("does not start Discover installs while refresh inventory is active", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    let resolveInventory!: (result: {
+      items: HomebrewManagedItem[];
+      outdatedDetectionSucceeded: boolean;
+      outdatedDetectionSucceededByKind: { formula: boolean; cask: boolean };
+    }) => void;
+    const fetchInventory = vi.fn(
+      async () =>
+        await new Promise<{
+          items: HomebrewManagedItem[];
+          outdatedDetectionSucceeded: boolean;
+          outdatedDetectionSucceededByKind: { formula: boolean; cask: boolean };
+        }>((resolve) => {
+          resolveInventory = resolve;
+        })
+    );
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      clients: {
+        homebrewInventory: { fetchInventory }
+      },
+      runBrewCommand
+    });
+
+    const refresh = store.refresh(false);
+    await vi.waitFor(() => {
+      expect(fetchInventory).toHaveBeenCalledOnce();
+    });
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+
+    await store.installHomebrewItem(discoverItem);
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(discoverItem.id);
+
+    resolveInventory({
+      items: [],
+      outdatedDetectionSucceeded: true,
+      outdatedDetectionSucceededByKind: { formula: true, cask: true }
+    });
+    await refresh;
+
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+  });
+
   it("does not start Discover installs during active Homebrew maintenance", async () => {
     const discoverItem = {
       id: "formula:fd",
