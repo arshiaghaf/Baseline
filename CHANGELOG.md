@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0 — 2026-06-07
+
+### Added
+
+- Baseline now supports iOS and iPad App Store apps that run on Mac, using local App Store evidence and UIKit idiom metadata to choose the correct App Store lookup path. ([#121](https://github.com/arshiaghaf/Baseline/pull/121)), ([#122](https://github.com/arshiaghaf/Baseline/pull/122))
+- Release automation now publishes changelog-derived release notes and can dispatch the Homebrew cask update workflow after the GitHub Release is available. ([#119](https://github.com/arshiaghaf/Baseline/pull/119)), ([#120](https://github.com/arshiaghaf/Baseline/pull/120))
+- Dependency maintenance now covers newer Lucide icons, Electron, and TypeScript/Vitest/ESLint tooling updates. ([#116](https://github.com/arshiaghaf/Baseline/pull/116)), ([#117](https://github.com/arshiaghaf/Baseline/pull/117)), ([#118](https://github.com/arshiaghaf/Baseline/pull/118))
+
+### Fixed
+
+- Overlapping refreshes no longer allow stale scan or lookup results to overwrite newer snapshot state. ([#111](https://github.com/arshiaghaf/Baseline/pull/111))
+- Recently Updated entries now require real installed-version progress, including Sparkle build-version advances when the marketing version is unchanged. ([#109](https://github.com/arshiaghaf/Baseline/pull/109)), ([#114](https://github.com/arshiaghaf/Baseline/pull/114))
+- Homebrew and `mas` controls now disable cleanly when their tools are unavailable, including inventory fetches, Discover installs, and the App Store update preference. ([#123](https://github.com/arshiaghaf/Baseline/pull/123)), ([#124](https://github.com/arshiaghaf/Baseline/pull/124)), ([#132](https://github.com/arshiaghaf/Baseline/pull/132))
+- Homebrew-backed app actions now avoid unsafe fallback upgrades, keep hidden app-backed casks out of batch updates, and return failed Discover installs to a retryable state. ([#110](https://github.com/arshiaghaf/Baseline/pull/110)), ([#113](https://github.com/arshiaghaf/Baseline/pull/113)), ([#125](https://github.com/arshiaghaf/Baseline/pull/125))
+- Sparkle-origin apps now require installed Homebrew cask ownership before using Homebrew fallback updates, while unowned cask rows remain visible. ([#131](https://github.com/arshiaghaf/Baseline/pull/131))
+- Reused Electron windows no longer accumulate duplicate setup listeners, and main/settings navigation stays synced through the preload bridge. ([#112](https://github.com/arshiaghaf/Baseline/pull/112))
+- Refresh interval edits now commit reliably after typing. ([#127](https://github.com/arshiaghaf/Baseline/pull/127))
+
 ## 0.1.0 — 2026-05-31
 
 ### Added
