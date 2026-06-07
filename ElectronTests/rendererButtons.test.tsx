@@ -2050,7 +2050,9 @@ describe("renderer button parity", () => {
   });
 
   it("lets refresh interval edits build multi-digit values before committing", () => {
-    const { rerender } = render(<SettingsView snapshot={snapshot({ refreshIntervalMinutes: 60 })} />);
+    const { rerender } = render(
+      <SettingsView snapshot={snapshot({ refreshIntervalMinutes: 60 })} />
+    );
 
     const interval = screen.getByRole("textbox", { name: "Interval minutes" });
     fireEvent.change(interval, { target: { value: "" } });
