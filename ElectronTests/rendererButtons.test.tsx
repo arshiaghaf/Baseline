@@ -2146,10 +2146,42 @@ describe("renderer button parity", () => {
 
     const enabledInterval = screen.getByRole("textbox", { name: "Interval minutes" });
     fireEvent.change(enabledInterval, { target: { value: "30" } });
+    expect(window.baseline.updatePreferences).not.toHaveBeenCalledWith({
+      refreshIntervalMinutes: 30
+    });
+    fireEvent.blur(enabledInterval);
 
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
       refreshIntervalMinutes: 30
     });
+  });
+
+  it("lets refresh interval edits build multi-digit values before committing", () => {
+    const { rerender } = render(
+      <SettingsView snapshot={snapshot({ refreshIntervalMinutes: 60 })} />
+    );
+
+    const interval = screen.getByRole("textbox", { name: "Interval minutes" });
+    fireEvent.change(interval, { target: { value: "" } });
+    fireEvent.change(interval, { target: { value: "1" } });
+    fireEvent.change(interval, { target: { value: "15" } });
+
+    expect(interval).toHaveValue("15");
+    expect(window.baseline.updatePreferences).not.toHaveBeenCalledWith({
+      refreshIntervalMinutes: 5
+    });
+    expect(window.baseline.updatePreferences).not.toHaveBeenCalledWith({
+      refreshIntervalMinutes: 15
+    });
+
+    fireEvent.keyDown(interval, { key: "Enter" });
+
+    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
+      refreshIntervalMinutes: 15
+    });
+    rerender(<SettingsView snapshot={snapshot({ refreshIntervalMinutes: 15 })} />);
+    fireEvent.blur(interval);
+    expect(window.baseline.updatePreferences).toHaveBeenCalledTimes(1);
   });
 
   it("shows default scan directories when custom directories are present", () => {

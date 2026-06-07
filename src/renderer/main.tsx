@@ -2717,10 +2717,30 @@ function defaultScanDirectoryLabel(directory: string): string {
 
 function RefreshIntervalInput({ value, disabled }: { value: number; disabled: boolean }) {
   const [draft, setDraft] = useState(String(value));
+  const lastCommittedDraftRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    setDraft(String(value));
+    const nextDraft = String(value);
+    setDraft(nextDraft);
+    if (lastCommittedDraftRef.current !== nextDraft) {
+      lastCommittedDraftRef.current = undefined;
+    }
   }, [value]);
+
+  const commitDraft = () => {
+    if (!draft) {
+      setDraft(String(value));
+      return;
+    }
+    const refreshIntervalMinutes = clampRefreshIntervalMinutes(Number.parseInt(draft, 10));
+    const normalizedDraft = String(refreshIntervalMinutes);
+    setDraft(normalizedDraft);
+    if (lastCommittedDraftRef.current === normalizedDraft) {
+      return;
+    }
+    lastCommittedDraftRef.current = normalizedDraft;
+    void window.baseline.updatePreferences({ refreshIntervalMinutes });
+  };
 
   return (
     <label
@@ -2747,16 +2767,22 @@ function RefreshIntervalInput({ value, disabled }: { value: number; disabled: bo
           if (!/^\d*$/u.test(nextValue)) {
             return;
           }
+          lastCommittedDraftRef.current = undefined;
           setDraft(nextValue);
-          if (nextValue) {
-            void window.baseline.updatePreferences({
-              refreshIntervalMinutes: Number.parseInt(nextValue, 10)
-            });
+        }}
+        onBlur={commitDraft}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            commitDraft();
           }
         }}
       />
     </label>
   );
+}
+
+function clampRefreshIntervalMinutes(value: number): number {
+  return Math.min(Math.max(Math.trunc(value), 5), 1440);
 }
 
 function Toggle({
