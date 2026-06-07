@@ -3008,6 +3008,39 @@ describe("update store helpers", () => {
     await install;
   });
 
+  it("does not install mas through Homebrew during an active Discover install", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    let resolveInstall!: (result: { success: boolean; status: number; output: string }) => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(
+      async () =>
+        await new Promise((resolve) => {
+          resolveInstall = resolve;
+        })
+    );
+    const runMasCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({ runBrewCommand, runMasCommand });
+
+    const install = store.installHomebrewItem(discoverItem);
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
+
+    await store.installMasWithHomebrew();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
+    expect(runMasCommand).not.toHaveBeenCalled();
+
+    resolveInstall({ success: true, status: 0, output: "" });
+    await install;
+  });
+
   it("keeps Discover install state visible during unrelated refreshes", async () => {
     const discoverItem = {
       id: "formula:fd",
@@ -3284,6 +3317,137 @@ describe("update store helpers", () => {
       ["autoremove"],
       ["cleanup"]
     ]);
+  });
+
+  it("keeps the Homebrew command lock through batch maintenance refresh", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    const outdatedItem = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const fetchInventory = vi.fn(async () => ({
+      items: [{ ...outdatedItem, installedVersion: version("14.1.0"), isOutdated: false }],
+      outdatedDetectionSucceeded: true,
+      outdatedDetectionSucceededByKind: { formula: true, cask: true }
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [outdatedItem]
+      },
+      clients: {
+        homebrewInventory: { fetchInventory }
+      },
+      runBrewCommand,
+      successRefreshDelayMS: 100
+    });
+
+    vi.useFakeTimers();
+    try {
+      const maintenance = store.performHomebrewUpdateAll();
+
+      await vi.waitFor(() => {
+        expect(store.getSnapshot().homebrewUpdatedPendingRefreshItemIDs).toContain(outdatedItem.id);
+      });
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+
+      await store.installHomebrewItem(discoverItem);
+      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+        ["update"],
+        ["upgrade", "ripgrep"],
+        ["autoremove"],
+        ["cleanup"]
+      ]);
+
+      await vi.advanceTimersByTimeAsync(100);
+      await maintenance;
+
+      expect(fetchInventory).toHaveBeenCalledOnce();
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the Homebrew command lock through cask uninstall refresh", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    const caskItem = homebrewItem({
+      id: "cask:raycast",
+      token: "raycast",
+      name: "Raycast",
+      kind: "cask"
+    });
+    let resolveInventory!: (result: {
+      items: HomebrewManagedItem[];
+      outdatedDetectionSucceeded: boolean;
+      outdatedDetectionSucceededByKind: { formula: boolean; cask: boolean };
+    }) => void;
+    const fetchInventory = vi.fn(
+      async () =>
+        await new Promise<{
+          items: HomebrewManagedItem[];
+          outdatedDetectionSucceeded: boolean;
+          outdatedDetectionSucceededByKind: { formula: boolean; cask: boolean };
+        }>((resolve) => {
+          resolveInventory = resolve;
+        })
+    );
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [caskItem]
+      },
+      clients: {
+        homebrewInventory: { fetchInventory }
+      },
+      runBrewCommand
+    });
+
+    const uninstall = store.uninstallHomebrewItem(caskItem.id);
+    await vi.waitFor(() => {
+      expect(fetchInventory).toHaveBeenCalledOnce();
+    });
+    expect(store.getSnapshot().homebrewUninstallingItemIDs).not.toContain(caskItem.id);
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+
+    await store.installHomebrewItem(discoverItem);
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["uninstall", "--cask", "raycast"]
+    ]);
+
+    resolveInventory({
+      items: [],
+      outdatedDetectionSucceeded: true,
+      outdatedDetectionSucceededByKind: { formula: true, cask: true }
+    });
+    await uninstall;
+
+    expect(store.getSnapshot().homebrewItems).toEqual([]);
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
   });
 });
 
