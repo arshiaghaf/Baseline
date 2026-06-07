@@ -218,6 +218,41 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Updated" })).toBeInTheDocument();
   });
 
+  it("disables Homebrew app updates during active Homebrew commands without an uninstallable cask", () => {
+    const sparkleBackedApp: AppRecord = {
+      ...app,
+      id: "app:sparkle-homebrew-fallback",
+      displayName: "Sparkle Homebrew Fallback",
+      sourceHint: "sparkle"
+    };
+    const sparkleBackedUpdate: UpdateRecord = {
+      ...update,
+      id: sparkleBackedApp.id,
+      appID: sparkleBackedApp.id,
+      source: "homebrew",
+      supportLevel: "limited",
+      homebrewToken: "sparkle-homebrew-fallback"
+    };
+
+    render(
+      <AppRow
+        app={sparkleBackedApp}
+        snapshot={snapshot({
+          apps: [sparkleBackedApp],
+          updates: [sparkleBackedUpdate],
+          homebrewItems: [],
+          isHomebrewCommandLocked: true
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    const updateButton = screen.getByRole("button", { name: "Update" });
+    expect(updateButton).toBeDisabled();
+    fireEvent.click(updateButton);
+    expect(window.baseline.performAppUpdate).not.toHaveBeenCalled();
+  });
+
   it("groups ignore and uninstall under row actions menu", () => {
     const { container, rerender } = render(
       <AppRow app={app} snapshot={snapshot()} recentlyUpdated={false} />

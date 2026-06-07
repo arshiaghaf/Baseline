@@ -990,9 +990,7 @@ function appControlState(app: AppRecord, snapshot: BaselineSnapshot): AppControl
     : false;
   const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
   const homebrewCommandActive = isHomebrewCommandActive(snapshot);
-  const homebrewUpdateBlocked = Boolean(
-    update?.source === "homebrew" && uninstallableItem && homebrewCommandActive && !isUpdating
-  );
+  const homebrewUpdateBlocked = isHomebrewAppUpdateBlocked(update, snapshot, isUpdating);
   const homebrewUninstallBlocked = Boolean(
     uninstallableItem && homebrewCommandActive && !isUninstalling
   );
@@ -2381,6 +2379,14 @@ function isHomebrewCommandActive(snapshot: BaselineSnapshot): boolean {
     snapshot.homebrewUninstallingItemIDs.length > 0 ||
     snapshot.homebrewDiscoverInstallingItemIDs.length > 0
   );
+}
+
+function isHomebrewAppUpdateBlocked(
+  update: UpdateRecord | undefined,
+  snapshot: BaselineSnapshot,
+  isUpdating: boolean
+): boolean {
+  return Boolean(update?.source === "homebrew" && isHomebrewCommandActive(snapshot) && !isUpdating);
 }
 
 function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): string {
