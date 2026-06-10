@@ -213,6 +213,48 @@ describe("snapshot persistence", () => {
     });
   });
 
+  it("drops malformed profile stats events without resetting the snapshot", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await mkdir(userData, { recursive: true });
+    await writeFile(
+      path.join(userData, "baseline-snapshot.json"),
+      `${JSON.stringify({
+        ...defaultPersistedSnapshot(),
+        showMenuBarIcon: false,
+        profileStats: {
+          ...defaultPersistedSnapshot().profileStats,
+          events: [
+            null,
+            {
+              id: "appUpdate:app:example:1:2::",
+              type: "appUpdate",
+              targetID: "app:example",
+              displayName: "Example",
+              channel: "sparkle",
+              occurredAt: "2026-06-02T12:00:00.000Z"
+            }
+          ]
+        }
+      })}\n`,
+      "utf8"
+    );
+
+    const loaded = await new SnapshotPersistence(userData).load();
+
+    expect(loaded.showMenuBarIcon).toBe(false);
+    expect(loaded.profileStats.events).toEqual([
+      {
+        id: "appUpdate:app:example:1:2::",
+        type: "appUpdate",
+        targetID: "app:example",
+        displayName: "Example",
+        channel: "sparkle",
+        occurredAt: "2026-06-02T12:00:00.000Z"
+      }
+    ]);
+  });
+
   it("preserves recently updated and ignored state across save and load", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);

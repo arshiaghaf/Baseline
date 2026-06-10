@@ -115,28 +115,32 @@ function normalizeProfileStats(
   };
 }
 
-function normalizeProfileStatsEvent(input: Partial<ProfileStatsEvent>): ProfileStatsEvent[] {
+function normalizeProfileStatsEvent(input: unknown): ProfileStatsEvent[] {
+  if (!input || typeof input !== "object") {
+    return [];
+  }
+  const event = input as Partial<ProfileStatsEvent>;
   if (
-    typeof input.id !== "string" ||
-    typeof input.targetID !== "string" ||
-    typeof input.displayName !== "string" ||
-    typeof input.occurredAt !== "string"
+    typeof event.id !== "string" ||
+    typeof event.targetID !== "string" ||
+    typeof event.displayName !== "string" ||
+    typeof event.occurredAt !== "string"
   ) {
     return [];
   }
-  const type = normalizeProfileStatsEventType(input.type);
-  const channel = normalizeProfileStatsChannel(input.channel);
+  const type = normalizeProfileStatsEventType(event.type);
+  const channel = normalizeProfileStatsChannel(event.channel);
   if (!type || !channel) {
     return [];
   }
   return [
     {
-      id: input.id,
+      id: event.id,
       type,
-      targetID: input.targetID,
-      displayName: input.displayName,
+      targetID: event.targetID,
+      displayName: event.displayName,
       channel,
-      occurredAt: input.occurredAt
+      occurredAt: event.occurredAt
     }
   ];
 }
