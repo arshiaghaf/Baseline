@@ -2480,13 +2480,11 @@ describe("update store helpers", () => {
     await Promise.all([firstInstall, secondInstall]);
 
     expect(
-      store
-        .getSnapshot()
-        .profileStats.events.map((event) => ({
-          type: event.type,
-          targetID: event.targetID,
-          displayName: event.displayName
-        }))
+      store.getSnapshot().profileStats.events.map((event) => ({
+        type: event.type,
+        targetID: event.targetID,
+        displayName: event.displayName
+      }))
     ).toEqual([
       { type: "homebrewInstall", targetID: "formula:fd", displayName: "fd" },
       { type: "homebrewInstall", targetID: "formula:bat", displayName: "bat" }

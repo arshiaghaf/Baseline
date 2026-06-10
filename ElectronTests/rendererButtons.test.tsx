@@ -887,7 +887,9 @@ describe("renderer button parity", () => {
       screen.getByText("Update or install something with Baseline to build a source history.")
     ).toBeInTheDocument();
     expect(screen.getByText("Apps you update with Baseline will appear here.")).toBeInTheDocument();
-    expect(screen.getByText("Tools you update with Baseline will appear here.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Tools you update with Baseline will appear here.")
+    ).toBeInTheDocument();
     expect(document.querySelectorAll(".profile-source-chip")).toHaveLength(0);
     expect(document.querySelectorAll(".profile-top-app-list li")).toHaveLength(0);
   });

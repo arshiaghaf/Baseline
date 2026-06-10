@@ -1196,9 +1196,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       ...currentProfileStats,
       events: [...newEvents, ...currentProfileStats.events].slice(0, 1000),
       integrityStatus:
-        currentProfileStats.integrityStatus === "resetAfterTamper"
-          ? "resetAfterTamper"
-          : "verified"
+        currentProfileStats.integrityStatus === "resetAfterTamper" ? "resetAfterTamper" : "verified"
     });
     if (sealed.integrityStatus === "unavailable") {
       return { ...currentProfileStats, integrityStatus: "unavailable" };
