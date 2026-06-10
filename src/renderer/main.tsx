@@ -2687,7 +2687,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             <div className="profile-stat-grid">
               <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
-              <ProfileMetric label="Current apps up to date" value={profile.freshnessLabel} />
+              <ProfileMetric label="Apps up to date" value={profile.freshnessLabel} />
               <ProfileMetric
                 label="Started using Baseline"
                 value={profile.startedUsing.relativeLabel}
@@ -2695,36 +2695,46 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                 title={profile.startedUsing.title}
               />
             </div>
-            <div className="settings-row settings-row-action">
-              <SettingsRowText label="Favorite channel" />
-              <strong
-                className="settings-row-value profile-channel-pill"
-                title={`Most recorded source: ${profile.favoriteChannelLabel}`}
-              >
-                {profile.favoriteChannel && (
-                  <span
-                    className={`profile-source-dot ${profileSourceClass(profile.favoriteChannel)}`}
-                    aria-hidden="true"
-                  />
-                )}
-                {profile.favoriteChannelLabel}
-              </strong>
-            </div>
           </div>
         </section>
-        <section className="panel settings-panel">
-          <PanelTitle title="Source mix" />
+        <section className="panel settings-panel profile-source-section">
+          <PanelTitle
+            title="Source mix"
+            action={
+              <span className="profile-favorite-source">
+                <span>Favorite source</span>
+                <strong className="settings-row-value profile-channel-pill">
+                  {profile.favoriteChannel && (
+                    <span
+                      className={`profile-source-dot ${profileSourceClass(profile.favoriteChannel)}`}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {profile.favoriteChannelLabel}
+                </strong>
+              </span>
+            }
+          />
           <div className="settings-panel-box profile-source-panel-box">
             {activeSourceMix.length > 0 ? (
               <div className="profile-source-list">
-                <div className="profile-source-bar" aria-hidden="true">
+                <div
+                  className="profile-source-bar"
+                  aria-label={activeSourceMix
+                    .map((source) => profileSourceShareLabel(source, sourceMixTotal))
+                    .join(", ")}
+                  role="img"
+                >
                   {activeSourceMix.map((source) => (
                     <span
                       className={`profile-source-segment ${profileSourceClass(source.channel)}`}
                       key={source.channel}
                       style={{ flexGrow: source.count }}
-                      title={profileSourceShareLabel(source, sourceMixTotal)}
-                    />
+                    >
+                      <span className="profile-source-tooltip" aria-hidden="true">
+                        {profileSourcePercentLabel(source, sourceMixTotal)}
+                      </span>
+                    </span>
                   ))}
                 </div>
                 <div className="profile-source-legend">
@@ -2732,7 +2742,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                     <div
                       className="profile-source-chip"
                       key={source.channel}
-                      title={profileSourceShareLabel(source, sourceMixTotal)}
+                      aria-label={profileSourceShareLabel(source, sourceMixTotal)}
                     >
                       <span
                         className={`profile-source-dot ${profileSourceClass(source.channel)}`}
@@ -2745,7 +2755,9 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                 </div>
               </div>
             ) : (
-              <p className="profile-empty-state">No update source history yet.</p>
+              <p className="profile-empty-state">
+                Update or install something with Baseline to build a source history.
+              </p>
             )}
           </div>
         </section>
@@ -2786,7 +2798,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                 ))}
               </ol>
             ) : (
-              <p className="profile-empty-state">No updated apps yet.</p>
+              <p className="profile-empty-state">Apps you update with Baseline will appear here.</p>
             )}
           </div>
         </section>
@@ -3179,6 +3191,16 @@ function profileSourceShareLabel(
   }
   const percent = Math.round((source.count / total) * 100);
   return `${source.label}: ${source.count} event${source.count === 1 ? "" : "s"} (${percent}%)`;
+}
+
+function profileSourcePercentLabel(
+  source: ProfileSummary["sourceMix"][number],
+  total: number
+): string {
+  if (total <= 0) {
+    return `${source.label} 0%`;
+  }
+  return `${source.label} ${Math.round((source.count / total) * 100)}%`;
 }
 
 function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sourceMix"] {

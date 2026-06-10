@@ -759,20 +759,21 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Total updates")).toBeInTheDocument();
     expect(screen.getByText("Started using Baseline")).toBeInTheDocument();
     expect(screen.getByText(/Since .*2026/)).toBeInTheDocument();
-    expect(screen.getByText("Current apps up to date")).toBeInTheDocument();
+    expect(screen.getByText("Apps up to date")).toBeInTheDocument();
     expect(
       [...document.querySelectorAll(".profile-metric span")].map((metric) => metric.textContent)
-    ).toEqual([
-      "Apps updated",
-      "Total updates",
-      "Current apps up to date",
-      "Started using Baseline"
-    ]);
-    expect(screen.getByText("Favorite channel")).toBeInTheDocument();
+    ).toEqual(["Apps updated", "Total updates", "Apps up to date", "Started using Baseline"]);
+    expect(screen.queryByText("Favorite channel")).not.toBeInTheDocument();
+    expect(screen.getByText("Favorite source")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Most updated apps" })).toBeInTheDocument();
-    expect(screen.queryByText("No update source history yet.")).not.toBeInTheDocument();
-    expect(screen.queryByText("No updated apps yet.")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Update or install something with Baseline to build a source history.")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Apps you update with Baseline will appear here.")
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("Sparkle 63%")).toHaveLength(1);
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
     const topAppRow = screen.getByText("Example").closest("li");
     expect(topAppRow).not.toBeNull();
@@ -791,7 +792,7 @@ describe("renderer button parity", () => {
     ]);
     expect(screen.getByText("Stable App")).toBeInTheDocument();
     expect(screen.getByText("Third App")).toBeInTheDocument();
-    expect(screen.queryByText("Fourth App")).not.toBeInTheDocument();
+    expect([...topAppTiles].some((tile) => tile.textContent?.includes("Fourth App"))).toBe(false);
     expect(screen.getByText("Stats are private and stored only on this Mac.")).toBeInTheDocument();
     expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
     expect(screen.queryByText("Verified")).not.toBeInTheDocument();
@@ -816,8 +817,10 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
 
     expect(screen.getByText("No history yet")).toBeInTheDocument();
-    expect(screen.getByText("No update source history yet.")).toBeInTheDocument();
-    expect(screen.getByText("No updated apps yet.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Update or install something with Baseline to build a source history.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Apps you update with Baseline will appear here.")).toBeInTheDocument();
     expect(document.querySelectorAll(".profile-source-chip")).toHaveLength(0);
     expect(document.querySelectorAll(".profile-top-app-list li")).toHaveLength(0);
   });
