@@ -124,6 +124,32 @@ export type HomebrewRecentlyUpdatedRecord = {
   updatedAt: string;
 };
 
+export type ProfileStatsChannel = "appStore" | "sparkle" | "homebrew" | "web" | "unknown";
+
+export type ProfileStatsEventType = "appUpdate" | "homebrewUpdate" | "homebrewInstall";
+
+export type ProfileStatsEvent = {
+  id: string;
+  type: ProfileStatsEventType;
+  targetID: string;
+  displayName: string;
+  channel: ProfileStatsChannel;
+  occurredAt: string;
+};
+
+export type ProfileStatsIntegrityStatus =
+  | "pending"
+  | "verified"
+  | "unavailable"
+  | "resetAfterTamper";
+
+export type ProfileStats = {
+  createdAt: string;
+  events: ProfileStatsEvent[];
+  signature?: string;
+  integrityStatus: ProfileStatsIntegrityStatus;
+};
+
 export type HomebrewManagedItem = {
   id: string;
   token: string;
@@ -163,6 +189,7 @@ export type PersistedSnapshot = {
   appearancePreference: AppearancePreference;
   useMasForAppStoreUpdates: boolean;
   showMenuBarIcon: boolean;
+  profileStats: ProfileStats;
   lastRefreshDate?: string;
 };
 
@@ -232,7 +259,16 @@ export function defaultPersistedSnapshot(): PersistedSnapshot {
     refreshIntervalMinutes: 60,
     appearancePreference: "system",
     useMasForAppStoreUpdates: true,
-    showMenuBarIcon: true
+    showMenuBarIcon: true,
+    profileStats: defaultProfileStats()
+  };
+}
+
+export function defaultProfileStats(now = new Date().toISOString()): ProfileStats {
+  return {
+    createdAt: now,
+    events: [],
+    integrityStatus: "pending"
   };
 }
 

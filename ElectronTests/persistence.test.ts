@@ -122,6 +122,62 @@ describe("snapshot persistence", () => {
     });
   });
 
+  it("defaults profile stats on older snapshots", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await mkdir(userData, { recursive: true });
+    await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
+
+    const persistence = new SnapshotPersistence(userData);
+
+    const loaded = await persistence.load();
+    expect(loaded.profileStats.events).toEqual([]);
+    expect(loaded.profileStats.integrityStatus).toBe("pending");
+  });
+
+  it("preserves profile stats events across save and load", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      profileStats: {
+        createdAt: "2026-06-01T12:00:00.000Z",
+        signature: "signed",
+        integrityStatus: "verified",
+        events: [
+          {
+            id: "appUpdate:app:example:1:2::",
+            type: "appUpdate",
+            targetID: "app:example",
+            displayName: "Example",
+            channel: "sparkle",
+            occurredAt: "2026-06-02T12:00:00.000Z"
+          }
+        ]
+      }
+    });
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      profileStats: {
+        createdAt: "2026-06-01T12:00:00.000Z",
+        signature: "signed",
+        integrityStatus: "pending",
+        events: [
+          {
+            id: "appUpdate:app:example:1:2::",
+            type: "appUpdate",
+            targetID: "app:example",
+            displayName: "Example",
+            channel: "sparkle",
+            occurredAt: "2026-06-02T12:00:00.000Z"
+          }
+        ]
+      }
+    });
+  });
+
   it("preserves recently updated and ignored state across save and load", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);

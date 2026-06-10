@@ -3,8 +3,12 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { PersistedSnapshot } from "../shared/domain";
-import { defaultPersistedSnapshot, normalizeAppearancePreference } from "../shared/domain";
+import type { PersistedSnapshot, ProfileStats, ProfileStatsEvent } from "../shared/domain";
+import {
+  defaultPersistedSnapshot,
+  defaultProfileStats,
+  normalizeAppearancePreference
+} from "../shared/domain";
 import { version } from "../shared/version";
 export { defaultPersistedSnapshot };
 
@@ -73,6 +77,7 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
       fromVersion: version(record.fromVersion?.raw),
       toVersion: version(record.toVersion?.raw)
     })),
+    profileStats: normalizeProfileStats(input.profileStats),
     appearancePreference: normalizeAppearancePreference(input.appearancePreference),
     refreshIntervalMinutes: clamp(
       input.refreshIntervalMinutes ?? defaults.refreshIntervalMinutes,
@@ -80,6 +85,65 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
       1440
     )
   };
+}
+
+function normalizeProfileStats(input: Partial<ProfileStats> | undefined): ProfileStats {
+  const defaults = defaultProfileStats();
+  const events = Array.isArray(input?.events)
+    ? input.events.flatMap((event) => normalizeProfileStatsEvent(event))
+    : [];
+  return {
+    createdAt: typeof input?.createdAt === "string" ? input.createdAt : defaults.createdAt,
+    events,
+    signature: typeof input?.signature === "string" ? input.signature : undefined,
+    integrityStatus: "pending"
+  };
+}
+
+function normalizeProfileStatsEvent(input: Partial<ProfileStatsEvent>): ProfileStatsEvent[] {
+  if (
+    typeof input.id !== "string" ||
+    typeof input.targetID !== "string" ||
+    typeof input.displayName !== "string" ||
+    typeof input.occurredAt !== "string"
+  ) {
+    return [];
+  }
+  const type = normalizeProfileStatsEventType(input.type);
+  const channel = normalizeProfileStatsChannel(input.channel);
+  if (!type || !channel) {
+    return [];
+  }
+  return [
+    {
+      id: input.id,
+      type,
+      targetID: input.targetID,
+      displayName: input.displayName,
+      channel,
+      occurredAt: input.occurredAt
+    }
+  ];
+}
+
+function normalizeProfileStatsEventType(value: unknown): ProfileStatsEvent["type"] | undefined {
+  if (value === "appUpdate" || value === "homebrewUpdate" || value === "homebrewInstall") {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeProfileStatsChannel(value: unknown): ProfileStatsEvent["channel"] | undefined {
+  if (
+    value === "appStore" ||
+    value === "sparkle" ||
+    value === "homebrew" ||
+    value === "web" ||
+    value === "unknown"
+  ) {
+    return value;
+  }
+  return undefined;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

@@ -39,6 +39,8 @@ import type {
   HomebrewCaskDiscoveryItem,
   HomebrewManagedItem,
   MenuTab,
+  ProfileStatsChannel,
+  ProfileStatsEvent,
   RecentlyUpdatedRecord,
   UpdateRecord
 } from "../shared/domain";
@@ -72,7 +74,7 @@ type RowUpdateMenuAction = {
   disabled?: boolean;
   onAction: () => void;
 };
-type SettingsSectionID = "general" | "appearance" | "diagnostics";
+type SettingsSectionID = "general" | "profile" | "appearance" | "diagnostics";
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
@@ -83,6 +85,7 @@ const settingsSidebarItems: Array<{
   icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
 }> = [
   { id: "general", label: "General", icon: Settings },
+  { id: "profile", label: "Profile", icon: CheckCircle2 },
   { id: "appearance", label: "Appearance", icon: Monitor },
   { id: "diagnostics", label: "Diagnostics", icon: Terminal }
 ];
@@ -2602,6 +2605,8 @@ function SettingsPane({
           </section>
         </>
       );
+    case "profile":
+      return <ProfileSection snapshot={snapshot} />;
     case "appearance":
       return (
         <>
@@ -2666,6 +2671,82 @@ function SettingsPane({
         </>
       );
   }
+}
+
+function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
+  const profile = useMemo(() => buildProfileSummary(snapshot), [snapshot]);
+  return (
+    <section className="panel settings-panel">
+      <PanelTitle title="Profile" />
+      <div className="settings-panel-box profile-panel-box">
+        <div className="profile-stat-grid">
+          <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
+          <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
+          <ProfileMetric label="Using Baseline for" value={profile.daysTrackedLabel} />
+          <ProfileMetric label="Freshness" value={profile.freshnessLabel} />
+        </div>
+        <div className="settings-row settings-row-action">
+          <SettingsRowText
+            label="Favorite channel"
+            description={profile.favoriteChannelDescription}
+          />
+          <strong className="settings-row-value">{profile.favoriteChannelLabel}</strong>
+        </div>
+        <div className="settings-row profile-source-row">
+          <SettingsRowText label="Source mix" description="Updates and installs by source." />
+          <div className="profile-source-list">
+            {profile.sourceMix.map((source) => (
+              <div className="profile-source-item" key={source.channel}>
+                <span>{source.label}</span>
+                <div className="profile-source-meter" aria-hidden="true">
+                  <span style={{ width: `${source.percent}%` }} />
+                </div>
+                <strong>{source.count}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="settings-row profile-top-apps-row">
+          <SettingsRowText label="Most updated apps" description={profile.topAppsDescription} />
+          {profile.topApps.length > 0 && (
+            <ol className="profile-top-app-list">
+              {profile.topApps.map((app) => (
+                <li key={app.targetID}>
+                  <span>{app.displayName}</span>
+                  <strong>{app.count}</strong>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+        <div className="settings-row settings-row-action">
+          <SettingsRowText
+            label="Private stats"
+            description="Stored only on this Mac and sealed with a local Keychain secret when available."
+          />
+          <span
+            className={
+              profile.integrityStatus === "Verified"
+                ? "settings-status-label enabled"
+                : "settings-status-label muted"
+            }
+          >
+            <span className="settings-status-glyph" aria-hidden="true" />
+            <span>{profile.integrityStatus}</span>
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProfileMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="profile-metric">
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
 }
 
 type TogglePatch = Exclude<
@@ -2949,6 +3030,126 @@ function ToolStatus({
       </span>
     </div>
   );
+}
+
+type ProfileSummary = {
+  appUpdates: number;
+  totalUpdates: number;
+  daysTrackedLabel: string;
+  favoriteChannelLabel: string;
+  favoriteChannelDescription: string;
+  freshnessLabel: string;
+  sourceMix: Array<{
+    channel: ProfileStatsChannel;
+    label: string;
+    count: number;
+    percent: number;
+  }>;
+  topApps: Array<{ targetID: string; displayName: string; count: number }>;
+  topAppsDescription: string;
+  integrityStatus: string;
+};
+
+function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
+  const events = snapshot.profileStats.events;
+  const sourceMix = buildProfileSourceMix(events);
+  const favorite = sourceMix.reduce((best, item) => (item.count > best.count ? item : best));
+  const topApps = buildTopUpdatedApps(events);
+  const totalUpdates = events.filter(
+    (event) => event.type === "appUpdate" || event.type === "homebrewUpdate"
+  ).length;
+  const favoriteChannelLabel = favorite.count > 0 ? favorite.label : "No history yet";
+  return {
+    appUpdates: events.filter((event) => event.type === "appUpdate").length,
+    totalUpdates,
+    daysTrackedLabel: daysTrackedLabel(snapshot.profileStats.createdAt),
+    favoriteChannelLabel,
+    favoriteChannelDescription:
+      favorite.count > 0
+        ? `${favorite.count} profile event${favorite.count === 1 ? "" : "s"} from ${favorite.label}.`
+        : "Update history starts after Baseline sees an app or Homebrew item update.",
+    freshnessLabel: freshnessLabel(snapshot),
+    sourceMix,
+    topApps,
+    topAppsDescription:
+      topApps.length > 0
+        ? "Apps with the most locally recorded updates."
+        : "App rankings appear after Baseline records app version changes.",
+    integrityStatus: profileIntegrityLabel(snapshot.profileStats.integrityStatus)
+  };
+}
+
+function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sourceMix"] {
+  const channels: ProfileStatsChannel[] = ["appStore", "sparkle", "homebrew", "web", "unknown"];
+  const counts = new Map<ProfileStatsChannel, number>(channels.map((channel) => [channel, 0]));
+  for (const event of events) {
+    counts.set(event.channel, (counts.get(event.channel) ?? 0) + 1);
+  }
+  const total = Math.max(1, events.length);
+  return channels
+    .map((channel) => ({
+      channel,
+      label: sourceDisplayName(channel),
+      count: counts.get(channel) ?? 0,
+      percent: Math.round(((counts.get(channel) ?? 0) / total) * 100)
+    }))
+    .sort((first, second) => second.count - first.count || first.label.localeCompare(second.label));
+}
+
+function buildTopUpdatedApps(events: ProfileStatsEvent[]): ProfileSummary["topApps"] {
+  const counts = new Map<string, { targetID: string; displayName: string; count: number }>();
+  for (const event of events) {
+    if (event.type !== "appUpdate") {
+      continue;
+    }
+    const current = counts.get(event.targetID);
+    counts.set(event.targetID, {
+      targetID: event.targetID,
+      displayName: event.displayName,
+      count: (current?.count ?? 0) + 1
+    });
+  }
+  return [...counts.values()]
+    .sort(
+      (first, second) =>
+        second.count - first.count || first.displayName.localeCompare(second.displayName)
+    )
+    .slice(0, 5);
+}
+
+function daysTrackedLabel(createdAt: string): string {
+  const created = new Date(createdAt).getTime();
+  if (!Number.isFinite(created)) {
+    return "1 day";
+  }
+  const days = Math.max(1, Math.floor((Date.now() - created) / 86_400_000) + 1);
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
+function freshnessLabel(snapshot: BaselineSnapshot): string {
+  const trackedCount = snapshot.apps.length + snapshot.homebrewItems.length;
+  if (trackedCount === 0) {
+    return "No apps yet";
+  }
+  const outdatedCount =
+    snapshot.updates.length + snapshot.homebrewItems.filter((item) => item.isOutdated).length;
+  const freshCount = Math.max(0, trackedCount - outdatedCount);
+  return `${Math.round((freshCount / trackedCount) * 100)}%`;
+}
+
+function profileIntegrityLabel(
+  status: BaselineSnapshot["profileStats"]["integrityStatus"]
+): string {
+  if (status === "verified") {
+    return "Verified";
+  }
+  if (status === "resetAfterTamper") {
+    return "Reset";
+  }
+  if (status === "unavailable") {
+    return "Not sealed";
+  }
+  return "Checking";
 }
 
 function sourceLabel(update: UpdateRecord): string {

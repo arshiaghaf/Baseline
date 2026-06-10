@@ -2316,6 +2316,109 @@ describe("update store helpers", () => {
     }
   });
 
+  it("records profile stats when refresh proves an app update completed", async () => {
+    const installedApp = appRecord({
+      bundlePath: "/Applications/Profiled App.app",
+      displayName: "Profiled App",
+      localVersion: version("1.0.0")
+    });
+    const refreshedApp = {
+      ...installedApp,
+      localVersion: version("2.0.0")
+    };
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [installedApp],
+        updates: [
+          {
+            id: installedApp.id,
+            appID: installedApp.id,
+            source: "sparkle",
+            supportLevel: "limited",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            checkedAt: "2026-06-01T12:00:00.000Z"
+          }
+        ]
+      },
+      clients: {
+        scanner: { scanApplications: async () => [refreshedApp] }
+      }
+    });
+
+    await store.refresh(false);
+    await store.refresh(false);
+
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "appUpdate",
+        targetID: installedApp.id,
+        displayName: "Profiled App",
+        channel: "sparkle"
+      })
+    ]);
+  });
+
+  it("records profile stats for successful Homebrew Discover installs", async () => {
+    const store = await makeStore();
+
+    await store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewInstall",
+        targetID: "formula:bat",
+        displayName: "bat",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
+  it("resets profile stats when the local integrity seal fails", async () => {
+    const profileStatsIntegrity = {
+      verifyOrInitialize: vi.fn(async () => ({
+        ...defaultPersistedSnapshot().profileStats,
+        createdAt: "2026-06-05T12:00:00.000Z",
+        integrityStatus: "resetAfterTamper" as const,
+        signature: "sealed"
+      })),
+      seal: vi.fn(async (stats) => ({ ...stats, signature: "sealed" }))
+    };
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        profileStats: {
+          createdAt: "2026-06-01T12:00:00.000Z",
+          integrityStatus: "pending",
+          signature: "edited",
+          events: [
+            {
+              id: "appUpdate:edited",
+              type: "appUpdate",
+              targetID: "app:edited",
+              displayName: "Edited",
+              channel: "appStore",
+              occurredAt: "2026-06-02T12:00:00.000Z"
+            }
+          ]
+        }
+      },
+      profileStatsIntegrity
+    });
+
+    await store.verifyProfileStatsIntegrity();
+
+    expect(store.getSnapshot().profileStats.events).toEqual([]);
+    expect(store.getSnapshot().profileStats.integrityStatus).toBe("resetAfterTamper");
+  });
+
   it("does not run Discover installs when Homebrew is unavailable", async () => {
     const item = {
       id: "cask:missing-brew-discover",
@@ -2351,6 +2454,10 @@ async function makeStore({
   runMasCommand = async () => ({ success: true, status: 0, output: "" }),
   openExternalURL = async () => true,
   openAppBundle = async () => undefined,
+  profileStatsIntegrity = {
+    verifyOrInitialize: async (stats) => ({ ...stats, integrityStatus: "verified" as const }),
+    seal: async (stats) => ({ ...stats, signature: "sealed" })
+  },
   currentAppVersion,
   successRefreshDelayMS = 0,
   onUserData
@@ -2361,6 +2468,7 @@ async function makeStore({
   runMasCommand?: ConstructorParameters<typeof UpdateStore>[0]["runMasCommand"];
   openExternalURL?: ConstructorParameters<typeof UpdateStore>[0]["openExternalURL"];
   openAppBundle?: ConstructorParameters<typeof UpdateStore>[0]["openAppBundle"];
+  profileStatsIntegrity?: ConstructorParameters<typeof UpdateStore>[0]["profileStatsIntegrity"];
   currentAppVersion?: ConstructorParameters<typeof UpdateStore>[0]["currentAppVersion"];
   successRefreshDelayMS?: ConstructorParameters<typeof UpdateStore>[0]["successRefreshDelayMS"];
   onUserData?: (directory: string) => void;
@@ -2373,6 +2481,7 @@ async function makeStore({
     persisted,
     openExternalURL,
     openAppBundle,
+    profileStatsIntegrity,
     currentAppVersion,
     runBrewCommand,
     runMasCommand,

@@ -91,6 +91,7 @@ if (hasSingleInstanceLock) {
       },
       currentAppVersion: metadata.version
     });
+    await store.verifyProfileStatsIntegrity();
 
     createMainWindow("main");
     wireStoreEvents();

@@ -599,7 +599,7 @@ describe("renderer button parity", () => {
     );
 
     expect(within(container).getByRole("button", { name: "Back to app" })).toBeInTheDocument();
-    for (const label of ["General", "Appearance", "Diagnostics"]) {
+    for (const label of ["General", "Profile", "Appearance", "Diagnostics"]) {
       expect(within(container).getByRole("button", { name: label })).toBeInTheDocument();
     }
     const settingsNav = container.querySelector(".source-list");
@@ -622,6 +622,77 @@ describe("renderer button parity", () => {
     expect(screen.queryByRole("button", { name: "All" })).not.toBeInTheDocument();
     expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+  });
+
+  it("shows local profile stats in a settings tab below general", () => {
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          apps: [
+            app,
+            {
+              ...app,
+              id: "app:stable",
+              displayName: "Stable App",
+              bundleIdentifier: "com.example.stable"
+            }
+          ],
+          updates: [],
+          homebrewItems: [
+            {
+              id: "formula:ripgrep",
+              token: "ripgrep",
+              name: "ripgrep",
+              kind: "formula",
+              installedVersion: version("1.0.0"),
+              isOutdated: false
+            }
+          ],
+          profileStats: {
+            createdAt: "2026-06-01T12:00:00.000Z",
+            integrityStatus: "verified",
+            signature: "signed",
+            events: [
+              {
+                id: "appUpdate:example:1:2::",
+                type: "appUpdate",
+                targetID: app.id,
+                displayName: "Example",
+                channel: "sparkle",
+                occurredAt: "2026-06-02T12:00:00.000Z"
+              },
+              {
+                id: "homebrewUpdate:formula:ripgrep:1:2",
+                type: "homebrewUpdate",
+                targetID: "formula:ripgrep",
+                displayName: "ripgrep",
+                channel: "homebrew",
+                occurredAt: "2026-06-03T12:00:00.000Z"
+              }
+            ]
+          }
+        })}
+      />
+    );
+
+    const sourceNav = document.querySelector(".source-list");
+    expect(sourceNav).not.toBeNull();
+    const buttons = within(sourceNav as HTMLElement).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "General",
+      "Profile",
+      "Appearance"
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+
+    expect(screen.getAllByRole("heading", { name: "Profile" })).toHaveLength(2);
+    expect(screen.getByText("Apps updated")).toBeInTheDocument();
+    expect(screen.getByText("Total updates")).toBeInTheDocument();
+    expect(screen.getByText("Favorite channel")).toBeInTheDocument();
+    expect(screen.getByText("Most updated apps")).toBeInTheDocument();
+    expect(screen.getByText("Sparkle")).toBeInTheDocument();
+    expect(screen.getByText("Verified")).toBeInTheDocument();
   });
 
   it("returns from settings through the main window bridge", () => {

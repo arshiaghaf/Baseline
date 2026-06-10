@@ -16,6 +16,9 @@ import type {
   HomebrewRecentlyUpdatedRecord,
   MenuTab,
   PersistedSnapshot,
+  ProfileStats,
+  ProfileStatsEvent,
+  RecentlyUpdatedRecord,
   SelfUpdateRecord,
   UpdateRecord
 } from "../shared/domain";
@@ -56,6 +59,7 @@ import { HomebrewCaskClient } from "./homebrewCaskClient";
 import { HomebrewFormulaClient } from "./homebrewFormulaClient";
 import { HomebrewInventoryClient, type HomebrewInventoryResult } from "./homebrewInventoryClient";
 import { SnapshotPersistence } from "./persistence";
+import { KeychainProfileStatsIntegrity, type ProfileStatsIntegrity } from "./profileStatsIntegrity";
 import { SelfUpdateClient } from "./selfUpdateClient";
 import { SparkleAppcastClient } from "./sparkleAppcastClient";
 
@@ -84,6 +88,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly runMasCommand: typeof defaultRunMasCommand;
   private readonly openExternalURL: (url: string) => Promise<boolean>;
   private readonly openAppBundle: (bundlePath: string) => Promise<void>;
+  private readonly profileStatsIntegrity: ProfileStatsIntegrity;
   private readonly successRefreshDelayMS: number;
   private refreshTask?: Promise<void>;
   private refreshSequence = 0;
@@ -113,6 +118,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     currentAppVersion?: string;
     runBrewCommand?: typeof defaultRunBrewCommand;
     runMasCommand?: typeof defaultRunMasCommand;
+    profileStatsIntegrity?: ProfileStatsIntegrity;
     successRefreshDelayMS?: number;
   }) {
     super();
@@ -129,6 +135,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.runMasCommand = options.runMasCommand ?? defaultRunMasCommand;
     this.openExternalURL = options.openExternalURL;
     this.openAppBundle = options.openAppBundle;
+    this.profileStatsIntegrity =
+      options.profileStatsIntegrity ?? new KeychainProfileStatsIntegrity();
     this.successRefreshDelayMS = options.successRefreshDelayMS ?? successfulUpdateHoldMs;
     this.state = {
       ...options.persisted,
@@ -165,6 +173,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   getSnapshot(): BaselineSnapshot {
     return structuredClone(this.state);
+  }
+
+  async verifyProfileStatsIntegrity(): Promise<void> {
+    const profileStats = await this.profileStatsIntegrity.verifyOrInitialize(
+      this.state.profileStats
+    );
+    this.patch({ profileStats });
+    await this.persist();
   }
 
   async refresh(lightweight = false): Promise<void> {
@@ -574,6 +590,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (success) {
       this.hasCheckedHomebrewAvailability = true;
       this.patch({ isHomebrewInstalled: true });
+      await this.recordProfileStatsEvents([homebrewInstallProfileStatsEvent(item)]);
       await this.holdSuccessfulUpdate();
       await this.refresh();
     } else {
@@ -747,12 +764,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         reconciledHomebrewItems,
         now
       );
+      const profileStats = await this.profileStatsWithEvents([
+        ...recentlyUpdated.map(appRecentProfileStatsEvent),
+        ...homebrewRecentlyUpdated.map(homebrewRecentProfileStatsEvent)
+      ]);
       this.patch({
         apps,
         updates,
         homebrewItems: reconciledHomebrewItems,
         recentlyUpdated,
         homebrewRecentlyUpdated,
+        profileStats,
         lastRefreshDate: now,
         isRefreshing: false,
         lastRefreshNoticeMessage: homebrewInventory.warning,
@@ -1115,6 +1137,28 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.persistence.save(snapshotForPersistence(this.state));
   }
 
+  private async recordProfileStatsEvents(events: ProfileStatsEvent[]): Promise<void> {
+    const profileStats = await this.profileStatsWithEvents(events);
+    this.patch({ profileStats });
+    await this.persist();
+  }
+
+  private async profileStatsWithEvents(events: ProfileStatsEvent[]): Promise<ProfileStats> {
+    const eventIDs = new Set(this.state.profileStats.events.map((event) => event.id));
+    const newEvents = events.filter((event) => !eventIDs.has(event.id));
+    if (newEvents.length === 0) {
+      return this.state.profileStats;
+    }
+    return this.profileStatsIntegrity.seal({
+      ...this.state.profileStats,
+      events: [...newEvents, ...this.state.profileStats.events].slice(0, 1000),
+      integrityStatus:
+        this.state.profileStats.integrityStatus === "resetAfterTamper"
+          ? "resetAfterTamper"
+          : "verified"
+    });
+  }
+
   private patch(patch: Partial<BaselineSnapshot>): void {
     this.state = { ...this.state, ...patch };
     this.emit("snapshot", this.getSnapshot());
@@ -1139,8 +1183,65 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     appearancePreference: snapshot.appearancePreference,
     useMasForAppStoreUpdates: snapshot.useMasForAppStoreUpdates,
     showMenuBarIcon: snapshot.showMenuBarIcon,
+    profileStats: snapshot.profileStats,
     lastRefreshDate: snapshot.lastRefreshDate
   };
+}
+
+function appRecentProfileStatsEvent(record: RecentlyUpdatedRecord): ProfileStatsEvent {
+  return {
+    id: [
+      "appUpdate",
+      record.appID,
+      record.fromVersion.raw,
+      record.toVersion.raw,
+      record.fromBuildVersion?.raw ?? "",
+      record.toBuildVersion?.raw ?? ""
+    ].join(":"),
+    type: "appUpdate",
+    targetID: record.appID,
+    displayName: record.displayName,
+    channel: profileStatsChannel(record.source),
+    occurredAt: record.updatedAt
+  };
+}
+
+function homebrewRecentProfileStatsEvent(record: HomebrewRecentlyUpdatedRecord): ProfileStatsEvent {
+  return {
+    id: ["homebrewUpdate", record.itemID, record.fromVersion.raw, record.toVersion.raw].join(":"),
+    type: "homebrewUpdate",
+    targetID: record.itemID,
+    displayName: record.displayName,
+    channel: "homebrew",
+    occurredAt: record.updatedAt
+  };
+}
+
+function homebrewInstallProfileStatsEvent(item: HomebrewCaskDiscoveryItem): ProfileStatsEvent {
+  const occurredAt = new Date().toISOString();
+  return {
+    id: ["homebrewInstall", item.id, item.version.raw, occurredAt].join(":"),
+    type: "homebrewInstall",
+    targetID: item.id,
+    displayName: item.displayName,
+    channel: "homebrew",
+    occurredAt
+  };
+}
+
+function profileStatsChannel(
+  source: UpdateRecord["source"] | undefined
+): ProfileStatsEvent["channel"] {
+  if (
+    source === "appStore" ||
+    source === "sparkle" ||
+    source === "homebrew" ||
+    source === "web" ||
+    source === "unknown"
+  ) {
+    return source;
+  }
+  return "unknown";
 }
 
 function homebrewCaskPageURL(token: string): string | undefined {

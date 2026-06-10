@@ -1468,6 +1468,104 @@ button:disabled {
   border-top: 0.5px solid var(--settings-row-divider);
 }
 
+.profile-panel-box {
+  gap: 0;
+}
+
+.profile-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 0.5px solid var(--settings-row-divider);
+}
+
+.profile-metric {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px var(--settings-row-padding-inline);
+}
+
+.profile-metric + .profile-metric {
+  border-left: 0.5px solid var(--settings-row-divider);
+}
+
+.profile-metric strong {
+  color: #1c1c1e;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.profile-metric span {
+  color: rgba(60, 60, 67, 0.56);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.profile-source-row,
+.profile-top-apps-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(220px, 1fr);
+  align-items: start;
+  gap: 18px;
+}
+
+.profile-source-list,
+.profile-top-app-list {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.profile-source-item,
+.profile-top-app-list li {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.42fr) minmax(80px, 1fr) minmax(24px, auto);
+  align-items: center;
+  gap: 8px;
+  color: rgba(60, 60, 67, 0.64);
+  font-size: 12px;
+}
+
+.profile-source-item strong,
+.profile-top-app-list strong {
+  color: #1c1c1e;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.profile-source-meter {
+  overflow: hidden;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(60, 60, 67, 0.1);
+}
+
+.profile-source-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: rgb(var(--update-accent-rgb));
+}
+
+.profile-top-app-list {
+  list-style: none;
+}
+
+.profile-top-app-list li {
+  grid-template-columns: minmax(0, 1fr) minmax(24px, auto);
+}
+
+.profile-top-app-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-number-input {
   width: 68px;
   height: 26px;
@@ -1581,6 +1679,23 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .profile-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .profile-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .profile-metric:nth-child(n + 3) {
+    border-top: 0.5px solid var(--settings-row-divider);
+  }
+
+  .profile-source-row,
+  .profile-top-apps-row {
+    grid-template-columns: 1fr;
+  }
+
   .inspector {
     display: none;
   }
@@ -1663,12 +1778,18 @@ button:disabled {
   .row-main p,
   .muted,
   .empty,
-  .settings-row-subtext {
+  .settings-row-subtext,
+  .profile-metric span,
+  .profile-source-item,
+  .profile-top-app-list li {
     color: rgba(235, 235, 245, 0.5);
   }
 
   .settings-key-value-list strong,
-  .settings-row-value {
+  .settings-row-value,
+  .profile-metric strong,
+  .profile-source-item strong,
+  .profile-top-app-list strong {
     color: rgba(255, 255, 255, 0.86);
   }
 
@@ -1809,6 +1930,10 @@ button:disabled {
 
   .settings-status-label.muted .settings-status-glyph {
     background: rgba(235, 235, 245, 0.42);
+  }
+
+  .profile-source-meter {
+    background: rgba(235, 235, 245, 0.11);
   }
 
   .toolbar-button.refresh-button,
