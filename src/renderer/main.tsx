@@ -2682,39 +2682,34 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
     <div className="profile-page">
       <div className="profile-stack">
         <section className="panel settings-panel">
+          <PanelTitle title="Time with Baseline" />
+          <div
+            className="settings-panel-box profile-start-panel-box"
+            title={profile.startedUsing.title}
+          >
+            <div className="profile-start-summary">
+              <strong>{profile.startedUsing.relativeLabel}</strong>
+              <span>{profile.startedUsing.dateLabel}</span>
+            </div>
+          </div>
+        </section>
+        <section className="panel settings-panel">
           <PanelTitle title="Stats" />
           <div className="settings-panel-box profile-panel-box">
             <div className="profile-stat-grid">
               <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
               <ProfileMetric label="Apps up to date" value={profile.freshnessLabel} />
-              <ProfileMetric
-                label="Started using Baseline"
-                value={profile.startedUsing.relativeLabel}
-                detail={profile.startedUsing.dateLabel}
-                title={profile.startedUsing.title}
+              <ProfileSourceMetric
+                channel={profile.favoriteChannel}
+                label="Favorite source"
+                value={profile.favoriteChannelLabel}
               />
             </div>
           </div>
         </section>
         <section className="panel settings-panel profile-source-section">
-          <PanelTitle
-            title="Source mix"
-            action={
-              <span className="profile-favorite-source">
-                <span>Favorite source</span>
-                <strong className="settings-row-value profile-channel-pill">
-                  {profile.favoriteChannel && (
-                    <span
-                      className={`profile-source-dot ${profileSourceClass(profile.favoriteChannel)}`}
-                      aria-hidden="true"
-                    />
-                  )}
-                  {profile.favoriteChannelLabel}
-                </strong>
-              </span>
-            }
-          />
+          <PanelTitle title="Source mix" />
           <div className="settings-panel-box profile-source-panel-box">
             {activeSourceMix.length > 0 ? (
               <div className="profile-source-list">
@@ -2820,6 +2815,31 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ProfileSourceMetric({
+  label,
+  value,
+  channel
+}: {
+  label: string;
+  value: string;
+  channel?: ProfileStatsChannel;
+}) {
+  return (
+    <div className="profile-metric">
+      <strong className="profile-source-metric-value">
+        {channel && (
+          <span
+            className={`profile-source-dot ${profileSourceClass(channel)}`}
+            aria-hidden="true"
+          />
+        )}
+        {value}
+      </strong>
+      <span>{label}</span>
     </div>
   );
 }

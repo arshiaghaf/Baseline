@@ -753,16 +753,16 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
 
     expect(screen.getAllByRole("heading", { name: "Profile" })).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Time with Baseline" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
     expect(screen.getByText("Apps updated")).toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
-    expect(screen.getByText("Started using Baseline")).toBeInTheDocument();
     expect(screen.getByText(/Since .*2026/)).toBeInTheDocument();
     expect(screen.getByText("Apps up to date")).toBeInTheDocument();
     expect(
-      [...document.querySelectorAll(".profile-metric span")].map((metric) => metric.textContent)
-    ).toEqual(["Apps updated", "Total updates", "Apps up to date", "Started using Baseline"]);
+      [...document.querySelectorAll(".profile-metric > span")].map((metric) => metric.textContent)
+    ).toEqual(["Apps updated", "Total updates", "Apps up to date", "Favorite source"]);
     expect(screen.queryByText("Favorite channel")).not.toBeInTheDocument();
     expect(screen.getByText("Favorite source")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();

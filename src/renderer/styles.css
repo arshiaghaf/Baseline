@@ -1500,6 +1500,8 @@ button:disabled {
   gap: 5px;
   min-width: 0;
   padding: 14px var(--settings-row-padding-inline);
+  cursor: default;
+  user-select: none;
 }
 
 .profile-metric + .profile-metric {
@@ -1528,6 +1530,41 @@ button:disabled {
   white-space: nowrap;
 }
 
+.profile-start-panel-box {
+  padding: 14px var(--settings-row-padding-inline);
+}
+
+.profile-start-summary {
+  display: grid;
+  gap: 5px;
+  cursor: default;
+  user-select: none;
+}
+
+.profile-start-summary strong {
+  color: #1c1c1e;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.profile-start-summary span {
+  color: rgba(60, 60, 67, 0.5);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.profile-source-metric-value {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: start;
+  gap: 7px;
+  min-width: 0;
+}
+
 .profile-source-list,
 .profile-top-app-list {
   display: grid;
@@ -1554,42 +1591,6 @@ button:disabled {
 .profile-source-panel-box {
   overflow: visible;
   padding-top: 14px;
-}
-
-.profile-favorite-source {
-  display: inline-grid;
-  grid-auto-flow: column;
-  align-items: center;
-  gap: 8px;
-  color: rgba(60, 60, 67, 0.5);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.2;
-  cursor: default;
-  user-select: none;
-}
-
-.profile-channel-pill {
-  display: inline-grid;
-  grid-auto-flow: column;
-  align-items: center;
-  justify-content: end;
-  gap: 7px;
-  min-height: 24px;
-  padding: 4px 10px;
-  border: 0.5px solid rgba(60, 60, 67, 0.1);
-  border-radius: 999px;
-  background: rgba(60, 60, 67, 0.045);
-  color: #1c1c1e;
-  line-height: 1;
-  transition:
-    border-color 140ms ease,
-    background 140ms ease;
-}
-
-.profile-channel-pill:hover {
-  border-color: rgba(60, 60, 67, 0.16);
-  background: rgba(60, 60, 67, 0.07);
 }
 
 .profile-source-bar {
@@ -2248,18 +2249,11 @@ button:disabled {
     background: rgba(235, 235, 245, 0.42);
   }
 
-  .profile-channel-pill {
-    border-color: rgba(235, 235, 245, 0.1);
-    background: rgba(235, 235, 245, 0.08);
+  .profile-start-summary strong {
     color: rgba(255, 255, 255, 0.86);
   }
 
-  .profile-channel-pill:hover {
-    border-color: rgba(235, 235, 245, 0.16);
-    background: rgba(235, 235, 245, 0.11);
-  }
-
-  .profile-favorite-source {
+  .profile-start-summary span {
     color: rgba(235, 235, 245, 0.5);
   }
 
