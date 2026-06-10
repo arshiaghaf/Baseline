@@ -1540,6 +1540,20 @@ describe("update store helpers", () => {
       ["autoremove"],
       ["cleanup"]
     ]);
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "formula:ripgrep",
+        displayName: "ripgrep",
+        channel: "homebrew"
+      }),
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "cask:visual-studio-code",
+        displayName: "Visual Studio Code",
+        channel: "homebrew"
+      })
+    ]);
   });
 
   it("excludes hidden app-backed casks from batch Homebrew updates", async () => {
@@ -1785,6 +1799,14 @@ describe("update store helpers", () => {
     await successfulStore.performAppUpdate(app.id);
 
     expect(successfulMas).toHaveBeenCalledWith(["upgrade", "123"]);
+    expect(successfulStore.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "appUpdate",
+        targetID: app.id,
+        displayName: "App Store Managed",
+        channel: "appStore"
+      })
+    ]);
 
     const failingMas = vi.fn(async () => ({ success: false, status: 1, output: "" }));
     const openedExternalURLs: string[] = [];
@@ -1801,6 +1823,7 @@ describe("update store helpers", () => {
 
     expect(failingMas).toHaveBeenCalledWith(["upgrade", "123"]);
     expect(openedExternalURLs).toEqual(["https://apps.apple.com/app/example"]);
+    expect(fallbackStore.getSnapshot().profileStats.events).toEqual([]);
   });
 
   it("blocks unsafe external URLs before invoking the platform opener", async () => {
@@ -1858,6 +1881,14 @@ describe("update store helpers", () => {
       ["upgrade", "--cask", "homebrew-managed"],
       expect.any(Function)
     );
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "cask:homebrew-managed",
+        displayName: "Homebrew Managed",
+        channel: "homebrew"
+      })
+    ]);
   });
 
   it("routes Homebrew-backed app updates through installed casks even when cask outdated metadata is missing", async () => {
@@ -2316,7 +2347,7 @@ describe("update store helpers", () => {
     }
   });
 
-  it("records profile stats when refresh proves an app update completed", async () => {
+  it("does not record profile stats when refresh detects an external app update", async () => {
     const installedApp = appRecord({
       bundlePath: "/Applications/Profiled App.app",
       displayName: "Profiled App",
@@ -2350,14 +2381,7 @@ describe("update store helpers", () => {
     await store.refresh(false);
     await store.refresh(false);
 
-    expect(store.getSnapshot().profileStats.events).toEqual([
-      expect.objectContaining({
-        type: "appUpdate",
-        targetID: installedApp.id,
-        displayName: "Profiled App",
-        channel: "sparkle"
-      })
-    ]);
+    expect(store.getSnapshot().profileStats.events).toEqual([]);
   });
 
   it("records profile stats for successful Homebrew Discover installs", async () => {

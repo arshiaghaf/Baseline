@@ -2688,7 +2688,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             <div className="profile-stat-grid">
               <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
-              <ProfileMetric label="Tracked for" value={profile.daysTrackedLabel} />
+              <ProfileMetric label="Using Baseline since" value={profile.startedUsingLabel} />
               <ProfileMetric label="Up to date" value={profile.freshnessLabel} />
             </div>
             <div className="settings-row settings-row-action">
@@ -3099,7 +3099,7 @@ function ToolStatus({
 type ProfileSummary = {
   appUpdates: number;
   totalUpdates: number;
-  daysTrackedLabel: string;
+  startedUsingLabel: string;
   favoriteChannelLabel: string;
   favoriteChannel?: ProfileStatsChannel;
   freshnessLabel: string;
@@ -3130,7 +3130,7 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   return {
     appUpdates: events.filter((event) => event.type === "appUpdate").length,
     totalUpdates,
-    daysTrackedLabel: daysTrackedLabel(snapshot.profileStats.createdAt),
+    startedUsingLabel: startedUsingLabel(snapshot.profileStats.createdAt),
     favoriteChannelLabel,
     favoriteChannel,
     freshnessLabel: freshnessLabel(snapshot),
@@ -3205,13 +3205,22 @@ function buildTopUpdatedApps(
     .map((app, index) => ({ ...app, rank: index + 1 }));
 }
 
-function daysTrackedLabel(createdAt: string): string {
+function startedUsingLabel(createdAt: string): string {
   const created = new Date(createdAt).getTime();
   if (!Number.isFinite(created)) {
-    return "1 day";
+    return "Today";
   }
-  const days = Math.max(1, Math.floor((Date.now() - created) / 86_400_000) + 1);
-  return `${days} day${days === 1 ? "" : "s"}`;
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: new Date(created).getFullYear() === new Date().getFullYear() ? undefined : "numeric"
+  });
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  if (created >= startOfToday.getTime()) {
+    return "Today";
+  }
+  return formatter.format(new Date(created));
 }
 
 function freshnessLabel(snapshot: BaselineSnapshot): string {

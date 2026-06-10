@@ -18,7 +18,6 @@ import type {
   PersistedSnapshot,
   ProfileStats,
   ProfileStatsEvent,
-  RecentlyUpdatedRecord,
   SelfUpdateRecord,
   UpdateRecord
 } from "../shared/domain";
@@ -331,6 +330,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           this.patch({
             appUpdatedPendingRefreshIDs: addToArray(this.state.appUpdatedPendingRefreshIDs, appID)
           });
+          await this.recordProfileStatsEvents([
+            appUpdateProfileStatsEvent({
+              appRecord,
+              update,
+              occurredAt: new Date().toISOString()
+            })
+          ]);
           await this.holdSuccessfulUpdate();
           await this.refresh();
         } else {
@@ -410,6 +416,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             [itemID]: 1
           }
         });
+        await this.recordProfileStatsEvents([
+          homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
+        ]);
         await this.holdSuccessfulUpdate();
       } else {
         this.patch({
@@ -530,6 +539,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!success) {
       this.scheduleHomebrewBatchFailureClear(affectedIDs);
     } else {
+      const occurredAt = new Date().toISOString();
+      await this.recordProfileStatsEvents(
+        affected.map((item) => homebrewUpdateProfileStatsEvent({ item, occurredAt }))
+      );
       await this.holdSuccessfulUpdate();
     }
     await this.refresh();
@@ -764,17 +777,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         reconciledHomebrewItems,
         now
       );
-      const profileStats = await this.profileStatsWithEvents([
-        ...recentlyUpdated.map(appRecentProfileStatsEvent),
-        ...homebrewRecentlyUpdated.map(homebrewRecentProfileStatsEvent)
-      ]);
       this.patch({
         apps,
         updates,
         homebrewItems: reconciledHomebrewItems,
         recentlyUpdated,
         homebrewRecentlyUpdated,
-        profileStats,
         lastRefreshDate: now,
         isRefreshing: false,
         lastRefreshNoticeMessage: homebrewInventory.warning,
@@ -1188,32 +1196,47 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
   };
 }
 
-function appRecentProfileStatsEvent(record: RecentlyUpdatedRecord): ProfileStatsEvent {
+function appUpdateProfileStatsEvent({
+  appRecord,
+  update,
+  occurredAt
+}: {
+  appRecord: AppRecord;
+  update: UpdateRecord;
+  occurredAt: string;
+}): ProfileStatsEvent {
   return {
     id: [
       "appUpdate",
-      record.appID,
-      record.fromVersion.raw,
-      record.toVersion.raw,
-      record.fromBuildVersion?.raw ?? "",
-      record.toBuildVersion?.raw ?? ""
+      appRecord.id,
+      update.localVersion.raw,
+      update.remoteVersion.raw,
+      update.localBuildVersion?.raw ?? "",
+      update.remoteBuildVersion?.raw ?? "",
+      occurredAt
     ].join(":"),
     type: "appUpdate",
-    targetID: record.appID,
-    displayName: record.displayName,
-    channel: profileStatsChannel(record.source),
-    occurredAt: record.updatedAt
+    targetID: appRecord.id,
+    displayName: appRecord.displayName,
+    channel: profileStatsChannel(update.source),
+    occurredAt
   };
 }
 
-function homebrewRecentProfileStatsEvent(record: HomebrewRecentlyUpdatedRecord): ProfileStatsEvent {
+function homebrewUpdateProfileStatsEvent({
+  item,
+  occurredAt
+}: {
+  item: HomebrewManagedItem;
+  occurredAt: string;
+}): ProfileStatsEvent {
   return {
-    id: ["homebrewUpdate", record.itemID, record.fromVersion.raw, record.toVersion.raw].join(":"),
+    id: ["homebrewUpdate", item.id, item.installedVersion.raw, occurredAt].join(":"),
     type: "homebrewUpdate",
-    targetID: record.itemID,
-    displayName: record.displayName,
+    targetID: item.id,
+    displayName: item.name,
     channel: "homebrew",
-    occurredAt: record.updatedAt
+    occurredAt
   };
 }
 
