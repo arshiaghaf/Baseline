@@ -688,12 +688,38 @@ describe("renderer button parity", () => {
 
     expect(screen.getAllByRole("heading", { name: "Profile" })).toHaveLength(1);
     expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
     expect(screen.getByText("Apps updated")).toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
     expect(screen.getByText("Favorite channel")).toBeInTheDocument();
     expect(screen.getByText("Most updated apps")).toBeInTheDocument();
     expect(screen.getByText("Sparkle")).toBeInTheDocument();
-    expect(screen.getByText("Verified")).toBeInTheDocument();
+    expect(screen.getByText("Stats are private and stored only on this Mac.")).toBeInTheDocument();
+    expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
+    expect(screen.queryByText("Verified")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
+  });
+
+  it("shows a profile stats warning only when local history was reset after tampering", () => {
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          profileStats: {
+            ...snapshot().profileStats,
+            integrityStatus: "resetAfterTamper"
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+
+    expect(screen.getByText("Stats were reset")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Baseline could not verify the local stats history, so it started a fresh one on this Mac."
+      )
+    ).toBeInTheDocument();
   });
 
   it("returns from settings through the main window bridge", () => {

@@ -1293,10 +1293,12 @@ button:disabled {
 
 .settings-content {
   display: block;
+  flex: 1 1 auto;
 }
 
 .settings-content .stack {
   gap: 40px;
+  min-height: 100%;
 }
 
 .settings-panel {
@@ -1472,6 +1474,17 @@ button:disabled {
   gap: 0;
 }
 
+.profile-page {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  min-height: calc(100vh - 90px);
+}
+
+.profile-footer-panel {
+  margin-top: auto;
+}
+
 .profile-stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1564,6 +1577,29 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.profile-warning-row {
+  background: rgba(255, 59, 48, 0.08);
+}
+
+.profile-warning-row .settings-row-text > span:first-child {
+  color: #b42318;
+  font-weight: 500;
+}
+
+.profile-footer-row {
+  background: rgba(60, 60, 67, 0.035);
+}
+
+.profile-footer-text {
+  color: rgba(60, 60, 67, 0.64);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.profile-footer-row .settings-row-text > span:first-child {
+  color: rgba(60, 60, 67, 0.64);
 }
 
 .settings-number-input {
@@ -1934,6 +1970,26 @@ button:disabled {
 
   .profile-source-meter {
     background: rgba(235, 235, 245, 0.11);
+  }
+
+  .profile-warning-row {
+    background: rgba(255, 69, 58, 0.12);
+  }
+
+  .profile-warning-row .settings-row-text > span:first-child {
+    color: #ff6961;
+  }
+
+  .profile-footer-row {
+    background: rgba(235, 235, 245, 0.035);
+  }
+
+  .profile-footer-text {
+    color: rgba(235, 235, 245, 0.58);
+  }
+
+  .profile-footer-row .settings-row-text > span:first-child {
+    color: rgba(235, 235, 245, 0.58);
   }
 
   .toolbar-button.refresh-button,
