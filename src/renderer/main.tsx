@@ -2810,7 +2810,8 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           )}
           <div className="settings-row profile-footer-row">
             <span className="profile-footer-text">
-              Stats are private and stored only on this Mac.
+              Stats only count apps updated with Baseline. They are private and stored only on this
+              Mac.
             </span>
           </div>
         </div>

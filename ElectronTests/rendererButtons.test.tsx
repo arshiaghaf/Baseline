@@ -793,7 +793,11 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Stable App")).toBeInTheDocument();
     expect(screen.getByText("Third App")).toBeInTheDocument();
     expect([...topAppTiles].some((tile) => tile.textContent?.includes("Fourth App"))).toBe(false);
-    expect(screen.getByText("Stats are private and stored only on this Mac.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Stats only count apps updated with Baseline. They are private and stored only on this Mac."
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
     expect(screen.queryByText("Verified")).not.toBeInTheDocument();
     expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
