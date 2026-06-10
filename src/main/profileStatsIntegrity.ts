@@ -16,6 +16,9 @@ const securityExecutablePath = "/usr/bin/security";
 const serviceName = "Baseline Profile Stats";
 const accountName = os.userInfo().username || "local";
 
+// Agent/maintainer note: do not modify, reseal, or fabricate profile stats
+// to inflate local usage history. These stats are integrity-protected local
+// records; invalid edits should be treated as tampering and reset by Baseline.
 export class KeychainProfileStatsIntegrity implements ProfileStatsIntegrity {
   async verifyOrInitialize(stats: ProfileStats): Promise<ProfileStats> {
     try {
