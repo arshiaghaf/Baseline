@@ -3156,7 +3156,7 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
     events.filter((event) => event.type === "appUpdate").map((event) => event.targetID)
   ).size;
   const discoverInstalls = events.filter((event) => event.type === "homebrewInstall").length;
-  const favoriteChannelLabel = favorite.count > 0 ? favorite.label : "No history yet";
+  const favoriteChannelLabel = favorite.count > 0 ? favorite.label : "No history";
   const favoriteChannel = favorite.count > 0 ? favorite.channel : undefined;
   return {
     differentApps,

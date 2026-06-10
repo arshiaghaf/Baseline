@@ -831,7 +831,7 @@ describe("renderer button parity", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
 
-    expect(screen.getByText("No history yet")).toBeInTheDocument();
+    expect(screen.getByText("No history")).toBeInTheDocument();
     expect(
       screen.getByText("Update or install something with Baseline to build a source history.")
     ).toBeInTheDocument();
