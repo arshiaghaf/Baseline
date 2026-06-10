@@ -2724,7 +2724,9 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                         app.displayName.slice(0, 1).toUpperCase()
                       )}
                     </span>
-                    <span className="profile-top-app-name">{app.displayName}</span>
+                    <span className="profile-top-app-name" title={app.displayName}>
+                      {app.displayName}
+                    </span>
                     <strong>
                       {app.count} update{app.count === 1 ? "" : "s"}
                     </strong>

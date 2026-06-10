@@ -1539,8 +1539,7 @@ button:disabled {
   padding: 0;
 }
 
-.profile-source-item,
-.profile-top-app-list li {
+.profile-source-item {
   display: grid;
   grid-template-columns: minmax(76px, 0.42fr) minmax(80px, 1fr) minmax(24px, auto);
   align-items: center;
@@ -1549,8 +1548,7 @@ button:disabled {
   font-size: 12px;
 }
 
-.profile-source-item strong,
-.profile-top-app-list strong {
+.profile-source-item strong {
   color: #1c1c1e;
   font-size: 12px;
   font-weight: 600;
@@ -1574,7 +1572,7 @@ button:disabled {
 .profile-top-app-list {
   list-style: none;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .profile-top-app-list li {
@@ -1583,21 +1581,24 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   align-content: start;
-  gap: 7px;
+  gap: 9px;
   min-width: 0;
-  min-height: 116px;
-  padding: 12px 8px 10px;
+  min-height: 132px;
+  padding: 17px 12px 14px;
   border: 0.5px solid rgba(60, 60, 67, 0.1);
-  border-radius: 8px;
-  background: rgba(60, 60, 67, 0.035);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(60, 60, 67, 0.028));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    0 1px 2px rgba(0, 0, 0, 0.03);
   text-align: center;
 }
 
 .profile-top-app-name {
   max-width: 100%;
   color: #1c1c1e;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1605,28 +1606,30 @@ button:disabled {
 }
 
 .profile-top-app-list strong {
-  color: rgba(60, 60, 67, 0.56);
+  color: rgba(60, 60, 67, 0.52);
   font-size: 11px;
   font-weight: 500;
+  line-height: 1.25;
   text-align: center;
 }
 
 .profile-top-app-icon {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 11px;
+  width: 62px;
+  height: 62px;
+  border-radius: 15px;
   overflow: hidden;
   background: linear-gradient(180deg, #85858c, #595961);
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.11);
   color: white;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
 }
 
 .profile-top-app-icon img {
-  width: 46px;
-  height: 46px;
+  width: 62px;
+  height: 62px;
   object-fit: cover;
   transform: scale(1.16);
 }
@@ -1637,16 +1640,16 @@ button:disabled {
 
 .profile-top-app-rank {
   position: absolute;
-  top: 7px;
-  left: 7px;
+  top: 8px;
+  left: 8px;
   display: grid;
   place-items: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
   border-radius: 999px;
-  background: rgba(60, 60, 67, 0.08);
-  color: rgba(60, 60, 67, 0.64);
+  background: rgba(60, 60, 67, 0.07);
+  color: rgba(60, 60, 67, 0.5);
   font-size: 10px;
   font-weight: 600;
 }
@@ -2045,11 +2048,18 @@ button:disabled {
 
   .profile-top-app-list li {
     border-color: rgba(235, 235, 245, 0.1);
-    background: rgba(235, 235, 245, 0.055);
+    background: linear-gradient(180deg, rgba(235, 235, 245, 0.08), rgba(235, 235, 245, 0.04));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 1px 2px rgba(0, 0, 0, 0.18);
   }
 
   .profile-top-app-name {
     color: rgba(255, 255, 255, 0.86);
+  }
+
+  .profile-top-app-list strong {
+    color: rgba(235, 235, 245, 0.56);
   }
 
   .profile-top-app-rank {
