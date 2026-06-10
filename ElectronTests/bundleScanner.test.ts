@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -73,6 +73,30 @@ describe("bundle scanner", () => {
       "com.example.direct",
       "com.example.nested"
     ]);
+  });
+
+  it("scans symlinked app bundles once when their target is also scanned", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+    const scanRoot = path.join(root, "Scan");
+    const targetRoot = path.join(root, "Targets");
+    const targetApp = path.join(targetRoot, "Target.app");
+    const linkedApp = path.join(scanRoot, "Linked.app");
+    await mkdir(scanRoot, { recursive: true });
+    await writeAppPlist(targetApp, {
+      displayName: "Target",
+      bundleIdentifier: "com.example.target",
+      version: "1.0.0"
+    });
+    await symlink(targetApp, linkedApp);
+
+    const records = await new BundleScannerClient().scanApplications([scanRoot, targetRoot]);
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      displayName: "Target",
+      bundleIdentifier: "com.example.target"
+    });
   });
 
   it("ignores Safari web app bundles", async () => {
