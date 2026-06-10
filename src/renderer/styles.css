@@ -1541,6 +1541,22 @@ button:disabled {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.82),
     0 1px 2px rgba(0, 0, 0, 0.025);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.profile-start-panel-box:hover {
+  border-color: rgba(60, 60, 67, 0.17);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.5) 52%),
+    linear-gradient(180deg, rgba(214, 165, 31, 0.11), rgba(60, 60, 67, 0.024));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 5px 16px rgba(0, 0, 0, 0.045);
+  transform: translateY(-1px);
 }
 
 .profile-start-summary {
@@ -2292,6 +2308,16 @@ button:disabled {
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.08),
       0 1px 2px rgba(0, 0, 0, 0.18);
+  }
+
+  .profile-start-panel-box:hover {
+    border-color: rgba(235, 235, 245, 0.16);
+    background:
+      linear-gradient(135deg, rgba(235, 235, 245, 0.13), rgba(235, 235, 245, 0.06) 58%),
+      linear-gradient(180deg, rgba(214, 165, 31, 0.14), rgba(235, 235, 245, 0.032));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 5px 16px rgba(0, 0, 0, 0.24);
   }
 
   .profile-start-summary strong {
