@@ -105,6 +105,10 @@ function normalizeProfileStats(
         : typeof legacyStartedUsingAt === "string"
           ? legacyStartedUsingAt
           : defaults.startedUsingAt,
+    signatureVersion:
+      typeof input?.signatureVersion === "number"
+        ? input.signatureVersion
+        : defaults.signatureVersion,
     events,
     signature: typeof input?.signature === "string" ? input.signature : undefined,
     integrityStatus: "pending"

@@ -1157,7 +1157,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (newEvents.length === 0) {
       return this.state.profileStats;
     }
-    return this.profileStatsIntegrity.seal({
+    const sealed = await this.profileStatsIntegrity.seal({
       ...this.state.profileStats,
       events: [...newEvents, ...this.state.profileStats.events].slice(0, 1000),
       integrityStatus:
@@ -1165,6 +1165,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           ? "resetAfterTamper"
           : "verified"
     });
+    if (sealed.integrityStatus === "unavailable") {
+      return { ...this.state.profileStats, integrityStatus: "unavailable" };
+    }
+    return sealed;
   }
 
   private patch(patch: Partial<BaselineSnapshot>): void {

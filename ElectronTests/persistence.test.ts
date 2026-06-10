@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SnapshotPersistence } from "../src/main/persistence";
-import { defaultPersistedSnapshot } from "../src/shared/domain";
+import { defaultPersistedSnapshot, profileStatsSignatureVersion } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
 let tempDirs: string[] = [];
@@ -177,6 +177,7 @@ describe("snapshot persistence", () => {
       profileStats: {
         createdAt: "2026-06-01T12:00:00.000Z",
         startedUsingAt: "2026-05-15T12:00:00.000Z",
+        signatureVersion: profileStatsSignatureVersion,
         signature: "signed",
         integrityStatus: "verified",
         events: [

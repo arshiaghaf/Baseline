@@ -8,7 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
-  defaultPersistedSnapshot
+  defaultPersistedSnapshot,
+  profileStatsSignatureVersion
 } from "../src/shared/domain";
 import { SnapshotPersistence } from "../src/main/persistence";
 import {
@@ -2430,6 +2431,28 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("does not persist unsigned profile stats events when sealing is unavailable", async () => {
+    const profileStatsIntegrity = {
+      verifyOrInitialize: vi.fn(async (stats) => ({
+        ...stats,
+        integrityStatus: "verified" as const
+      })),
+      seal: vi.fn(async (stats) => ({ ...stats, integrityStatus: "unavailable" as const }))
+    };
+    const store = await makeStore({ profileStatsIntegrity });
+
+    await store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+
+    expect(store.getSnapshot().profileStats.integrityStatus).toBe("unavailable");
+    expect(store.getSnapshot().profileStats.events).toEqual([]);
+  });
+
   it("resets profile stats when the local integrity seal fails", async () => {
     const profileStatsIntegrity = {
       verifyOrInitialize: vi.fn(async () => ({
@@ -2446,6 +2469,7 @@ describe("update store helpers", () => {
         profileStats: {
           createdAt: "2026-06-01T12:00:00.000Z",
           startedUsingAt: "2026-05-15T12:00:00.000Z",
+          signatureVersion: profileStatsSignatureVersion,
           integrityStatus: "pending",
           signature: "edited",
           events: [

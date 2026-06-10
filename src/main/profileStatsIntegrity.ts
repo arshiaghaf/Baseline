@@ -4,7 +4,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import os from "node:os";
 import type { ProfileStats } from "../shared/domain";
-import { defaultProfileStats } from "../shared/domain";
+import { defaultProfileStats, profileStatsSignatureVersion } from "../shared/domain";
 import { runCommand } from "./commandRunner";
 
 export type ProfileStatsIntegrity = {
@@ -21,10 +21,16 @@ export class KeychainProfileStatsIntegrity implements ProfileStatsIntegrity {
     try {
       const secret = await this.keychainSecret();
       if (!stats.signature) {
+        if (stats.events.length > 0) {
+          return { ...stats, integrityStatus: "unavailable" };
+        }
         return sealProfileStats(stats, secret, "verified");
       }
       if (signatureFor(stats, secret) === stats.signature) {
-        return { ...stats, integrityStatus: "verified" };
+        return normalizeProfileStatsSignature(stats, secret);
+      }
+      if (unversionedSignatureFor(stats, secret) === stats.signature) {
+        return sealProfileStats(stats, secret, "verified");
       }
       if (legacySignatureFor(stats, secret) === stats.signature) {
         return sealProfileStats(
@@ -46,7 +52,7 @@ export class KeychainProfileStatsIntegrity implements ProfileStatsIntegrity {
     try {
       return sealProfileStats(stats, await this.keychainSecret(), stats.integrityStatus);
     } catch {
-      return { ...stats, signature: undefined, integrityStatus: "unavailable" };
+      return { ...stats, integrityStatus: "unavailable" };
     }
   }
 
@@ -87,7 +93,7 @@ function sealProfileStats(
   secret: string,
   integrityStatus: ProfileStats["integrityStatus"]
 ): ProfileStats {
-  const sealed = { ...stats, integrityStatus };
+  const sealed = { ...stats, signatureVersion: profileStatsSignatureVersion, integrityStatus };
   return { ...sealed, signature: signatureFor(sealed, secret) };
 }
 
@@ -95,8 +101,16 @@ function signatureFor(stats: ProfileStats, secret: string): string {
   return createHmac("sha256", secret).update(canonicalProfileStats(stats)).digest("base64url");
 }
 
+function normalizeProfileStatsSignature(stats: ProfileStats, secret: string): ProfileStats {
+  if (stats.signatureVersion === profileStatsSignatureVersion) {
+    return { ...stats, integrityStatus: "verified" };
+  }
+  return sealProfileStats(stats, secret, "verified");
+}
+
 function canonicalProfileStats(stats: ProfileStats): string {
   return JSON.stringify({
+    signatureVersion: stats.signatureVersion,
     createdAt: stats.createdAt,
     startedUsingAt: stats.startedUsingAt,
     events: stats.events.map((event) => ({
@@ -108,6 +122,25 @@ function canonicalProfileStats(stats: ProfileStats): string {
       occurredAt: event.occurredAt
     }))
   });
+}
+
+function unversionedSignatureFor(stats: ProfileStats, secret: string): string {
+  return createHmac("sha256", secret)
+    .update(
+      JSON.stringify({
+        createdAt: stats.createdAt,
+        startedUsingAt: stats.startedUsingAt,
+        events: stats.events.map((event) => ({
+          id: event.id,
+          type: event.type,
+          targetID: event.targetID,
+          displayName: event.displayName,
+          channel: event.channel,
+          occurredAt: event.occurredAt
+        }))
+      })
+    )
+    .digest("base64url");
 }
 
 function legacySignatureFor(stats: ProfileStats, secret: string): string {

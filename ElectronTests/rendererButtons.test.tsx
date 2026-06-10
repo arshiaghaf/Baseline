@@ -20,7 +20,7 @@ import type {
   HomebrewManagedItem,
   UpdateRecord
 } from "../src/shared/domain";
-import { defaultPersistedSnapshot } from "../src/shared/domain";
+import { defaultPersistedSnapshot, profileStatsSignatureVersion } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
 const app: AppRecord = {
@@ -667,6 +667,7 @@ describe("renderer button parity", () => {
           profileStats: {
             createdAt: "2026-06-01T12:00:00.000Z",
             startedUsingAt: "2026-05-15T12:00:00.000Z",
+            signatureVersion: profileStatsSignatureVersion,
             integrityStatus: "verified",
             signature: "signed",
             events: [

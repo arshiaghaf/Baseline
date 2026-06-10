@@ -146,10 +146,13 @@ export type ProfileStatsIntegrityStatus =
 export type ProfileStats = {
   createdAt: string;
   startedUsingAt: string;
+  signatureVersion: number;
   events: ProfileStatsEvent[];
   signature?: string;
   integrityStatus: ProfileStatsIntegrityStatus;
 };
+
+export const profileStatsSignatureVersion = 2;
 
 export type HomebrewManagedItem = {
   id: string;
@@ -269,6 +272,7 @@ export function defaultProfileStats(now = new Date().toISOString()): ProfileStat
   return {
     createdAt: now,
     startedUsingAt: now,
+    signatureVersion: profileStatsSignatureVersion,
     events: [],
     integrityStatus: "pending"
   };
