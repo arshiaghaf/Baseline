@@ -2688,11 +2688,11 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             <ProfileMetric label="Freshness" value={profile.freshnessLabel} />
           </div>
           <div className="settings-row settings-row-action">
-            <SettingsRowText label="Favorite channel" description="Most recorded update source." />
+            <SettingsRowText label="Favorite channel" />
             <strong className="settings-row-value">{profile.favoriteChannelLabel}</strong>
           </div>
           <div className="settings-row profile-source-row">
-            <SettingsRowText label="Source mix" description="Updates and installs by source." />
+            <SettingsRowText label="Source mix" />
             <div className="profile-source-list">
               {profile.sourceMix.map((source) => (
                 <div className="profile-source-item" key={source.channel}>
@@ -2706,7 +2706,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             </div>
           </div>
           <div className="settings-row profile-top-apps-row">
-            <SettingsRowText label="Most updated apps" description={profile.topAppsDescription} />
+            <SettingsRowText label="Most updated apps" />
             {profile.topApps.length > 0 && (
               <ol className="profile-top-app-list">
                 {profile.topApps.map((app) => (
@@ -2913,13 +2913,13 @@ function SettingsRowText({
   secondaryDescription
 }: {
   label: string;
-  description: string;
+  description?: string;
   secondaryDescription?: string;
 }) {
   return (
     <span className="settings-row-text">
       <span>{label}</span>
-      <span className="settings-row-subtext">{description}</span>
+      {description && <span className="settings-row-subtext">{description}</span>}
       {secondaryDescription && <span className="settings-row-subtext">{secondaryDescription}</span>}
     </span>
   );
@@ -3046,7 +3046,6 @@ type ProfileSummary = {
     percent: number;
   }>;
   topApps: Array<{ targetID: string; displayName: string; count: number }>;
-  topAppsDescription: string;
 };
 
 function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
@@ -3065,11 +3064,7 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
     favoriteChannelLabel,
     freshnessLabel: freshnessLabel(snapshot),
     sourceMix,
-    topApps,
-    topAppsDescription:
-      topApps.length > 0
-        ? "Apps with the most locally recorded updates."
-        : "App rankings appear after Baseline records app version changes."
+    topApps
   };
 }
 
