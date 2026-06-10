@@ -132,7 +132,7 @@ describe("profile stats integrity", () => {
     expect(migrated.signature).not.toBe(legacySignature);
   });
 
-  it("does not bless populated unsigned stats history", async () => {
+  it("resets populated unsigned stats history", async () => {
     const integrity = new KeychainProfileStatsIntegrity();
 
     const verified = await integrity.verifyOrInitialize({
@@ -149,8 +149,12 @@ describe("profile stats integrity", () => {
       ]
     });
 
-    expect(verified.integrityStatus).toBe("unavailable");
-    expect(verified.signature).toBeUndefined();
+    expect(verified.integrityStatus).toBe("resetAfterTamper");
+    expect(verified.events).toEqual([]);
+    expect(verified.resetNotice).toMatchObject({
+      reason: "tamper"
+    });
+    expect(verified.signature).toBeDefined();
   });
 
   it("preserves the existing signature when sealing is unavailable", async () => {

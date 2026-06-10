@@ -25,7 +25,7 @@ export class KeychainProfileStatsIntegrity implements ProfileStatsIntegrity {
       const secret = await this.keychainSecret();
       if (!stats.signature) {
         if (stats.events.length > 0) {
-          return { ...stats, integrityStatus: "unavailable" };
+          return sealProfileStats(defaultProfileStatsAfterTamper(), secret, "resetAfterTamper");
         }
         return sealProfileStats(stats, secret, "verified");
       }
