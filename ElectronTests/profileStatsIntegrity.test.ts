@@ -187,6 +187,63 @@ describe("profile stats integrity", () => {
 
     expect(unavailable.integrityStatus).toBe("unavailable");
     expect(unavailable.signature).toBe(signed.signature);
+    expect(runCommandMock).toHaveBeenCalledTimes(2);
+    expect(runCommandMock.mock.calls[1]?.[1][0]).toBe("find-generic-password");
+  });
+
+  it("creates a Keychain secret only when the item is missing", async () => {
+    runCommandMock
+      .mockResolvedValueOnce({
+        success: false,
+        status: 44,
+        output:
+          "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.\n",
+        stdout: "",
+        stderr:
+          "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain.\n"
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        status: 0,
+        output: "",
+        stdout: "",
+        stderr: ""
+      });
+
+    const integrity = new KeychainProfileStatsIntegrity();
+    const sealed = await integrity.seal({
+      ...defaultProfileStats("2026-06-01T12:00:00.000Z"),
+      integrityStatus: "verified"
+    });
+
+    expect(sealed.integrityStatus).toBe("verified");
+    expect(sealed.signature).toBeDefined();
+    expect(runCommandMock).toHaveBeenCalledTimes(2);
+    expect(runCommandMock.mock.calls[1]?.[1]).toContain("add-generic-password");
+    expect(runCommandMock.mock.calls[1]?.[1]).not.toContain("-U");
+  });
+
+  it("does not replace the Keychain secret when reading it is denied", async () => {
+    const integrity = new KeychainProfileStatsIntegrity();
+    const signed = await integrity.seal({
+      ...defaultProfileStats("2026-06-01T12:00:00.000Z"),
+      integrityStatus: "verified"
+    });
+    runCommandMock.mockClear();
+    runCommandMock.mockResolvedValue({
+      success: false,
+      status: 51,
+      output: "security: SecKeychainSearchCopyNext: User interaction is not allowed.\n",
+      stdout: "",
+      stderr: "security: SecKeychainSearchCopyNext: User interaction is not allowed.\n"
+    });
+
+    const verified = await integrity.verifyOrInitialize(signed);
+
+    expect(verified.integrityStatus).toBe("unavailable");
+    expect(verified.signature).toBe(signed.signature);
+    expect(runCommandMock).toHaveBeenCalledTimes(1);
+    expect(runCommandMock.mock.calls[0]?.[1][0]).toBe("find-generic-password");
   });
 });
 

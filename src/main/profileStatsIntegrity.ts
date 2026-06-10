@@ -5,7 +5,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import os from "node:os";
 import type { ProfileStats } from "../shared/domain";
 import { defaultProfileStatsAfterTamper, profileStatsSignatureVersion } from "../shared/domain";
-import { runCommand } from "./commandRunner";
+import { runCommand, type CommandResult } from "./commandRunner";
 
 export type ProfileStatsIntegrity = {
   verifyOrInitialize(stats: ProfileStats): Promise<ProfileStats>;
@@ -72,6 +72,9 @@ export class KeychainProfileStatsIntegrity implements ProfileStatsIntegrity {
     if (existing.success && secret) {
       return secret;
     }
+    if (!isMissingKeychainSecret(existing)) {
+      throw new Error("Profile stats Keychain secret could not be read.");
+    }
 
     const generated = randomBytes(32).toString("base64url");
     const created = await runCommand(securityExecutablePath, [
@@ -81,8 +84,7 @@ export class KeychainProfileStatsIntegrity implements ProfileStatsIntegrity {
       "-a",
       accountName,
       "-w",
-      generated,
-      "-U"
+      generated
     ]);
     if (!created.success) {
       throw new Error("Profile stats Keychain secret could not be created.");
@@ -138,6 +140,14 @@ function canonicalProfileStats(stats: ProfileStats): string {
         }
       : undefined
   });
+}
+
+function isMissingKeychainSecret(result: CommandResult): boolean {
+  const output = [result.stdout, result.stderr, result.output]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+  return result.status === 44 || output.includes("specified item could not be found");
 }
 
 function unversionedSignatureFor(stats: ProfileStats, secret: string): string {
