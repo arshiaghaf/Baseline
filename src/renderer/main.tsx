@@ -2761,7 +2761,9 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                       app.count === 1 ? "" : "s"
                     }`}
                   >
-                    <span className="profile-top-app-rank">{app.rank}</span>
+                    <span className={`profile-top-app-rank profile-top-app-rank-${app.rank}`}>
+                      {app.rank}
+                    </span>
                     <span
                       className={
                         app.iconDataURL ? "profile-top-app-icon has-image" : "profile-top-app-icon"

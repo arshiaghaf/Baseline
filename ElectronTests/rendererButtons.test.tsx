@@ -782,6 +782,13 @@ describe("renderer button parity", () => {
     );
     const topAppTiles = document.querySelectorAll(".profile-top-app-list li");
     expect(topAppTiles).toHaveLength(3);
+    expect(
+      [...document.querySelectorAll(".profile-top-app-rank")].map((rank) => rank.className)
+    ).toEqual([
+      "profile-top-app-rank profile-top-app-rank-1",
+      "profile-top-app-rank profile-top-app-rank-2",
+      "profile-top-app-rank profile-top-app-rank-3"
+    ]);
     expect(screen.getByText("Stable App")).toBeInTheDocument();
     expect(screen.getByText("Third App")).toBeInTheDocument();
     expect(screen.queryByText("Fourth App")).not.toBeInTheDocument();
