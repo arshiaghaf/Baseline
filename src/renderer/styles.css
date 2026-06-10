@@ -1486,6 +1486,10 @@ button:disabled {
   gap: 18px;
 }
 
+.profile-start-section {
+  margin-bottom: 12px;
+}
+
 .profile-footer-panel {
   margin-top: auto;
 }
@@ -1569,14 +1573,28 @@ button:disabled {
 }
 
 .profile-start-summary strong {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
   color: #1c1c1e;
-  font-size: 28px;
   font-weight: 600;
   letter-spacing: 0;
   line-height: 1.05;
 }
 
-.profile-start-summary span {
+.profile-start-value {
+  font-size: 28px;
+}
+
+.profile-start-unit {
+  color: rgba(60, 60, 67, 0.46);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.profile-start-date {
   justify-self: end;
   min-height: 24px;
   padding: 5px 9px;
@@ -1593,7 +1611,7 @@ button:disabled {
     color 140ms ease;
 }
 
-.profile-start-summary span:hover {
+.profile-start-date:hover {
   border-color: rgba(60, 60, 67, 0.14);
   background: rgba(255, 255, 255, 0.74);
   color: rgba(60, 60, 67, 0.68);
@@ -2326,13 +2344,17 @@ button:disabled {
     color: rgba(255, 255, 255, 0.86);
   }
 
-  .profile-start-summary span {
+  .profile-start-unit {
+    color: rgba(235, 235, 245, 0.42);
+  }
+
+  .profile-start-date {
     border-color: rgba(235, 235, 245, 0.09);
     background: rgba(235, 235, 245, 0.075);
     color: rgba(235, 235, 245, 0.5);
   }
 
-  .profile-start-summary span:hover {
+  .profile-start-date:hover {
     border-color: rgba(235, 235, 245, 0.15);
     background: rgba(235, 235, 245, 0.105);
     color: rgba(235, 235, 245, 0.62);

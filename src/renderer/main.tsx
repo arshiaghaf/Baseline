@@ -2684,15 +2684,17 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
   return (
     <div className="profile-page">
       <div className="profile-stack">
-        <section className="panel settings-panel">
-          <PanelTitle title="Time with Baseline" />
+        <section className="panel settings-panel profile-start-section">
           <div
             className="settings-panel-box profile-start-panel-box"
             title={profile.startedUsing.title}
           >
             <div className="profile-start-summary">
-              <strong>{profile.startedUsing.relativeLabel}</strong>
-              <span>{profile.startedUsing.dateLabel}</span>
+              <strong>
+                <span className="profile-start-value">{profile.startedUsing.relativeLabel}</span>
+                <span className="profile-start-unit">with Baseline</span>
+              </strong>
+              <span className="profile-start-date">{profile.startedUsing.dateLabel}</span>
             </div>
           </div>
         </section>

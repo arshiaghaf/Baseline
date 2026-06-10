@@ -796,7 +796,8 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
 
     expect(screen.getAllByRole("heading", { name: "Profile" })).toHaveLength(1);
-    expect(screen.getByRole("heading", { name: "Time with Baseline" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Time with Baseline" })).not.toBeInTheDocument();
+    expect(screen.getByText("with Baseline")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
