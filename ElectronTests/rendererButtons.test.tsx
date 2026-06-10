@@ -102,6 +102,7 @@ function installBaselineMock() {
     setSearchText: vi.fn(),
     setSelectedTab: vi.fn(),
     updatePreferences: vi.fn(),
+    acknowledgeProfileStatsReset: vi.fn(),
     toggleIgnoredApp: vi.fn(),
     toggleIgnoredHomebrew: vi.fn(),
     performAppUpdate: vi.fn(),
@@ -895,11 +896,17 @@ describe("renderer button parity", () => {
   });
 
   it("shows a profile stats warning only when local history was reset after tampering", () => {
+    const resetNotice = {
+      id: "tamper:2026-06-05T12:00:00.000Z",
+      occurredAt: "2026-06-05T12:00:00.000Z",
+      reason: "tamper" as const
+    };
     render(
       <SettingsView
         snapshot={snapshot({
           profileStats: {
             ...snapshot().profileStats,
+            resetNotice,
             integrityStatus: "resetAfterTamper"
           }
         })}
@@ -914,6 +921,33 @@ describe("renderer button parity", () => {
         "Baseline could not verify the local stats history, so it started a fresh one on this Mac."
       )
     ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss stats reset warning" }));
+    expect(window.baseline.acknowledgeProfileStatsReset).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the profile stats reset warning after acknowledgement", () => {
+    const resetNotice = {
+      id: "tamper:2026-06-05T12:00:00.000Z",
+      occurredAt: "2026-06-05T12:00:00.000Z",
+      reason: "tamper" as const
+    };
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          profileStatsResetAcknowledgedID: resetNotice.id,
+          profileStats: {
+            ...snapshot().profileStats,
+            resetNotice,
+            integrityStatus: "resetAfterTamper"
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+
+    expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
   });
 
   it("returns from settings through the main window bridge", () => {

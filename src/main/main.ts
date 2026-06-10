@@ -419,6 +419,9 @@ function wireIpc(): void {
   ipcMain.handle(ipcChannels.updatePreferences, (_event, patch: PreferencePatch) =>
     store.updatePreferences(patch)
   );
+  ipcMain.handle(ipcChannels.acknowledgeProfileStatsReset, () =>
+    store.acknowledgeProfileStatsReset()
+  );
   ipcMain.handle(ipcChannels.toggleIgnoredApp, (_event, appID: string) =>
     store.toggleIgnoredApp(String(appID))
   );

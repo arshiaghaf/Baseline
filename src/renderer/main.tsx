@@ -2678,6 +2678,9 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
   const profile = useMemo(() => buildProfileSummary(snapshot), [snapshot]);
   const activeSourceMix = profile.sourceMix.filter((source) => source.count > 0);
   const sourceMixTotal = profile.sourceMix.reduce((total, source) => total + source.count, 0);
+  const resetNotice = snapshot.profileStats.resetNotice;
+  const shouldShowResetWarning =
+    Boolean(resetNotice) && snapshot.profileStatsResetAcknowledgedID !== resetNotice?.id;
   return (
     <div className="profile-page">
       <div className="profile-stack">
@@ -2830,12 +2833,20 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
       </div>
       <section className="panel settings-panel profile-footer-panel">
         <div className="settings-panel-box">
-          {snapshot.profileStats.integrityStatus === "resetAfterTamper" && (
-            <div className="settings-row profile-warning-row">
+          {shouldShowResetWarning && (
+            <div className="settings-row settings-row-action profile-warning-row">
               <SettingsRowText
                 label="Stats were reset"
                 description="Baseline could not verify the local stats history, so it started a fresh one on this Mac."
               />
+              <button
+                className="toolbar-button"
+                onClick={() => void window.baseline.acknowledgeProfileStatsReset()}
+                title="Dismiss"
+                aria-label="Dismiss stats reset warning"
+              >
+                <X size={15} />
+              </button>
             </div>
           )}
           <div className="settings-row profile-footer-row">

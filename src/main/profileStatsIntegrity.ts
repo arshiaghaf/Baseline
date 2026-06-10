@@ -4,7 +4,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import os from "node:os";
 import type { ProfileStats } from "../shared/domain";
-import { defaultProfileStats, profileStatsSignatureVersion } from "../shared/domain";
+import { defaultProfileStatsAfterTamper, profileStatsSignatureVersion } from "../shared/domain";
 import { runCommand } from "./commandRunner";
 
 export type ProfileStatsIntegrity = {
@@ -42,7 +42,7 @@ export class KeychainProfileStatsIntegrity implements ProfileStatsIntegrity {
           "verified"
         );
       }
-      return sealProfileStats(defaultProfileStats(), secret, "resetAfterTamper");
+      return sealProfileStats(defaultProfileStatsAfterTamper(), secret, "resetAfterTamper");
     } catch {
       return { ...stats, integrityStatus: "unavailable" };
     }
@@ -102,6 +102,12 @@ function signatureFor(stats: ProfileStats, secret: string): string {
 }
 
 function normalizeProfileStatsSignature(stats: ProfileStats, secret: string): ProfileStats {
+  if (stats.resetNotice) {
+    if (stats.signatureVersion === profileStatsSignatureVersion) {
+      return { ...stats, integrityStatus: "resetAfterTamper" };
+    }
+    return sealProfileStats(stats, secret, "resetAfterTamper");
+  }
   if (stats.signatureVersion === profileStatsSignatureVersion) {
     return { ...stats, integrityStatus: "verified" };
   }
@@ -120,7 +126,14 @@ function canonicalProfileStats(stats: ProfileStats): string {
       displayName: event.displayName,
       channel: event.channel,
       occurredAt: event.occurredAt
-    }))
+    })),
+    resetNotice: stats.resetNotice
+      ? {
+          id: stats.resetNotice.id,
+          occurredAt: stats.resetNotice.occurredAt,
+          reason: stats.resetNotice.reason
+        }
+      : undefined
   });
 }
 

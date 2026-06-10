@@ -46,6 +46,29 @@ describe("profile stats integrity", () => {
     expect(verified.integrityStatus).toBe("verified");
     expect(tampered.integrityStatus).toBe("resetAfterTamper");
     expect(tampered.events).toEqual([]);
+    expect(tampered.resetNotice).toMatchObject({
+      reason: "tamper"
+    });
+  });
+
+  it("keeps a signed reset notice visible after relaunch verification", async () => {
+    const integrity = new KeychainProfileStatsIntegrity();
+    const sealed = await integrity.seal({
+      ...defaultProfileStats("2026-06-01T12:00:00.000Z"),
+      integrityStatus: "verified"
+    });
+    const tampered = await integrity.verifyOrInitialize({
+      ...sealed,
+      startedUsingAt: "2020-01-01T12:00:00.000Z"
+    });
+
+    const reverified = await integrity.verifyOrInitialize({
+      ...tampered,
+      integrityStatus: "pending"
+    });
+
+    expect(reverified.integrityStatus).toBe("resetAfterTamper");
+    expect(reverified.resetNotice).toEqual(tampered.resetNotice);
   });
 
   it("migrates valid unversioned seals to the current signature version", async () => {

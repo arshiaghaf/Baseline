@@ -17,6 +17,7 @@ const api: BaselineAPI = {
   setSelectedTab: (tab) => ipcRenderer.invoke(ipcChannels.setSelectedTab, tab),
   updatePreferences: (patch: PreferencePatch) =>
     ipcRenderer.invoke(ipcChannels.updatePreferences, patch),
+  acknowledgeProfileStatsReset: () => ipcRenderer.invoke(ipcChannels.acknowledgeProfileStatsReset),
   toggleIgnoredApp: (appID: string) => ipcRenderer.invoke(ipcChannels.toggleIgnoredApp, appID),
   toggleIgnoredHomebrew: (itemID: string) =>
     ipcRenderer.invoke(ipcChannels.toggleIgnoredHomebrew, itemID),

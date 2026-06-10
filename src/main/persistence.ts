@@ -3,7 +3,12 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { PersistedSnapshot, ProfileStats, ProfileStatsEvent } from "../shared/domain";
+import type {
+  PersistedSnapshot,
+  ProfileStats,
+  ProfileStatsEvent,
+  ProfileStatsResetNotice
+} from "../shared/domain";
 import {
   defaultPersistedSnapshot,
   defaultProfileStats,
@@ -80,6 +85,10 @@ function normalizeSnapshot(
       toVersion: version(record.toVersion?.raw)
     })),
     profileStats: normalizeProfileStats(input.profileStats, input.startedUsingAt),
+    profileStatsResetAcknowledgedID:
+      typeof input.profileStatsResetAcknowledgedID === "string"
+        ? input.profileStatsResetAcknowledgedID
+        : undefined,
     appearancePreference: normalizeAppearancePreference(input.appearancePreference),
     refreshIntervalMinutes: clamp(
       input.refreshIntervalMinutes ?? defaults.refreshIntervalMinutes,
@@ -110,6 +119,7 @@ function normalizeProfileStats(
         ? input.signatureVersion
         : defaults.signatureVersion,
     events,
+    resetNotice: normalizeProfileStatsResetNotice(input?.resetNotice),
     signature: typeof input?.signature === "string" ? input.signature : undefined,
     integrityStatus: "pending"
   };
@@ -161,6 +171,25 @@ function normalizeProfileStatsChannel(value: unknown): ProfileStatsEvent["channe
     value === "unknown"
   ) {
     return value;
+  }
+  return undefined;
+}
+
+function normalizeProfileStatsResetNotice(input: unknown): ProfileStatsResetNotice | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const notice = input as Partial<ProfileStatsResetNotice>;
+  if (
+    typeof notice.id === "string" &&
+    typeof notice.occurredAt === "string" &&
+    notice.reason === "tamper"
+  ) {
+    return {
+      id: notice.id,
+      occurredAt: notice.occurredAt,
+      reason: notice.reason
+    };
   }
   return undefined;
 }

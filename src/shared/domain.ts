@@ -143,11 +143,18 @@ export type ProfileStatsIntegrityStatus =
   | "unavailable"
   | "resetAfterTamper";
 
+export type ProfileStatsResetNotice = {
+  id: string;
+  occurredAt: string;
+  reason: "tamper";
+};
+
 export type ProfileStats = {
   createdAt: string;
   startedUsingAt: string;
   signatureVersion: number;
   events: ProfileStatsEvent[];
+  resetNotice?: ProfileStatsResetNotice;
   signature?: string;
   integrityStatus: ProfileStatsIntegrityStatus;
 };
@@ -194,6 +201,7 @@ export type PersistedSnapshot = {
   useMasForAppStoreUpdates: boolean;
   showMenuBarIcon: boolean;
   profileStats: ProfileStats;
+  profileStatsResetAcknowledgedID?: string;
   lastRefreshDate?: string;
 };
 
@@ -275,6 +283,18 @@ export function defaultProfileStats(now = new Date().toISOString()): ProfileStat
     signatureVersion: profileStatsSignatureVersion,
     events: [],
     integrityStatus: "pending"
+  };
+}
+
+export function defaultProfileStatsAfterTamper(now = new Date().toISOString()): ProfileStats {
+  return {
+    ...defaultProfileStats(now),
+    resetNotice: {
+      id: `tamper:${now}`,
+      occurredAt: now,
+      reason: "tamper"
+    },
+    integrityStatus: "resetAfterTamper"
   };
 }
 

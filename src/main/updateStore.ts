@@ -22,6 +22,7 @@ import type {
   UpdateRecord
 } from "../shared/domain";
 import {
+  defaultProfileStatsAfterTamper,
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
   homebrewDiscoverID,
@@ -281,6 +282,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const ignored = new Set(this.state.ignoredHomebrewItemIDs);
     toggleSet(ignored, itemID);
     this.patch({ ignoredHomebrewItemIDs: [...ignored].sort() });
+    await this.persist();
+  }
+
+  async acknowledgeProfileStatsReset(): Promise<void> {
+    const resetID = this.state.profileStats.resetNotice?.id;
+    if (!resetID || this.state.profileStatsResetAcknowledgedID === resetID) {
+      return;
+    }
+    this.patch({ profileStatsResetAcknowledgedID: resetID });
     await this.persist();
   }
 
@@ -1182,10 +1192,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.state.profileStats.signature || this.state.profileStats.events.length === 0
         ? this.state.profileStats
         : {
-            ...this.state.profileStats,
+            ...defaultProfileStatsAfterTamper(),
             events: [],
-            signature: undefined,
-            integrityStatus: "resetAfterTamper" as const
+            signature: undefined
           };
     const eventIDs = new Set(currentProfileStats.events.map((event) => event.id));
     const newEvents = events.filter((event) => !eventIDs.has(event.id));
@@ -1255,6 +1264,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     useMasForAppStoreUpdates: snapshot.useMasForAppStoreUpdates,
     showMenuBarIcon: snapshot.showMenuBarIcon,
     profileStats: snapshot.profileStats,
+    profileStatsResetAcknowledgedID: snapshot.profileStatsResetAcknowledgedID,
     lastRefreshDate: snapshot.lastRefreshDate
   };
 }

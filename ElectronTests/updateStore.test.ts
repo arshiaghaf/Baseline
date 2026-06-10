@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  defaultProfileStatsAfterTamper,
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
   defaultPersistedSnapshot,
@@ -2602,7 +2603,7 @@ describe("update store helpers", () => {
   it("resets profile stats when the local integrity seal fails", async () => {
     const profileStatsIntegrity = {
       verifyOrInitialize: vi.fn(async () => ({
-        ...defaultPersistedSnapshot().profileStats,
+        ...defaultProfileStatsAfterTamper("2026-06-05T12:00:00.000Z"),
         createdAt: "2026-06-05T12:00:00.000Z",
         integrityStatus: "resetAfterTamper" as const,
         signature: "sealed"
@@ -2637,6 +2638,38 @@ describe("update store helpers", () => {
 
     expect(store.getSnapshot().profileStats.events).toEqual([]);
     expect(store.getSnapshot().profileStats.integrityStatus).toBe("resetAfterTamper");
+    expect(store.getSnapshot().profileStats.resetNotice).toMatchObject({
+      reason: "tamper"
+    });
+  });
+
+  it("persists acknowledgement of the current profile stats reset notice", async () => {
+    let userData = "";
+    const resetNotice = {
+      id: "tamper:2026-06-05T12:00:00.000Z",
+      occurredAt: "2026-06-05T12:00:00.000Z",
+      reason: "tamper" as const
+    };
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        profileStats: {
+          ...defaultPersistedSnapshot().profileStats,
+          resetNotice,
+          integrityStatus: "resetAfterTamper"
+        }
+      },
+      onUserData: (directory) => {
+        userData = directory;
+      }
+    });
+
+    await store.acknowledgeProfileStatsReset();
+
+    expect(store.getSnapshot().profileStatsResetAcknowledgedID).toBe(resetNotice.id);
+    await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
+      profileStatsResetAcknowledgedID: resetNotice.id
+    });
   });
 
   it("does not run Discover installs when Homebrew is unavailable", async () => {

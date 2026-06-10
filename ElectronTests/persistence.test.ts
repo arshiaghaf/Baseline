@@ -213,6 +213,36 @@ describe("snapshot persistence", () => {
     });
   });
 
+  it("preserves profile stats reset notice acknowledgement across save and load", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      profileStatsResetAcknowledgedID: "tamper:2026-06-05T12:00:00.000Z",
+      profileStats: {
+        ...defaultPersistedSnapshot().profileStats,
+        resetNotice: {
+          id: "tamper:2026-06-05T12:00:00.000Z",
+          occurredAt: "2026-06-05T12:00:00.000Z",
+          reason: "tamper"
+        }
+      }
+    });
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      profileStatsResetAcknowledgedID: "tamper:2026-06-05T12:00:00.000Z",
+      profileStats: {
+        resetNotice: {
+          id: "tamper:2026-06-05T12:00:00.000Z",
+          occurredAt: "2026-06-05T12:00:00.000Z",
+          reason: "tamper"
+        }
+      }
+    });
+  });
+
   it("drops malformed profile stats events without resetting the snapshot", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);
