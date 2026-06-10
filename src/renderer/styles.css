@@ -2367,6 +2367,30 @@ button:disabled {
     color: rgba(235, 235, 245, 0.64);
   }
 
+  .profile-top-app-rank-1 {
+    background: linear-gradient(180deg, #f8d675, #b98511);
+    color: #3f2800;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.42),
+      0 1px 5px rgba(214, 165, 31, 0.28);
+  }
+
+  .profile-top-app-rank-2 {
+    background: linear-gradient(180deg, #d8dde5, #8e96a3);
+    color: #262c35;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.46),
+      0 1px 5px rgba(174, 180, 189, 0.2);
+  }
+
+  .profile-top-app-rank-3 {
+    background: linear-gradient(180deg, #d7965d, #8f4f1f);
+    color: #2f1605;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.32),
+      0 1px 5px rgba(176, 106, 43, 0.24);
+  }
+
   .profile-warning-row {
     background: rgba(255, 69, 58, 0.12);
   }
