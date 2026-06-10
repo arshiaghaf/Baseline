@@ -10,6 +10,7 @@ import {
   Beer,
   Check,
   CheckCircle2,
+  CircleUserRound,
   ChevronRight,
   Download,
   Eye,
@@ -85,7 +86,7 @@ const settingsSidebarItems: Array<{
   icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
 }> = [
   { id: "general", label: "General", icon: Settings },
-  { id: "profile", label: "Profile", icon: CheckCircle2 },
+  { id: "profile", label: "Profile", icon: CircleUserRound },
   { id: "appearance", label: "Appearance", icon: Monitor },
   { id: "diagnostics", label: "Diagnostics", icon: Terminal }
 ];
