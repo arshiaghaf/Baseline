@@ -21,7 +21,8 @@ import type {
   AppRecord,
   HomebrewCaskIndex,
   HomebrewManagedItem,
-  PersistedSnapshot
+  PersistedSnapshot,
+  ProfileStats
 } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
@@ -2451,6 +2452,49 @@ describe("update store helpers", () => {
 
     expect(store.getSnapshot().profileStats.integrityStatus).toBe("unavailable");
     expect(store.getSnapshot().profileStats.events).toEqual([]);
+  });
+
+  it("preserves profile stats events recorded while launch verification is pending", async () => {
+    let resolveVerification: (() => void) | undefined;
+    const profileStatsIntegrity = {
+      verifyOrInitialize: vi.fn(
+        async (stats) =>
+          new Promise<ProfileStats>((resolve) => {
+            resolveVerification = () =>
+              resolve({
+                ...stats,
+                integrityStatus: "verified" as const,
+                signature: "initial-sealed"
+              });
+          })
+      ),
+      seal: vi.fn(async (stats) => ({
+        ...stats,
+        integrityStatus: stats.integrityStatus,
+        signature: "sealed"
+      }))
+    };
+    const store = await makeStore({ profileStatsIntegrity });
+
+    const verificationTask = store.verifyProfileStatsIntegrity();
+    await store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+    resolveVerification?.();
+    await verificationTask;
+
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewInstall",
+        targetID: "formula:bat",
+        displayName: "bat",
+        channel: "homebrew"
+      })
+    ]);
   });
 
   it("resets profile stats when the local integrity seal fails", async () => {

@@ -175,8 +175,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async verifyProfileStatsIntegrity(): Promise<void> {
-    const profileStats = await this.profileStatsIntegrity.verifyOrInitialize(
-      this.state.profileStats
+    const profileStatsBeforeVerification = this.state.profileStats;
+    const verifiedProfileStats = await this.profileStatsIntegrity.verifyOrInitialize(
+      profileStatsBeforeVerification
+    );
+    const profileStats = await this.reconcileVerifiedProfileStats(
+      profileStatsBeforeVerification,
+      verifiedProfileStats
     );
     this.patch({ profileStats });
     await this.persist();
@@ -1167,6 +1172,32 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
     if (sealed.integrityStatus === "unavailable") {
       return { ...this.state.profileStats, integrityStatus: "unavailable" };
+    }
+    return sealed;
+  }
+
+  private async reconcileVerifiedProfileStats(
+    statsBeforeVerification: ProfileStats,
+    verifiedStats: ProfileStats
+  ): Promise<ProfileStats> {
+    const previousEventIDs = new Set(statsBeforeVerification.events.map((event) => event.id));
+    const currentStats = this.state.profileStats;
+    const concurrentEvents = currentStats.events.filter((event) => !previousEventIDs.has(event.id));
+    if (concurrentEvents.length === 0) {
+      return verifiedStats;
+    }
+
+    const concurrentEventIDs = new Set(concurrentEvents.map((event) => event.id));
+    const profileStats = {
+      ...verifiedStats,
+      events: [
+        ...concurrentEvents,
+        ...verifiedStats.events.filter((event) => !concurrentEventIDs.has(event.id))
+      ].slice(0, 1000)
+    };
+    const sealed = await this.profileStatsIntegrity.seal(profileStats);
+    if (sealed.integrityStatus === "unavailable") {
+      return { ...currentStats, integrityStatus: "unavailable" };
     }
     return sealed;
   }
