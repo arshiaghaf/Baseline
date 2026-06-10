@@ -1584,6 +1584,118 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("records profile stats for batch upgrades completed before maintenance fails", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => ({
+      success: command[0] !== "cleanup",
+      status: command[0] === "cleanup" ? 1 : 0,
+      output: command[0] === "cleanup" ? "Error: cleanup failed" : ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            installedVersion: version("14.0.0"),
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "cask:visual-studio-code",
+            token: "visual-studio-code",
+            name: "Visual Studio Code",
+            kind: "cask",
+            installedVersion: version("1.99.0"),
+            latestVersion: version("1.100.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["upgrade", "--cask", "--greedy", "visual-studio-code"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "formula:ripgrep",
+        displayName: "ripgrep",
+        channel: "homebrew"
+      }),
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "cask:visual-studio-code",
+        displayName: "Visual Studio Code",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
+  it("does not record profile stats for batch upgrade commands that fail", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => ({
+      success: !command.includes("--cask"),
+      status: command.includes("--cask") ? 1 : 0,
+      output: command.includes("--cask") ? "Error: cask upgrade failed" : ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            installedVersion: version("14.0.0"),
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "cask:visual-studio-code",
+            token: "visual-studio-code",
+            name: "Visual Studio Code",
+            kind: "cask",
+            installedVersion: version("1.99.0"),
+            latestVersion: version("1.100.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["upgrade", "--cask", "--greedy", "visual-studio-code"]
+    ]);
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "formula:ripgrep",
+        displayName: "ripgrep",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
   it("excludes hidden app-backed casks from batch Homebrew updates", async () => {
     const ignoredApp = appRecord({
       bundlePath: "/Applications/Managed.app",

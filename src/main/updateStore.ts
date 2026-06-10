@@ -533,16 +533,29 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       ["autoremove"],
       ["cleanup"]
     ];
+    const completedItemIDs = new Set<string>();
     let success = true;
     for (const command of sequence) {
       const result = await this.runBrewWithEvents(command, (event) => {
-        this.applyHomebrewProgressEvent(event, parser, affectedByToken);
+        this.applyHomebrewProgressEvent(event, parser, affectedByToken, completedItemIDs);
       });
+      if (result) {
+        const upgradedKind = homebrewUpgradeKindForCommand(command);
+        if (upgradedKind) {
+          for (const item of affected.filter((candidate) => candidate.kind === upgradedKind)) {
+            completedItemIDs.add(item.id);
+          }
+        }
+      }
       if (!result) {
         success = false;
         break;
       }
     }
+    const completedIDs = success
+      ? affectedIDs
+      : affectedIDs.filter((id) => completedItemIDs.has(id));
+    const failedIDs = affectedIDs.filter((id) => !completedItemIDs.has(id));
 
     this.patch({
       isRunningHomebrewMaintenance: false,
@@ -554,23 +567,29 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         : [
             ...new Set([
               ...this.state.homebrewBatchFailedItemIDs,
-              ...affectedIDs.filter(
+              ...failedIDs.filter(
                 (id) => !this.state.homebrewUpdatedPendingRefreshItemIDs.includes(id)
               )
             ])
           ],
-      homebrewUpdatedPendingRefreshItemIDs: success
-        ? [...new Set([...this.state.homebrewUpdatedPendingRefreshItemIDs, ...affectedIDs])]
-        : this.state.homebrewUpdatedPendingRefreshItemIDs,
+      homebrewUpdatedPendingRefreshItemIDs:
+        completedIDs.length > 0
+          ? [...new Set([...this.state.homebrewUpdatedPendingRefreshItemIDs, ...completedIDs])]
+          : this.state.homebrewUpdatedPendingRefreshItemIDs,
       refreshErrorMessage: success ? undefined : "Homebrew maintenance cycle failed."
     });
     if (!success) {
-      this.scheduleHomebrewBatchFailureClear(affectedIDs);
-    } else {
+      this.scheduleHomebrewBatchFailureClear(failedIDs);
+    }
+    if (completedIDs.length > 0) {
       const occurredAt = new Date().toISOString();
       await this.recordProfileStatsEvents(
-        affected.map((item) => homebrewUpdateProfileStatsEvent({ item, occurredAt }))
+        affected
+          .filter((item) => completedIDs.includes(item.id))
+          .map((item) => homebrewUpdateProfileStatsEvent({ item, occurredAt }))
       );
+    }
+    if (success) {
       await this.holdSuccessfulUpdate();
     }
     await this.refresh();
@@ -935,7 +954,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private applyHomebrewProgressEvent(
     event: HomebrewMaintenanceRunEvent,
     parser: HomebrewMaintenanceOutputParser,
-    affectedByToken: Map<string, string[]>
+    affectedByToken: Map<string, string[]>,
+    completedItemIDs?: Set<string>
   ): void {
     if (event.type === "commandStarted") {
       return;
@@ -959,6 +979,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
               homebrewBatchFailedItemIDs: addToArray(this.state.homebrewBatchFailedItemIDs, id)
             });
           } else {
+            completedItemIDs?.add(id);
             this.patch({
               homebrewBatchProgressByItemID: {
                 ...this.state.homebrewBatchProgressByItemID,
@@ -1323,6 +1344,14 @@ function homebrewInstallProfileStatsEvent(item: HomebrewCaskDiscoveryItem): Prof
     channel: "homebrew",
     occurredAt
   };
+}
+
+function homebrewUpgradeKindForCommand(command: string[]): HomebrewManagedItemKind | undefined {
+  const normalized = command.map((part) => part.toLowerCase());
+  if (normalized[0] !== "upgrade") {
+    return undefined;
+  }
+  return normalized.includes("--cask") || normalized.includes("--casks") ? "cask" : "formula";
 }
 
 function profileStatsChannel(
