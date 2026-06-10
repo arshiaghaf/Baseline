@@ -1178,21 +1178,30 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private async profileStatsWithEvents(events: ProfileStatsEvent[]): Promise<ProfileStats> {
-    const eventIDs = new Set(this.state.profileStats.events.map((event) => event.id));
+    const currentProfileStats =
+      this.state.profileStats.signature || this.state.profileStats.events.length === 0
+        ? this.state.profileStats
+        : {
+            ...this.state.profileStats,
+            events: [],
+            signature: undefined,
+            integrityStatus: "resetAfterTamper" as const
+          };
+    const eventIDs = new Set(currentProfileStats.events.map((event) => event.id));
     const newEvents = events.filter((event) => !eventIDs.has(event.id));
     if (newEvents.length === 0) {
-      return this.state.profileStats;
+      return currentProfileStats;
     }
     const sealed = await this.profileStatsIntegrity.seal({
-      ...this.state.profileStats,
-      events: [...newEvents, ...this.state.profileStats.events].slice(0, 1000),
+      ...currentProfileStats,
+      events: [...newEvents, ...currentProfileStats.events].slice(0, 1000),
       integrityStatus:
-        this.state.profileStats.integrityStatus === "resetAfterTamper"
+        currentProfileStats.integrityStatus === "resetAfterTamper"
           ? "resetAfterTamper"
           : "verified"
     });
     if (sealed.integrityStatus === "unavailable") {
-      return { ...this.state.profileStats, integrityStatus: "unavailable" };
+      return { ...currentProfileStats, integrityStatus: "unavailable" };
     }
     return sealed;
   }

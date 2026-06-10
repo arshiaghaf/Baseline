@@ -2515,6 +2515,47 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().profileStats.events).toEqual([]);
   });
 
+  it("does not seal populated unsigned profile stats history after a successful action", async () => {
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        profileStats: {
+          ...defaultPersistedSnapshot().profileStats,
+          signature: undefined,
+          integrityStatus: "unavailable",
+          events: [
+            {
+              id: "appUpdate:edited",
+              type: "appUpdate",
+              targetID: "app:edited",
+              displayName: "Edited",
+              channel: "appStore",
+              occurredAt: "2026-06-01T12:00:00.000Z"
+            }
+          ]
+        }
+      }
+    });
+
+    await store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+
+    expect(store.getSnapshot().profileStats.integrityStatus).toBe("resetAfterTamper");
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewInstall",
+        targetID: "formula:bat",
+        displayName: "bat",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
   it("preserves profile stats events recorded while launch verification is pending", async () => {
     let resolveVerification: (() => void) | undefined;
     const profileStatsIntegrity = {
