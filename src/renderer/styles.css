@@ -1599,15 +1599,6 @@ button:disabled {
   color: rgba(60, 60, 67, 0.68);
 }
 
-.profile-source-metric-value {
-  display: inline-grid;
-  grid-auto-flow: column;
-  align-items: center;
-  justify-content: start;
-  gap: 7px;
-  min-width: 0;
-}
-
 .profile-source-list,
 .profile-top-app-list {
   display: grid;

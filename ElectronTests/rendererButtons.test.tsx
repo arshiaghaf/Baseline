@@ -734,6 +734,14 @@ describe("renderer button parity", () => {
                 displayName: "ripgrep",
                 channel: "homebrew",
                 occurredAt: "2026-06-03T12:00:00.000Z"
+              },
+              {
+                id: "homebrewInstall:cask:orion:1.0:2026-06-08T12:00:00.000Z",
+                type: "homebrewInstall",
+                targetID: "cask:orion",
+                displayName: "Orion",
+                channel: "homebrew",
+                occurredAt: "2026-06-08T12:00:00.000Z"
               }
             ]
           }
@@ -756,13 +764,16 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("heading", { name: "Time with Baseline" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
-    expect(screen.getByText("Different apps")).toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
+    expect(screen.getByText("Different apps")).toBeInTheDocument();
+    expect(screen.getByText("Installs")).toBeInTheDocument();
     expect(screen.getByText(/Since .*2026/)).toBeInTheDocument();
-    expect(screen.getByText("Apps up to date")).toBeInTheDocument();
     expect(
       [...document.querySelectorAll(".profile-metric > span")].map((metric) => metric.textContent)
-    ).toEqual(["Different apps", "Total updates", "Apps up to date", "Favorite source"]);
+    ).toEqual(["Total updates", "Different apps", "Installs", "Favorite source"]);
+    expect(
+      [...document.querySelectorAll(".profile-metric strong")].map((metric) => metric.textContent)
+    ).toEqual(["8", "4", "1", "Sparkle"]);
     expect(screen.queryByText("Favorite channel")).not.toBeInTheDocument();
     expect(screen.getByText("Favorite source")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();
@@ -773,7 +784,7 @@ describe("renderer button parity", () => {
     expect(
       screen.queryByText("Apps you update with Baseline will appear here.")
     ).not.toBeInTheDocument();
-    expect(screen.getAllByText("Sparkle 63%")).toHaveLength(1);
+    expect(screen.getAllByText("Sparkle 56%")).toHaveLength(1);
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
     const topAppRow = screen.getByText("Example").closest("li");
     expect(topAppRow).not.toBeNull();
@@ -795,7 +806,7 @@ describe("renderer button parity", () => {
     expect([...topAppTiles].some((tile) => tile.textContent?.includes("Fourth App"))).toBe(false);
     expect(
       screen.getByText(
-        "Stats only count apps updated with Baseline. They are private and stored only on this Mac."
+        "Stats only count updates and installs completed with Baseline. They are private and stored only on this Mac."
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("Private stats")).not.toBeInTheDocument();

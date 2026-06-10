@@ -2697,14 +2697,10 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           <PanelTitle title="Stats" />
           <div className="settings-panel-box profile-panel-box">
             <div className="profile-stat-grid">
-              <ProfileMetric label="Different apps" value={String(profile.appUpdates)} />
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
-              <ProfileMetric label="Apps up to date" value={profile.freshnessLabel} />
-              <ProfileSourceMetric
-                channel={profile.favoriteChannel}
-                label="Favorite source"
-                value={profile.favoriteChannelLabel}
-              />
+              <ProfileMetric label="Different apps" value={String(profile.differentApps)} />
+              <ProfileMetric label="Installs" value={String(profile.discoverInstalls)} />
+              <ProfileMetric label="Favorite source" value={profile.favoriteChannelLabel} />
             </div>
           </div>
         </section>
@@ -2810,37 +2806,12 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           )}
           <div className="settings-row profile-footer-row">
             <span className="profile-footer-text">
-              Stats only count apps updated with Baseline. They are private and stored only on this
-              Mac.
+              Stats only count updates and installs completed with Baseline. They are private and
+              stored only on this Mac.
             </span>
           </div>
         </div>
       </section>
-    </div>
-  );
-}
-
-function ProfileSourceMetric({
-  label,
-  value,
-  channel
-}: {
-  label: string;
-  value: string;
-  channel?: ProfileStatsChannel;
-}) {
-  return (
-    <div className="profile-metric">
-      <strong className="profile-source-metric-value">
-        {channel && (
-          <span
-            className={`profile-source-dot ${profileSourceClass(channel)}`}
-            aria-hidden="true"
-          />
-        )}
-        {value}
-      </strong>
-      <span>{label}</span>
     </div>
   );
 }
@@ -3149,7 +3120,8 @@ function ToolStatus({
 }
 
 type ProfileSummary = {
-  appUpdates: number;
+  differentApps: number;
+  discoverInstalls: number;
   totalUpdates: number;
   startedUsing: {
     relativeLabel: string;
@@ -3158,7 +3130,6 @@ type ProfileSummary = {
   };
   favoriteChannelLabel: string;
   favoriteChannel?: ProfileStatsChannel;
-  freshnessLabel: string;
   sourceMix: Array<{
     channel: ProfileStatsChannel;
     label: string;
@@ -3181,15 +3152,19 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   const totalUpdates = events.filter(
     (event) => event.type === "appUpdate" || event.type === "homebrewUpdate"
   ).length;
+  const differentApps = new Set(
+    events.filter((event) => event.type === "appUpdate").map((event) => event.targetID)
+  ).size;
+  const discoverInstalls = events.filter((event) => event.type === "homebrewInstall").length;
   const favoriteChannelLabel = favorite.count > 0 ? favorite.label : "No history yet";
   const favoriteChannel = favorite.count > 0 ? favorite.channel : undefined;
   return {
-    appUpdates: events.filter((event) => event.type === "appUpdate").length,
+    differentApps,
+    discoverInstalls,
     totalUpdates,
     startedUsing: startedUsingSummary(snapshot.profileStats.startedUsingAt),
     favoriteChannelLabel,
     favoriteChannel,
-    freshnessLabel: freshnessLabel(snapshot),
     sourceMix,
     topApps
   };
@@ -3302,17 +3277,6 @@ function startedUsingSummary(createdAt: string): ProfileSummary["startedUsing"] 
     dateLabel: `Since ${exactDate}`,
     title: `Started using Baseline on ${exactDate}`
   };
-}
-
-function freshnessLabel(snapshot: BaselineSnapshot): string {
-  const trackedCount = snapshot.apps.length + snapshot.homebrewItems.length;
-  if (trackedCount === 0) {
-    return "No apps yet";
-  }
-  const outdatedCount =
-    snapshot.updates.length + snapshot.homebrewItems.filter((item) => item.isOutdated).length;
-  const freshCount = Math.max(0, trackedCount - outdatedCount);
-  return `${Math.round((freshCount / trackedCount) * 100)}%`;
 }
 
 function sourceLabel(update: UpdateRecord): string {
