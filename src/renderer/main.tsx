@@ -2793,6 +2793,40 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             )}
           </div>
         </section>
+        <section className="panel settings-panel">
+          <PanelTitle title="Most updated tools" />
+          <div className="settings-panel-box profile-top-apps-panel-box">
+            {profile.topHomebrewItems.length > 0 ? (
+              <ol className="profile-top-app-list profile-top-tool-list">
+                {profile.topHomebrewItems.map((item) => (
+                  <li
+                    key={item.targetID}
+                    title={`${item.displayName}: #${item.rank} with ${item.count} update${
+                      item.count === 1 ? "" : "s"
+                    }`}
+                  >
+                    <span className={`profile-top-app-rank profile-top-app-rank-${item.rank}`}>
+                      {item.rank}
+                    </span>
+                    <span className="profile-top-app-icon profile-top-tool-icon" aria-hidden="true">
+                      <Terminal size={29} strokeWidth={2.2} />
+                    </span>
+                    <span className="profile-top-app-name" title={item.displayName}>
+                      {item.displayName}
+                    </span>
+                    <strong>
+                      {item.count} update{item.count === 1 ? "" : "s"} · {item.kindLabel}
+                    </strong>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="profile-empty-state">
+                Tools you update with Baseline will appear here.
+              </p>
+            )}
+          </div>
+        </section>
       </div>
       <section className="panel settings-panel profile-footer-panel">
         <div className="settings-panel-box">
@@ -3142,6 +3176,13 @@ type ProfileSummary = {
     iconDataURL?: string;
     rank: number;
   }>;
+  topHomebrewItems: Array<{
+    targetID: string;
+    displayName: string;
+    count: number;
+    kindLabel: string;
+    rank: number;
+  }>;
 };
 
 function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
@@ -3149,6 +3190,12 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   const sourceMix = buildProfileSourceMix(events);
   const favorite = sourceMix.reduce((best, item) => (item.count > best.count ? item : best));
   const topApps = buildTopUpdatedApps(events, snapshot.apps);
+  const topHomebrewItems = buildTopUpdatedHomebrewItems(
+    events,
+    snapshot.homebrewItems,
+    snapshot.apps,
+    snapshot.updates
+  );
   const totalUpdates = events.filter(
     (event) => event.type === "appUpdate" || event.type === "homebrewUpdate"
   ).length;
@@ -3166,7 +3213,8 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
     favoriteChannelLabel,
     favoriteChannel,
     sourceMix,
-    topApps
+    topApps,
+    topHomebrewItems
   };
 }
 
@@ -3244,6 +3292,84 @@ function buildTopUpdatedApps(
     )
     .slice(0, 3)
     .map((app, index) => ({ ...app, rank: index + 1 }));
+}
+
+function buildTopUpdatedHomebrewItems(
+  events: ProfileStatsEvent[],
+  homebrewItems: HomebrewManagedItem[],
+  apps: AppRecord[],
+  updates: UpdateRecord[]
+): ProfileSummary["topHomebrewItems"] {
+  const itemsByID = new Map(homebrewItems.map((item) => [item.id, item]));
+  const updatesByAppID = new Map(updates.map((update) => [update.appID, update]));
+  const counts = new Map<
+    string,
+    {
+      targetID: string;
+      displayName: string;
+      count: number;
+      kindLabel: string;
+      rank: number;
+    }
+  >();
+  for (const event of events) {
+    if (event.type !== "homebrewUpdate") {
+      continue;
+    }
+    const item = itemsByID.get(event.targetID);
+    if (!isProfileHomebrewToolEvent(event, item, apps, updatesByAppID)) {
+      continue;
+    }
+    const current = counts.get(event.targetID);
+    counts.set(event.targetID, {
+      targetID: event.targetID,
+      displayName: item?.name ?? event.displayName,
+      count: (current?.count ?? 0) + 1,
+      kindLabel: profileHomebrewKindLabel(event, item),
+      rank: 0
+    });
+  }
+  return [...counts.values()]
+    .sort(
+      (first, second) =>
+        second.count - first.count || first.displayName.localeCompare(second.displayName)
+    )
+    .slice(0, 3)
+    .map((item, index) => ({ ...item, rank: index + 1 }));
+}
+
+function isProfileHomebrewToolEvent(
+  event: ProfileStatsEvent,
+  item: HomebrewManagedItem | undefined,
+  apps: AppRecord[],
+  updatesByAppID: Map<string, UpdateRecord>
+): boolean {
+  if (item?.kind === "formula" || event.targetID.startsWith("formula:")) {
+    return true;
+  }
+  if (!item) {
+    return false;
+  }
+  if (homebrewItemHasAppRepresentation(item, apps, updatesByAppID)) {
+    return false;
+  }
+  if (item.presentation === "app") {
+    return false;
+  }
+  return Boolean(item.presentation);
+}
+
+function profileHomebrewKindLabel(
+  event: ProfileStatsEvent,
+  item: HomebrewManagedItem | undefined
+): string {
+  if (item?.presentation) {
+    return homebrewPresentationLabel(item.kind, item.presentation);
+  }
+  if (item?.kind === "formula" || event.targetID.startsWith("formula:")) {
+    return "Formula";
+  }
+  return "Tool";
 }
 
 function startedUsingSummary(createdAt: string): ProfileSummary["startedUsing"] {

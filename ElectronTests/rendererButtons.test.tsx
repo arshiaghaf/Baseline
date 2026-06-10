@@ -662,6 +662,24 @@ describe("renderer button parity", () => {
               kind: "formula",
               installedVersion: version("1.0.0"),
               isOutdated: false
+            },
+            {
+              id: "cask:aws-vault",
+              token: "aws-vault",
+              name: "aws-vault",
+              kind: "cask",
+              presentation: "cli",
+              installedVersion: version("1.0.0"),
+              isOutdated: false
+            },
+            {
+              id: "cask:orion",
+              token: "orion",
+              name: "Orion",
+              kind: "cask",
+              presentation: "app",
+              installedVersion: version("1.0.0"),
+              isOutdated: false
             }
           ],
           profileStats: {
@@ -736,6 +754,22 @@ describe("renderer button parity", () => {
                 occurredAt: "2026-06-03T12:00:00.000Z"
               },
               {
+                id: "homebrewUpdate:cask:aws-vault:1:2",
+                type: "homebrewUpdate",
+                targetID: "cask:aws-vault",
+                displayName: "aws-vault",
+                channel: "homebrew",
+                occurredAt: "2026-06-04T12:00:00.000Z"
+              },
+              {
+                id: "homebrewUpdate:cask:orion:1:2",
+                type: "homebrewUpdate",
+                targetID: "cask:orion",
+                displayName: "Orion",
+                channel: "homebrew",
+                occurredAt: "2026-06-04T13:00:00.000Z"
+              },
+              {
                 id: "homebrewInstall:cask:orion:1.0:2026-06-08T12:00:00.000Z",
                 type: "homebrewInstall",
                 targetID: "cask:orion",
@@ -773,18 +807,22 @@ describe("renderer button parity", () => {
     ).toEqual(["Total updates", "Unique apps", "Installs", "Favorite source"]);
     expect(
       [...document.querySelectorAll(".profile-metric strong")].map((metric) => metric.textContent)
-    ).toEqual(["8", "4", "1", "Sparkle"]);
+    ).toEqual(["10", "4", "1", "Sparkle"]);
     expect(screen.queryByText("Favorite channel")).not.toBeInTheDocument();
     expect(screen.getByText("Favorite source")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Most updated apps" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Most updated tools" })).toBeInTheDocument();
     expect(
       screen.queryByText("Update or install something with Baseline to build a source history.")
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText("Apps you update with Baseline will appear here.")
     ).not.toBeInTheDocument();
-    expect(screen.getAllByText("Sparkle 56%")).toHaveLength(1);
+    expect(
+      screen.queryByText("Tools you update with Baseline will appear here.")
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("Sparkle 45%")).toHaveLength(1);
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
     const topAppRow = screen.getByText("Example").closest("li");
     expect(topAppRow).not.toBeNull();
@@ -792,10 +830,16 @@ describe("renderer button parity", () => {
       "src",
       "data:image/png;base64,example-icon"
     );
-    const topAppTiles = document.querySelectorAll(".profile-top-app-list li");
+    const topAppTiles = document.querySelectorAll(
+      ".profile-top-app-list:not(.profile-top-tool-list) li"
+    );
     expect(topAppTiles).toHaveLength(3);
     expect(
-      [...document.querySelectorAll(".profile-top-app-rank")].map((rank) => rank.className)
+      [
+        ...document.querySelectorAll(
+          ".profile-top-app-list:not(.profile-top-tool-list) .profile-top-app-rank"
+        )
+      ].map((rank) => rank.className)
     ).toEqual([
       "profile-top-app-rank profile-top-app-rank-1",
       "profile-top-app-rank profile-top-app-rank-2",
@@ -804,6 +848,13 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Stable App")).toBeInTheDocument();
     expect(screen.getByText("Third App")).toBeInTheDocument();
     expect([...topAppTiles].some((tile) => tile.textContent?.includes("Fourth App"))).toBe(false);
+    const topToolTiles = document.querySelectorAll(".profile-top-tool-list li");
+    expect(topToolTiles).toHaveLength(2);
+    expect(screen.getByText("aws-vault")).toBeInTheDocument();
+    expect(screen.getByText("1 update · CLI Cask")).toBeInTheDocument();
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    expect(screen.getByText("1 update · Formula")).toBeInTheDocument();
+    expect([...topToolTiles].some((tile) => tile.textContent?.includes("Orion"))).toBe(false);
     expect(
       screen.getByText(
         "Only updates and installs completed with Baseline are counted. Stats stay private on this Mac."
@@ -836,6 +887,7 @@ describe("renderer button parity", () => {
       screen.getByText("Update or install something with Baseline to build a source history.")
     ).toBeInTheDocument();
     expect(screen.getByText("Apps you update with Baseline will appear here.")).toBeInTheDocument();
+    expect(screen.getByText("Tools you update with Baseline will appear here.")).toBeInTheDocument();
     expect(document.querySelectorAll(".profile-source-chip")).toHaveLength(0);
     expect(document.querySelectorAll(".profile-top-app-list li")).toHaveLength(0);
   });
