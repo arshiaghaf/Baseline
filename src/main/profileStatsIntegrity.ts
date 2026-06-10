@@ -26,6 +26,16 @@ export class KeychainProfileStatsIntegrity implements ProfileStatsIntegrity {
       if (signatureFor(stats, secret) === stats.signature) {
         return { ...stats, integrityStatus: "verified" };
       }
+      if (legacySignatureFor(stats, secret) === stats.signature) {
+        return sealProfileStats(
+          {
+            ...stats,
+            startedUsingAt: stats.createdAt
+          },
+          secret,
+          "verified"
+        );
+      }
       return sealProfileStats(defaultProfileStats(), secret, "resetAfterTamper");
     } catch {
       return { ...stats, integrityStatus: "unavailable" };
@@ -98,4 +108,22 @@ function canonicalProfileStats(stats: ProfileStats): string {
       occurredAt: event.occurredAt
     }))
   });
+}
+
+function legacySignatureFor(stats: ProfileStats, secret: string): string {
+  return createHmac("sha256", secret)
+    .update(
+      JSON.stringify({
+        createdAt: stats.createdAt,
+        events: stats.events.map((event) => ({
+          id: event.id,
+          type: event.type,
+          targetID: event.targetID,
+          displayName: event.displayName,
+          channel: event.channel,
+          occurredAt: event.occurredAt
+        }))
+      })
+    )
+    .digest("base64url");
 }
