@@ -360,7 +360,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       }
       const item = this.matchingHomebrewItemForApp(appRecord);
       if (item) {
-        await this.performHomebrewItemUpdate(item);
+        await this.performHomebrewItemUpdate(item, {
+          profileStatsEvent: appUpdateProfileStatsEvent({
+            appRecord,
+            update,
+            occurredAt: new Date().toISOString()
+          })
+        });
         return;
       }
       if (requiresHomebrewOwnershipProof(appRecord)) {
@@ -385,7 +391,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.performHomebrewItemUpdate(item);
   }
 
-  private async performHomebrewItemUpdate(item: HomebrewManagedItem): Promise<void> {
+  private async performHomebrewItemUpdate(
+    item: HomebrewManagedItem,
+    options: { profileStatsEvent?: ProfileStatsEvent } = {}
+  ): Promise<void> {
     if (!isValidHomebrewToken(item.token)) {
       return;
     }
@@ -422,7 +431,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           }
         });
         await this.recordProfileStatsEvents([
-          homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
+          options.profileStatsEvent ??
+            homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
         ]);
         await this.holdSuccessfulUpdate();
       } else {

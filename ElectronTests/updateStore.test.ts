@@ -1910,8 +1910,8 @@ describe("update store helpers", () => {
     );
     expect(store.getSnapshot().profileStats.events).toEqual([
       expect.objectContaining({
-        type: "homebrewUpdate",
-        targetID: "cask:homebrew-managed",
+        type: "appUpdate",
+        targetID: app.id,
         displayName: "Homebrew Managed",
         channel: "homebrew"
       })
