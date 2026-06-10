@@ -2687,13 +2687,13 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             <div className="profile-stat-grid">
               <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
+              <ProfileMetric label="Current apps up to date" value={profile.freshnessLabel} />
               <ProfileMetric
                 label="Started using Baseline"
                 value={profile.startedUsing.relativeLabel}
                 detail={profile.startedUsing.dateLabel}
                 title={profile.startedUsing.title}
               />
-              <ProfileMetric label="Current apps up to date" value={profile.freshnessLabel} />
             </div>
             <div className="settings-row settings-row-action">
               <SettingsRowText label="Favorite channel" />

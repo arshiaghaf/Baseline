@@ -760,6 +760,14 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Started using Baseline")).toBeInTheDocument();
     expect(screen.getByText(/Since .*2026/)).toBeInTheDocument();
     expect(screen.getByText("Current apps up to date")).toBeInTheDocument();
+    expect(
+      [...document.querySelectorAll(".profile-metric span")].map((metric) => metric.textContent)
+    ).toEqual([
+      "Apps updated",
+      "Total updates",
+      "Current apps up to date",
+      "Started using Baseline"
+    ]);
     expect(screen.getByText("Favorite channel")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Most updated apps" })).toBeInTheDocument();
