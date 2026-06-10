@@ -2432,6 +2432,67 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("preserves profile stats from concurrent successful actions", async () => {
+    let resolveFirstSeal: (() => void) | undefined;
+    let resolveFirstSealStarted: (() => void) | undefined;
+    const firstSealStarted = new Promise<void>((resolve) => {
+      resolveFirstSealStarted = resolve;
+    });
+    let sealCount = 0;
+    const profileStatsIntegrity = {
+      verifyOrInitialize: vi.fn(async (stats) => ({
+        ...stats,
+        integrityStatus: "verified" as const
+      })),
+      seal: vi.fn(async (stats: ProfileStats) => {
+        sealCount += 1;
+        if (sealCount === 1) {
+          resolveFirstSealStarted?.();
+          await new Promise<void>((resolve) => {
+            resolveFirstSeal = resolve;
+          });
+        }
+        return { ...stats, signature: `sealed-${sealCount}` };
+      })
+    };
+    const store = await makeStore({ profileStatsIntegrity });
+
+    const firstInstall = store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+    await firstSealStarted;
+
+    const secondInstall = store.installHomebrewItem({
+      id: "formula:fd",
+      kind: "formula",
+      token: "fd",
+      displayName: "fd",
+      version: version("1.0.0")
+    });
+    await Promise.resolve();
+    expect(profileStatsIntegrity.seal).toHaveBeenCalledTimes(1);
+
+    resolveFirstSeal?.();
+    await Promise.all([firstInstall, secondInstall]);
+
+    expect(
+      store
+        .getSnapshot()
+        .profileStats.events.map((event) => ({
+          type: event.type,
+          targetID: event.targetID,
+          displayName: event.displayName
+        }))
+    ).toEqual([
+      { type: "homebrewInstall", targetID: "formula:fd", displayName: "fd" },
+      { type: "homebrewInstall", targetID: "formula:bat", displayName: "bat" }
+    ]);
+  });
+
   it("does not persist unsigned profile stats events when sealing is unavailable", async () => {
     const profileStatsIntegrity = {
       verifyOrInitialize: vi.fn(async (stats) => ({
@@ -2477,15 +2538,17 @@ describe("update store helpers", () => {
     const store = await makeStore({ profileStatsIntegrity });
 
     const verificationTask = store.verifyProfileStatsIntegrity();
-    await store.installHomebrewItem({
+    await Promise.resolve();
+    const installTask = store.installHomebrewItem({
       id: "formula:bat",
       kind: "formula",
       token: "bat",
       displayName: "bat",
       version: version("1.0.0")
     });
+    await Promise.resolve();
     resolveVerification?.();
-    await verificationTask;
+    await Promise.all([verificationTask, installTask]);
 
     expect(store.getSnapshot().profileStats.events).toEqual([
       expect.objectContaining({

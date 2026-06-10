@@ -97,6 +97,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
   private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
   private hasCheckedHomebrewAvailability = false;
+  private profileStatsMutationQueue: Promise<void> = Promise.resolve();
 
   private state: BaselineSnapshot;
 
@@ -175,16 +176,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async verifyProfileStatsIntegrity(): Promise<void> {
-    const profileStatsBeforeVerification = this.state.profileStats;
-    const verifiedProfileStats = await this.profileStatsIntegrity.verifyOrInitialize(
-      profileStatsBeforeVerification
-    );
-    const profileStats = await this.reconcileVerifiedProfileStats(
-      profileStatsBeforeVerification,
-      verifiedProfileStats
-    );
-    this.patch({ profileStats });
-    await this.persist();
+    await this.runProfileStatsMutation(async () => {
+      const profileStatsBeforeVerification = this.state.profileStats;
+      const verifiedProfileStats = await this.profileStatsIntegrity.verifyOrInitialize(
+        profileStatsBeforeVerification
+      );
+      const profileStats = await this.reconcileVerifiedProfileStats(
+        profileStatsBeforeVerification,
+        verifiedProfileStats
+      );
+      this.patch({ profileStats });
+      await this.persist();
+    });
   }
 
   async refresh(lightweight = false): Promise<void> {
@@ -1161,9 +1164,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private async recordProfileStatsEvents(events: ProfileStatsEvent[]): Promise<void> {
-    const profileStats = await this.profileStatsWithEvents(events);
-    this.patch({ profileStats });
-    await this.persist();
+    await this.runProfileStatsMutation(async () => {
+      const profileStats = await this.profileStatsWithEvents(events);
+      this.patch({ profileStats });
+      await this.persist();
+    });
+  }
+
+  private async runProfileStatsMutation(operation: () => Promise<void>): Promise<void> {
+    const mutation = this.profileStatsMutationQueue.then(operation, operation);
+    this.profileStatsMutationQueue = mutation.catch(() => undefined);
+    await mutation;
   }
 
   private async profileStatsWithEvents(events: ProfileStatsEvent[]): Promise<ProfileStats> {
