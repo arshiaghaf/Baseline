@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SnapshotPersistence } from "../src/main/persistence";
-import { defaultPersistedSnapshot } from "../src/shared/domain";
+import { defaultPersistedSnapshot, profileStatsSignatureVersion } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
 let tempDirs: string[] = [];
@@ -120,6 +120,169 @@ describe("snapshot persistence", () => {
       collapsedAppSectionIDs: ["ignored", "installed"],
       collapsedHomebrewSectionIDs: ["discover", "recentlyUpdated"]
     });
+  });
+
+  it("defaults profile stats on older snapshots", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await mkdir(userData, { recursive: true });
+    await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
+
+    const persistence = new SnapshotPersistence(userData);
+
+    const loaded = await persistence.load();
+    expect(loaded.profileStats.events).toEqual([]);
+    expect(loaded.profileStats.integrityStatus).toBe("pending");
+  });
+
+  it("defaults the started using date on older snapshots", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await mkdir(userData, { recursive: true });
+    await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
+
+    const persistence = new SnapshotPersistence(userData);
+
+    const loaded = await persistence.load();
+    expect(Number.isFinite(new Date(loaded.profileStats.startedUsingAt).getTime())).toBe(true);
+  });
+
+  it("preserves the started using date across save and load", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      profileStats: {
+        ...defaultPersistedSnapshot().profileStats,
+        startedUsingAt: "2026-06-01T12:00:00.000Z"
+      }
+    });
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      profileStats: {
+        startedUsingAt: "2026-06-01T12:00:00.000Z"
+      }
+    });
+  });
+
+  it("preserves profile stats events across save and load", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      profileStats: {
+        createdAt: "2026-06-01T12:00:00.000Z",
+        startedUsingAt: "2026-05-15T12:00:00.000Z",
+        signatureVersion: profileStatsSignatureVersion,
+        signature: "signed",
+        integrityStatus: "verified",
+        events: [
+          {
+            id: "appUpdate:app:example:1:2::",
+            type: "appUpdate",
+            targetID: "app:example",
+            displayName: "Example",
+            channel: "sparkle",
+            occurredAt: "2026-06-02T12:00:00.000Z"
+          }
+        ]
+      }
+    });
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      profileStats: {
+        createdAt: "2026-06-01T12:00:00.000Z",
+        startedUsingAt: "2026-05-15T12:00:00.000Z",
+        signature: "signed",
+        integrityStatus: "pending",
+        events: [
+          {
+            id: "appUpdate:app:example:1:2::",
+            type: "appUpdate",
+            targetID: "app:example",
+            displayName: "Example",
+            channel: "sparkle",
+            occurredAt: "2026-06-02T12:00:00.000Z"
+          }
+        ]
+      }
+    });
+  });
+
+  it("preserves profile stats reset notice acknowledgement across save and load", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      profileStatsResetAcknowledgedID: "tamper:2026-06-05T12:00:00.000Z",
+      profileStats: {
+        ...defaultPersistedSnapshot().profileStats,
+        resetNotice: {
+          id: "tamper:2026-06-05T12:00:00.000Z",
+          occurredAt: "2026-06-05T12:00:00.000Z",
+          reason: "tamper"
+        }
+      }
+    });
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      profileStatsResetAcknowledgedID: "tamper:2026-06-05T12:00:00.000Z",
+      profileStats: {
+        resetNotice: {
+          id: "tamper:2026-06-05T12:00:00.000Z",
+          occurredAt: "2026-06-05T12:00:00.000Z",
+          reason: "tamper"
+        }
+      }
+    });
+  });
+
+  it("drops malformed profile stats events without resetting the snapshot", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await mkdir(userData, { recursive: true });
+    await writeFile(
+      path.join(userData, "baseline-snapshot.json"),
+      `${JSON.stringify({
+        ...defaultPersistedSnapshot(),
+        showMenuBarIcon: false,
+        profileStats: {
+          ...defaultPersistedSnapshot().profileStats,
+          events: [
+            null,
+            {
+              id: "appUpdate:app:example:1:2::",
+              type: "appUpdate",
+              targetID: "app:example",
+              displayName: "Example",
+              channel: "sparkle",
+              occurredAt: "2026-06-02T12:00:00.000Z"
+            }
+          ]
+        }
+      })}\n`,
+      "utf8"
+    );
+
+    const loaded = await new SnapshotPersistence(userData).load();
+
+    expect(loaded.showMenuBarIcon).toBe(false);
+    expect(loaded.profileStats.events).toEqual([
+      {
+        id: "appUpdate:app:example:1:2::",
+        type: "appUpdate",
+        targetID: "app:example",
+        displayName: "Example",
+        channel: "sparkle",
+        occurredAt: "2026-06-02T12:00:00.000Z"
+      }
+    ]);
   });
 
   it("preserves recently updated and ignored state across save and load", async () => {

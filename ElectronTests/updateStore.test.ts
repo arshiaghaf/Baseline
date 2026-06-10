@@ -6,9 +6,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  defaultProfileStatsAfterTamper,
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
-  defaultPersistedSnapshot
+  defaultPersistedSnapshot,
+  profileStatsSignatureVersion
 } from "../src/shared/domain";
 import { SnapshotPersistence } from "../src/main/persistence";
 import {
@@ -20,7 +22,8 @@ import type {
   AppRecord,
   HomebrewCaskIndex,
   HomebrewManagedItem,
-  PersistedSnapshot
+  PersistedSnapshot,
+  ProfileStats
 } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
@@ -291,6 +294,31 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().additionalDirectories).toEqual([resolvedFirst]);
     await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
       additionalDirectories: [resolvedFirst]
+    });
+  });
+
+  it("persists the started using date through store saves", async () => {
+    let userData = "";
+    const startedUsingAt = "2026-06-01T12:00:00.000Z";
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        profileStats: {
+          ...defaultPersistedSnapshot().profileStats,
+          startedUsingAt
+        }
+      },
+      onUserData: (directory) => {
+        userData = directory;
+      }
+    });
+
+    await store.updatePreferences({ showMenuBarIcon: false });
+
+    await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
+      profileStats: {
+        startedUsingAt
+      }
     });
   });
 
@@ -1540,6 +1568,189 @@ describe("update store helpers", () => {
       ["autoremove"],
       ["cleanup"]
     ]);
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "formula:ripgrep",
+        displayName: "ripgrep",
+        channel: "homebrew"
+      }),
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "cask:visual-studio-code",
+        displayName: "Visual Studio Code",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
+  it("records profile stats for batch upgrades completed before maintenance fails", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => ({
+      success: command[0] !== "cleanup",
+      status: command[0] === "cleanup" ? 1 : 0,
+      output: command[0] === "cleanup" ? "Error: cleanup failed" : ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            installedVersion: version("14.0.0"),
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "cask:visual-studio-code",
+            token: "visual-studio-code",
+            name: "Visual Studio Code",
+            kind: "cask",
+            installedVersion: version("1.99.0"),
+            latestVersion: version("1.100.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["upgrade", "--cask", "--greedy", "visual-studio-code"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "formula:ripgrep",
+        displayName: "ripgrep",
+        channel: "homebrew"
+      }),
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "cask:visual-studio-code",
+        displayName: "Visual Studio Code",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
+  it("does not record profile stats for batch upgrade commands that fail", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => ({
+      success: !command.includes("--cask"),
+      status: command.includes("--cask") ? 1 : 0,
+      output: command.includes("--cask") ? "Error: cask upgrade failed" : ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            installedVersion: version("14.0.0"),
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "cask:visual-studio-code",
+            token: "visual-studio-code",
+            name: "Visual Studio Code",
+            kind: "cask",
+            installedVersion: version("1.99.0"),
+            latestVersion: version("1.100.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["upgrade", "--cask", "--greedy", "visual-studio-code"]
+    ]);
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "formula:ripgrep",
+        displayName: "ripgrep",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
+  it("does not complete same-token casks from formula batch output", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command, onOutputLine = () => undefined) => {
+      if (command[0] === "upgrade" && !command.includes("--cask")) {
+        onOutputLine("🍺  /opt/homebrew/Cellar/shared/1.0: 10 files");
+      }
+      return {
+        success: !command.includes("--cask"),
+        status: command.includes("--cask") ? 1 : 0,
+        output: command.includes("--cask") ? "Error: cask upgrade failed" : ""
+      };
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:shared",
+            token: "shared",
+            name: "shared",
+            kind: "formula",
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "cask:shared",
+            token: "shared",
+            name: "Shared",
+            kind: "cask",
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "shared"],
+      ["upgrade", "--cask", "--greedy", "shared"]
+    ]);
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "formula:shared",
+        displayName: "shared",
+        channel: "homebrew"
+      })
+    ]);
   });
 
   it("excludes hidden app-backed casks from batch Homebrew updates", async () => {
@@ -1785,6 +1996,14 @@ describe("update store helpers", () => {
     await successfulStore.performAppUpdate(app.id);
 
     expect(successfulMas).toHaveBeenCalledWith(["upgrade", "123"]);
+    expect(successfulStore.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "appUpdate",
+        targetID: app.id,
+        displayName: "App Store Managed",
+        channel: "appStore"
+      })
+    ]);
 
     const failingMas = vi.fn(async () => ({ success: false, status: 1, output: "" }));
     const openedExternalURLs: string[] = [];
@@ -1801,6 +2020,7 @@ describe("update store helpers", () => {
 
     expect(failingMas).toHaveBeenCalledWith(["upgrade", "123"]);
     expect(openedExternalURLs).toEqual(["https://apps.apple.com/app/example"]);
+    expect(fallbackStore.getSnapshot().profileStats.events).toEqual([]);
   });
 
   it("blocks unsafe external URLs before invoking the platform opener", async () => {
@@ -1858,6 +2078,14 @@ describe("update store helpers", () => {
       ["upgrade", "--cask", "homebrew-managed"],
       expect.any(Function)
     );
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "appUpdate",
+        targetID: app.id,
+        displayName: "Homebrew Managed",
+        channel: "homebrew"
+      })
+    ]);
   });
 
   it("routes Homebrew-backed app updates through installed casks even when cask outdated metadata is missing", async () => {
@@ -2316,6 +2544,303 @@ describe("update store helpers", () => {
     }
   });
 
+  it("does not record profile stats when refresh detects an external app update", async () => {
+    const installedApp = appRecord({
+      bundlePath: "/Applications/Profiled App.app",
+      displayName: "Profiled App",
+      localVersion: version("1.0.0")
+    });
+    const refreshedApp = {
+      ...installedApp,
+      localVersion: version("2.0.0")
+    };
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [installedApp],
+        updates: [
+          {
+            id: installedApp.id,
+            appID: installedApp.id,
+            source: "sparkle",
+            supportLevel: "limited",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            checkedAt: "2026-06-01T12:00:00.000Z"
+          }
+        ]
+      },
+      clients: {
+        scanner: { scanApplications: async () => [refreshedApp] }
+      }
+    });
+
+    await store.refresh(false);
+    await store.refresh(false);
+
+    expect(store.getSnapshot().profileStats.events).toEqual([]);
+  });
+
+  it("records profile stats for successful Homebrew Discover installs", async () => {
+    const store = await makeStore();
+
+    await store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewInstall",
+        targetID: "formula:bat",
+        displayName: "bat",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
+  it("preserves profile stats from concurrent successful actions", async () => {
+    let resolveFirstSeal: (() => void) | undefined;
+    let resolveFirstSealStarted: (() => void) | undefined;
+    const firstSealStarted = new Promise<void>((resolve) => {
+      resolveFirstSealStarted = resolve;
+    });
+    let sealCount = 0;
+    const profileStatsIntegrity = {
+      verifyOrInitialize: vi.fn(async (stats) => ({
+        ...stats,
+        integrityStatus: "verified" as const
+      })),
+      seal: vi.fn(async (stats: ProfileStats) => {
+        sealCount += 1;
+        if (sealCount === 1) {
+          resolveFirstSealStarted?.();
+          await new Promise<void>((resolve) => {
+            resolveFirstSeal = resolve;
+          });
+        }
+        return { ...stats, signature: `sealed-${sealCount}` };
+      })
+    };
+    const store = await makeStore({ profileStatsIntegrity });
+
+    const firstInstall = store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+    await firstSealStarted;
+
+    const secondInstall = store.installHomebrewItem({
+      id: "formula:fd",
+      kind: "formula",
+      token: "fd",
+      displayName: "fd",
+      version: version("1.0.0")
+    });
+    await Promise.resolve();
+    expect(profileStatsIntegrity.seal).toHaveBeenCalledTimes(1);
+
+    resolveFirstSeal?.();
+    await Promise.all([firstInstall, secondInstall]);
+
+    expect(
+      store.getSnapshot().profileStats.events.map((event) => ({
+        type: event.type,
+        targetID: event.targetID,
+        displayName: event.displayName
+      }))
+    ).toEqual([
+      { type: "homebrewInstall", targetID: "formula:fd", displayName: "fd" },
+      { type: "homebrewInstall", targetID: "formula:bat", displayName: "bat" }
+    ]);
+  });
+
+  it("does not persist unsigned profile stats events when sealing is unavailable", async () => {
+    const profileStatsIntegrity = {
+      verifyOrInitialize: vi.fn(async (stats) => ({
+        ...stats,
+        integrityStatus: "verified" as const
+      })),
+      seal: vi.fn(async (stats) => ({ ...stats, integrityStatus: "unavailable" as const }))
+    };
+    const store = await makeStore({ profileStatsIntegrity });
+
+    await store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+
+    expect(store.getSnapshot().profileStats.integrityStatus).toBe("unavailable");
+    expect(store.getSnapshot().profileStats.events).toEqual([]);
+  });
+
+  it("does not seal populated unsigned profile stats history after a successful action", async () => {
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        profileStats: {
+          ...defaultPersistedSnapshot().profileStats,
+          signature: undefined,
+          integrityStatus: "unavailable",
+          events: [
+            {
+              id: "appUpdate:edited",
+              type: "appUpdate",
+              targetID: "app:edited",
+              displayName: "Edited",
+              channel: "appStore",
+              occurredAt: "2026-06-01T12:00:00.000Z"
+            }
+          ]
+        }
+      }
+    });
+
+    await store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+
+    expect(store.getSnapshot().profileStats.integrityStatus).toBe("resetAfterTamper");
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewInstall",
+        targetID: "formula:bat",
+        displayName: "bat",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
+  it("preserves profile stats events recorded while launch verification is pending", async () => {
+    let resolveVerification: (() => void) | undefined;
+    const profileStatsIntegrity = {
+      verifyOrInitialize: vi.fn(
+        async (stats) =>
+          new Promise<ProfileStats>((resolve) => {
+            resolveVerification = () =>
+              resolve({
+                ...stats,
+                integrityStatus: "verified" as const,
+                signature: "initial-sealed"
+              });
+          })
+      ),
+      seal: vi.fn(async (stats) => ({
+        ...stats,
+        integrityStatus: stats.integrityStatus,
+        signature: "sealed"
+      }))
+    };
+    const store = await makeStore({ profileStatsIntegrity });
+
+    const verificationTask = store.verifyProfileStatsIntegrity();
+    await Promise.resolve();
+    const installTask = store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+    await Promise.resolve();
+    resolveVerification?.();
+    await Promise.all([verificationTask, installTask]);
+
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewInstall",
+        targetID: "formula:bat",
+        displayName: "bat",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
+  it("resets profile stats when the local integrity seal fails", async () => {
+    const profileStatsIntegrity = {
+      verifyOrInitialize: vi.fn(async () => ({
+        ...defaultProfileStatsAfterTamper("2026-06-05T12:00:00.000Z"),
+        createdAt: "2026-06-05T12:00:00.000Z",
+        integrityStatus: "resetAfterTamper" as const,
+        signature: "sealed"
+      })),
+      seal: vi.fn(async (stats) => ({ ...stats, signature: "sealed" }))
+    };
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        profileStats: {
+          createdAt: "2026-06-01T12:00:00.000Z",
+          startedUsingAt: "2026-05-15T12:00:00.000Z",
+          signatureVersion: profileStatsSignatureVersion,
+          integrityStatus: "pending",
+          signature: "edited",
+          events: [
+            {
+              id: "appUpdate:edited",
+              type: "appUpdate",
+              targetID: "app:edited",
+              displayName: "Edited",
+              channel: "appStore",
+              occurredAt: "2026-06-02T12:00:00.000Z"
+            }
+          ]
+        }
+      },
+      profileStatsIntegrity
+    });
+
+    await store.verifyProfileStatsIntegrity();
+
+    expect(store.getSnapshot().profileStats.events).toEqual([]);
+    expect(store.getSnapshot().profileStats.integrityStatus).toBe("resetAfterTamper");
+    expect(store.getSnapshot().profileStats.resetNotice).toMatchObject({
+      reason: "tamper"
+    });
+  });
+
+  it("persists acknowledgement of the current profile stats reset notice", async () => {
+    let userData = "";
+    const resetNotice = {
+      id: "tamper:2026-06-05T12:00:00.000Z",
+      occurredAt: "2026-06-05T12:00:00.000Z",
+      reason: "tamper" as const
+    };
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        profileStats: {
+          ...defaultPersistedSnapshot().profileStats,
+          resetNotice,
+          integrityStatus: "resetAfterTamper"
+        }
+      },
+      onUserData: (directory) => {
+        userData = directory;
+      }
+    });
+
+    await store.acknowledgeProfileStatsReset();
+
+    expect(store.getSnapshot().profileStatsResetAcknowledgedID).toBe(resetNotice.id);
+    await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
+      profileStatsResetAcknowledgedID: resetNotice.id
+    });
+  });
+
   it("does not run Discover installs when Homebrew is unavailable", async () => {
     const item = {
       id: "cask:missing-brew-discover",
@@ -2351,6 +2876,10 @@ async function makeStore({
   runMasCommand = async () => ({ success: true, status: 0, output: "" }),
   openExternalURL = async () => true,
   openAppBundle = async () => undefined,
+  profileStatsIntegrity = {
+    verifyOrInitialize: async (stats) => ({ ...stats, integrityStatus: "verified" as const }),
+    seal: async (stats) => ({ ...stats, signature: "sealed" })
+  },
   currentAppVersion,
   successRefreshDelayMS = 0,
   onUserData
@@ -2361,6 +2890,7 @@ async function makeStore({
   runMasCommand?: ConstructorParameters<typeof UpdateStore>[0]["runMasCommand"];
   openExternalURL?: ConstructorParameters<typeof UpdateStore>[0]["openExternalURL"];
   openAppBundle?: ConstructorParameters<typeof UpdateStore>[0]["openAppBundle"];
+  profileStatsIntegrity?: ConstructorParameters<typeof UpdateStore>[0]["profileStatsIntegrity"];
   currentAppVersion?: ConstructorParameters<typeof UpdateStore>[0]["currentAppVersion"];
   successRefreshDelayMS?: ConstructorParameters<typeof UpdateStore>[0]["successRefreshDelayMS"];
   onUserData?: (directory: string) => void;
@@ -2373,6 +2903,7 @@ async function makeStore({
     persisted,
     openExternalURL,
     openAppBundle,
+    profileStatsIntegrity,
     currentAppVersion,
     runBrewCommand,
     runMasCommand,

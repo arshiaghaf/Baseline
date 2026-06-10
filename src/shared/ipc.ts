@@ -22,6 +22,7 @@ export const ipcChannels = {
   setSearchText: "baseline:setSearchText",
   setSelectedTab: "baseline:setSelectedTab",
   updatePreferences: "baseline:updatePreferences",
+  acknowledgeProfileStatsReset: "baseline:acknowledgeProfileStatsReset",
   toggleIgnoredApp: "baseline:toggleIgnoredApp",
   toggleIgnoredHomebrew: "baseline:toggleIgnoredHomebrew",
   performAppUpdate: "baseline:performAppUpdate",
@@ -62,6 +63,7 @@ export type BaselineAPI = {
   setSearchText(searchText: string): Promise<void>;
   setSelectedTab(tab: MenuTab): Promise<void>;
   updatePreferences(patch: PreferencePatch): Promise<void>;
+  acknowledgeProfileStatsReset(): Promise<void>;
   toggleIgnoredApp(appID: string): Promise<void>;
   toggleIgnoredHomebrew(itemID: string): Promise<void>;
   performAppUpdate(appID: string): Promise<void>;

@@ -3,8 +3,17 @@
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { PersistedSnapshot } from "../shared/domain";
-import { defaultPersistedSnapshot, normalizeAppearancePreference } from "../shared/domain";
+import type {
+  PersistedSnapshot,
+  ProfileStats,
+  ProfileStatsEvent,
+  ProfileStatsResetNotice
+} from "../shared/domain";
+import {
+  defaultPersistedSnapshot,
+  defaultProfileStats,
+  normalizeAppearancePreference
+} from "../shared/domain";
 import { version } from "../shared/version";
 export { defaultPersistedSnapshot };
 
@@ -30,7 +39,9 @@ export class SnapshotPersistence {
   }
 }
 
-function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot {
+function normalizeSnapshot(
+  input: Partial<PersistedSnapshot> & { startedUsingAt?: unknown }
+): PersistedSnapshot {
   const defaults = defaultPersistedSnapshot();
   return {
     ...defaults,
@@ -73,6 +84,11 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
       fromVersion: version(record.fromVersion?.raw),
       toVersion: version(record.toVersion?.raw)
     })),
+    profileStats: normalizeProfileStats(input.profileStats, input.startedUsingAt),
+    profileStatsResetAcknowledgedID:
+      typeof input.profileStatsResetAcknowledgedID === "string"
+        ? input.profileStatsResetAcknowledgedID
+        : undefined,
     appearancePreference: normalizeAppearancePreference(input.appearancePreference),
     refreshIntervalMinutes: clamp(
       input.refreshIntervalMinutes ?? defaults.refreshIntervalMinutes,
@@ -80,6 +96,102 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
       1440
     )
   };
+}
+
+function normalizeProfileStats(
+  input: Partial<ProfileStats> | undefined,
+  legacyStartedUsingAt?: unknown
+): ProfileStats {
+  const defaults = defaultProfileStats();
+  const events = Array.isArray(input?.events)
+    ? input.events.flatMap((event) => normalizeProfileStatsEvent(event))
+    : [];
+  return {
+    createdAt: typeof input?.createdAt === "string" ? input.createdAt : defaults.createdAt,
+    startedUsingAt:
+      typeof input?.startedUsingAt === "string"
+        ? input.startedUsingAt
+        : typeof legacyStartedUsingAt === "string"
+          ? legacyStartedUsingAt
+          : defaults.startedUsingAt,
+    signatureVersion:
+      typeof input?.signatureVersion === "number"
+        ? input.signatureVersion
+        : defaults.signatureVersion,
+    events,
+    resetNotice: normalizeProfileStatsResetNotice(input?.resetNotice),
+    signature: typeof input?.signature === "string" ? input.signature : undefined,
+    integrityStatus: "pending"
+  };
+}
+
+function normalizeProfileStatsEvent(input: unknown): ProfileStatsEvent[] {
+  if (!input || typeof input !== "object") {
+    return [];
+  }
+  const event = input as Partial<ProfileStatsEvent>;
+  if (
+    typeof event.id !== "string" ||
+    typeof event.targetID !== "string" ||
+    typeof event.displayName !== "string" ||
+    typeof event.occurredAt !== "string"
+  ) {
+    return [];
+  }
+  const type = normalizeProfileStatsEventType(event.type);
+  const channel = normalizeProfileStatsChannel(event.channel);
+  if (!type || !channel) {
+    return [];
+  }
+  return [
+    {
+      id: event.id,
+      type,
+      targetID: event.targetID,
+      displayName: event.displayName,
+      channel,
+      occurredAt: event.occurredAt
+    }
+  ];
+}
+
+function normalizeProfileStatsEventType(value: unknown): ProfileStatsEvent["type"] | undefined {
+  if (value === "appUpdate" || value === "homebrewUpdate" || value === "homebrewInstall") {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeProfileStatsChannel(value: unknown): ProfileStatsEvent["channel"] | undefined {
+  if (
+    value === "appStore" ||
+    value === "sparkle" ||
+    value === "homebrew" ||
+    value === "web" ||
+    value === "unknown"
+  ) {
+    return value;
+  }
+  return undefined;
+}
+
+function normalizeProfileStatsResetNotice(input: unknown): ProfileStatsResetNotice | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const notice = input as Partial<ProfileStatsResetNotice>;
+  if (
+    typeof notice.id === "string" &&
+    typeof notice.occurredAt === "string" &&
+    notice.reason === "tamper"
+  ) {
+    return {
+      id: notice.id,
+      occurredAt: notice.occurredAt,
+      reason: notice.reason
+    };
+  }
+  return undefined;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {

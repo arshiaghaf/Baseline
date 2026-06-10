@@ -10,6 +10,7 @@ import {
   Beer,
   Check,
   CheckCircle2,
+  CircleUserRound,
   ChevronRight,
   Download,
   Eye,
@@ -39,6 +40,8 @@ import type {
   HomebrewCaskDiscoveryItem,
   HomebrewManagedItem,
   MenuTab,
+  ProfileStatsChannel,
+  ProfileStatsEvent,
   RecentlyUpdatedRecord,
   UpdateRecord
 } from "../shared/domain";
@@ -72,7 +75,7 @@ type RowUpdateMenuAction = {
   disabled?: boolean;
   onAction: () => void;
 };
-type SettingsSectionID = "general" | "appearance" | "diagnostics";
+type SettingsSectionID = "general" | "profile" | "appearance" | "diagnostics";
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
@@ -83,6 +86,7 @@ const settingsSidebarItems: Array<{
   icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
 }> = [
   { id: "general", label: "General", icon: Settings },
+  { id: "profile", label: "Profile", icon: CircleUserRound },
   { id: "appearance", label: "Appearance", icon: Monitor },
   { id: "diagnostics", label: "Diagnostics", icon: Terminal }
 ];
@@ -2602,6 +2606,8 @@ function SettingsPane({
           </section>
         </>
       );
+    case "profile":
+      return <ProfileSection snapshot={snapshot} />;
     case "appearance":
       return (
         <>
@@ -2666,6 +2672,215 @@ function SettingsPane({
         </>
       );
   }
+}
+
+function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
+  const profile = useMemo(() => buildProfileSummary(snapshot), [snapshot]);
+  const activeSourceMix = profile.sourceMix.filter((source) => source.count > 0);
+  const sourceMixTotal = profile.sourceMix.reduce((total, source) => total + source.count, 0);
+  const resetNotice = snapshot.profileStats.resetNotice;
+  const shouldShowResetWarning =
+    Boolean(resetNotice) && snapshot.profileStatsResetAcknowledgedID !== resetNotice?.id;
+  return (
+    <div className="profile-page">
+      <div className="profile-stack">
+        <section className="panel settings-panel profile-start-section">
+          <div
+            className="settings-panel-box profile-start-panel-box"
+            title={profile.startedUsing.title}
+          >
+            <div className="profile-start-summary">
+              <strong>
+                <span className="profile-start-value">{profile.startedUsing.relativeLabel}</span>
+                <span className="profile-start-unit">with Baseline</span>
+              </strong>
+              <span className="profile-start-date">{profile.startedUsing.dateLabel}</span>
+            </div>
+          </div>
+        </section>
+        <section className="panel settings-panel">
+          <PanelTitle title="Stats" />
+          <div className="settings-panel-box profile-panel-box">
+            <div className="profile-stat-grid">
+              <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
+              <ProfileMetric label="Unique apps" value={String(profile.differentApps)} />
+              <ProfileMetric label="Installs" value={String(profile.discoverInstalls)} />
+              <ProfileMetric label="Favorite source" value={profile.favoriteChannelLabel} />
+            </div>
+          </div>
+        </section>
+        <section className="panel settings-panel profile-source-section">
+          <PanelTitle title="Source mix" />
+          <div className="settings-panel-box profile-source-panel-box">
+            {activeSourceMix.length > 0 ? (
+              <div className="profile-source-list">
+                <div
+                  className="profile-source-bar"
+                  aria-label={activeSourceMix
+                    .map((source) => profileSourceShareLabel(source, sourceMixTotal))
+                    .join(", ")}
+                  role="img"
+                >
+                  {activeSourceMix.map((source) => (
+                    <span
+                      className={`profile-source-segment ${profileSourceClass(source.channel)}`}
+                      key={source.channel}
+                      style={{ flexGrow: source.count }}
+                    >
+                      <span className="profile-source-tooltip" aria-hidden="true">
+                        {profileSourcePercentLabel(source, sourceMixTotal)}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+                <div className="profile-source-legend">
+                  {activeSourceMix.map((source) => (
+                    <div
+                      className="profile-source-chip"
+                      key={source.channel}
+                      aria-label={profileSourceShareLabel(source, sourceMixTotal)}
+                    >
+                      <span
+                        className={`profile-source-dot ${profileSourceClass(source.channel)}`}
+                        aria-hidden="true"
+                      />
+                      <span>{source.label}</span>
+                      <strong>{source.count}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="profile-empty-state">
+                Update or install something with Baseline to build a source history.
+              </p>
+            )}
+          </div>
+        </section>
+        <section className="panel settings-panel">
+          <PanelTitle title="Most updated apps" />
+          <div className="settings-panel-box profile-top-apps-panel-box">
+            {profile.topApps.length > 0 ? (
+              <ol className="profile-top-app-list">
+                {profile.topApps.map((app) => (
+                  <li
+                    key={app.targetID}
+                    title={`${app.displayName}: #${app.rank} with ${app.count} update${
+                      app.count === 1 ? "" : "s"
+                    }`}
+                  >
+                    <span className={`profile-top-app-rank profile-top-app-rank-${app.rank}`}>
+                      {app.rank}
+                    </span>
+                    <span
+                      className={
+                        app.iconDataURL ? "profile-top-app-icon has-image" : "profile-top-app-icon"
+                      }
+                      aria-hidden="true"
+                    >
+                      {app.iconDataURL ? (
+                        <img src={app.iconDataURL} alt="" draggable={false} />
+                      ) : (
+                        app.displayName.slice(0, 1).toUpperCase()
+                      )}
+                    </span>
+                    <span className="profile-top-app-name" title={app.displayName}>
+                      {app.displayName}
+                    </span>
+                    <strong>
+                      {app.count} update{app.count === 1 ? "" : "s"}
+                    </strong>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="profile-empty-state">Apps you update with Baseline will appear here.</p>
+            )}
+          </div>
+        </section>
+        <section className="panel settings-panel">
+          <PanelTitle title="Most updated tools" />
+          <div className="settings-panel-box profile-top-apps-panel-box">
+            {profile.topHomebrewItems.length > 0 ? (
+              <ol className="profile-top-app-list profile-top-tool-list">
+                {profile.topHomebrewItems.map((item) => (
+                  <li
+                    key={item.targetID}
+                    title={`${item.displayName}: #${item.rank} with ${item.count} update${
+                      item.count === 1 ? "" : "s"
+                    }`}
+                  >
+                    <span className={`profile-top-app-rank profile-top-app-rank-${item.rank}`}>
+                      {item.rank}
+                    </span>
+                    <span className="profile-top-app-icon profile-top-tool-icon" aria-hidden="true">
+                      <Terminal size={29} strokeWidth={2.2} />
+                    </span>
+                    <span className="profile-top-app-name" title={item.displayName}>
+                      {item.displayName}
+                    </span>
+                    <strong>
+                      {item.count} update{item.count === 1 ? "" : "s"} · {item.kindLabel}
+                    </strong>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="profile-empty-state">
+                Tools you update with Baseline will appear here.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+      <section className="panel settings-panel profile-footer-panel">
+        <div className="settings-panel-box">
+          {shouldShowResetWarning && (
+            <div className="settings-row settings-row-action profile-warning-row">
+              <SettingsRowText
+                label="Stats were reset"
+                description="Baseline could not verify the local stats history, so it started a fresh one on this Mac."
+              />
+              <button
+                className="toolbar-button"
+                onClick={() => void window.baseline.acknowledgeProfileStatsReset()}
+                title="Dismiss"
+                aria-label="Dismiss stats reset warning"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          )}
+          <div className="settings-row profile-footer-row">
+            <span className="profile-footer-text">
+              Only updates and installs completed with Baseline are counted. Stats stay private on
+              this Mac.
+            </span>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ProfileMetric({
+  label,
+  value,
+  detail,
+  title
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  title?: string;
+}) {
+  return (
+    <div className="profile-metric" title={title}>
+      <strong>{value}</strong>
+      <span>{label}</span>
+      {detail && <small className="profile-metric-detail">{detail}</small>}
+    </div>
+  );
 }
 
 type TogglePatch = Exclude<
@@ -2831,13 +3046,13 @@ function SettingsRowText({
   secondaryDescription
 }: {
   label: string;
-  description: string;
+  description?: string;
   secondaryDescription?: string;
 }) {
   return (
     <span className="settings-row-text">
       <span>{label}</span>
-      <span className="settings-row-subtext">{description}</span>
+      {description && <span className="settings-row-subtext">{description}</span>}
       {secondaryDescription && <span className="settings-row-subtext">{secondaryDescription}</span>}
     </span>
   );
@@ -2949,6 +3164,258 @@ function ToolStatus({
       </span>
     </div>
   );
+}
+
+type ProfileSummary = {
+  differentApps: number;
+  discoverInstalls: number;
+  totalUpdates: number;
+  startedUsing: {
+    relativeLabel: string;
+    dateLabel: string;
+    title: string;
+  };
+  favoriteChannelLabel: string;
+  favoriteChannel?: ProfileStatsChannel;
+  sourceMix: Array<{
+    channel: ProfileStatsChannel;
+    label: string;
+    count: number;
+  }>;
+  topApps: Array<{
+    targetID: string;
+    displayName: string;
+    count: number;
+    iconDataURL?: string;
+    rank: number;
+  }>;
+  topHomebrewItems: Array<{
+    targetID: string;
+    displayName: string;
+    count: number;
+    kindLabel: string;
+    rank: number;
+  }>;
+};
+
+function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
+  const events = snapshot.profileStats.events;
+  const sourceMix = buildProfileSourceMix(events);
+  const favorite = sourceMix.reduce((best, item) => (item.count > best.count ? item : best));
+  const topApps = buildTopUpdatedApps(events, snapshot.apps);
+  const topHomebrewItems = buildTopUpdatedHomebrewItems(
+    events,
+    snapshot.homebrewItems,
+    snapshot.apps,
+    snapshot.updates
+  );
+  const totalUpdates = events.filter(
+    (event) => event.type === "appUpdate" || event.type === "homebrewUpdate"
+  ).length;
+  const differentApps = new Set(
+    events.filter((event) => event.type === "appUpdate").map((event) => event.targetID)
+  ).size;
+  const discoverInstalls = events.filter((event) => event.type === "homebrewInstall").length;
+  const favoriteChannelLabel = favorite.count > 0 ? favorite.label : "No history";
+  const favoriteChannel = favorite.count > 0 ? favorite.channel : undefined;
+  return {
+    differentApps,
+    discoverInstalls,
+    totalUpdates,
+    startedUsing: startedUsingSummary(snapshot.profileStats.startedUsingAt),
+    favoriteChannelLabel,
+    favoriteChannel,
+    sourceMix,
+    topApps,
+    topHomebrewItems
+  };
+}
+
+function profileSourceClass(channel: ProfileStatsChannel): string {
+  if (channel === "appStore") return "source-app-store";
+  if (channel === "sparkle") return "source-sparkle";
+  if (channel === "homebrew") return "source-homebrew";
+  if (channel === "web") return "source-web";
+  return "source-unknown";
+}
+
+function profileSourceShareLabel(
+  source: ProfileSummary["sourceMix"][number],
+  total: number
+): string {
+  if (total <= 0) {
+    return `${source.label}: no recorded events`;
+  }
+  const percent = Math.round((source.count / total) * 100);
+  return `${source.label}: ${source.count} event${source.count === 1 ? "" : "s"} (${percent}%)`;
+}
+
+function profileSourcePercentLabel(
+  source: ProfileSummary["sourceMix"][number],
+  total: number
+): string {
+  if (total <= 0) {
+    return `${source.label} 0%`;
+  }
+  return `${source.label} ${Math.round((source.count / total) * 100)}%`;
+}
+
+function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sourceMix"] {
+  const channels: ProfileStatsChannel[] = ["appStore", "sparkle", "homebrew", "web", "unknown"];
+  const counts = new Map<ProfileStatsChannel, number>(channels.map((channel) => [channel, 0]));
+  for (const event of events) {
+    counts.set(event.channel, (counts.get(event.channel) ?? 0) + 1);
+  }
+  return channels
+    .map((channel) => ({
+      channel,
+      label: sourceDisplayName(channel),
+      count: counts.get(channel) ?? 0
+    }))
+    .sort((first, second) => second.count - first.count || first.label.localeCompare(second.label));
+}
+
+function buildTopUpdatedApps(
+  events: ProfileStatsEvent[],
+  apps: AppRecord[]
+): ProfileSummary["topApps"] {
+  const appByID = new Map(apps.map((app) => [app.id, app]));
+  const counts = new Map<
+    string,
+    { targetID: string; displayName: string; count: number; iconDataURL?: string; rank: number }
+  >();
+  for (const event of events) {
+    if (event.type !== "appUpdate") {
+      continue;
+    }
+    const current = counts.get(event.targetID);
+    const app = appByID.get(event.targetID);
+    counts.set(event.targetID, {
+      targetID: event.targetID,
+      displayName: app?.displayName ?? event.displayName,
+      count: (current?.count ?? 0) + 1,
+      iconDataURL: app?.iconDataURL,
+      rank: 0
+    });
+  }
+  return [...counts.values()]
+    .sort(
+      (first, second) =>
+        second.count - first.count || first.displayName.localeCompare(second.displayName)
+    )
+    .slice(0, 3)
+    .map((app, index) => ({ ...app, rank: index + 1 }));
+}
+
+function buildTopUpdatedHomebrewItems(
+  events: ProfileStatsEvent[],
+  homebrewItems: HomebrewManagedItem[],
+  apps: AppRecord[],
+  updates: UpdateRecord[]
+): ProfileSummary["topHomebrewItems"] {
+  const itemsByID = new Map(homebrewItems.map((item) => [item.id, item]));
+  const updatesByAppID = new Map(updates.map((update) => [update.appID, update]));
+  const counts = new Map<
+    string,
+    {
+      targetID: string;
+      displayName: string;
+      count: number;
+      kindLabel: string;
+      rank: number;
+    }
+  >();
+  for (const event of events) {
+    if (event.type !== "homebrewUpdate") {
+      continue;
+    }
+    const item = itemsByID.get(event.targetID);
+    if (!isProfileHomebrewToolEvent(event, item, apps, updatesByAppID)) {
+      continue;
+    }
+    const current = counts.get(event.targetID);
+    counts.set(event.targetID, {
+      targetID: event.targetID,
+      displayName: item?.name ?? event.displayName,
+      count: (current?.count ?? 0) + 1,
+      kindLabel: profileHomebrewKindLabel(event, item),
+      rank: 0
+    });
+  }
+  return [...counts.values()]
+    .sort(
+      (first, second) =>
+        second.count - first.count || first.displayName.localeCompare(second.displayName)
+    )
+    .slice(0, 3)
+    .map((item, index) => ({ ...item, rank: index + 1 }));
+}
+
+function isProfileHomebrewToolEvent(
+  event: ProfileStatsEvent,
+  item: HomebrewManagedItem | undefined,
+  apps: AppRecord[],
+  updatesByAppID: Map<string, UpdateRecord>
+): boolean {
+  if (item?.kind === "formula" || event.targetID.startsWith("formula:")) {
+    return true;
+  }
+  if (!item) {
+    return false;
+  }
+  if (homebrewItemHasAppRepresentation(item, apps, updatesByAppID)) {
+    return false;
+  }
+  if (item.presentation === "app") {
+    return false;
+  }
+  return Boolean(item.presentation);
+}
+
+function profileHomebrewKindLabel(
+  event: ProfileStatsEvent,
+  item: HomebrewManagedItem | undefined
+): string {
+  if (item?.presentation) {
+    return homebrewPresentationLabel(item.kind, item.presentation);
+  }
+  if (item?.kind === "formula" || event.targetID.startsWith("formula:")) {
+    return "Formula";
+  }
+  return "Tool";
+}
+
+function startedUsingSummary(createdAt: string): ProfileSummary["startedUsing"] {
+  const created = new Date(createdAt).getTime();
+  if (!Number.isFinite(created)) {
+    return {
+      relativeLabel: "Today",
+      dateLabel: "Since today",
+      title: "Started using Baseline today"
+    };
+  }
+  const createdDate = new Date(created);
+  const dateFormatter = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
+  const exactDate = dateFormatter.format(createdDate);
+  const startOfCreatedDay = new Date(createdDate);
+  startOfCreatedDay.setHours(0, 0, 0, 0);
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const elapsedDays = Math.max(
+    0,
+    Math.floor((startOfToday.getTime() - startOfCreatedDay.getTime()) / 86_400_000)
+  );
+  const relativeLabel =
+    elapsedDays === 0 ? "Today" : `${elapsedDays} day${elapsedDays === 1 ? "" : "s"}`;
+  return {
+    relativeLabel,
+    dateLabel: `Since ${exactDate}`,
+    title: `Started using Baseline on ${exactDate}`
+  };
 }
 
 function sourceLabel(update: UpdateRecord): string {

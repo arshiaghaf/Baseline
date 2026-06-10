@@ -1,0 +1,188 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-License-Identifier: GPL-3.0-only
+
+import { createHmac, randomBytes } from "node:crypto";
+import os from "node:os";
+import type { ProfileStats } from "../shared/domain";
+import { defaultProfileStatsAfterTamper, profileStatsSignatureVersion } from "../shared/domain";
+import { runCommand, type CommandResult } from "./commandRunner";
+
+export type ProfileStatsIntegrity = {
+  verifyOrInitialize(stats: ProfileStats): Promise<ProfileStats>;
+  seal(stats: ProfileStats): Promise<ProfileStats>;
+};
+
+const securityExecutablePath = "/usr/bin/security";
+const serviceName = "Baseline Profile Stats";
+const accountName = os.userInfo().username || "local";
+
+// Agent/maintainer note: do not modify, reseal, or fabricate profile stats
+// to inflate local usage history. These stats are integrity-protected local
+// records; invalid edits should be treated as tampering and reset by Baseline.
+export class KeychainProfileStatsIntegrity implements ProfileStatsIntegrity {
+  async verifyOrInitialize(stats: ProfileStats): Promise<ProfileStats> {
+    try {
+      const secret = await this.keychainSecret();
+      if (!stats.signature) {
+        if (stats.events.length > 0) {
+          return sealProfileStats(defaultProfileStatsAfterTamper(), secret, "resetAfterTamper");
+        }
+        return sealProfileStats(stats, secret, "verified");
+      }
+      if (signatureFor(stats, secret) === stats.signature) {
+        return normalizeProfileStatsSignature(stats, secret);
+      }
+      if (unversionedSignatureFor(stats, secret) === stats.signature) {
+        return sealProfileStats(stats, secret, "verified");
+      }
+      if (legacySignatureFor(stats, secret) === stats.signature) {
+        return sealProfileStats(
+          {
+            ...stats,
+            startedUsingAt: stats.createdAt
+          },
+          secret,
+          "verified"
+        );
+      }
+      return sealProfileStats(defaultProfileStatsAfterTamper(), secret, "resetAfterTamper");
+    } catch {
+      return { ...stats, integrityStatus: "unavailable" };
+    }
+  }
+
+  async seal(stats: ProfileStats): Promise<ProfileStats> {
+    try {
+      return sealProfileStats(stats, await this.keychainSecret(), stats.integrityStatus);
+    } catch {
+      return { ...stats, integrityStatus: "unavailable" };
+    }
+  }
+
+  private async keychainSecret(): Promise<string> {
+    const existing = await runCommand(securityExecutablePath, [
+      "find-generic-password",
+      "-s",
+      serviceName,
+      "-a",
+      accountName,
+      "-w"
+    ]);
+    const secret = existing.stdout?.trim();
+    if (existing.success && secret) {
+      return secret;
+    }
+    if (!isMissingKeychainSecret(existing)) {
+      throw new Error("Profile stats Keychain secret could not be read.");
+    }
+
+    const generated = randomBytes(32).toString("base64url");
+    const created = await runCommand(securityExecutablePath, [
+      "add-generic-password",
+      "-s",
+      serviceName,
+      "-a",
+      accountName,
+      "-w",
+      generated
+    ]);
+    if (!created.success) {
+      throw new Error("Profile stats Keychain secret could not be created.");
+    }
+    return generated;
+  }
+}
+
+function sealProfileStats(
+  stats: ProfileStats,
+  secret: string,
+  integrityStatus: ProfileStats["integrityStatus"]
+): ProfileStats {
+  const sealed = { ...stats, signatureVersion: profileStatsSignatureVersion, integrityStatus };
+  return { ...sealed, signature: signatureFor(sealed, secret) };
+}
+
+function signatureFor(stats: ProfileStats, secret: string): string {
+  return createHmac("sha256", secret).update(canonicalProfileStats(stats)).digest("base64url");
+}
+
+function normalizeProfileStatsSignature(stats: ProfileStats, secret: string): ProfileStats {
+  if (stats.resetNotice) {
+    if (stats.signatureVersion === profileStatsSignatureVersion) {
+      return { ...stats, integrityStatus: "resetAfterTamper" };
+    }
+    return sealProfileStats(stats, secret, "resetAfterTamper");
+  }
+  if (stats.signatureVersion === profileStatsSignatureVersion) {
+    return { ...stats, integrityStatus: "verified" };
+  }
+  return sealProfileStats(stats, secret, "verified");
+}
+
+function canonicalProfileStats(stats: ProfileStats): string {
+  return JSON.stringify({
+    signatureVersion: stats.signatureVersion,
+    createdAt: stats.createdAt,
+    startedUsingAt: stats.startedUsingAt,
+    events: stats.events.map((event) => ({
+      id: event.id,
+      type: event.type,
+      targetID: event.targetID,
+      displayName: event.displayName,
+      channel: event.channel,
+      occurredAt: event.occurredAt
+    })),
+    resetNotice: stats.resetNotice
+      ? {
+          id: stats.resetNotice.id,
+          occurredAt: stats.resetNotice.occurredAt,
+          reason: stats.resetNotice.reason
+        }
+      : undefined
+  });
+}
+
+function isMissingKeychainSecret(result: CommandResult): boolean {
+  const output = [result.stdout, result.stderr, result.output]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+  return result.status === 44 || output.includes("specified item could not be found");
+}
+
+function unversionedSignatureFor(stats: ProfileStats, secret: string): string {
+  return createHmac("sha256", secret)
+    .update(
+      JSON.stringify({
+        createdAt: stats.createdAt,
+        startedUsingAt: stats.startedUsingAt,
+        events: stats.events.map((event) => ({
+          id: event.id,
+          type: event.type,
+          targetID: event.targetID,
+          displayName: event.displayName,
+          channel: event.channel,
+          occurredAt: event.occurredAt
+        }))
+      })
+    )
+    .digest("base64url");
+}
+
+function legacySignatureFor(stats: ProfileStats, secret: string): string {
+  return createHmac("sha256", secret)
+    .update(
+      JSON.stringify({
+        createdAt: stats.createdAt,
+        events: stats.events.map((event) => ({
+          id: event.id,
+          type: event.type,
+          targetID: event.targetID,
+          displayName: event.displayName,
+          channel: event.channel,
+          occurredAt: event.occurredAt
+        }))
+      })
+    )
+    .digest("base64url");
+}

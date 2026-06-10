@@ -20,7 +20,7 @@ import type {
   HomebrewManagedItem,
   UpdateRecord
 } from "../src/shared/domain";
-import { defaultPersistedSnapshot } from "../src/shared/domain";
+import { defaultPersistedSnapshot, profileStatsSignatureVersion } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
 const app: AppRecord = {
@@ -102,6 +102,7 @@ function installBaselineMock() {
     setSearchText: vi.fn(),
     setSelectedTab: vi.fn(),
     updatePreferences: vi.fn(),
+    acknowledgeProfileStatsReset: vi.fn(),
     toggleIgnoredApp: vi.fn(),
     toggleIgnoredHomebrew: vi.fn(),
     performAppUpdate: vi.fn(),
@@ -599,7 +600,7 @@ describe("renderer button parity", () => {
     );
 
     expect(within(container).getByRole("button", { name: "Back to app" })).toBeInTheDocument();
-    for (const label of ["General", "Appearance", "Diagnostics"]) {
+    for (const label of ["General", "Profile", "Appearance", "Diagnostics"]) {
       expect(within(container).getByRole("button", { name: label })).toBeInTheDocument();
     }
     const settingsNav = container.querySelector(".source-list");
@@ -622,6 +623,332 @@ describe("renderer button parity", () => {
     expect(screen.queryByRole("button", { name: "All" })).not.toBeInTheDocument();
     expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+  });
+
+  it("shows local profile stats in a settings tab below general", () => {
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          apps: [
+            {
+              ...app,
+              iconDataURL: "data:image/png;base64,example-icon"
+            },
+            {
+              ...app,
+              id: "app:stable",
+              displayName: "Stable App",
+              bundleIdentifier: "com.example.stable",
+              iconDataURL: "data:image/png;base64,stable-icon"
+            },
+            {
+              ...app,
+              id: "app:third",
+              displayName: "Third App",
+              bundleIdentifier: "com.example.third"
+            },
+            {
+              ...app,
+              id: "app:fourth",
+              displayName: "Fourth App",
+              bundleIdentifier: "com.example.fourth"
+            }
+          ],
+          updates: [],
+          homebrewItems: [
+            {
+              id: "formula:ripgrep",
+              token: "ripgrep",
+              name: "ripgrep",
+              kind: "formula",
+              installedVersion: version("1.0.0"),
+              isOutdated: false
+            },
+            {
+              id: "cask:aws-vault",
+              token: "aws-vault",
+              name: "aws-vault",
+              kind: "cask",
+              presentation: "cli",
+              installedVersion: version("1.0.0"),
+              isOutdated: false
+            },
+            {
+              id: "cask:orion",
+              token: "orion",
+              name: "Orion",
+              kind: "cask",
+              presentation: "app",
+              installedVersion: version("1.0.0"),
+              isOutdated: false
+            }
+          ],
+          profileStats: {
+            createdAt: "2026-06-01T12:00:00.000Z",
+            startedUsingAt: "2026-05-15T12:00:00.000Z",
+            signatureVersion: profileStatsSignatureVersion,
+            integrityStatus: "verified",
+            signature: "signed",
+            events: [
+              {
+                id: "appUpdate:example:1:2::",
+                type: "appUpdate",
+                targetID: app.id,
+                displayName: "Example",
+                channel: "sparkle",
+                occurredAt: "2026-06-02T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:example:2:3::",
+                type: "appUpdate",
+                targetID: app.id,
+                displayName: "Example",
+                channel: "sparkle",
+                occurredAt: "2026-06-03T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:stable:1:2::",
+                type: "appUpdate",
+                targetID: "app:stable",
+                displayName: "Stable App",
+                channel: "appStore",
+                occurredAt: "2026-06-04T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:stable:2:3::",
+                type: "appUpdate",
+                targetID: "app:stable",
+                displayName: "Stable App",
+                channel: "appStore",
+                occurredAt: "2026-06-05T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:third:1:2::",
+                type: "appUpdate",
+                targetID: "app:third",
+                displayName: "Third App",
+                channel: "sparkle",
+                occurredAt: "2026-06-06T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:third:2:3::",
+                type: "appUpdate",
+                targetID: "app:third",
+                displayName: "Third App",
+                channel: "sparkle",
+                occurredAt: "2026-06-06T13:00:00.000Z"
+              },
+              {
+                id: "appUpdate:fourth:1:2::",
+                type: "appUpdate",
+                targetID: "app:fourth",
+                displayName: "Fourth App",
+                channel: "sparkle",
+                occurredAt: "2026-06-07T12:00:00.000Z"
+              },
+              {
+                id: "homebrewUpdate:formula:ripgrep:1:2",
+                type: "homebrewUpdate",
+                targetID: "formula:ripgrep",
+                displayName: "ripgrep",
+                channel: "homebrew",
+                occurredAt: "2026-06-03T12:00:00.000Z"
+              },
+              {
+                id: "homebrewUpdate:cask:aws-vault:1:2",
+                type: "homebrewUpdate",
+                targetID: "cask:aws-vault",
+                displayName: "aws-vault",
+                channel: "homebrew",
+                occurredAt: "2026-06-04T12:00:00.000Z"
+              },
+              {
+                id: "homebrewUpdate:cask:orion:1:2",
+                type: "homebrewUpdate",
+                targetID: "cask:orion",
+                displayName: "Orion",
+                channel: "homebrew",
+                occurredAt: "2026-06-04T13:00:00.000Z"
+              },
+              {
+                id: "homebrewInstall:cask:orion:1.0:2026-06-08T12:00:00.000Z",
+                type: "homebrewInstall",
+                targetID: "cask:orion",
+                displayName: "Orion",
+                channel: "homebrew",
+                occurredAt: "2026-06-08T12:00:00.000Z"
+              }
+            ]
+          }
+        })}
+      />
+    );
+
+    const sourceNav = document.querySelector(".source-list");
+    expect(sourceNav).not.toBeNull();
+    const buttons = within(sourceNav as HTMLElement).getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual([
+      "General",
+      "Profile",
+      "Appearance"
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+
+    expect(screen.getAllByRole("heading", { name: "Profile" })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "Time with Baseline" })).not.toBeInTheDocument();
+    expect(screen.getByText("with Baseline")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
+    expect(screen.getByText("Total updates")).toBeInTheDocument();
+    expect(screen.getByText("Unique apps")).toBeInTheDocument();
+    expect(screen.getByText("Installs")).toBeInTheDocument();
+    expect(screen.getByText(/Since .*2026/)).toBeInTheDocument();
+    expect(
+      [...document.querySelectorAll(".profile-metric > span")].map((metric) => metric.textContent)
+    ).toEqual(["Total updates", "Unique apps", "Installs", "Favorite source"]);
+    expect(
+      [...document.querySelectorAll(".profile-metric strong")].map((metric) => metric.textContent)
+    ).toEqual(["10", "4", "1", "Sparkle"]);
+    expect(screen.queryByText("Favorite channel")).not.toBeInTheDocument();
+    expect(screen.getByText("Favorite source")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Most updated apps" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Most updated tools" })).toBeInTheDocument();
+    expect(
+      screen.queryByText("Update or install something with Baseline to build a source history.")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Apps you update with Baseline will appear here.")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Tools you update with Baseline will appear here.")
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("Sparkle 45%")).toHaveLength(1);
+    expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
+    const topAppRow = screen.getByText("Example").closest("li");
+    expect(topAppRow).not.toBeNull();
+    expect(topAppRow?.querySelector(".profile-top-app-icon img")).toHaveAttribute(
+      "src",
+      "data:image/png;base64,example-icon"
+    );
+    const topAppTiles = document.querySelectorAll(
+      ".profile-top-app-list:not(.profile-top-tool-list) li"
+    );
+    expect(topAppTiles).toHaveLength(3);
+    expect(
+      [
+        ...document.querySelectorAll(
+          ".profile-top-app-list:not(.profile-top-tool-list) .profile-top-app-rank"
+        )
+      ].map((rank) => rank.className)
+    ).toEqual([
+      "profile-top-app-rank profile-top-app-rank-1",
+      "profile-top-app-rank profile-top-app-rank-2",
+      "profile-top-app-rank profile-top-app-rank-3"
+    ]);
+    expect(screen.getByText("Stable App")).toBeInTheDocument();
+    expect(screen.getByText("Third App")).toBeInTheDocument();
+    expect([...topAppTiles].some((tile) => tile.textContent?.includes("Fourth App"))).toBe(false);
+    const topToolTiles = document.querySelectorAll(".profile-top-tool-list li");
+    expect(topToolTiles).toHaveLength(2);
+    expect(screen.getByText("aws-vault")).toBeInTheDocument();
+    expect(screen.getByText("1 update · CLI Cask")).toBeInTheDocument();
+    expect(screen.getByText("ripgrep")).toBeInTheDocument();
+    expect(screen.getByText("1 update · Formula")).toBeInTheDocument();
+    expect([...topToolTiles].some((tile) => tile.textContent?.includes("Orion"))).toBe(false);
+    expect(
+      screen.getByText(
+        "Only updates and installs completed with Baseline are counted. Stats stay private on this Mac."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
+    expect(screen.queryByText("Verified")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
+  });
+
+  it("shows intentional empty states for first-run profile stats", () => {
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          apps: [app],
+          updates: [],
+          homebrewItems: [],
+          profileStats: {
+            ...snapshot().profileStats,
+            events: []
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+
+    expect(screen.getByText("No history")).toBeInTheDocument();
+    expect(
+      screen.getByText("Update or install something with Baseline to build a source history.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Apps you update with Baseline will appear here.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Tools you update with Baseline will appear here.")
+    ).toBeInTheDocument();
+    expect(document.querySelectorAll(".profile-source-chip")).toHaveLength(0);
+    expect(document.querySelectorAll(".profile-top-app-list li")).toHaveLength(0);
+  });
+
+  it("shows a profile stats warning only when local history was reset after tampering", () => {
+    const resetNotice = {
+      id: "tamper:2026-06-05T12:00:00.000Z",
+      occurredAt: "2026-06-05T12:00:00.000Z",
+      reason: "tamper" as const
+    };
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          profileStats: {
+            ...snapshot().profileStats,
+            resetNotice,
+            integrityStatus: "resetAfterTamper"
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+
+    expect(screen.getByText("Stats were reset")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Baseline could not verify the local stats history, so it started a fresh one on this Mac."
+      )
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss stats reset warning" }));
+    expect(window.baseline.acknowledgeProfileStatsReset).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the profile stats reset warning after acknowledgement", () => {
+    const resetNotice = {
+      id: "tamper:2026-06-05T12:00:00.000Z",
+      occurredAt: "2026-06-05T12:00:00.000Z",
+      reason: "tamper" as const
+    };
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          profileStatsResetAcknowledgedID: resetNotice.id,
+          profileStats: {
+            ...snapshot().profileStats,
+            resetNotice,
+            integrityStatus: "resetAfterTamper"
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+
+    expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
   });
 
   it("returns from settings through the main window bridge", () => {

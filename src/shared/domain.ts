@@ -124,6 +124,43 @@ export type HomebrewRecentlyUpdatedRecord = {
   updatedAt: string;
 };
 
+export type ProfileStatsChannel = "appStore" | "sparkle" | "homebrew" | "web" | "unknown";
+
+export type ProfileStatsEventType = "appUpdate" | "homebrewUpdate" | "homebrewInstall";
+
+export type ProfileStatsEvent = {
+  id: string;
+  type: ProfileStatsEventType;
+  targetID: string;
+  displayName: string;
+  channel: ProfileStatsChannel;
+  occurredAt: string;
+};
+
+export type ProfileStatsIntegrityStatus =
+  | "pending"
+  | "verified"
+  | "unavailable"
+  | "resetAfterTamper";
+
+export type ProfileStatsResetNotice = {
+  id: string;
+  occurredAt: string;
+  reason: "tamper";
+};
+
+export type ProfileStats = {
+  createdAt: string;
+  startedUsingAt: string;
+  signatureVersion: number;
+  events: ProfileStatsEvent[];
+  resetNotice?: ProfileStatsResetNotice;
+  signature?: string;
+  integrityStatus: ProfileStatsIntegrityStatus;
+};
+
+export const profileStatsSignatureVersion = 2;
+
 export type HomebrewManagedItem = {
   id: string;
   token: string;
@@ -163,6 +200,8 @@ export type PersistedSnapshot = {
   appearancePreference: AppearancePreference;
   useMasForAppStoreUpdates: boolean;
   showMenuBarIcon: boolean;
+  profileStats: ProfileStats;
+  profileStatsResetAcknowledgedID?: string;
   lastRefreshDate?: string;
 };
 
@@ -215,7 +254,7 @@ export const emptyHomebrewFormulaIndex: HomebrewFormulaIndex = {
   byToken: {}
 };
 
-export function defaultPersistedSnapshot(): PersistedSnapshot {
+export function defaultPersistedSnapshot(now = new Date().toISOString()): PersistedSnapshot {
   return {
     apps: [],
     updates: [],
@@ -232,7 +271,30 @@ export function defaultPersistedSnapshot(): PersistedSnapshot {
     refreshIntervalMinutes: 60,
     appearancePreference: "system",
     useMasForAppStoreUpdates: true,
-    showMenuBarIcon: true
+    showMenuBarIcon: true,
+    profileStats: defaultProfileStats(now)
+  };
+}
+
+export function defaultProfileStats(now = new Date().toISOString()): ProfileStats {
+  return {
+    createdAt: now,
+    startedUsingAt: now,
+    signatureVersion: profileStatsSignatureVersion,
+    events: [],
+    integrityStatus: "pending"
+  };
+}
+
+export function defaultProfileStatsAfterTamper(now = new Date().toISOString()): ProfileStats {
+  return {
+    ...defaultProfileStats(now),
+    resetNotice: {
+      id: `tamper:${now}`,
+      occurredAt: now,
+      reason: "tamper"
+    },
+    integrityStatus: "resetAfterTamper"
   };
 }
 

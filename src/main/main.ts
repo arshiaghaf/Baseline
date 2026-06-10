@@ -95,6 +95,7 @@ if (hasSingleInstanceLock) {
     createMainWindow("main");
     wireStoreEvents();
     wireIpc();
+    void verifyProfileStatsIntegrityAfterLaunch();
     updateTrayStatus(store.getSnapshot());
     if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
       store.emit("snapshot", store.getSnapshot());
@@ -117,6 +118,14 @@ app.on("before-quit", () => {
   isQuitting = true;
 });
 app.on("did-resign-active", hideMenuWindowForNativeDismissal);
+
+async function verifyProfileStatsIntegrityAfterLaunch(): Promise<void> {
+  try {
+    await store.verifyProfileStatsIntegrity();
+  } catch {
+    // Profile stats should never block app launch or normal update checks.
+  }
+}
 
 function createMainWindow(route: "main" | "settings"): BrowserWindow {
   if (mainWindow) {
@@ -409,6 +418,9 @@ function wireIpc(): void {
   ipcMain.handle(ipcChannels.setSelectedTab, (_event, tab: MenuTab) => store.setSelectedTab(tab));
   ipcMain.handle(ipcChannels.updatePreferences, (_event, patch: PreferencePatch) =>
     store.updatePreferences(patch)
+  );
+  ipcMain.handle(ipcChannels.acknowledgeProfileStatsReset, () =>
+    store.acknowledgeProfileStatsReset()
   );
   ipcMain.handle(ipcChannels.toggleIgnoredApp, (_event, appID: string) =>
     store.toggleIgnoredApp(String(appID))
