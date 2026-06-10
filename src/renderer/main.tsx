@@ -2688,7 +2688,12 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             <div className="profile-stat-grid">
               <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
-              <ProfileMetric label="Using Baseline since" value={profile.startedUsingLabel} />
+              <ProfileMetric
+                label="Started using Baseline"
+                value={profile.startedUsing.relativeLabel}
+                detail={profile.startedUsing.dateLabel}
+                title={profile.startedUsing.title}
+              />
               <ProfileMetric label="Up to date" value={profile.freshnessLabel} />
             </div>
             <div className="settings-row settings-row-action">
@@ -2804,11 +2809,22 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
   );
 }
 
-function ProfileMetric({ label, value }: { label: string; value: string }) {
+function ProfileMetric({
+  label,
+  value,
+  detail,
+  title
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+  title?: string;
+}) {
   return (
-    <div className="profile-metric">
+    <div className="profile-metric" title={title}>
       <strong>{value}</strong>
       <span>{label}</span>
+      {detail && <small className="profile-metric-detail">{detail}</small>}
     </div>
   );
 }
@@ -3099,7 +3115,11 @@ function ToolStatus({
 type ProfileSummary = {
   appUpdates: number;
   totalUpdates: number;
-  startedUsingLabel: string;
+  startedUsing: {
+    relativeLabel: string;
+    dateLabel: string;
+    title: string;
+  };
   favoriteChannelLabel: string;
   favoriteChannel?: ProfileStatsChannel;
   freshnessLabel: string;
@@ -3130,7 +3150,7 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   return {
     appUpdates: events.filter((event) => event.type === "appUpdate").length,
     totalUpdates,
-    startedUsingLabel: startedUsingLabel(snapshot.profileStats.createdAt),
+    startedUsing: startedUsingSummary(snapshot.profileStats.startedUsingAt),
     favoriteChannelLabel,
     favoriteChannel,
     freshnessLabel: freshnessLabel(snapshot),
@@ -3205,22 +3225,37 @@ function buildTopUpdatedApps(
     .map((app, index) => ({ ...app, rank: index + 1 }));
 }
 
-function startedUsingLabel(createdAt: string): string {
+function startedUsingSummary(createdAt: string): ProfileSummary["startedUsing"] {
   const created = new Date(createdAt).getTime();
   if (!Number.isFinite(created)) {
-    return "Today";
+    return {
+      relativeLabel: "Today",
+      dateLabel: "Since today",
+      title: "Started using Baseline today"
+    };
   }
-  const formatter = new Intl.DateTimeFormat(undefined, {
+  const createdDate = new Date(created);
+  const dateFormatter = new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
-    year: new Date(created).getFullYear() === new Date().getFullYear() ? undefined : "numeric"
+    year: "numeric"
   });
+  const exactDate = dateFormatter.format(createdDate);
+  const startOfCreatedDay = new Date(createdDate);
+  startOfCreatedDay.setHours(0, 0, 0, 0);
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  if (created >= startOfToday.getTime()) {
-    return "Today";
-  }
-  return formatter.format(new Date(created));
+  const elapsedDays = Math.max(
+    0,
+    Math.floor((startOfToday.getTime() - startOfCreatedDay.getTime()) / 86_400_000)
+  );
+  const relativeLabel =
+    elapsedDays === 0 ? "Today" : `${elapsedDays} day${elapsedDays === 1 ? "" : "s"}`;
+  return {
+    relativeLabel,
+    dateLabel: `Since ${exactDate}`,
+    title: `Started using Baseline on ${exactDate}`
+  };
 }
 
 function freshnessLabel(snapshot: BaselineSnapshot): string {

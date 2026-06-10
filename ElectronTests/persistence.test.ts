@@ -135,6 +135,38 @@ describe("snapshot persistence", () => {
     expect(loaded.profileStats.integrityStatus).toBe("pending");
   });
 
+  it("defaults the started using date on older snapshots", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await mkdir(userData, { recursive: true });
+    await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
+
+    const persistence = new SnapshotPersistence(userData);
+
+    const loaded = await persistence.load();
+    expect(Number.isFinite(new Date(loaded.profileStats.startedUsingAt).getTime())).toBe(true);
+  });
+
+  it("preserves the started using date across save and load", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      profileStats: {
+        ...defaultPersistedSnapshot().profileStats,
+        startedUsingAt: "2026-06-01T12:00:00.000Z"
+      }
+    });
+
+    await expect(persistence.load()).resolves.toMatchObject({
+      profileStats: {
+        startedUsingAt: "2026-06-01T12:00:00.000Z"
+      }
+    });
+  });
+
   it("preserves profile stats events across save and load", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);
@@ -144,6 +176,7 @@ describe("snapshot persistence", () => {
       ...defaultPersistedSnapshot(),
       profileStats: {
         createdAt: "2026-06-01T12:00:00.000Z",
+        startedUsingAt: "2026-05-15T12:00:00.000Z",
         signature: "signed",
         integrityStatus: "verified",
         events: [
@@ -162,6 +195,7 @@ describe("snapshot persistence", () => {
     await expect(persistence.load()).resolves.toMatchObject({
       profileStats: {
         createdAt: "2026-06-01T12:00:00.000Z",
+        startedUsingAt: "2026-05-15T12:00:00.000Z",
         signature: "signed",
         integrityStatus: "pending",
         events: [

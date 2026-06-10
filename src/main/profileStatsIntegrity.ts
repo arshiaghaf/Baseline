@@ -88,6 +88,7 @@ function signatureFor(stats: ProfileStats, secret: string): string {
 function canonicalProfileStats(stats: ProfileStats): string {
   return JSON.stringify({
     createdAt: stats.createdAt,
+    startedUsingAt: stats.startedUsingAt,
     events: stats.events.map((event) => ({
       id: event.id,
       type: event.type,

@@ -34,7 +34,9 @@ export class SnapshotPersistence {
   }
 }
 
-function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot {
+function normalizeSnapshot(
+  input: Partial<PersistedSnapshot> & { startedUsingAt?: unknown }
+): PersistedSnapshot {
   const defaults = defaultPersistedSnapshot();
   return {
     ...defaults,
@@ -77,7 +79,7 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
       fromVersion: version(record.fromVersion?.raw),
       toVersion: version(record.toVersion?.raw)
     })),
-    profileStats: normalizeProfileStats(input.profileStats),
+    profileStats: normalizeProfileStats(input.profileStats, input.startedUsingAt),
     appearancePreference: normalizeAppearancePreference(input.appearancePreference),
     refreshIntervalMinutes: clamp(
       input.refreshIntervalMinutes ?? defaults.refreshIntervalMinutes,
@@ -87,13 +89,22 @@ function normalizeSnapshot(input: Partial<PersistedSnapshot>): PersistedSnapshot
   };
 }
 
-function normalizeProfileStats(input: Partial<ProfileStats> | undefined): ProfileStats {
+function normalizeProfileStats(
+  input: Partial<ProfileStats> | undefined,
+  legacyStartedUsingAt?: unknown
+): ProfileStats {
   const defaults = defaultProfileStats();
   const events = Array.isArray(input?.events)
     ? input.events.flatMap((event) => normalizeProfileStatsEvent(event))
     : [];
   return {
     createdAt: typeof input?.createdAt === "string" ? input.createdAt : defaults.createdAt,
+    startedUsingAt:
+      typeof input?.startedUsingAt === "string"
+        ? input.startedUsingAt
+        : typeof legacyStartedUsingAt === "string"
+          ? legacyStartedUsingAt
+          : defaults.startedUsingAt,
     events,
     signature: typeof input?.signature === "string" ? input.signature : undefined,
     integrityStatus: "pending"

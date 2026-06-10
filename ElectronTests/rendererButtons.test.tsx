@@ -666,6 +666,7 @@ describe("renderer button parity", () => {
           ],
           profileStats: {
             createdAt: "2026-06-01T12:00:00.000Z",
+            startedUsingAt: "2026-05-15T12:00:00.000Z",
             integrityStatus: "verified",
             signature: "signed",
             events: [
@@ -755,7 +756,8 @@ describe("renderer button parity", () => {
     expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
     expect(screen.getByText("Apps updated")).toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
-    expect(screen.getByText("Using Baseline since")).toBeInTheDocument();
+    expect(screen.getByText("Started using Baseline")).toBeInTheDocument();
+    expect(screen.getByText(/Since .*2026/)).toBeInTheDocument();
     expect(screen.getByText("Up to date")).toBeInTheDocument();
     expect(screen.getByText("Favorite channel")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();

@@ -145,6 +145,7 @@ export type ProfileStatsIntegrityStatus =
 
 export type ProfileStats = {
   createdAt: string;
+  startedUsingAt: string;
   events: ProfileStatsEvent[];
   signature?: string;
   integrityStatus: ProfileStatsIntegrityStatus;
@@ -242,7 +243,7 @@ export const emptyHomebrewFormulaIndex: HomebrewFormulaIndex = {
   byToken: {}
 };
 
-export function defaultPersistedSnapshot(): PersistedSnapshot {
+export function defaultPersistedSnapshot(now = new Date().toISOString()): PersistedSnapshot {
   return {
     apps: [],
     updates: [],
@@ -260,13 +261,14 @@ export function defaultPersistedSnapshot(): PersistedSnapshot {
     appearancePreference: "system",
     useMasForAppStoreUpdates: true,
     showMenuBarIcon: true,
-    profileStats: defaultProfileStats()
+    profileStats: defaultProfileStats(now)
   };
 }
 
 export function defaultProfileStats(now = new Date().toISOString()): ProfileStats {
   return {
     createdAt: now,
+    startedUsingAt: now,
     events: [],
     integrityStatus: "pending"
   };

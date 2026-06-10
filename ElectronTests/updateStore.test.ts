@@ -294,6 +294,31 @@ describe("update store helpers", () => {
     });
   });
 
+  it("persists the started using date through store saves", async () => {
+    let userData = "";
+    const startedUsingAt = "2026-06-01T12:00:00.000Z";
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        profileStats: {
+          ...defaultPersistedSnapshot().profileStats,
+          startedUsingAt
+        }
+      },
+      onUserData: (directory) => {
+        userData = directory;
+      }
+    });
+
+    await store.updatePreferences({ showMenuBarIcon: false });
+
+    await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
+      profileStats: {
+        startedUsingAt
+      }
+    });
+  });
+
   it("scans default directories before additional directories", async () => {
     const scannedDirectories: string[][] = [];
     const store = await makeStore({
@@ -2420,6 +2445,7 @@ describe("update store helpers", () => {
         ...defaultPersistedSnapshot(),
         profileStats: {
           createdAt: "2026-06-01T12:00:00.000Z",
+          startedUsingAt: "2026-05-15T12:00:00.000Z",
           integrityStatus: "pending",
           signature: "edited",
           events: [
