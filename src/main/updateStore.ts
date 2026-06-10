@@ -502,6 +502,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         item.id
       ]);
     }
+    const affectedKindByID = new Map(affected.map((item) => [item.id, item.kind]));
 
     this.patch({
       isRunningHomebrewMaintenance: true,
@@ -537,7 +538,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     let success = true;
     for (const command of sequence) {
       const result = await this.runBrewWithEvents(command, (event) => {
-        this.applyHomebrewProgressEvent(event, parser, affectedByToken, completedItemIDs);
+        this.applyHomebrewProgressEvent(
+          event,
+          parser,
+          affectedByToken,
+          affectedKindByID,
+          completedItemIDs
+        );
       });
       if (result) {
         const upgradedKind = homebrewUpgradeKindForCommand(command);
@@ -955,6 +962,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     event: HomebrewMaintenanceRunEvent,
     parser: HomebrewMaintenanceOutputParser,
     affectedByToken: Map<string, string[]>,
+    affectedKindByID?: Map<string, HomebrewManagedItemKind>,
     completedItemIDs?: Set<string>
   ): void {
     if (event.type === "commandStarted") {
@@ -962,7 +970,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
     if (event.type === "outputLine") {
       for (const parsed of parser.parse(event.line, event.command)) {
-        const ids = affectedByToken.get(parsed.token) ?? [];
+        const ids = (affectedByToken.get(parsed.token) ?? []).filter(
+          (id) =>
+            !parsed.kindHint || !affectedKindByID || affectedKindByID.get(id) === parsed.kindHint
+        );
         for (const id of ids) {
           if (parsed.kind.type === "progress") {
             this.patch({

@@ -1696,6 +1696,63 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("does not complete same-token casks from formula batch output", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command, onOutputLine = () => undefined) => {
+      if (command[0] === "upgrade" && !command.includes("--cask")) {
+        onOutputLine("🍺  /opt/homebrew/Cellar/shared/1.0: 10 files");
+      }
+      return {
+        success: !command.includes("--cask"),
+        status: command.includes("--cask") ? 1 : 0,
+        output: command.includes("--cask") ? "Error: cask upgrade failed" : ""
+      };
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:shared",
+            token: "shared",
+            name: "shared",
+            kind: "formula",
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
+            id: "cask:shared",
+            token: "shared",
+            name: "Shared",
+            kind: "cask",
+            installedVersion: version("1.0.0"),
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdateAll();
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "shared"],
+      ["upgrade", "--cask", "--greedy", "shared"]
+    ]);
+    expect(store.getSnapshot().profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "formula:shared",
+        displayName: "shared",
+        channel: "homebrew"
+      })
+    ]);
+  });
+
   it("excludes hidden app-backed casks from batch Homebrew updates", async () => {
     const ignoredApp = appRecord({
       bundlePath: "/Applications/Managed.app",
