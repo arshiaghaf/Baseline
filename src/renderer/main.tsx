@@ -2688,10 +2688,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             <ProfileMetric label="Freshness" value={profile.freshnessLabel} />
           </div>
           <div className="settings-row settings-row-action">
-            <SettingsRowText
-              label="Favorite channel"
-              description={profile.favoriteChannelDescription}
-            />
+            <SettingsRowText label="Favorite channel" description="Most recorded update source." />
             <strong className="settings-row-value">{profile.favoriteChannelLabel}</strong>
           </div>
           <div className="settings-row profile-source-row">
@@ -3041,7 +3038,6 @@ type ProfileSummary = {
   totalUpdates: number;
   daysTrackedLabel: string;
   favoriteChannelLabel: string;
-  favoriteChannelDescription: string;
   freshnessLabel: string;
   sourceMix: Array<{
     channel: ProfileStatsChannel;
@@ -3067,10 +3063,6 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
     totalUpdates,
     daysTrackedLabel: daysTrackedLabel(snapshot.profileStats.createdAt),
     favoriteChannelLabel,
-    favoriteChannelDescription:
-      favorite.count > 0
-        ? `${favorite.count} profile event${favorite.count === 1 ? "" : "s"} from ${favorite.label}.`
-        : "Update history starts after Baseline sees an app or Homebrew item update.",
     freshnessLabel: freshnessLabel(snapshot),
     sourceMix,
     topApps,
