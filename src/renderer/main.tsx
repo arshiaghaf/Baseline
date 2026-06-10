@@ -2698,7 +2698,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           <div className="settings-panel-box profile-panel-box">
             <div className="profile-stat-grid">
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
-              <ProfileMetric label="Different apps" value={String(profile.differentApps)} />
+              <ProfileMetric label="Unique apps" value={String(profile.differentApps)} />
               <ProfileMetric label="Installs" value={String(profile.discoverInstalls)} />
               <ProfileMetric label="Favorite source" value={profile.favoriteChannelLabel} />
             </div>
@@ -2806,8 +2806,8 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           )}
           <div className="settings-row profile-footer-row">
             <span className="profile-footer-text">
-              Stats only count updates and installs completed with Baseline. They are private and
-              stored only on this Mac.
+              Only updates and installs completed with Baseline are counted. Stats stay private on
+              this Mac.
             </span>
           </div>
         </div>

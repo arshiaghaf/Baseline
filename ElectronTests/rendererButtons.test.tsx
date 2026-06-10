@@ -765,12 +765,12 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
-    expect(screen.getByText("Different apps")).toBeInTheDocument();
+    expect(screen.getByText("Unique apps")).toBeInTheDocument();
     expect(screen.getByText("Installs")).toBeInTheDocument();
     expect(screen.getByText(/Since .*2026/)).toBeInTheDocument();
     expect(
       [...document.querySelectorAll(".profile-metric > span")].map((metric) => metric.textContent)
-    ).toEqual(["Total updates", "Different apps", "Installs", "Favorite source"]);
+    ).toEqual(["Total updates", "Unique apps", "Installs", "Favorite source"]);
     expect(
       [...document.querySelectorAll(".profile-metric strong")].map((metric) => metric.textContent)
     ).toEqual(["8", "4", "1", "Sparkle"]);
@@ -806,7 +806,7 @@ describe("renderer button parity", () => {
     expect([...topAppTiles].some((tile) => tile.textContent?.includes("Fourth App"))).toBe(false);
     expect(
       screen.getByText(
-        "Stats only count updates and installs completed with Baseline. They are private and stored only on this Mac."
+        "Only updates and installs completed with Baseline are counted. Stats stay private on this Mac."
       )
     ).toBeInTheDocument();
     expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
