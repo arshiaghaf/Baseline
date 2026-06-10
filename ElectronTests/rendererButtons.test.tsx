@@ -758,10 +758,12 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Total updates")).toBeInTheDocument();
     expect(screen.getByText("Started using Baseline")).toBeInTheDocument();
     expect(screen.getByText(/Since .*2026/)).toBeInTheDocument();
-    expect(screen.getByText("Up to date")).toBeInTheDocument();
+    expect(screen.getByText("Current apps up to date")).toBeInTheDocument();
     expect(screen.getByText("Favorite channel")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Most updated apps" })).toBeInTheDocument();
+    expect(screen.queryByText("No update source history yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText("No updated apps yet.")).not.toBeInTheDocument();
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
     const topAppRow = screen.getByText("Example").closest("li");
     expect(topAppRow).not.toBeNull();
@@ -778,6 +780,30 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
     expect(screen.queryByText("Verified")).not.toBeInTheDocument();
     expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
+  });
+
+  it("shows intentional empty states for first-run profile stats", () => {
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          apps: [app],
+          updates: [],
+          homebrewItems: [],
+          profileStats: {
+            ...snapshot().profileStats,
+            events: []
+          }
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Profile" }));
+
+    expect(screen.getByText("No history yet")).toBeInTheDocument();
+    expect(screen.getByText("No update source history yet.")).toBeInTheDocument();
+    expect(screen.getByText("No updated apps yet.")).toBeInTheDocument();
+    expect(document.querySelectorAll(".profile-source-chip")).toHaveLength(0);
+    expect(document.querySelectorAll(".profile-top-app-list li")).toHaveLength(0);
   });
 
   it("shows a profile stats warning only when local history was reset after tampering", () => {

@@ -1591,11 +1591,6 @@ button:disabled {
   opacity: 0.9;
 }
 
-.profile-source-empty {
-  flex: 1;
-  background: rgba(60, 60, 67, 0.12);
-}
-
 .profile-source-legend {
   display: flex;
   flex-wrap: wrap;
@@ -1756,6 +1751,14 @@ button:disabled {
   color: rgba(60, 60, 67, 0.5);
   font-size: 10px;
   font-weight: 600;
+}
+
+.profile-empty-state {
+  margin: 0;
+  min-height: 28px;
+  color: rgba(60, 60, 67, 0.48);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .profile-warning-row {
@@ -1991,6 +1994,7 @@ button:disabled {
   .settings-row-subtext,
   .profile-metric span,
   .profile-metric-detail,
+  .profile-empty-state,
   .profile-source-chip,
   .profile-top-app-list li {
     color: rgba(235, 235, 245, 0.5);
@@ -2156,10 +2160,6 @@ button:disabled {
 
   .profile-source-bar {
     background: rgba(235, 235, 245, 0.11);
-  }
-
-  .profile-source-empty {
-    background: rgba(235, 235, 245, 0.14);
   }
 
   .profile-source-chip {

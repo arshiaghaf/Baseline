@@ -2677,7 +2677,6 @@ function SettingsPane({
 function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
   const profile = useMemo(() => buildProfileSummary(snapshot), [snapshot]);
   const activeSourceMix = profile.sourceMix.filter((source) => source.count > 0);
-  const displayedSourceMix = activeSourceMix.length > 0 ? activeSourceMix : profile.sourceMix;
   const sourceMixTotal = profile.sourceMix.reduce((total, source) => total + source.count, 0);
   return (
     <div className="profile-page">
@@ -2694,7 +2693,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                 detail={profile.startedUsing.dateLabel}
                 title={profile.startedUsing.title}
               />
-              <ProfileMetric label="Up to date" value={profile.freshnessLabel} />
+              <ProfileMetric label="Current apps up to date" value={profile.freshnessLabel} />
             </div>
             <div className="settings-row settings-row-action">
               <SettingsRowText label="Favorite channel" />
@@ -2716,44 +2715,44 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
         <section className="panel settings-panel">
           <PanelTitle title="Source mix" />
           <div className="settings-panel-box profile-source-panel-box">
-            <div className="profile-source-list">
-              <div className="profile-source-bar" aria-hidden="true">
-                {activeSourceMix.length > 0 ? (
-                  activeSourceMix.map((source) => (
+            {activeSourceMix.length > 0 ? (
+              <div className="profile-source-list">
+                <div className="profile-source-bar" aria-hidden="true">
+                  {activeSourceMix.map((source) => (
                     <span
                       className={`profile-source-segment ${profileSourceClass(source.channel)}`}
                       key={source.channel}
                       style={{ flexGrow: source.count }}
                       title={profileSourceShareLabel(source, sourceMixTotal)}
                     />
-                  ))
-                ) : (
-                  <span className="profile-source-empty" />
-                )}
+                  ))}
+                </div>
+                <div className="profile-source-legend">
+                  {activeSourceMix.map((source) => (
+                    <div
+                      className="profile-source-chip"
+                      key={source.channel}
+                      title={profileSourceShareLabel(source, sourceMixTotal)}
+                    >
+                      <span
+                        className={`profile-source-dot ${profileSourceClass(source.channel)}`}
+                        aria-hidden="true"
+                      />
+                      <span>{source.label}</span>
+                      <strong>{source.count}</strong>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="profile-source-legend">
-                {displayedSourceMix.map((source) => (
-                  <div
-                    className="profile-source-chip"
-                    key={source.channel}
-                    title={profileSourceShareLabel(source, sourceMixTotal)}
-                  >
-                    <span
-                      className={`profile-source-dot ${profileSourceClass(source.channel)}`}
-                      aria-hidden="true"
-                    />
-                    <span>{source.label}</span>
-                    <strong>{source.count}</strong>
-                  </div>
-                ))}
-              </div>
-            </div>
+            ) : (
+              <p className="profile-empty-state">No update source history yet.</p>
+            )}
           </div>
         </section>
         <section className="panel settings-panel">
           <PanelTitle title="Most updated apps" />
           <div className="settings-panel-box profile-top-apps-panel-box">
-            {profile.topApps.length > 0 && (
+            {profile.topApps.length > 0 ? (
               <ol className="profile-top-app-list">
                 {profile.topApps.map((app) => (
                   <li
@@ -2784,6 +2783,8 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                   </li>
                 ))}
               </ol>
+            ) : (
+              <p className="profile-empty-state">No updated apps yet.</p>
             )}
           </div>
         </section>
