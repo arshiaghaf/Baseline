@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 const expectedBaselineAPI = [
+  "acknowledgeProfileStatsReset",
   "chooseDirectory",
   "copyDiagnostics",
   "getAppMetadata",
