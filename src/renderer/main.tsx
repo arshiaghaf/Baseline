@@ -2697,7 +2697,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           <PanelTitle title="Stats" />
           <div className="settings-panel-box profile-panel-box">
             <div className="profile-stat-grid">
-              <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
+              <ProfileMetric label="Different apps" value={String(profile.appUpdates)} />
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
               <ProfileMetric label="Apps up to date" value={profile.freshnessLabel} />
               <ProfileSourceMetric
