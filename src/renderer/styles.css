@@ -2400,15 +2400,21 @@ button:disabled {
   }
 
   .profile-footer-row {
-    background: rgba(235, 235, 245, 0.035);
+    background: rgba(235, 235, 245, 0.018);
   }
 
   .profile-footer-text {
-    color: rgba(235, 235, 245, 0.58);
+    color: rgba(235, 235, 245, 0.44);
   }
 
   .profile-footer-row .settings-row-text > span:first-child {
-    color: rgba(235, 235, 245, 0.58);
+    color: rgba(235, 235, 245, 0.44);
+  }
+
+  .profile-footer-panel .settings-panel-box {
+    --settings-panel-border: rgba(235, 235, 245, 0.055);
+
+    background: rgba(235, 235, 245, 0.018);
   }
 
   .toolbar-button.refresh-button,
