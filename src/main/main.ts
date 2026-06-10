@@ -91,11 +91,11 @@ if (hasSingleInstanceLock) {
       },
       currentAppVersion: metadata.version
     });
-    await store.verifyProfileStatsIntegrity();
 
     createMainWindow("main");
     wireStoreEvents();
     wireIpc();
+    void verifyProfileStatsIntegrityAfterLaunch();
     updateTrayStatus(store.getSnapshot());
     if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
       store.emit("snapshot", store.getSnapshot());
@@ -118,6 +118,14 @@ app.on("before-quit", () => {
   isQuitting = true;
 });
 app.on("did-resign-active", hideMenuWindowForNativeDismissal);
+
+async function verifyProfileStatsIntegrityAfterLaunch(): Promise<void> {
+  try {
+    await store.verifyProfileStatsIntegrity();
+  } catch {
+    // Profile stats should never block app launch or normal update checks.
+  }
+}
 
 function createMainWindow(route: "main" | "settings"): BrowserWindow {
   if (mainWindow) {
