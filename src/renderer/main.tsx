@@ -2711,8 +2711,23 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
               <ol className="profile-top-app-list">
                 {profile.topApps.map((app) => (
                   <li key={app.targetID}>
-                    <span>{app.displayName}</span>
-                    <strong>{app.count}</strong>
+                    <span className="profile-top-app-rank">{app.rank}</span>
+                    <span
+                      className={
+                        app.iconDataURL ? "profile-top-app-icon has-image" : "profile-top-app-icon"
+                      }
+                      aria-hidden="true"
+                    >
+                      {app.iconDataURL ? (
+                        <img src={app.iconDataURL} alt="" draggable={false} />
+                      ) : (
+                        app.displayName.slice(0, 1).toUpperCase()
+                      )}
+                    </span>
+                    <span className="profile-top-app-name">{app.displayName}</span>
+                    <strong>
+                      {app.count} update{app.count === 1 ? "" : "s"}
+                    </strong>
                   </li>
                 ))}
               </ol>
@@ -3045,14 +3060,20 @@ type ProfileSummary = {
     count: number;
     percent: number;
   }>;
-  topApps: Array<{ targetID: string; displayName: string; count: number }>;
+  topApps: Array<{
+    targetID: string;
+    displayName: string;
+    count: number;
+    iconDataURL?: string;
+    rank: number;
+  }>;
 };
 
 function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   const events = snapshot.profileStats.events;
   const sourceMix = buildProfileSourceMix(events);
   const favorite = sourceMix.reduce((best, item) => (item.count > best.count ? item : best));
-  const topApps = buildTopUpdatedApps(events);
+  const topApps = buildTopUpdatedApps(events, snapshot.apps);
   const totalUpdates = events.filter(
     (event) => event.type === "appUpdate" || event.type === "homebrewUpdate"
   ).length;
@@ -3085,17 +3106,27 @@ function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sou
     .sort((first, second) => second.count - first.count || first.label.localeCompare(second.label));
 }
 
-function buildTopUpdatedApps(events: ProfileStatsEvent[]): ProfileSummary["topApps"] {
-  const counts = new Map<string, { targetID: string; displayName: string; count: number }>();
+function buildTopUpdatedApps(
+  events: ProfileStatsEvent[],
+  apps: AppRecord[]
+): ProfileSummary["topApps"] {
+  const appByID = new Map(apps.map((app) => [app.id, app]));
+  const counts = new Map<
+    string,
+    { targetID: string; displayName: string; count: number; iconDataURL?: string; rank: number }
+  >();
   for (const event of events) {
     if (event.type !== "appUpdate") {
       continue;
     }
     const current = counts.get(event.targetID);
+    const app = appByID.get(event.targetID);
     counts.set(event.targetID, {
       targetID: event.targetID,
-      displayName: event.displayName,
-      count: (current?.count ?? 0) + 1
+      displayName: app?.displayName ?? event.displayName,
+      count: (current?.count ?? 0) + 1,
+      iconDataURL: app?.iconDataURL,
+      rank: 0
     });
   }
   return [...counts.values()]
@@ -3103,7 +3134,8 @@ function buildTopUpdatedApps(events: ProfileStatsEvent[]): ProfileSummary["topAp
       (first, second) =>
         second.count - first.count || first.displayName.localeCompare(second.displayName)
     )
-    .slice(0, 5);
+    .slice(0, 3)
+    .map((app, index) => ({ ...app, rank: index + 1 }));
 }
 
 function daysTrackedLabel(createdAt: string): string {

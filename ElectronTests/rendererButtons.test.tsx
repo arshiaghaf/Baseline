@@ -629,12 +629,28 @@ describe("renderer button parity", () => {
       <SettingsView
         snapshot={snapshot({
           apps: [
-            app,
+            {
+              ...app,
+              iconDataURL: "data:image/png;base64,example-icon"
+            },
             {
               ...app,
               id: "app:stable",
               displayName: "Stable App",
-              bundleIdentifier: "com.example.stable"
+              bundleIdentifier: "com.example.stable",
+              iconDataURL: "data:image/png;base64,stable-icon"
+            },
+            {
+              ...app,
+              id: "app:third",
+              displayName: "Third App",
+              bundleIdentifier: "com.example.third"
+            },
+            {
+              ...app,
+              id: "app:fourth",
+              displayName: "Fourth App",
+              bundleIdentifier: "com.example.fourth"
             }
           ],
           updates: [],
@@ -660,6 +676,54 @@ describe("renderer button parity", () => {
                 displayName: "Example",
                 channel: "sparkle",
                 occurredAt: "2026-06-02T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:example:2:3::",
+                type: "appUpdate",
+                targetID: app.id,
+                displayName: "Example",
+                channel: "sparkle",
+                occurredAt: "2026-06-03T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:stable:1:2::",
+                type: "appUpdate",
+                targetID: "app:stable",
+                displayName: "Stable App",
+                channel: "appStore",
+                occurredAt: "2026-06-04T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:stable:2:3::",
+                type: "appUpdate",
+                targetID: "app:stable",
+                displayName: "Stable App",
+                channel: "appStore",
+                occurredAt: "2026-06-05T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:third:1:2::",
+                type: "appUpdate",
+                targetID: "app:third",
+                displayName: "Third App",
+                channel: "sparkle",
+                occurredAt: "2026-06-06T12:00:00.000Z"
+              },
+              {
+                id: "appUpdate:third:2:3::",
+                type: "appUpdate",
+                targetID: "app:third",
+                displayName: "Third App",
+                channel: "sparkle",
+                occurredAt: "2026-06-06T13:00:00.000Z"
+              },
+              {
+                id: "appUpdate:fourth:1:2::",
+                type: "appUpdate",
+                targetID: "app:fourth",
+                displayName: "Fourth App",
+                channel: "sparkle",
+                occurredAt: "2026-06-07T12:00:00.000Z"
               },
               {
                 id: "homebrewUpdate:formula:ripgrep:1:2",
@@ -693,7 +757,18 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Total updates")).toBeInTheDocument();
     expect(screen.getByText("Favorite channel")).toBeInTheDocument();
     expect(screen.getByText("Most updated apps")).toBeInTheDocument();
-    expect(screen.getByText("Sparkle")).toBeInTheDocument();
+    expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
+    const topAppRow = screen.getByText("Example").closest("li");
+    expect(topAppRow).not.toBeNull();
+    expect(topAppRow?.querySelector(".profile-top-app-icon img")).toHaveAttribute(
+      "src",
+      "data:image/png;base64,example-icon"
+    );
+    const topAppTiles = document.querySelectorAll(".profile-top-app-list li");
+    expect(topAppTiles).toHaveLength(3);
+    expect(screen.getByText("Stable App")).toBeInTheDocument();
+    expect(screen.getByText("Third App")).toBeInTheDocument();
+    expect(screen.queryByText("Fourth App")).not.toBeInTheDocument();
     expect(screen.getByText("Stats are private and stored only on this Mac.")).toBeInTheDocument();
     expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
     expect(screen.queryByText("Verified")).not.toBeInTheDocument();

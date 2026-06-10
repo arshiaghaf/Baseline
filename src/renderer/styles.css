@@ -1516,12 +1516,18 @@ button:disabled {
   line-height: 1.25;
 }
 
-.profile-source-row,
-.profile-top-apps-row {
+.profile-source-row {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(220px, 1fr);
   align-items: start;
   gap: 18px;
+}
+
+.profile-top-apps-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
 }
 
 .profile-source-list,
@@ -1567,16 +1573,82 @@ button:disabled {
 
 .profile-top-app-list {
   list-style: none;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .profile-top-app-list li {
-  grid-template-columns: minmax(0, 1fr) minmax(24px, auto);
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  min-height: 116px;
+  padding: 12px 8px 10px;
+  border: 0.5px solid rgba(60, 60, 67, 0.1);
+  border-radius: 8px;
+  background: rgba(60, 60, 67, 0.035);
+  text-align: center;
 }
 
-.profile-top-app-list span {
+.profile-top-app-name {
+  max-width: 100%;
+  color: #1c1c1e;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.profile-top-app-list strong {
+  color: rgba(60, 60, 67, 0.56);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.profile-top-app-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #85858c, #595961);
+  color: white;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.profile-top-app-icon img {
+  width: 46px;
+  height: 46px;
+  object-fit: cover;
+  transform: scale(1.16);
+}
+
+.profile-top-app-icon.has-image {
+  background: transparent;
+}
+
+.profile-top-app-rank {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(60, 60, 67, 0.08);
+  color: rgba(60, 60, 67, 0.64);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .profile-warning-row {
@@ -1727,8 +1799,7 @@ button:disabled {
     border-top: 0.5px solid var(--settings-row-divider);
   }
 
-  .profile-source-row,
-  .profile-top-apps-row {
+  .profile-source-row {
     grid-template-columns: 1fr;
   }
 
@@ -1970,6 +2041,20 @@ button:disabled {
 
   .profile-source-meter {
     background: rgba(235, 235, 245, 0.11);
+  }
+
+  .profile-top-app-list li {
+    border-color: rgba(235, 235, 245, 0.1);
+    background: rgba(235, 235, 245, 0.055);
+  }
+
+  .profile-top-app-name {
+    color: rgba(255, 255, 255, 0.86);
+  }
+
+  .profile-top-app-rank {
+    background: rgba(235, 235, 245, 0.1);
+    color: rgba(235, 235, 245, 0.64);
   }
 
   .profile-warning-row {
