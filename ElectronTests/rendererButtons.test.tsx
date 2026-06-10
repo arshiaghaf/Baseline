@@ -686,7 +686,8 @@ describe("renderer button parity", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
 
-    expect(screen.getAllByRole("heading", { name: "Profile" })).toHaveLength(2);
+    expect(screen.getAllByRole("heading", { name: "Profile" })).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
     expect(screen.getByText("Apps updated")).toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
     expect(screen.getByText("Favorite channel")).toBeInTheDocument();

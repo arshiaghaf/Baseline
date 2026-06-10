@@ -2678,7 +2678,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
   const profile = useMemo(() => buildProfileSummary(snapshot), [snapshot]);
   return (
     <section className="panel settings-panel">
-      <PanelTitle title="Profile" />
+      <PanelTitle title="Stats" />
       <div className="settings-panel-box profile-panel-box">
         <div className="profile-stat-grid">
           <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
