@@ -755,8 +755,11 @@ describe("renderer button parity", () => {
     expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
     expect(screen.getByText("Apps updated")).toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
+    expect(screen.getByText("Tracked for")).toBeInTheDocument();
+    expect(screen.getByText("Up to date")).toBeInTheDocument();
     expect(screen.getByText("Favorite channel")).toBeInTheDocument();
-    expect(screen.getByText("Most updated apps")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Most updated apps" })).toBeInTheDocument();
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
     const topAppRow = screen.getByText("Example").closest("li");
     expect(topAppRow).not.toBeNull();

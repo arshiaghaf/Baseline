@@ -2676,41 +2676,87 @@ function SettingsPane({
 
 function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
   const profile = useMemo(() => buildProfileSummary(snapshot), [snapshot]);
+  const activeSourceMix = profile.sourceMix.filter((source) => source.count > 0);
+  const displayedSourceMix = activeSourceMix.length > 0 ? activeSourceMix : profile.sourceMix;
+  const sourceMixTotal = profile.sourceMix.reduce((total, source) => total + source.count, 0);
   return (
     <div className="profile-page">
-      <section className="panel settings-panel">
-        <PanelTitle title="Stats" />
-        <div className="settings-panel-box profile-panel-box">
-          <div className="profile-stat-grid">
-            <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
-            <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
-            <ProfileMetric label="Using Baseline for" value={profile.daysTrackedLabel} />
-            <ProfileMetric label="Freshness" value={profile.freshnessLabel} />
-          </div>
-          <div className="settings-row settings-row-action">
-            <SettingsRowText label="Favorite channel" />
-            <strong className="settings-row-value">{profile.favoriteChannelLabel}</strong>
-          </div>
-          <div className="settings-row profile-source-row">
-            <SettingsRowText label="Source mix" />
-            <div className="profile-source-list">
-              {profile.sourceMix.map((source) => (
-                <div className="profile-source-item" key={source.channel}>
-                  <span>{source.label}</span>
-                  <div className="profile-source-meter" aria-hidden="true">
-                    <span style={{ width: `${source.percent}%` }} />
-                  </div>
-                  <strong>{source.count}</strong>
-                </div>
-              ))}
+      <div className="profile-stack">
+        <section className="panel settings-panel">
+          <PanelTitle title="Stats" />
+          <div className="settings-panel-box profile-panel-box">
+            <div className="profile-stat-grid">
+              <ProfileMetric label="Apps updated" value={String(profile.appUpdates)} />
+              <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
+              <ProfileMetric label="Tracked for" value={profile.daysTrackedLabel} />
+              <ProfileMetric label="Up to date" value={profile.freshnessLabel} />
+            </div>
+            <div className="settings-row settings-row-action">
+              <SettingsRowText label="Favorite channel" />
+              <strong
+                className="settings-row-value profile-channel-pill"
+                title={`Most recorded source: ${profile.favoriteChannelLabel}`}
+              >
+                {profile.favoriteChannel && (
+                  <span
+                    className={`profile-source-dot ${profileSourceClass(profile.favoriteChannel)}`}
+                    aria-hidden="true"
+                  />
+                )}
+                {profile.favoriteChannelLabel}
+              </strong>
             </div>
           </div>
-          <div className="settings-row profile-top-apps-row">
-            <SettingsRowText label="Most updated apps" />
+        </section>
+        <section className="panel settings-panel">
+          <PanelTitle title="Source mix" />
+          <div className="settings-panel-box profile-source-panel-box">
+            <div className="profile-source-list">
+              <div className="profile-source-bar" aria-hidden="true">
+                {activeSourceMix.length > 0 ? (
+                  activeSourceMix.map((source) => (
+                    <span
+                      className={`profile-source-segment ${profileSourceClass(source.channel)}`}
+                      key={source.channel}
+                      style={{ flexGrow: source.count }}
+                      title={profileSourceShareLabel(source, sourceMixTotal)}
+                    />
+                  ))
+                ) : (
+                  <span className="profile-source-empty" />
+                )}
+              </div>
+              <div className="profile-source-legend">
+                {displayedSourceMix.map((source) => (
+                  <div
+                    className="profile-source-chip"
+                    key={source.channel}
+                    title={profileSourceShareLabel(source, sourceMixTotal)}
+                  >
+                    <span
+                      className={`profile-source-dot ${profileSourceClass(source.channel)}`}
+                      aria-hidden="true"
+                    />
+                    <span>{source.label}</span>
+                    <strong>{source.count}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+        <section className="panel settings-panel">
+          <PanelTitle title="Most updated apps" />
+          <div className="settings-panel-box profile-top-apps-panel-box">
             {profile.topApps.length > 0 && (
               <ol className="profile-top-app-list">
                 {profile.topApps.map((app) => (
-                  <li key={app.targetID}>
+                  <li
+                    key={app.targetID}
+                    title={`${app.displayName}: #${app.rank} with ${app.count} update${
+                      app.count === 1 ? "" : "s"
+                    }`}
+                  >
                     <span className="profile-top-app-rank">{app.rank}</span>
                     <span
                       className={
@@ -2735,8 +2781,8 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
               </ol>
             )}
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
       <section className="panel settings-panel profile-footer-panel">
         <div className="settings-panel-box">
           {snapshot.profileStats.integrityStatus === "resetAfterTamper" && (
@@ -3055,12 +3101,12 @@ type ProfileSummary = {
   totalUpdates: number;
   daysTrackedLabel: string;
   favoriteChannelLabel: string;
+  favoriteChannel?: ProfileStatsChannel;
   freshnessLabel: string;
   sourceMix: Array<{
     channel: ProfileStatsChannel;
     label: string;
     count: number;
-    percent: number;
   }>;
   topApps: Array<{
     targetID: string;
@@ -3080,15 +3126,36 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
     (event) => event.type === "appUpdate" || event.type === "homebrewUpdate"
   ).length;
   const favoriteChannelLabel = favorite.count > 0 ? favorite.label : "No history yet";
+  const favoriteChannel = favorite.count > 0 ? favorite.channel : undefined;
   return {
     appUpdates: events.filter((event) => event.type === "appUpdate").length,
     totalUpdates,
     daysTrackedLabel: daysTrackedLabel(snapshot.profileStats.createdAt),
     favoriteChannelLabel,
+    favoriteChannel,
     freshnessLabel: freshnessLabel(snapshot),
     sourceMix,
     topApps
   };
+}
+
+function profileSourceClass(channel: ProfileStatsChannel): string {
+  if (channel === "appStore") return "source-app-store";
+  if (channel === "sparkle") return "source-sparkle";
+  if (channel === "homebrew") return "source-homebrew";
+  if (channel === "web") return "source-web";
+  return "source-unknown";
+}
+
+function profileSourceShareLabel(
+  source: ProfileSummary["sourceMix"][number],
+  total: number
+): string {
+  if (total <= 0) {
+    return `${source.label}: no recorded events`;
+  }
+  const percent = Math.round((source.count / total) * 100);
+  return `${source.label}: ${source.count} event${source.count === 1 ? "" : "s"} (${percent}%)`;
 }
 
 function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sourceMix"] {
@@ -3097,13 +3164,11 @@ function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sou
   for (const event of events) {
     counts.set(event.channel, (counts.get(event.channel) ?? 0) + 1);
   }
-  const total = Math.max(1, events.length);
   return channels
     .map((channel) => ({
       channel,
       label: sourceDisplayName(channel),
-      count: counts.get(channel) ?? 0,
-      percent: Math.round(((counts.get(channel) ?? 0) / total) * 100)
+      count: counts.get(channel) ?? 0
     }))
     .sort((first, second) => second.count - first.count || first.label.localeCompare(second.label));
 }
