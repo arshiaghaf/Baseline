@@ -15,8 +15,8 @@ import {
   Download,
   Eye,
   EyeOff,
-  ExternalLink,
   FolderPlus,
+  Link2,
   Monitor,
   MoreHorizontal,
   Moon,
@@ -1597,7 +1597,7 @@ export function DiscoverRow({
             title="Open Homebrew page"
             aria-label="Open Homebrew page"
           >
-            <ExternalLink size={15} />
+            <Link2 size={15} />
           </button>
         )}
       </div>
