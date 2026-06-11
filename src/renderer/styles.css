@@ -2516,6 +2516,10 @@ button:disabled {
     color: rgba(255, 255, 255, 0.86);
   }
 
+  .profile-start-value {
+    color: #d7d7dc;
+  }
+
   .profile-start-unit {
     color: rgba(235, 235, 245, 0.42);
   }
