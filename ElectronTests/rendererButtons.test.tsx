@@ -1240,6 +1240,9 @@ describe("renderer button parity", () => {
     expect(
       screen.getByText("example-package").closest("article")?.querySelector(".app-icon.brew.tool")
     ).toBeNull();
+    expect(
+      screen.getByText("example-package").closest("article")?.querySelector(".app-icon.brew.cask")
+    ).not.toBeNull();
   });
 
   it("keeps ignore enabled while a Homebrew cask is updating and disables uninstall", () => {
