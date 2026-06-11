@@ -2037,8 +2037,15 @@ function HomebrewItemIcon({
   const iconDataURL = item.iconDataURL ?? app?.iconDataURL;
   const isCaskItem = isCask(item.kind);
   const isCliLike = item.kind === "formula" || item.presentation === "cli";
-  const fallbackIcon = isCliLike ? <Terminal size={26} /> : <Package size={26} />;
-  const fallbackClassName = isCaskItem ? "app-icon brew cask" : "app-icon brew formula";
+  const fallbackIcon = isCliLike ? <Terminal size={25} strokeWidth={2.2} /> : <Package size={26} />;
+  const fallbackClassName = [
+    "app-icon",
+    "brew",
+    isCaskItem ? "cask" : "formula",
+    isCliLike ? "tool" : undefined
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   if (app) {
     return (
