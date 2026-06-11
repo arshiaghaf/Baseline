@@ -15,8 +15,8 @@ import {
   Download,
   Eye,
   EyeOff,
-  ExternalLink,
   FolderPlus,
+  Link2,
   Monitor,
   MoreHorizontal,
   Moon,
@@ -1597,7 +1597,7 @@ export function DiscoverRow({
             title="Open Homebrew page"
             aria-label="Open Homebrew page"
           >
-            <ExternalLink size={15} />
+            <Link2 size={15} />
           </button>
         )}
       </div>
@@ -2037,8 +2037,15 @@ function HomebrewItemIcon({
   const iconDataURL = item.iconDataURL ?? app?.iconDataURL;
   const isCaskItem = isCask(item.kind);
   const isCliLike = item.kind === "formula" || item.presentation === "cli";
-  const fallbackIcon = isCliLike ? <Terminal size={26} /> : <Package size={26} />;
-  const fallbackClassName = isCaskItem ? "app-icon brew cask" : "app-icon brew formula";
+  const fallbackIcon = isCliLike ? <Terminal size={25} strokeWidth={2.2} /> : <Package size={26} />;
+  const fallbackClassName = [
+    "app-icon",
+    "brew",
+    isCaskItem ? "cask" : "formula",
+    isCliLike ? "tool" : undefined
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   if (app) {
     return (
@@ -2685,10 +2692,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
     <div className="profile-page">
       <div className="profile-stack">
         <section className="panel settings-panel profile-start-section">
-          <div
-            className="settings-panel-box profile-start-panel-box"
-            title={profile.startedUsing.title}
-          >
+          <div className="settings-panel-box profile-start-panel-box">
             <div className="profile-start-summary">
               <strong>
                 <span className="profile-start-value">{profile.startedUsing.relativeLabel}</span>
@@ -2763,12 +2767,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             {profile.topApps.length > 0 ? (
               <ol className="profile-top-app-list">
                 {profile.topApps.map((app) => (
-                  <li
-                    key={app.targetID}
-                    title={`${app.displayName}: #${app.rank} with ${app.count} update${
-                      app.count === 1 ? "" : "s"
-                    }`}
-                  >
+                  <li key={app.targetID}>
                     <span className={`profile-top-app-rank profile-top-app-rank-${app.rank}`}>
                       {app.rank}
                     </span>
@@ -2784,9 +2783,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                         app.displayName.slice(0, 1).toUpperCase()
                       )}
                     </span>
-                    <span className="profile-top-app-name" title={app.displayName}>
-                      {app.displayName}
-                    </span>
+                    <span className="profile-top-app-name">{app.displayName}</span>
                     <strong>
                       {app.count} update{app.count === 1 ? "" : "s"}
                     </strong>
@@ -2804,21 +2801,14 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             {profile.topHomebrewItems.length > 0 ? (
               <ol className="profile-top-app-list profile-top-tool-list">
                 {profile.topHomebrewItems.map((item) => (
-                  <li
-                    key={item.targetID}
-                    title={`${item.displayName}: #${item.rank} with ${item.count} update${
-                      item.count === 1 ? "" : "s"
-                    }`}
-                  >
+                  <li key={item.targetID}>
                     <span className={`profile-top-app-rank profile-top-app-rank-${item.rank}`}>
                       {item.rank}
                     </span>
                     <span className="profile-top-app-icon profile-top-tool-icon" aria-hidden="true">
                       <Terminal size={29} strokeWidth={2.2} />
                     </span>
-                    <span className="profile-top-app-name" title={item.displayName}>
-                      {item.displayName}
-                    </span>
+                    <span className="profile-top-app-name">{item.displayName}</span>
                     <strong>
                       {item.count} update{item.count === 1 ? "" : "s"} · {item.kindLabel}
                     </strong>

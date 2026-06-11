@@ -826,6 +826,11 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
     expect(screen.getAllByText("Sparkle 45%")).toHaveLength(1);
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
+    expect(document.querySelector(".profile-start-panel-box")?.hasAttribute("title")).toBe(false);
+    const sourceSegment = document.querySelector(".profile-source-segment") as HTMLElement;
+    expect(sourceSegment).not.toBeNull();
+    fireEvent.pointerMove(sourceSegment, { clientX: 45 });
+    expect(sourceSegment.style.getPropertyValue("--profile-source-tooltip-x")).toBe("");
     const topAppRow = screen.getByText("Example").closest("li");
     expect(topAppRow).not.toBeNull();
     expect(topAppRow?.querySelector(".profile-top-app-icon img")).toHaveAttribute(
@@ -836,6 +841,7 @@ describe("renderer button parity", () => {
       ".profile-top-app-list:not(.profile-top-tool-list) li"
     );
     expect(topAppTiles).toHaveLength(3);
+    expect([...topAppTiles].every((tile) => !tile.hasAttribute("title"))).toBe(true);
     expect(
       [
         ...document.querySelectorAll(
@@ -852,6 +858,7 @@ describe("renderer button parity", () => {
     expect([...topAppTiles].some((tile) => tile.textContent?.includes("Fourth App"))).toBe(false);
     const topToolTiles = document.querySelectorAll(".profile-top-tool-list li");
     expect(topToolTiles).toHaveLength(2);
+    expect([...topToolTiles].every((tile) => !tile.hasAttribute("title"))).toBe(true);
     expect(screen.getByText("aws-vault")).toBeInTheDocument();
     expect(screen.getByText("1 update · CLI Cask")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
@@ -1221,6 +1228,21 @@ describe("renderer button parity", () => {
     expect(screen.getAllByText("CLI Cask")).toHaveLength(2);
     expect(screen.getByText("Package Cask")).toBeInTheDocument();
     expect(screen.getByText("App Cask")).toBeInTheDocument();
+    expect(
+      screen.getByText("example-cli").closest("article")?.querySelector(".app-icon.brew.tool")
+    ).not.toBeNull();
+    expect(
+      screen.getByText("example-cli-cask").closest("article")?.querySelector(".app-icon.brew.tool")
+    ).not.toBeNull();
+    expect(
+      screen.getByText("Discover CLI").closest("article")?.querySelector(".app-icon.brew.tool")
+    ).not.toBeNull();
+    expect(
+      screen.getByText("example-package").closest("article")?.querySelector(".app-icon.brew.tool")
+    ).toBeNull();
+    expect(
+      screen.getByText("example-package").closest("article")?.querySelector(".app-icon.brew.cask")
+    ).not.toBeNull();
   });
 
   it("keeps ignore enabled while a Homebrew cask is updating and disables uninstall", () => {

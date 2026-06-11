@@ -692,9 +692,19 @@ button:disabled {
   gap: 5px;
 }
 
-.app-icon {
+.app-icon,
+.profile-top-app-icon {
+  position: relative;
   display: grid;
   place-items: center;
+  overflow: hidden;
+  transition:
+    transform 110ms cubic-bezier(0.2, 0, 0.2, 1),
+    box-shadow 110ms cubic-bezier(0.2, 0, 0.2, 1);
+  will-change: transform;
+}
+
+.app-icon {
   width: 50px;
   height: 50px;
   padding: 0;
@@ -704,7 +714,21 @@ button:disabled {
   color: white;
   font-size: 17px;
   font-weight: 700;
-  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 5px 14px rgba(0, 0, 0, 0.09);
+}
+
+.app-icon::after,
+.profile-top-app-icon::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 255, 255, 0.06);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 110ms cubic-bezier(0.2, 0, 0.2, 1);
 }
 
 .clickable-app-icon {
@@ -715,21 +739,41 @@ button:disabled {
   justify-self: center;
   width: 48px;
   height: 48px;
-  background: #efeff4;
-  color: rgba(60, 60, 67, 0.7);
+  background:
+    linear-gradient(145deg, rgba(232, 154, 23, 0.1), rgba(60, 60, 67, 0.04)),
+    rgba(60, 60, 67, 0.035);
+  color: #9b650b;
 }
 
 .app-icon.brew.formula {
   background: #e8eaee;
 }
 
+.app-icon.brew.tool {
+  border: 0.5px solid rgba(60, 60, 67, 0.08);
+  background:
+    linear-gradient(145deg, rgba(232, 154, 23, 0.1), rgba(60, 60, 67, 0.05)), rgba(60, 60, 67, 0.04);
+  color: #9b650b;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 5px 14px rgba(0, 0, 0, 0.07);
+}
+
 .app-icon.brew svg {
   stroke-width: 1.8;
 }
 
+.app-icon.brew.tool svg {
+  stroke-width: 2.2;
+}
+
 .app-icon.app-icon-image {
+  border: 0.5px solid rgba(60, 60, 67, 0.08);
   border-radius: 12px;
   background: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    0 5px 14px rgba(0, 0, 0, 0.11);
 }
 
 .app-icon img {
@@ -741,6 +785,36 @@ button:disabled {
 
 .app-icon.app-icon-image img {
   transform: scale(1.18);
+}
+
+@media (hover: hover) {
+  .app-icon:hover,
+  .profile-top-app-list li:hover .profile-top-app-icon {
+    transform: translateY(-1px) scale(1.02);
+  }
+
+  .app-icon:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.32),
+      0 8px 18px rgba(0, 0, 0, 0.13);
+  }
+
+  .app-icon:hover::after,
+  .profile-top-app-list li:hover .profile-top-app-icon::after {
+    opacity: 1;
+  }
+
+  .app-icon.app-icon-image:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.36),
+      0 8px 18px rgba(0, 0, 0, 0.15);
+  }
+
+  .app-icon.brew.tool:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.78),
+      0 8px 18px rgba(0, 0, 0, 0.11);
+  }
 }
 
 .row-main {
@@ -1056,13 +1130,20 @@ button:disabled {
   .primary-button,
   .danger-button,
   .destructive-text-button,
+  .app-icon,
+  .app-icon::after,
+  .profile-top-app-icon,
+  .profile-top-app-icon::after,
   .toolbar-search,
   .toolbar-search-field {
     transition: none;
   }
 
-  .toolbar-search-field {
+  .toolbar-search-field,
+  .app-icon,
+  .profile-top-app-icon {
     transform: none;
+    will-change: auto;
   }
 
   .item-card {
@@ -1078,6 +1159,9 @@ button:disabled {
   .primary-button:not(:disabled):hover,
   .danger-button:not(:disabled):hover,
   .destructive-text-button:not(:disabled):hover,
+  .app-icon:hover,
+  .profile-top-app-list li:hover .profile-top-app-icon,
+  .profile-top-app-list li:hover .profile-top-app-icon:hover,
   .toolbar-button:not(:disabled):active,
   .icon-button:not(:disabled):active,
   .secondary-icon-button:not(:disabled):active,
@@ -1566,7 +1650,7 @@ button:disabled {
 .profile-start-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
+  align-items: center;
   gap: 5px;
   cursor: default;
   user-select: none;
@@ -1600,7 +1684,13 @@ button:disabled {
   padding: 5px 9px;
   border: 0.5px solid rgba(60, 60, 67, 0.08);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.58);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.24)),
+    linear-gradient(135deg, rgba(214, 165, 31, 0.055), rgba(60, 60, 67, 0.018));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    inset 0 -1px 0 rgba(60, 60, 67, 0.025),
+    0 3px 10px rgba(0, 0, 0, 0.055);
   color: rgba(60, 60, 67, 0.58);
   font-size: 12px;
   font-weight: 500;
@@ -1608,12 +1698,19 @@ button:disabled {
   transition:
     border-color 140ms ease,
     background 140ms ease,
+    box-shadow 140ms ease,
     color 140ms ease;
 }
 
 .profile-start-date:hover {
   border-color: rgba(60, 60, 67, 0.14);
-  background: rgba(255, 255, 255, 0.74);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.64), rgba(255, 255, 255, 0.32)),
+    linear-gradient(135deg, rgba(214, 165, 31, 0.075), rgba(60, 60, 67, 0.024));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(60, 60, 67, 0.03),
+    0 5px 14px rgba(0, 0, 0, 0.075);
   color: rgba(60, 60, 67, 0.68);
 }
 
@@ -1736,11 +1833,6 @@ button:disabled {
   white-space: normal;
 }
 
-.profile-source-chip:hover .profile-source-tooltip {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-
 .profile-source-segment:first-child {
   border-top-left-radius: 999px;
   border-bottom-left-radius: 999px;
@@ -1843,12 +1935,9 @@ button:disabled {
 }
 
 .profile-top-app-icon {
-  display: grid;
-  place-items: center;
   width: 62px;
   height: 62px;
   border-radius: 15px;
-  overflow: hidden;
   background: linear-gradient(180deg, #85858c, #595961);
   box-shadow: 0 5px 14px rgba(0, 0, 0, 0.11);
   color: white;
@@ -1865,6 +1954,9 @@ button:disabled {
 
 .profile-top-app-icon.has-image {
   background: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    0 5px 14px rgba(0, 0, 0, 0.11);
 }
 
 .profile-top-tool-icon {
@@ -1876,6 +1968,34 @@ button:disabled {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.72),
     0 5px 14px rgba(0, 0, 0, 0.07);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .profile-top-app-list li:hover .profile-top-app-icon {
+    transform: translateY(-1px) scale(1.02);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.36),
+      0 8px 18px rgba(0, 0, 0, 0.15);
+  }
+
+  .profile-top-app-list li:hover .profile-top-tool-icon {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.78),
+      0 8px 18px rgba(0, 0, 0, 0.11);
+  }
+
+  .profile-top-app-list li:hover .profile-top-app-icon:hover {
+    transform: translateY(-2px) scale(1.04);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.4),
+      0 10px 22px rgba(0, 0, 0, 0.18);
+  }
+
+  .profile-top-app-list li:hover .profile-top-tool-icon:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.82),
+      0 10px 22px rgba(0, 0, 0, 0.14);
+  }
 }
 
 .profile-top-app-rank {
@@ -2142,6 +2262,10 @@ button:disabled {
   }
 
   @media (hover: hover) {
+    .app-icon::after {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
     .source-list button:not(.selected):hover,
     .sidebar-footer button:not(.selected):hover,
     .back-to-app-button:hover {
@@ -2272,15 +2396,58 @@ button:disabled {
 
   .app-icon {
     background: linear-gradient(180deg, #77777d, #3a3a3c);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 5px 14px rgba(0, 0, 0, 0.18);
+  }
+
+  .app-icon.app-icon-image {
+    border-color: rgba(235, 235, 245, 0.08);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 5px 14px rgba(0, 0, 0, 0.2);
+  }
+
+  @media (hover: hover) {
+    .app-icon:hover {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 18px rgba(0, 0, 0, 0.28);
+    }
+
+    .app-icon.app-icon-image:hover {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 18px rgba(0, 0, 0, 0.3);
+    }
+
+    .app-icon.brew.tool:hover {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 18px rgba(0, 0, 0, 0.26);
+    }
   }
 
   .app-icon.brew {
-    background: #2c2c2e;
-    color: rgba(235, 235, 245, 0.74);
+    background:
+      linear-gradient(145deg, rgba(232, 154, 23, 0.04), rgba(235, 235, 245, 0.04)),
+      rgba(235, 235, 245, 0.045);
+    color: rgba(235, 235, 245, 0.48);
   }
 
   .app-icon.brew.formula {
     background: #242427;
+  }
+
+  .app-icon.brew.tool {
+    border-color: rgba(235, 235, 245, 0.08);
+    background:
+      linear-gradient(145deg, rgba(232, 154, 23, 0.04), rgba(235, 235, 245, 0.045)),
+      rgba(235, 235, 245, 0.045);
+    color: rgba(235, 235, 245, 0.48);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 5px 14px rgba(0, 0, 0, 0.18);
   }
 
   .toolbar-button,
@@ -2344,6 +2511,10 @@ button:disabled {
     color: rgba(255, 255, 255, 0.86);
   }
 
+  .profile-start-value {
+    color: #d7d7dc;
+  }
+
   .profile-start-unit {
     color: rgba(235, 235, 245, 0.42);
   }
@@ -2351,12 +2522,18 @@ button:disabled {
   .profile-start-date {
     border-color: rgba(235, 235, 245, 0.09);
     background: rgba(235, 235, 245, 0.075);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 3px 10px rgba(0, 0, 0, 0.18);
     color: rgba(235, 235, 245, 0.5);
   }
 
   .profile-start-date:hover {
     border-color: rgba(235, 235, 245, 0.15);
     background: rgba(235, 235, 245, 0.105);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 5px 14px rgba(0, 0, 0, 0.24);
     color: rgba(235, 235, 245, 0.62);
   }
 
@@ -2421,6 +2598,42 @@ button:disabled {
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.08),
       0 5px 14px rgba(0, 0, 0, 0.18);
+  }
+
+  .profile-top-app-icon.has-image {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 5px 14px rgba(0, 0, 0, 0.2);
+  }
+
+  .profile-top-app-icon::after {
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  @media (hover: hover) {
+    .profile-top-app-list li:hover .profile-top-app-icon {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 18px rgba(0, 0, 0, 0.3);
+    }
+
+    .profile-top-app-list li:hover .profile-top-tool-icon {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 8px 18px rgba(0, 0, 0, 0.26);
+    }
+
+    .profile-top-app-list li:hover .profile-top-app-icon:hover {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 10px 22px rgba(0, 0, 0, 0.34);
+    }
+
+    .profile-top-app-list li:hover .profile-top-tool-icon:hover {
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 10px 22px rgba(0, 0, 0, 0.3);
+    }
   }
 
   .profile-top-app-rank {
