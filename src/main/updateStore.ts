@@ -25,8 +25,6 @@ import {
   defaultProfileStatsAfterTamper,
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
-  homebrewDiscoverID,
-  homebrewItemID,
   normalizeAppearancePreference
 } from "../shared/domain";
 import {
@@ -216,36 +214,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       isMasInstalled: mas.success,
       isHomebrewInstalled: brew.success,
       isChecking: false
-    });
-  }
-
-  async testMasSetup(): Promise<void> {
-    if (!this.state.isMasInstalled) {
-      this.patch({
-        masTestSucceeded: false,
-        masTestMessage: "mas is not installed yet. Install mas to start App Store updates."
-      });
-      return;
-    }
-    const result = await this.runMasCommand(["outdated"]);
-    this.patch({
-      masTestSucceeded: result.success,
-      masTestMessage: result.success
-        ? "mas is ready, and Baseline can start App Store updates."
-        : "mas is installed, but it is not connected to your App Store account yet."
-    });
-  }
-
-  async installMasWithHomebrew(): Promise<void> {
-    const result = await this.runBrewCommand(["install", "mas"]);
-    const installed = await this.runMasCommand(["version"]);
-    this.patch({
-      isMasInstalled: installed.success,
-      masTestSucceeded: result.success && installed.success,
-      masTestMessage:
-        result.success && installed.success
-          ? "mas was installed successfully."
-          : "We could not install mas automatically. Please use the install guide and try again."
     });
   }
 
@@ -1732,14 +1700,6 @@ function detectLaggingHomebrewCaskTokens(
   return reconciled
     .filter((item, index) => item.kind === "cask" && item.isOutdated && !items[index]?.isOutdated)
     .map((item) => item.token.toLowerCase());
-}
-
-export function derivedHomebrewItemID(kind: "formula" | "cask", token: string): string {
-  return homebrewItemID(kind, token);
-}
-
-export function derivedDiscoverID(kind: "formula" | "cask", token: string): string {
-  return homebrewDiscoverID(kind, token);
 }
 
 function homebrewUninstallFailureMessage(item: HomebrewManagedItem, output: string): string {

@@ -322,19 +322,6 @@ function wireStoreEvents(): void {
     updateTrayStatus(snapshot);
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send(ipcChannels.snapshotChanged, snapshot);
-      window.webContents.send(ipcChannels.refreshStateChanged, {
-        isRefreshing: snapshot.isRefreshing,
-        refreshErrorMessage: snapshot.refreshErrorMessage,
-        lastRefreshNoticeMessage: snapshot.lastRefreshNoticeMessage,
-        lastRefreshDate: snapshot.lastRefreshDate
-      });
-      window.webContents.send(ipcChannels.toolStatusChanged, {
-        isMasInstalled: snapshot.isMasInstalled,
-        isHomebrewInstalled: snapshot.isHomebrewInstalled,
-        isChecking: snapshot.isChecking,
-        masTestMessage: snapshot.masTestMessage,
-        masTestSucceeded: snapshot.masTestSucceeded
-      });
     }
   });
   store.on("homebrewCommand", (event) => {
@@ -403,9 +390,7 @@ function wireIpc(): void {
     return {
       isMasInstalled: snapshot.isMasInstalled,
       isHomebrewInstalled: snapshot.isHomebrewInstalled,
-      isChecking: snapshot.isChecking,
-      masTestMessage: snapshot.masTestMessage,
-      masTestSucceeded: snapshot.masTestSucceeded
+      isChecking: snapshot.isChecking
     };
   });
   ipcMain.handle(ipcChannels.refreshToolStatus, () => store.refreshToolStatus());

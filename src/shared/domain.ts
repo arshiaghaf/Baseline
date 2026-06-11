@@ -209,8 +209,6 @@ export type ToolStatus = {
   isMasInstalled: boolean;
   isHomebrewInstalled: boolean;
   isChecking: boolean;
-  masTestMessage?: string;
-  masTestSucceeded?: boolean;
 };
 
 export type RefreshState = {
