@@ -826,6 +826,22 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
     expect(screen.getAllByText("Sparkle 45%")).toHaveLength(1);
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
+    expect(document.querySelector(".profile-start-panel-box")?.hasAttribute("title")).toBe(false);
+    const sourceSegment = document.querySelector(".profile-source-segment") as HTMLElement;
+    expect(sourceSegment).not.toBeNull();
+    vi.spyOn(sourceSegment, "getBoundingClientRect").mockReturnValue({
+      x: 10,
+      y: 0,
+      width: 120,
+      height: 8,
+      top: 0,
+      right: 130,
+      bottom: 8,
+      left: 10,
+      toJSON: () => ({})
+    });
+    fireEvent.pointerMove(sourceSegment, { clientX: 45 });
+    expect(sourceSegment.style.getPropertyValue("--profile-source-tooltip-x")).toBe("35px");
     const topAppRow = screen.getByText("Example").closest("li");
     expect(topAppRow).not.toBeNull();
     expect(topAppRow?.querySelector(".profile-top-app-icon img")).toHaveAttribute(
@@ -836,6 +852,7 @@ describe("renderer button parity", () => {
       ".profile-top-app-list:not(.profile-top-tool-list) li"
     );
     expect(topAppTiles).toHaveLength(3);
+    expect([...topAppTiles].every((tile) => !tile.hasAttribute("title"))).toBe(true);
     expect(
       [
         ...document.querySelectorAll(
@@ -852,6 +869,7 @@ describe("renderer button parity", () => {
     expect([...topAppTiles].some((tile) => tile.textContent?.includes("Fourth App"))).toBe(false);
     const topToolTiles = document.querySelectorAll(".profile-top-tool-list li");
     expect(topToolTiles).toHaveLength(2);
+    expect([...topToolTiles].every((tile) => !tile.hasAttribute("title"))).toBe(true);
     expect(screen.getByText("aws-vault")).toBeInTheDocument();
     expect(screen.getByText("1 update · CLI Cask")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
