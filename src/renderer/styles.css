@@ -1120,13 +1120,20 @@ button:disabled {
   .primary-button,
   .danger-button,
   .destructive-text-button,
+  .app-icon,
+  .app-icon::after,
+  .profile-top-app-icon,
+  .profile-top-app-icon::after,
   .toolbar-search,
   .toolbar-search-field {
     transition: none;
   }
 
-  .toolbar-search-field {
+  .toolbar-search-field,
+  .app-icon,
+  .profile-top-app-icon {
     transform: none;
+    will-change: auto;
   }
 
   .item-card {
@@ -1142,6 +1149,9 @@ button:disabled {
   .primary-button:not(:disabled):hover,
   .danger-button:not(:disabled):hover,
   .destructive-text-button:not(:disabled):hover,
+  .app-icon:hover,
+  .profile-top-app-list li:hover .profile-top-app-icon,
+  .profile-top-app-list li:hover .profile-top-app-icon:hover,
   .toolbar-button:not(:disabled):active,
   .icon-button:not(:disabled):active,
   .secondary-icon-button:not(:disabled):active,
