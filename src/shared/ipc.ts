@@ -38,9 +38,7 @@ export const ipcChannels = {
   showMainWindow: "baseline:showMainWindow",
   showSettings: "baseline:showSettings",
   snapshotChanged: "baseline:snapshotChanged",
-  refreshStateChanged: "baseline:refreshStateChanged",
-  homebrewCommandEvent: "baseline:homebrewCommandEvent",
-  toolStatusChanged: "baseline:toolStatusChanged"
+  homebrewCommandEvent: "baseline:homebrewCommandEvent"
 } as const;
 
 export type PreferencePatch = Partial<{

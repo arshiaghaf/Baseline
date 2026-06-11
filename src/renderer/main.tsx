@@ -560,7 +560,7 @@ function ToolbarSearch({
           ref={inputRef}
           value={snapshot.searchText}
           onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
-          placeholder={searchPlaceholder()}
+          placeholder="Search"
           tabIndex={open ? 0 : -1}
           aria-hidden={!open}
         />
@@ -967,36 +967,57 @@ function AppSection({
   );
 }
 
-function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
+type AppControlState = {
+  update?: UpdateRecord;
+  isIgnored: boolean;
+  uninstallableItem?: HomebrewManagedItem;
+  isUninstalling: boolean;
+  actionState: ActionState;
+  isUpdating: boolean;
+};
+
+function appControlState(app: AppRecord, snapshot: BaselineSnapshot): AppControlState {
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
-  const label = appSourceLabel(app, snapshot);
   const isUninstalling = uninstallableItem
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
   const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
+  return { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating };
+}
+
+function AppIconButton({ app }: { app: AppRecord }) {
+  return (
+    <button
+      className={
+        app.iconDataURL
+          ? "app-icon app-icon-image clickable-app-icon"
+          : "app-icon clickable-app-icon"
+      }
+      onClick={() => void window.baseline.openApp(app.id)}
+      title="Open app"
+      aria-label="Open app"
+    >
+      {app.iconDataURL ? (
+        <img src={app.iconDataURL} alt="" draggable={false} />
+      ) : (
+        app.displayName.slice(0, 1).toUpperCase()
+      )}
+    </button>
+  );
+}
+
+function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
+  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
+  const { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating } =
+    appControlState(app, snapshot);
+  const label = appSourceLabel(app, snapshot);
 
   return (
     <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
       <div className="item-card-top">
-        <button
-          className={
-            app.iconDataURL
-              ? "app-icon app-icon-image clickable-app-icon"
-              : "app-icon clickable-app-icon"
-          }
-          onClick={() => void window.baseline.openApp(app.id)}
-          title="Open app"
-          aria-label="Open app"
-        >
-          {app.iconDataURL ? (
-            <img src={app.iconDataURL} alt="" draggable={false} />
-          ) : (
-            app.displayName.slice(0, 1).toUpperCase()
-          )}
-        </button>
+        <AppIconButton app={app} />
         <div className="item-card-actions">
           {update && (
             <UpdateActionButton
@@ -1181,35 +1202,15 @@ function CardGrid({
 
 function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
-  const isUninstalling = uninstallableItem
-    ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
-    : false;
-  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
+  const { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating } =
+    appControlState(app, snapshot);
   const recentlyUpdatedRecord = snapshot.recentlyUpdated.find((record) => record.appID === app.id);
   const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
 
   return (
     <article className={isIgnored ? "item-card recent-card ignored-row" : "item-card recent-card"}>
       <div className="item-card-top">
-        <button
-          className={
-            app.iconDataURL
-              ? "app-icon app-icon-image clickable-app-icon"
-              : "app-icon clickable-app-icon"
-          }
-          onClick={() => void window.baseline.openApp(app.id)}
-          title="Open app"
-          aria-label="Open app"
-        >
-          {app.iconDataURL ? (
-            <img src={app.iconDataURL} alt="" draggable={false} />
-          ) : (
-            app.displayName.slice(0, 1).toUpperCase()
-          )}
-        </button>
+        <AppIconButton app={app} />
         <div className="item-card-actions">
           {update && (
             <UpdateActionButton
@@ -1250,34 +1251,14 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
 
 function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  const { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating } =
+    appControlState(app, snapshot);
   const label = appSourceLabel(app, snapshot);
-  const isUninstalling = uninstallableItem
-    ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
-    : false;
-  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
 
   return (
     <article className="item-card ignored-card ignored-row">
       <div className="item-card-top">
-        <button
-          className={
-            app.iconDataURL
-              ? "app-icon app-icon-image clickable-app-icon"
-              : "app-icon clickable-app-icon"
-          }
-          onClick={() => void window.baseline.openApp(app.id)}
-          title="Open app"
-          aria-label="Open app"
-        >
-          {app.iconDataURL ? (
-            <img src={app.iconDataURL} alt="" draggable={false} />
-          ) : (
-            app.displayName.slice(0, 1).toUpperCase()
-          )}
-        </button>
+        <AppIconButton app={app} />
         <div className="item-card-actions">
           <RowMoreActionButton
             isIgnored={isIgnored}
@@ -1333,39 +1314,17 @@ export function AppRow({
   recentlyUpdated: boolean;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
-  const isUninstalling = uninstallableItem
-    ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
-    : false;
-  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
-  const recentlyUpdatedAt = recentlyUpdated
-    ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)?.updatedAt
-    : undefined;
+  const { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating } =
+    appControlState(app, snapshot);
   const recentlyUpdatedRecord = recentlyUpdated
     ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)
     : undefined;
+  const recentlyUpdatedAt = recentlyUpdatedRecord?.updatedAt;
   const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
 
   return (
     <article className={isIgnored ? "row ignored-row" : "row"}>
-      <button
-        className={
-          app.iconDataURL
-            ? "app-icon app-icon-image clickable-app-icon"
-            : "app-icon clickable-app-icon"
-        }
-        onClick={() => void window.baseline.openApp(app.id)}
-        title="Open app"
-        aria-label="Open app"
-      >
-        {app.iconDataURL ? (
-          <img src={app.iconDataURL} alt="" draggable={false} />
-        ) : (
-          app.displayName.slice(0, 1).toUpperCase()
-        )}
-      </button>
+      <AppIconButton app={app} />
       <div className="row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
@@ -1678,6 +1637,36 @@ export function HomebrewSection({
   );
 }
 
+type HomebrewControlState = {
+  isUpdating: boolean;
+  isUninstalling: boolean;
+  isIgnored: boolean;
+  updateState: ActionState;
+};
+
+function homebrewControlState(
+  item: HomebrewManagedItem,
+  snapshot: BaselineSnapshot
+): HomebrewControlState {
+  const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
+  const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
+  const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
+  const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
+  const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
+  const progress = snapshot.homebrewBatchProgressByItemID[item.id];
+  return {
+    isUpdating,
+    isUninstalling,
+    isIgnored,
+    updateState: actionStateFromFlags({
+      failed,
+      updating: isUpdating,
+      progress,
+      done
+    })
+  };
+}
+
 function HomebrewUpdateCard({
   item,
   snapshot
@@ -1686,18 +1675,10 @@ function HomebrewUpdateCard({
   snapshot: BaselineSnapshot;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
-  const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
-  const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
-  const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
-  const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
-  const progress = snapshot.homebrewBatchProgressByItemID[item.id];
-  const updateState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { isUpdating, isUninstalling, isIgnored, updateState } = homebrewControlState(
+    item,
+    snapshot
+  );
 
   return (
     <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
@@ -1830,18 +1811,10 @@ function RecentHomebrewCard({
   appCaskLabel?: string;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
-  const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
-  const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
-  const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
-  const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
-  const progress = snapshot.homebrewBatchProgressByItemID[item.id];
-  const updateState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { isUpdating, isUninstalling, isIgnored, updateState } = homebrewControlState(
+    item,
+    snapshot
+  );
   const recentlyUpdatedRecord = snapshot.homebrewRecentlyUpdated.find(
     (record) => record.itemID === item.id
   );
@@ -1893,18 +1866,10 @@ function IgnoredHomebrewCard({
   snapshot: BaselineSnapshot;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
-  const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
-  const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
-  const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
-  const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
-  const progress = snapshot.homebrewBatchProgressByItemID[item.id];
-  const updateState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { isUpdating, isUninstalling, isIgnored, updateState } = homebrewControlState(
+    item,
+    snapshot
+  );
 
   return (
     <article className="item-card ignored-card ignored-row">
@@ -1962,18 +1927,10 @@ export function HomebrewRow({
   recentlyUpdated?: boolean;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
-  const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
-  const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
-  const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
-  const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
-  const progress = snapshot.homebrewBatchProgressByItemID[item.id];
-  const updateState = actionStateFromFlags({
-    failed,
-    updating: isUpdating,
-    progress,
-    done
-  });
+  const { isUpdating, isUninstalling, isIgnored, updateState } = homebrewControlState(
+    item,
+    snapshot
+  );
   const recentlyUpdatedAt = recentlyUpdated
     ? snapshot.homebrewRecentlyUpdated.find((record) => record.itemID === item.id)?.updatedAt
     : undefined;
@@ -2853,22 +2810,11 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
   );
 }
 
-function ProfileMetric({
-  label,
-  value,
-  detail,
-  title
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  title?: string;
-}) {
+function ProfileMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="profile-metric" title={title}>
+    <div className="profile-metric">
       <strong>{value}</strong>
       <span>{label}</span>
-      {detail && <small className="profile-metric-detail">{detail}</small>}
     </div>
   );
 }
@@ -3163,10 +3109,8 @@ type ProfileSummary = {
   startedUsing: {
     relativeLabel: string;
     dateLabel: string;
-    title: string;
   };
   favoriteChannelLabel: string;
-  favoriteChannel?: ProfileStatsChannel;
   sourceMix: Array<{
     channel: ProfileStatsChannel;
     label: string;
@@ -3207,14 +3151,12 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   ).size;
   const discoverInstalls = events.filter((event) => event.type === "homebrewInstall").length;
   const favoriteChannelLabel = favorite.count > 0 ? favorite.label : "No history";
-  const favoriteChannel = favorite.count > 0 ? favorite.channel : undefined;
   return {
     differentApps,
     discoverInstalls,
     totalUpdates,
     startedUsing: startedUsingSummary(snapshot.profileStats.startedUsingAt),
     favoriteChannelLabel,
-    favoriteChannel,
     sourceMix,
     topApps,
     topHomebrewItems
@@ -3380,8 +3322,7 @@ function startedUsingSummary(createdAt: string): ProfileSummary["startedUsing"] 
   if (!Number.isFinite(created)) {
     return {
       relativeLabel: "Today",
-      dateLabel: "Since today",
-      title: "Started using Baseline today"
+      dateLabel: "Since today"
     };
   }
   const createdDate = new Date(created);
@@ -3403,8 +3344,7 @@ function startedUsingSummary(createdAt: string): ProfileSummary["startedUsing"] 
     elapsedDays === 0 ? "Today" : `${elapsedDays} day${elapsedDays === 1 ? "" : "s"}`;
   return {
     relativeLabel,
-    dateLabel: `Since ${exactDate}`,
-    title: `Started using Baseline on ${exactDate}`
+    dateLabel: `Since ${exactDate}`
   };
 }
 
@@ -3465,10 +3405,6 @@ function selectedTabTitle(tab: MenuTab): string {
   if (tab === "installed") return "Installed";
   if (tab === "ignored") return "Ignored";
   return "Homebrew";
-}
-
-function searchPlaceholder(): string {
-  return "Search";
 }
 
 function updatedRelativeLabel(updatedAt: string, now = Date.now()): string {

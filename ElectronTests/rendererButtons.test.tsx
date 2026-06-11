@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ActionConfirmationContext,
