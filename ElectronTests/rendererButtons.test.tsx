@@ -829,19 +829,8 @@ describe("renderer button parity", () => {
     expect(document.querySelector(".profile-start-panel-box")?.hasAttribute("title")).toBe(false);
     const sourceSegment = document.querySelector(".profile-source-segment") as HTMLElement;
     expect(sourceSegment).not.toBeNull();
-    vi.spyOn(sourceSegment, "getBoundingClientRect").mockReturnValue({
-      x: 10,
-      y: 0,
-      width: 120,
-      height: 8,
-      top: 0,
-      right: 130,
-      bottom: 8,
-      left: 10,
-      toJSON: () => ({})
-    });
     fireEvent.pointerMove(sourceSegment, { clientX: 45 });
-    expect(sourceSegment.style.getPropertyValue("--profile-source-tooltip-x")).toBe("35px");
+    expect(sourceSegment.style.getPropertyValue("--profile-source-tooltip-x")).toBe("");
     const topAppRow = screen.getByText("Example").closest("li");
     expect(topAppRow).not.toBeNull();
     expect(topAppRow?.querySelector(".profile-top-app-icon img")).toHaveAttribute(

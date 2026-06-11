@@ -2729,8 +2729,6 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                     <span
                       className={`profile-source-segment ${profileSourceClass(source.channel)}`}
                       key={source.channel}
-                      onPointerMove={handleProfileSourceSegmentPointerMove}
-                      onPointerLeave={handleProfileSourceSegmentPointerLeave}
                       style={{ flexGrow: source.count }}
                     >
                       <span className="profile-source-tooltip" aria-hidden="true">
@@ -2853,16 +2851,6 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
       </section>
     </div>
   );
-}
-
-function handleProfileSourceSegmentPointerMove(event: React.PointerEvent<HTMLSpanElement>) {
-  const bounds = event.currentTarget.getBoundingClientRect();
-  const x = Math.max(0, Math.min(bounds.width, event.clientX - bounds.left));
-  event.currentTarget.style.setProperty("--profile-source-tooltip-x", `${x}px`);
-}
-
-function handleProfileSourceSegmentPointerLeave(event: React.PointerEvent<HTMLSpanElement>) {
-  event.currentTarget.style.removeProperty("--profile-source-tooltip-x");
 }
 
 function ProfileMetric({

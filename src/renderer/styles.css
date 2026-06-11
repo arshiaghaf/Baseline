@@ -1788,7 +1788,7 @@ button:disabled {
 .profile-source-tooltip {
   position: absolute;
   bottom: calc(100% + 7px);
-  left: var(--profile-source-tooltip-x, 50%);
+  left: 50%;
   z-index: 20;
   width: max-content;
   max-width: 190px;
