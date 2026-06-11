@@ -1944,6 +1944,9 @@ button:disabled {
 
 .profile-top-app-icon.has-image {
   background: transparent;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    0 5px 14px rgba(0, 0, 0, 0.11);
 }
 
 .profile-top-tool-icon {
@@ -2577,6 +2580,12 @@ button:disabled {
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.08),
       0 5px 14px rgba(0, 0, 0, 0.18);
+  }
+
+  .profile-top-app-icon.has-image {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 5px 14px rgba(0, 0, 0, 0.2);
   }
 
   .profile-top-app-icon::after {
