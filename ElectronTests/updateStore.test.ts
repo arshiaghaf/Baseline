@@ -3145,11 +3145,16 @@ describe("update store helpers", () => {
 
     expect(store.getSnapshot().homebrewUpdatingItemIDs).toContain("formula:ripgrep");
     expect(store.getSnapshot().homebrewUpdatingItemIDs).toContain("cask:raycast");
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain("formula:ripgrep");
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain("cask:raycast");
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
 
     resolveInstall({ success: true, status: 0, output: "" });
     await install;
     await Promise.all([queuedFormulaUpdate, queuedUpdate]);
+
+    expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain("formula:ripgrep");
+    expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain("cask:raycast");
 
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["install", "fd"],
@@ -3239,6 +3244,7 @@ describe("update store helpers", () => {
     await store.performHomebrewUpdateAll();
 
     expect(store.getSnapshot().homebrewUpdatingItemIDs).toContain("formula:ripgrep");
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain("formula:ripgrep");
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
 
     resolveInstall({ success: true, status: 0, output: "" });
@@ -3246,6 +3252,7 @@ describe("update store helpers", () => {
     await queuedUpdate;
 
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(discoverItem.id);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain("formula:ripgrep");
   });
 
   it("keeps the Homebrew command lock visible during a successful Discover install hold", async () => {
@@ -3466,6 +3473,7 @@ describe("update store helpers", () => {
     const update = store.performHomebrewUpdate(item.id);
     await Promise.resolve();
     expect(store.getSnapshot().homebrewUpdatingItemIDs).toContain(item.id);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(item.id);
     expect(runBrewCommand).not.toHaveBeenCalled();
 
     resolveInventory({
@@ -3478,6 +3486,7 @@ describe("update store helpers", () => {
 
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["upgrade", "ripgrep"]]);
     expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain(item.id);
   });
 
   it("does not start Discover installs during active Homebrew maintenance", async () => {

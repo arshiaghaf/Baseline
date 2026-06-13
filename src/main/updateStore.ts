@@ -164,6 +164,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       appUpdatingIDs: [],
       appUpdatedPendingRefreshIDs: [],
       homebrewUpdatingItemIDs: [],
+      homebrewQueuedItemIDs: [],
       homebrewUninstallingItemIDs: [],
       homebrewUpdatedPendingRefreshItemIDs: [],
       homebrewBatchProgressByItemID: {},
@@ -427,6 +428,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.clearHomebrewBatchFailureTimer(item.id);
     this.patch({
       homebrewUpdatingItemIDs: addToArray(this.state.homebrewUpdatingItemIDs, item.id),
+      homebrewQueuedItemIDs: addToArray(this.state.homebrewQueuedItemIDs, item.id),
       homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, item.id),
       homebrewBatchProgressByItemID: {
         ...this.state.homebrewBatchProgressByItemID,
@@ -888,6 +890,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           releaseHomebrewCommandLock();
           continue;
         }
+        const entryIDs = entries.map((entry) => entry.item.id);
+        this.patch({
+          homebrewQueuedItemIDs: this.state.homebrewQueuedItemIDs.filter(
+            (itemID) => !entryIDs.includes(itemID)
+          )
+        });
         try {
           await this.runHomebrewQueuedUpdates(entries);
           for (const entry of entries) {
@@ -898,13 +906,19 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             entry.reject(error);
           }
         } finally {
-          const entryIDs = entries.map((entry) => entry.item.id);
           const updatingItemIDs = this.state.homebrewUpdatingItemIDs.filter(
             (itemID) => !entryIDs.includes(itemID)
           );
-          if (updatingItemIDs.length !== this.state.homebrewUpdatingItemIDs.length) {
+          const queuedItemIDs = this.state.homebrewQueuedItemIDs.filter(
+            (itemID) => !entryIDs.includes(itemID)
+          );
+          if (
+            updatingItemIDs.length !== this.state.homebrewUpdatingItemIDs.length ||
+            queuedItemIDs.length !== this.state.homebrewQueuedItemIDs.length
+          ) {
             this.patch({
-              homebrewUpdatingItemIDs: updatingItemIDs
+              homebrewUpdatingItemIDs: updatingItemIDs,
+              homebrewQueuedItemIDs: queuedItemIDs
             });
           }
           releaseHomebrewCommandLock();

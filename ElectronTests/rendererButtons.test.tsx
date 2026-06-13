@@ -68,6 +68,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     appUpdatingIDs: [],
     appUpdatedPendingRefreshIDs: [],
     homebrewUpdatingItemIDs: [],
+    homebrewQueuedItemIDs: [],
     homebrewUninstallingItemIDs: [],
     homebrewUpdatedPendingRefreshItemIDs: [],
     homebrewBatchProgressByItemID: {},
@@ -199,6 +200,24 @@ describe("renderer button parity", () => {
 
     expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Updating" })).toBeInTheDocument();
+  });
+
+  it("shows matched Homebrew cask queued state on app update buttons", () => {
+    render(
+      <AppRow
+        app={app}
+        snapshot={snapshot({
+          homebrewUpdatingItemIDs: [cask.id],
+          homebrewQueuedItemIDs: [cask.id],
+          homebrewBatchProgressByItemID: { [cask.id]: 0 }
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Updating" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Queued" })).toBeInTheDocument();
   });
 
   it("shows matched Homebrew cask success on app update buttons before refresh", () => {
@@ -1296,6 +1315,26 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Updating" }));
     expect(window.baseline.performHomebrewUpdate).not.toHaveBeenCalled();
+  });
+
+  it("uses a queued state for queued Homebrew row updates", () => {
+    render(
+      <HomebrewRow
+        item={cask}
+        snapshot={snapshot({
+          homebrewUpdatingItemIDs: [cask.id],
+          homebrewQueuedItemIDs: [cask.id],
+          homebrewBatchProgressByItemID: { [cask.id]: 0 }
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Updating" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("button", { name: "Queued" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Queued" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Uninstall" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeEnabled();
   });
 
   it("disables Homebrew ignore/update while uninstalling", () => {

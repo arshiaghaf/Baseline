@@ -227,6 +227,7 @@ export type BaselineSnapshot = PersistedSnapshot &
     appUpdatingIDs: string[];
     appUpdatedPendingRefreshIDs: string[];
     homebrewUpdatingItemIDs: string[];
+    homebrewQueuedItemIDs: string[];
     homebrewUninstallingItemIDs: string[];
     homebrewUpdatedPendingRefreshItemIDs: string[];
     homebrewBatchProgressByItemID: Record<string, number>;

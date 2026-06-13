@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   CircleUserRound,
   ChevronRight,
+  ClockArrowDown,
   Download,
   Eye,
   EyeOff,
@@ -63,6 +64,7 @@ import "./styles.css";
 type Route = "main" | "menubar" | "settings";
 type ActionState =
   | { type: "ready" }
+  | { type: "queued" }
   | { type: "updating"; progress?: number }
   | { type: "done" }
   | { type: "failed" };
@@ -106,6 +108,7 @@ const initialSnapshot: BaselineSnapshot = {
   appUpdatingIDs: [],
   appUpdatedPendingRefreshIDs: [],
   homebrewUpdatingItemIDs: [],
+  homebrewQueuedItemIDs: [],
   homebrewUninstallingItemIDs: [],
   homebrewUpdatedPendingRefreshItemIDs: [],
   homebrewBatchProgressByItemID: {},
@@ -1705,6 +1708,7 @@ function homebrewControlState(
   snapshot: BaselineSnapshot
 ): HomebrewControlState {
   const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
+  const queued = snapshot.homebrewQueuedItemIDs.includes(item.id);
   const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
   const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
   const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
@@ -1718,6 +1722,7 @@ function homebrewControlState(
     isIgnored,
     updateState: actionStateFromFlags({
       failed,
+      queued,
       updating: isUpdating,
       progress,
       done
@@ -2148,7 +2153,9 @@ export function UpdateActionButton({
       tabIndex={-1}
       type="button"
     >
-      {state.type === "updating" ? (
+      {state.type === "queued" ? (
+        <ClockArrowDown size={14} />
+      ) : state.type === "updating" ? (
         state.progress === undefined ? (
           <RefreshCcw className="spin" size={14} />
         ) : (
@@ -2254,6 +2261,8 @@ function RowMoreActionButton({
             >
               {updateAction.state.type === "ready" ? (
                 <Download size={14} />
+              ) : updateAction.state.type === "queued" ? (
+                <ClockArrowDown size={14} />
               ) : updateAction.state.type === "updating" ? (
                 updateAction.state.progress === undefined ? (
                   <RefreshCcw className="spin" size={14} />
@@ -2377,11 +2386,13 @@ function ActionConfirmationOverlay({
 
 function actionStateFromFlags({
   failed,
+  queued = false,
   updating,
   progress,
   done
 }: {
   failed: boolean;
+  queued?: boolean;
   updating: boolean;
   progress?: number;
   done: boolean;
@@ -2391,6 +2402,9 @@ function actionStateFromFlags({
   }
   if (done) {
     return { type: "done" };
+  }
+  if (queued) {
+    return { type: "queued" };
   }
   if (updating) {
     return progress === undefined ? { type: "updating" } : { type: "updating", progress };
@@ -2412,6 +2426,9 @@ function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): strin
   if (state.type === "updating") {
     return "Updating";
   }
+  if (state.type === "queued") {
+    return "Queued";
+  }
   if (state.type === "done") {
     return "Updated";
   }
@@ -2430,6 +2447,9 @@ function appUpdateActionState(
     Boolean(
       matchedHomebrewItem && snapshot.homebrewUpdatingItemIDs.includes(matchedHomebrewItem.id)
     );
+  const queued = Boolean(
+    matchedHomebrewItem && snapshot.homebrewQueuedItemIDs.includes(matchedHomebrewItem.id)
+  );
   const progress =
     snapshot.homebrewFallbackProgressByAppID[app.id] ??
     (matchedHomebrewItem
@@ -2451,6 +2471,7 @@ function appUpdateActionState(
     isUpdating,
     state: actionStateFromFlags({
       failed,
+      queued,
       updating: isUpdating,
       progress,
       done
