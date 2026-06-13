@@ -6,11 +6,12 @@
 
 - Settings now include a private local Profile stats tab for Baseline-driven updates and installs, backed by signed local history and Keychain integrity checks. ([#138](https://github.com/arshiaghaf/Baseline/pull/138))
 - App, Homebrew, and Profile stats icon treatments now use more consistent depth, alignment, and source-specific styling. ([#141](https://github.com/arshiaghaf/Baseline/pull/141))
-- Dependency maintenance now covers GitHub Actions artifact publishing, app dependencies, Electron, and TypeScript/Vitest/ESLint/Prettier tooling updates. ([#134](https://github.com/arshiaghaf/Baseline/pull/134)), ([#135](https://github.com/arshiaghaf/Baseline/pull/135)), ([#136](https://github.com/arshiaghaf/Baseline/pull/136)), ([#137](https://github.com/arshiaghaf/Baseline/pull/137)), ([#139](https://github.com/arshiaghaf/Baseline/pull/139)), ([#140](https://github.com/arshiaghaf/Baseline/pull/140))
 
 ### Fixed
 
+- Symlinked `.app` entries are now scanned when they resolve to directories, with canonical-path deduplication to avoid duplicate app rows. ([#128](https://github.com/arshiaghaf/Baseline/pull/128))
 - Unused tool-status channels, stale setup state, duplicated action-state wiring, and unused renderer profile props were removed to reduce low-value complexity. ([#142](https://github.com/arshiaghaf/Baseline/pull/142))
+- Homebrew commands now run through a shared lock so installs, refreshes, updates, uninstalls, and tool checks do not overlap; app update clicks can queue while Homebrew is busy. ([#126](https://github.com/arshiaghaf/Baseline/pull/126))
 
 ## 0.2.0 — 2026-06-07
 
@@ -18,7 +19,6 @@
 
 - Baseline now supports iOS and iPad App Store apps that run on Mac, using local App Store evidence and UIKit idiom metadata to choose the correct App Store lookup path. ([#121](https://github.com/arshiaghaf/Baseline/pull/121)), ([#122](https://github.com/arshiaghaf/Baseline/pull/122))
 - Release automation now publishes changelog-derived release notes and can dispatch the Homebrew cask update workflow after the GitHub Release is available. ([#119](https://github.com/arshiaghaf/Baseline/pull/119)), ([#120](https://github.com/arshiaghaf/Baseline/pull/120))
-- Dependency maintenance now covers newer Lucide icons, Electron, and TypeScript/Vitest/ESLint tooling updates. ([#116](https://github.com/arshiaghaf/Baseline/pull/116)), ([#117](https://github.com/arshiaghaf/Baseline/pull/117)), ([#118](https://github.com/arshiaghaf/Baseline/pull/118))
 
 ### Fixed
 
@@ -40,7 +40,6 @@
 - Version and build metadata now flow through shared app metadata, macOS `CFBundleVersion`, Settings, About, diagnostics, release preparation, and Electron smoke coverage. ([#86](https://github.com/arshiaghaf/Baseline/pull/86))
 - Release validation now runs broader macOS CI coverage, production audit checks, deterministic Electron smoke coverage, unsigned preview validation, and stricter changelog heading guards for release preparation. ([#78](https://github.com/arshiaghaf/Baseline/pull/78)), ([#81](https://github.com/arshiaghaf/Baseline/pull/81)), ([#74](https://github.com/arshiaghaf/Baseline/pull/74)), ([#76](https://github.com/arshiaghaf/Baseline/pull/76))
 - README polish, static GPL badge handling, refreshed badge cache behavior, and regenerated app icon packaging assets keep the public project presentation and packaged macOS icon current. ([#85](https://github.com/arshiaghaf/Baseline/pull/85)), ([#80](https://github.com/arshiaghaf/Baseline/pull/80)), ([#77](https://github.com/arshiaghaf/Baseline/pull/77)), ([#79](https://github.com/arshiaghaf/Baseline/pull/79))
-- Dependency maintenance now covers newer Electron, Electron Forge, Vite/Vitest, TypeScript/ESLint tooling, React/Node types, PostCSS, and patched lockfile overrides for reported `tmp` and transitive audit alerts. ([#71](https://github.com/arshiaghaf/Baseline/pull/71)), ([#72](https://github.com/arshiaghaf/Baseline/pull/72)), ([#89](https://github.com/arshiaghaf/Baseline/pull/89)), ([#90](https://github.com/arshiaghaf/Baseline/pull/90)), ([#94](https://github.com/arshiaghaf/Baseline/pull/94))
 - Installed app and installed Homebrew search matches now render as cards while Discover results keep the existing row layout. ([#69](https://github.com/arshiaghaf/Baseline/pull/69))
 - Packaged macOS identity and icon assets were updated, including the Baseline Icon Composer source project, generated `.icns` packaging, refreshed app icon artwork, and the `com.arshiaghaf.baseline` bundle identifier. ([#68](https://github.com/arshiaghaf/Baseline/pull/68)), ([#67](https://github.com/arshiaghaf/Baseline/pull/67)), ([#66](https://github.com/arshiaghaf/Baseline/pull/66))
 - Appearance settings now support System Default, Light Mode, and Dark Mode through Electron `nativeTheme`. ([#65](https://github.com/arshiaghaf/Baseline/pull/65))
@@ -48,7 +47,6 @@
 - Settings now include a persisted toggle for showing or hiding the menu bar icon, with tray lifecycle behavior that destroys the compact popover while hidden. ([#58](https://github.com/arshiaghaf/Baseline/pull/58))
 - Ignored macOS apps and ignored Homebrew items now appear together in an Ignored sidebar tab, and installed app/Homebrew sections use card layouts in the full window. ([#45](https://github.com/arshiaghaf/Baseline/pull/45))
 - GPL-3.0-only licensing and copyright ownership are clearer across source, docs, SPDX headers, and the native macOS About panel. ([#56](https://github.com/arshiaghaf/Baseline/pull/56))
-- Dependabot configuration and dependency maintenance now cover GitHub Actions updates, app/tooling package groups, Electron 42.1.0, Tailwind CSS 4.3.0, `fast-uri`, and npm overrides for reported `tar`, `tmp`, and `@tootallnate/once` alerts. ([#46](https://github.com/arshiaghaf/Baseline/pull/46)), ([#47](https://github.com/arshiaghaf/Baseline/pull/47)), ([#48](https://github.com/arshiaghaf/Baseline/pull/48)), ([#49](https://github.com/arshiaghaf/Baseline/pull/49)), ([#50](https://github.com/arshiaghaf/Baseline/pull/50)), ([#51](https://github.com/arshiaghaf/Baseline/pull/51)), ([#52](https://github.com/arshiaghaf/Baseline/pull/52)), ([#53](https://github.com/arshiaghaf/Baseline/pull/53)), ([#54](https://github.com/arshiaghaf/Baseline/pull/54)), ([#55](https://github.com/arshiaghaf/Baseline/pull/55))
 - Homebrew presentation metadata now distinguishes formulae, app casks, CLI casks, package casks, and generic casks without changing command semantics. ([#44](https://github.com/arshiaghaf/Baseline/pull/44))
 - Minimal renderer scrollbar styling was added for light and dark themes. ([#41](https://github.com/arshiaghaf/Baseline/pull/41))
 - Full-window update, Recently Updated, and Ignored surfaces were redesigned as responsive card grids while the compact menu bar view stays list-based. ([#39](https://github.com/arshiaghaf/Baseline/pull/39))
