@@ -4,13 +4,13 @@
 
 ### Added
 
-- Settings now include a private local Profile stats tab for Baseline-driven updates and installs, backed by signed local history and Keychain integrity checks. ([#138](https://github.com/arshiaghaf/Baseline/pull/138))
+- Settings now include a private local Profile stats tab with update and install totals, source mix, top apps/tools, signed local history, and Keychain integrity checks. ([#138](https://github.com/arshiaghaf/Baseline/pull/138))
 - App, Homebrew, and Profile stats icon treatments now use more consistent depth, alignment, and source-specific styling. ([#141](https://github.com/arshiaghaf/Baseline/pull/141))
 
 ### Fixed
 
 - Symlinked `.app` entries are now scanned when they resolve to directories, with canonical-path deduplication to avoid duplicate app rows. ([#128](https://github.com/arshiaghaf/Baseline/pull/128))
-- Unused tool-status channels, stale setup state, duplicated action-state wiring, and unused renderer profile props were removed to reduce low-value complexity. ([#142](https://github.com/arshiaghaf/Baseline/pull/142))
+- Baseline now trims unused tool-status channels, stale setup state, and duplicated renderer action-state wiring while preserving existing row and card behavior. ([#142](https://github.com/arshiaghaf/Baseline/pull/142))
 - Homebrew commands now run through a shared lock so installs, refreshes, updates, uninstalls, and tool checks do not overlap; app update clicks can queue while Homebrew is busy. ([#126](https://github.com/arshiaghaf/Baseline/pull/126))
 
 ## 0.2.0 — 2026-06-07
@@ -43,14 +43,13 @@
 - Installed app and installed Homebrew search matches now render as cards while Discover results keep the existing row layout. ([#69](https://github.com/arshiaghaf/Baseline/pull/69))
 - Packaged macOS identity and icon assets were updated, including the Baseline Icon Composer source project, generated `.icns` packaging, refreshed app icon artwork, and the `com.arshiaghaf.baseline` bundle identifier. ([#68](https://github.com/arshiaghaf/Baseline/pull/68)), ([#67](https://github.com/arshiaghaf/Baseline/pull/67)), ([#66](https://github.com/arshiaghaf/Baseline/pull/66))
 - Appearance settings now support System Default, Light Mode, and Dark Mode through Electron `nativeTheme`. ([#65](https://github.com/arshiaghaf/Baseline/pull/65))
-- README positioning, screenshots, status, install guidance, release-tooling notes, and first-release documentation now reflect the current beta OSS app state. ([#64](https://github.com/arshiaghaf/Baseline/pull/64)), ([#61](https://github.com/arshiaghaf/Baseline/pull/61)), ([#57](https://github.com/arshiaghaf/Baseline/pull/57))
+- README positioning, screenshots, status, install guidance, release-tooling notes, and first-release documentation now reflect the current OSS app state. ([#64](https://github.com/arshiaghaf/Baseline/pull/64)), ([#61](https://github.com/arshiaghaf/Baseline/pull/61)), ([#57](https://github.com/arshiaghaf/Baseline/pull/57))
 - Settings now include a persisted toggle for showing or hiding the menu bar icon, with tray lifecycle behavior that destroys the compact popover while hidden. ([#58](https://github.com/arshiaghaf/Baseline/pull/58))
 - Ignored macOS apps and ignored Homebrew items now appear together in an Ignored sidebar tab, and installed app/Homebrew sections use card layouts in the full window. ([#45](https://github.com/arshiaghaf/Baseline/pull/45))
 - GPL-3.0-only licensing and copyright ownership are clearer across source, docs, SPDX headers, and the native macOS About panel. ([#56](https://github.com/arshiaghaf/Baseline/pull/56))
 - Homebrew presentation metadata now distinguishes formulae, app casks, CLI casks, package casks, and generic casks without changing command semantics. ([#44](https://github.com/arshiaghaf/Baseline/pull/44))
 - Minimal renderer scrollbar styling was added for light and dark themes. ([#41](https://github.com/arshiaghaf/Baseline/pull/41))
 - Full-window update, Recently Updated, and Ignored surfaces were redesigned as responsive card grids while the compact menu bar view stays list-based. ([#39](https://github.com/arshiaghaf/Baseline/pull/39))
-- The update store was formatted with Prettier. ([#40](https://github.com/arshiaghaf/Baseline/pull/40))
 - The All sidebar tab now uses the `Server` icon. ([#38](https://github.com/arshiaghaf/Baseline/pull/38))
 - GitHub issue auto-labeling now classifies core labels, UI/theme reports, and explicit existing label matches. ([#37](https://github.com/arshiaghaf/Baseline/pull/37))
 - `fast-xml-parser` and the lockfile were updated to clear the production dependency audit finding for the transitive XML builder package. ([#36](https://github.com/arshiaghaf/Baseline/pull/36))
