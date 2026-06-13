@@ -3063,7 +3063,7 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().isHomebrewInstalled).toBe(true);
   });
 
-  it("does not start other Homebrew commands during an active Discover install", async () => {
+  it("queues individual Homebrew updates during an active Discover install", async () => {
     const discoverItem = {
       id: "formula:fd",
       kind: "formula" as const,
@@ -3075,12 +3075,14 @@ describe("update store helpers", () => {
     let resolveInstall!: (result: { success: boolean; status: number; output: string }) => void;
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
-    >(
-      async () =>
-        await new Promise((resolve) => {
+    >(async (command) => {
+      if (command[0] === "install") {
+        return await new Promise((resolve) => {
           resolveInstall = resolve;
-        })
-    );
+        });
+      }
+      return { success: true, status: 0, output: "" };
+    });
     const store = await makeStore({
       persisted: {
         ...defaultPersistedSnapshot(),
@@ -3095,20 +3097,46 @@ describe("update store helpers", () => {
           })
         ]
       },
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:raycast",
+                token: "raycast",
+                name: "Raycast",
+                kind: "cask",
+                latestVersion: version("2.0.0"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      },
       runBrewCommand
     });
 
     const install = store.installHomebrewItem(discoverItem);
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
 
-    await store.performHomebrewUpdate("cask:raycast");
+    const queuedUpdate = store.performHomebrewUpdate("cask:raycast");
+    await Promise.resolve();
     await store.performHomebrewUpdateAll();
     await store.uninstallHomebrewItem("cask:raycast");
 
+    expect(store.getSnapshot().homebrewUpdatingItemIDs).toContain("cask:raycast");
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
 
     resolveInstall({ success: true, status: 0, output: "" });
     await install;
+    await queuedUpdate;
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["install", "fd"],
+      ["upgrade", "--cask", "raycast"]
+    ]);
   });
 
   it("does not install mas through Homebrew during an active Discover install", async () => {
@@ -3187,13 +3215,16 @@ describe("update store helpers", () => {
     await store.refresh(false);
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
 
-    await store.performHomebrewUpdate("formula:ripgrep");
+    const queuedUpdate = store.performHomebrewUpdate("formula:ripgrep");
+    await Promise.resolve();
     await store.performHomebrewUpdateAll();
 
+    expect(store.getSnapshot().homebrewUpdatingItemIDs).toContain("formula:ripgrep");
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
 
     resolveInstall({ success: true, status: 0, output: "" });
     await install;
+    await queuedUpdate;
 
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(discoverItem.id);
   });
@@ -3243,9 +3274,6 @@ describe("update store helpers", () => {
       expect(store.getSnapshot().homebrewDiscoverInstalledPendingRefreshItemIDs).toContain(
         discoverItem.id
       );
-
-      await store.performHomebrewUpdate("formula:ripgrep");
-      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
 
       await vi.advanceTimersByTimeAsync(100);
       await install;

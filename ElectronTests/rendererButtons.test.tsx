@@ -218,7 +218,7 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Updated" })).toBeInTheDocument();
   });
 
-  it("disables Homebrew app updates during active Homebrew commands without an uninstallable cask", () => {
+  it("keeps Homebrew app updates clickable during active Homebrew commands", () => {
     const sparkleBackedApp: AppRecord = {
       ...app,
       id: "app:sparkle-homebrew-fallback",
@@ -248,9 +248,9 @@ describe("renderer button parity", () => {
     );
 
     const updateButton = screen.getByRole("button", { name: "Update" });
-    expect(updateButton).toBeDisabled();
+    expect(updateButton).toBeEnabled();
     fireEvent.click(updateButton);
-    expect(window.baseline.performAppUpdate).not.toHaveBeenCalled();
+    expect(window.baseline.performAppUpdate).toHaveBeenCalledWith(sparkleBackedApp.id);
   });
 
   it("groups ignore and uninstall under row actions menu", () => {
@@ -1524,7 +1524,7 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Update Brews" })).toBeInTheDocument();
   });
 
-  it("disables Homebrew update actions while a Discover install is active", () => {
+  it("keeps individual Homebrew update actions clickable while a Discover install is active", () => {
     const second: HomebrewManagedItem = {
       ...cask,
       id: "formula:ripgrep",
@@ -1553,10 +1553,10 @@ describe("renderer button parity", () => {
     expect(window.baseline.performHomebrewUpdateAll).not.toHaveBeenCalled();
 
     for (const updateButton of screen.getAllByRole("button", { name: "Update" })) {
-      expect(updateButton).toBeDisabled();
+      expect(updateButton).toBeEnabled();
       fireEvent.click(updateButton);
     }
-    expect(window.baseline.performHomebrewUpdate).not.toHaveBeenCalled();
+    expect(window.baseline.performHomebrewUpdate).toHaveBeenCalledTimes(2);
   });
 
   it("renders full-window update sections as card grids with inline update actions", () => {

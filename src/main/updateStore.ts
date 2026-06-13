@@ -70,6 +70,13 @@ type RefreshOptions = {
   allowHomebrewInventoryDuringActiveCommand?: boolean;
 };
 
+type HomebrewUpdateQueueEntry = {
+  item: HomebrewManagedItem;
+  profileStatsEvent?: ProfileStatsEvent;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+};
+
 const TRANSIENT_HOMEBREW_FAILURE_MS = 4000;
 const successfulUpdateHoldMs = 2000;
 
@@ -103,6 +110,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private profileStatsMutationQueue: Promise<void> = Promise.resolve();
   private activeHomebrewCommandCount = 0;
   private activeHomebrewInventoryCount = 0;
+  private readonly homebrewUpdateQueue: HomebrewUpdateQueueEntry[] = [];
+  private isProcessingHomebrewUpdateQueue = false;
 
   private state: BaselineSnapshot;
 
@@ -409,62 +418,83 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!isValidHomebrewToken(item.token)) {
       return;
     }
-    if (this.isHomebrewCommandActive()) {
+    if (
+      this.state.homebrewUpdatingItemIDs.includes(item.id) ||
+      this.homebrewUpdateQueue.some((entry) => entry.item.id === item.id)
+    ) {
       return;
     }
-    const itemID = item.id;
-    const command =
-      item.kind === "cask" ? ["upgrade", "--cask", item.token] : ["upgrade", item.token];
-    await this.withHomebrewUpdating(itemID, async () => {
-      this.clearHomebrewBatchFailureTimer(itemID);
-      this.patch({
-        homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID)
-      });
-      const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
-      const result = await this.runBrewWithEvents(command, (event) => {
-        this.applyHomebrewProgressEvent(
-          event,
-          parser,
-          new Map([[item.token.toLowerCase(), [itemID]]])
-        );
-      });
-      if (result) {
-        this.patch({
-          refreshErrorMessage: undefined,
-          homebrewBatchFailedItemIDs: removeFromArray(
-            this.state.homebrewBatchFailedItemIDs,
-            itemID
-          ),
-          homebrewUpdatedPendingRefreshItemIDs: addToArray(
-            this.state.homebrewUpdatedPendingRefreshItemIDs,
-            itemID
-          ),
-          homebrewBatchProgressByItemID: {
-            ...this.state.homebrewBatchProgressByItemID,
-            [itemID]: 1
-          }
-        });
-        await this.recordProfileStatsEvents([
-          options.profileStatsEvent ??
-            homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
-        ]);
-        await this.holdSuccessfulUpdate();
-      } else {
-        this.patch({
-          refreshErrorMessage: `Homebrew update failed for ${item.name}.`,
-          homebrewBatchFailedItemIDs: addToArray(this.state.homebrewBatchFailedItemIDs, itemID),
-          homebrewBatchProgressByItemID: {
-            ...this.state.homebrewBatchProgressByItemID,
-            [itemID]: 1
-          }
-        });
-        this.scheduleHomebrewBatchFailureClear([itemID]);
+    this.clearHomebrewBatchFailureTimer(item.id);
+    this.patch({
+      homebrewUpdatingItemIDs: addToArray(this.state.homebrewUpdatingItemIDs, item.id),
+      homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, item.id),
+      homebrewBatchProgressByItemID: {
+        ...this.state.homebrewBatchProgressByItemID,
+        [item.id]: HomebrewMaintenanceProgressStage.queued
       }
-      await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
+    });
+    await new Promise<void>((resolve, reject) => {
+      this.homebrewUpdateQueue.push({
+        item,
+        profileStatsEvent: options.profileStatsEvent,
+        resolve,
+        reject
+      });
+      void this.processHomebrewUpdateQueue();
     });
   }
 
+  private async runHomebrewItemUpdate(
+    item: HomebrewManagedItem,
+    profileStatsEvent?: ProfileStatsEvent
+  ): Promise<void> {
+    const itemID = item.id;
+    const command =
+      item.kind === "cask" ? ["upgrade", "--cask", item.token] : ["upgrade", item.token];
+    const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
+    const result = await this.runBrewWithEvents(command, (event) => {
+      this.applyHomebrewProgressEvent(
+        event,
+        parser,
+        new Map([[item.token.toLowerCase(), [itemID]]])
+      );
+    });
+    if (result) {
+      this.patch({
+        refreshErrorMessage: undefined,
+        homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID),
+        homebrewUpdatedPendingRefreshItemIDs: addToArray(
+          this.state.homebrewUpdatedPendingRefreshItemIDs,
+          itemID
+        ),
+        homebrewBatchProgressByItemID: {
+          ...this.state.homebrewBatchProgressByItemID,
+          [itemID]: 1
+        }
+      });
+      await this.recordProfileStatsEvents([
+        profileStatsEvent ??
+          homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
+      ]);
+      await this.holdSuccessfulUpdate();
+    } else {
+      this.patch({
+        refreshErrorMessage: `Homebrew update failed for ${item.name}.`,
+        homebrewBatchFailedItemIDs: addToArray(this.state.homebrewBatchFailedItemIDs, itemID),
+        homebrewBatchProgressByItemID: {
+          ...this.state.homebrewBatchProgressByItemID,
+          [itemID]: 1
+        }
+      });
+      this.scheduleHomebrewBatchFailureClear([itemID]);
+    }
+    await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
+  }
+
   async performHomebrewUpdateAll(itemIDs?: string[]): Promise<void> {
+    if (this.state.homebrewUpdatingItemIDs.length > 0 || this.homebrewUpdateQueue.length > 0) {
+      return;
+    }
     const releaseHomebrewCommandLock = this.reserveHomebrewCommandLock();
     if (!releaseHomebrewCommandLock) {
       return;
@@ -732,6 +762,52 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
   }
 
+  private async processHomebrewUpdateQueue(): Promise<void> {
+    if (this.isProcessingHomebrewUpdateQueue) {
+      return;
+    }
+    this.isProcessingHomebrewUpdateQueue = true;
+    try {
+      while (this.homebrewUpdateQueue.length > 0) {
+        const releaseHomebrewCommandLock = this.reserveHomebrewCommandLock();
+        if (!releaseHomebrewCommandLock) {
+          return;
+        }
+        const entry = this.homebrewUpdateQueue.shift();
+        if (!entry) {
+          releaseHomebrewCommandLock();
+          continue;
+        }
+        try {
+          const item =
+            this.state.homebrewItems.find((candidate) => candidate.id === entry.item.id) ??
+            entry.item;
+          if (isValidHomebrewToken(item.token)) {
+            await this.runHomebrewItemUpdate(item, entry.profileStatsEvent);
+          }
+          entry.resolve();
+        } catch (error) {
+          entry.reject(error);
+        } finally {
+          if (this.state.homebrewUpdatingItemIDs.includes(entry.item.id)) {
+            this.patch({
+              homebrewUpdatingItemIDs: removeFromArray(
+                this.state.homebrewUpdatingItemIDs,
+                entry.item.id
+              )
+            });
+          }
+          releaseHomebrewCommandLock();
+        }
+      }
+    } finally {
+      this.isProcessingHomebrewUpdateQueue = false;
+      if (this.homebrewUpdateQueue.length > 0 && !this.isHomebrewCommandActive()) {
+        void this.processHomebrewUpdateQueue();
+      }
+    }
+  }
+
   private async withHomebrewCommandLock(operation: () => Promise<void>): Promise<void> {
     const releaseHomebrewCommandLock = this.reserveHomebrewCommandLock();
     if (!releaseHomebrewCommandLock) {
@@ -758,6 +834,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       released = true;
       this.activeHomebrewCommandCount = Math.max(0, this.activeHomebrewCommandCount - 1);
       this.updateHomebrewCommandLockState();
+      void this.processHomebrewUpdateQueue();
     };
   }
 
@@ -1139,7 +1216,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.activeHomebrewCommandCount > 0 ||
       this.activeHomebrewInventoryCount > 0 ||
       this.state.isRunningHomebrewMaintenance ||
-      this.state.homebrewUpdatingItemIDs.length > 0 ||
       this.state.homebrewUninstallingItemIDs.length > 0 ||
       this.state.homebrewDiscoverInstallingItemIDs.length > 0
     );
