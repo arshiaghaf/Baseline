@@ -982,6 +982,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       lastRefreshNoticeMessage: undefined
     });
     const now = new Date().toISOString();
+    let completedHomebrewInventory: HomebrewInventoryResult | undefined;
     try {
       const [apps, homebrewIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
         await Promise.all([
@@ -991,6 +992,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           this.fetchHomebrewInventory(lightweight, options),
           this.lookupSelfUpdate(now)
         ]);
+      completedHomebrewInventory = homebrewInventory;
       const homebrewItems = homebrewInventory.items;
       if (sequence !== this.refreshSequence) {
         return;
@@ -1140,10 +1142,25 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (sequence !== this.refreshSequence) {
         return;
       }
-      this.patch({
+      const recoveredHomebrewInventory =
+        completedHomebrewInventory ??
+        (await this.activeHomebrewInventoryTask?.task.catch(() => undefined));
+      if (sequence !== this.refreshSequence) {
+        return;
+      }
+      const patch: Partial<BaselineSnapshot> = {
         isRefreshing: false,
         refreshErrorMessage: error instanceof Error ? error.message : "Refresh failed."
-      });
+      };
+      if (recoveredHomebrewInventory) {
+        patch.homebrewItems = preservePreviousHomebrewOutdatedState(
+          recoveredHomebrewInventory.items,
+          this.state.homebrewItems,
+          recoveredHomebrewInventory.outdatedDetectionSucceededByKind
+        );
+        patch.lastRefreshNoticeMessage = recoveredHomebrewInventory.warning;
+      }
+      this.patch(patch);
       void this.processHomebrewUpdateQueue();
     }
   }
