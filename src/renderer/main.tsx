@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   CircleUserRound,
   ChevronRight,
+  ClockArrowDown,
   Download,
   Eye,
   EyeOff,
@@ -63,6 +64,7 @@ import "./styles.css";
 type Route = "main" | "menubar" | "settings";
 type ActionState =
   | { type: "ready" }
+  | { type: "queued" }
   | { type: "updating"; progress?: number }
   | { type: "done" }
   | { type: "failed" };
@@ -102,9 +104,11 @@ const initialSnapshot: BaselineSnapshot = {
   isRefreshing: false,
   searchText: "",
   isRunningHomebrewMaintenance: false,
+  isHomebrewCommandLocked: false,
   appUpdatingIDs: [],
   appUpdatedPendingRefreshIDs: [],
   homebrewUpdatingItemIDs: [],
+  homebrewQueuedItemIDs: [],
   homebrewUninstallingItemIDs: [],
   homebrewUpdatedPendingRefreshItemIDs: [],
   homebrewBatchProgressByItemID: {},
@@ -774,6 +778,7 @@ function AllUpdatesSection({
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
 }) {
+  const homebrewCommandActive = isHomebrewCommandActive(snapshot);
   const items: RecentGridItem[] = [
     ...derived.availableApps.map((app) => ({
       type: "app" as const,
@@ -797,7 +802,7 @@ function AllUpdatesSection({
           derived.allHomebrewOutdated.length > 1 ? (
             <UpdateActionButton
               state={
-                snapshot.isRunningHomebrewMaintenance
+                homebrewCommandActive
                   ? { type: "updating" }
                   : derived.allHomebrewOutdated.every((item) =>
                         snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id)
@@ -807,6 +812,7 @@ function AllUpdatesSection({
               }
               readyLabel="Update Brews"
               readyVariant="outline"
+              disabled={homebrewCommandActive}
               onAction={() => performHomebrewUpdateAllForItems(derived.allHomebrewOutdated)}
             />
           ) : undefined
@@ -974,6 +980,7 @@ type AppControlState = {
   isUninstalling: boolean;
   actionState: ActionState;
   isUpdating: boolean;
+  homebrewUninstallBlocked: boolean;
 };
 
 function appControlState(app: AppRecord, snapshot: BaselineSnapshot): AppControlState {
@@ -984,7 +991,19 @@ function appControlState(app: AppRecord, snapshot: BaselineSnapshot): AppControl
     ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
     : false;
   const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
-  return { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating };
+  const homebrewCommandActive = isHomebrewCommandActive(snapshot);
+  const homebrewUninstallBlocked = Boolean(
+    uninstallableItem && homebrewCommandActive && !isUninstalling
+  );
+  return {
+    update,
+    isIgnored,
+    uninstallableItem,
+    isUninstalling,
+    actionState,
+    isUpdating,
+    homebrewUninstallBlocked
+  };
 }
 
 function AppIconButton({ app }: { app: AppRecord }) {
@@ -1010,8 +1029,15 @@ function AppIconButton({ app }: { app: AppRecord }) {
 
 function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating } =
-    appControlState(app, snapshot);
+  const {
+    update,
+    isIgnored,
+    uninstallableItem,
+    isUninstalling,
+    actionState,
+    isUpdating,
+    homebrewUninstallBlocked
+  } = appControlState(app, snapshot);
   const label = appSourceLabel(app, snapshot);
 
   return (
@@ -1033,7 +1059,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
             uninstallLabel="Uninstall"
             canUninstall={Boolean(uninstallableItem)}
             uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling}
+            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
             onUninstall={() =>
               uninstallableItem &&
               requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
@@ -1202,8 +1228,15 @@ function CardGrid({
 
 function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating } =
-    appControlState(app, snapshot);
+  const {
+    update,
+    isIgnored,
+    uninstallableItem,
+    isUninstalling,
+    actionState,
+    isUpdating,
+    homebrewUninstallBlocked
+  } = appControlState(app, snapshot);
   const recentlyUpdatedRecord = snapshot.recentlyUpdated.find((record) => record.appID === app.id);
   const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
 
@@ -1226,7 +1259,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
             uninstallLabel="Uninstall"
             canUninstall={Boolean(uninstallableItem)}
             uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling}
+            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
             onUninstall={() =>
               uninstallableItem &&
               requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
@@ -1251,8 +1284,15 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
 
 function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating } =
-    appControlState(app, snapshot);
+  const {
+    update,
+    isIgnored,
+    uninstallableItem,
+    isUninstalling,
+    actionState,
+    isUpdating,
+    homebrewUninstallBlocked
+  } = appControlState(app, snapshot);
   const label = appSourceLabel(app, snapshot);
 
   return (
@@ -1276,7 +1316,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
             uninstallLabel="Uninstall"
             canUninstall={Boolean(uninstallableItem)}
             uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling}
+            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
             onUninstall={() =>
               uninstallableItem &&
               requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
@@ -1314,8 +1354,15 @@ export function AppRow({
   recentlyUpdated: boolean;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { update, isIgnored, uninstallableItem, isUninstalling, actionState, isUpdating } =
-    appControlState(app, snapshot);
+  const {
+    update,
+    isIgnored,
+    uninstallableItem,
+    isUninstalling,
+    actionState,
+    isUpdating,
+    homebrewUninstallBlocked
+  } = appControlState(app, snapshot);
   const recentlyUpdatedRecord = recentlyUpdated
     ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)
     : undefined;
@@ -1358,7 +1405,7 @@ export function AppRow({
           uninstallLabel="Uninstall"
           canUninstall={Boolean(uninstallableItem)}
           uninstalling={isUninstalling}
-          uninstallDisabled={isUpdating || isUninstalling}
+          uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
           onUninstall={() =>
             uninstallableItem &&
             requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
@@ -1523,6 +1570,7 @@ export function DiscoverRow({
   const done = snapshot.homebrewDiscoverInstalledPendingRefreshItemIDs.includes(item.id);
   const progress = snapshot.homebrewDiscoverProgressByItemID[item.id];
   const canInstall = snapshot.isHomebrewInstalled;
+  const busy = canInstall && !installing && !failed && !done && isHomebrewCommandActive(snapshot);
 
   return (
     <article className="row">
@@ -1541,10 +1589,10 @@ export function DiscoverRow({
       <div className="row-actions">
         <UpdateActionButton
           state={actionStateFromFlags({ failed, updating: installing, progress, done })}
-          readyLabel={canInstall ? "Install" : "Needs Homebrew"}
-          disabled={!canInstall}
+          readyLabel={canInstall ? (busy ? "Busy" : "Install") : "Needs Homebrew"}
+          disabled={!canInstall || busy}
           onAction={() => {
-            if (canInstall) {
+            if (canInstall && !busy) {
               requestActionConfirmation({ type: "install", item });
             }
           }}
@@ -1586,6 +1634,7 @@ export function HomebrewSection({
   cardLayout?: boolean;
 }) {
   const collapsed = collapsible && snapshot.collapsedHomebrewSectionIDs.includes(sectionID);
+  const homebrewCommandActive = isHomebrewCommandActive(snapshot);
   return (
     <section className="panel">
       <PanelTitle
@@ -1597,7 +1646,7 @@ export function HomebrewSection({
           showUpdateAll && items.length > 1 ? (
             <UpdateActionButton
               state={
-                snapshot.isRunningHomebrewMaintenance
+                homebrewCommandActive
                   ? { type: "updating" }
                   : items.every((item) =>
                         snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id)
@@ -1607,6 +1656,7 @@ export function HomebrewSection({
               }
               readyLabel="Update Brews"
               readyVariant="outline"
+              disabled={homebrewCommandActive}
               onAction={() => performHomebrewUpdateAllForItems(items)}
             />
           ) : undefined
@@ -1642,6 +1692,7 @@ type HomebrewControlState = {
   isUninstalling: boolean;
   isIgnored: boolean;
   updateState: ActionState;
+  homebrewUninstallBlocked: boolean;
 };
 
 function homebrewControlState(
@@ -1649,21 +1700,25 @@ function homebrewControlState(
   snapshot: BaselineSnapshot
 ): HomebrewControlState {
   const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
+  const queued = snapshot.homebrewQueuedItemIDs.includes(item.id);
   const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
   const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
   const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
   const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
   const progress = snapshot.homebrewBatchProgressByItemID[item.id];
+  const homebrewUninstallBlocked = isHomebrewCommandActive(snapshot) && !isUninstalling;
   return {
     isUpdating,
     isUninstalling,
     isIgnored,
     updateState: actionStateFromFlags({
       failed,
+      queued,
       updating: isUpdating,
       progress,
       done
-    })
+    }),
+    homebrewUninstallBlocked
   };
 }
 
@@ -1675,10 +1730,8 @@ function HomebrewUpdateCard({
   snapshot: BaselineSnapshot;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { isUpdating, isUninstalling, isIgnored, updateState } = homebrewControlState(
-    item,
-    snapshot
-  );
+  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
+    homebrewControlState(item, snapshot);
 
   return (
     <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
@@ -1699,7 +1752,7 @@ function HomebrewUpdateCard({
             uninstallLabel="Uninstall"
             canUninstall={item.kind === "cask"}
             uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling}
+            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
             onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
           />
         </div>
@@ -1811,10 +1864,8 @@ function RecentHomebrewCard({
   appCaskLabel?: string;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { isUpdating, isUninstalling, isIgnored, updateState } = homebrewControlState(
-    item,
-    snapshot
-  );
+  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
+    homebrewControlState(item, snapshot);
   const recentlyUpdatedRecord = snapshot.homebrewRecentlyUpdated.find(
     (record) => record.itemID === item.id
   );
@@ -1838,7 +1889,7 @@ function RecentHomebrewCard({
             uninstallLabel="Uninstall"
             canUninstall={item.kind === "cask"}
             uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling}
+            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
             onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
           />
         </div>
@@ -1866,10 +1917,8 @@ function IgnoredHomebrewCard({
   snapshot: BaselineSnapshot;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { isUpdating, isUninstalling, isIgnored, updateState } = homebrewControlState(
-    item,
-    snapshot
-  );
+  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
+    homebrewControlState(item, snapshot);
 
   return (
     <article className="item-card ignored-card ignored-row">
@@ -1892,7 +1941,7 @@ function IgnoredHomebrewCard({
             uninstallLabel="Uninstall"
             canUninstall={item.kind === "cask"}
             uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling}
+            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
             onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
           />
         </div>
@@ -1927,10 +1976,8 @@ export function HomebrewRow({
   recentlyUpdated?: boolean;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { isUpdating, isUninstalling, isIgnored, updateState } = homebrewControlState(
-    item,
-    snapshot
-  );
+  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
+    homebrewControlState(item, snapshot);
   const recentlyUpdatedAt = recentlyUpdated
     ? snapshot.homebrewRecentlyUpdated.find((record) => record.itemID === item.id)?.updatedAt
     : undefined;
@@ -1971,7 +2018,7 @@ export function HomebrewRow({
           uninstallLabel="Uninstall"
           canUninstall={item.kind === "cask"}
           uninstalling={isUninstalling}
-          uninstallDisabled={isUpdating || isUninstalling}
+          uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
           onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
         />
       </div>
@@ -2072,7 +2119,9 @@ export function UpdateActionButton({
       tabIndex={-1}
       type="button"
     >
-      {state.type === "updating" ? (
+      {state.type === "queued" ? (
+        <ClockArrowDown size={14} />
+      ) : state.type === "updating" ? (
         state.progress === undefined ? (
           <RefreshCcw className="spin" size={14} />
         ) : (
@@ -2178,6 +2227,8 @@ function RowMoreActionButton({
             >
               {updateAction.state.type === "ready" ? (
                 <Download size={14} />
+              ) : updateAction.state.type === "queued" ? (
+                <ClockArrowDown size={14} />
               ) : updateAction.state.type === "updating" ? (
                 updateAction.state.progress === undefined ? (
                   <RefreshCcw className="spin" size={14} />
@@ -2301,11 +2352,13 @@ function ActionConfirmationOverlay({
 
 function actionStateFromFlags({
   failed,
+  queued = false,
   updating,
   progress,
   done
 }: {
   failed: boolean;
+  queued?: boolean;
   updating: boolean;
   progress?: number;
   done: boolean;
@@ -2316,15 +2369,31 @@ function actionStateFromFlags({
   if (done) {
     return { type: "done" };
   }
+  if (queued) {
+    return { type: "queued" };
+  }
   if (updating) {
     return progress === undefined ? { type: "updating" } : { type: "updating", progress };
   }
   return { type: "ready" };
 }
 
+function isHomebrewCommandActive(snapshot: BaselineSnapshot): boolean {
+  return (
+    snapshot.isHomebrewCommandLocked ||
+    snapshot.isRunningHomebrewMaintenance ||
+    snapshot.homebrewUpdatingItemIDs.length > 0 ||
+    snapshot.homebrewUninstallingItemIDs.length > 0 ||
+    snapshot.homebrewDiscoverInstallingItemIDs.length > 0
+  );
+}
+
 function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): string {
   if (state.type === "updating") {
     return "Updating";
+  }
+  if (state.type === "queued") {
+    return "Queued";
   }
   if (state.type === "done") {
     return "Updated";
@@ -2344,6 +2413,9 @@ function appUpdateActionState(
     Boolean(
       matchedHomebrewItem && snapshot.homebrewUpdatingItemIDs.includes(matchedHomebrewItem.id)
     );
+  const queued = Boolean(
+    matchedHomebrewItem && snapshot.homebrewQueuedItemIDs.includes(matchedHomebrewItem.id)
+  );
   const progress =
     snapshot.homebrewFallbackProgressByAppID[app.id] ??
     (matchedHomebrewItem
@@ -2365,6 +2437,7 @@ function appUpdateActionState(
     isUpdating,
     state: actionStateFromFlags({
       failed,
+      queued,
       updating: isUpdating,
       progress,
       done

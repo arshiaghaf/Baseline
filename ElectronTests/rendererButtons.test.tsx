@@ -64,9 +64,11 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     isRefreshing: false,
     searchText: "",
     isRunningHomebrewMaintenance: false,
+    isHomebrewCommandLocked: false,
     appUpdatingIDs: [],
     appUpdatedPendingRefreshIDs: [],
     homebrewUpdatingItemIDs: [],
+    homebrewQueuedItemIDs: [],
     homebrewUninstallingItemIDs: [],
     homebrewUpdatedPendingRefreshItemIDs: [],
     homebrewBatchProgressByItemID: {},
@@ -200,6 +202,24 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Updating" })).toBeInTheDocument();
   });
 
+  it("shows matched Homebrew cask queued state on app update buttons", () => {
+    render(
+      <AppRow
+        app={app}
+        snapshot={snapshot({
+          homebrewUpdatingItemIDs: [cask.id],
+          homebrewQueuedItemIDs: [cask.id],
+          homebrewBatchProgressByItemID: { [cask.id]: 0 }
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Updating" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Queued" })).toBeInTheDocument();
+  });
+
   it("shows matched Homebrew cask success on app update buttons before refresh", () => {
     render(
       <AppRow
@@ -215,6 +235,41 @@ describe("renderer button parity", () => {
 
     expect(screen.queryByRole("button", { name: "Updating" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Updated" })).toBeInTheDocument();
+  });
+
+  it("keeps Homebrew app updates clickable during active Homebrew commands", () => {
+    const sparkleBackedApp: AppRecord = {
+      ...app,
+      id: "app:sparkle-homebrew-fallback",
+      displayName: "Sparkle Homebrew Fallback",
+      sourceHint: "sparkle"
+    };
+    const sparkleBackedUpdate: UpdateRecord = {
+      ...update,
+      id: sparkleBackedApp.id,
+      appID: sparkleBackedApp.id,
+      source: "homebrew",
+      supportLevel: "limited",
+      homebrewToken: "sparkle-homebrew-fallback"
+    };
+
+    render(
+      <AppRow
+        app={sparkleBackedApp}
+        snapshot={snapshot({
+          apps: [sparkleBackedApp],
+          updates: [sparkleBackedUpdate],
+          homebrewItems: [],
+          isHomebrewCommandLocked: true
+        })}
+        recentlyUpdated={false}
+      />
+    );
+
+    const updateButton = screen.getByRole("button", { name: "Update" });
+    expect(updateButton).toBeEnabled();
+    fireEvent.click(updateButton);
+    expect(window.baseline.performAppUpdate).toHaveBeenCalledWith(sparkleBackedApp.id);
   });
 
   it("groups ignore and uninstall under row actions menu", () => {
@@ -1262,6 +1317,26 @@ describe("renderer button parity", () => {
     expect(window.baseline.performHomebrewUpdate).not.toHaveBeenCalled();
   });
 
+  it("uses a queued state for queued Homebrew row updates", () => {
+    render(
+      <HomebrewRow
+        item={cask}
+        snapshot={snapshot({
+          homebrewUpdatingItemIDs: [cask.id],
+          homebrewQueuedItemIDs: [cask.id],
+          homebrewBatchProgressByItemID: { [cask.id]: 0 }
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Updating" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+    expect(screen.getByRole("button", { name: "Queued" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Queued" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Uninstall" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeEnabled();
+  });
+
   it("disables Homebrew ignore/update while uninstalling", () => {
     render(
       <HomebrewRow item={cask} snapshot={snapshot({ homebrewUninstallingItemIDs: [cask.id] })} />
@@ -1336,6 +1411,72 @@ describe("renderer button parity", () => {
       screen.getByText("Homebrew is not installed. Install Homebrew to enable this source.")
     ).toBeInTheDocument();
     fireEvent.click(installButton);
+    expect(requestConfirmation).not.toHaveBeenCalled();
+    expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
+  });
+
+  it("disables discover installs while Homebrew maintenance is active", () => {
+    const requestConfirmation = vi.fn();
+    const item: HomebrewCaskDiscoveryItem = {
+      id: "cask:raycast",
+      token: "raycast",
+      displayName: "Raycast",
+      kind: "cask",
+      version: version("1.2.3")
+    };
+
+    render(
+      <ActionConfirmationContext.Provider value={requestConfirmation}>
+        <DiscoverRow
+          item={item}
+          snapshot={snapshot({
+            isRunningHomebrewMaintenance: true,
+            homebrewDiscoverItems: [item]
+          })}
+        />
+      </ActionConfirmationContext.Provider>
+    );
+
+    const busyButton = screen.getByRole("button", { name: "Busy" });
+    expect(busyButton).toBeDisabled();
+    fireEvent.click(busyButton);
+    expect(requestConfirmation).not.toHaveBeenCalled();
+    expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
+  });
+
+  it("disables other discover installs while a Homebrew command lock is active", () => {
+    const requestConfirmation = vi.fn();
+    const doneItem: HomebrewCaskDiscoveryItem = {
+      id: "formula:fd",
+      token: "fd",
+      displayName: "fd",
+      kind: "formula",
+      version: version("10.0.0")
+    };
+    const otherItem: HomebrewCaskDiscoveryItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      displayName: "ripgrep",
+      kind: "formula",
+      version: version("14.1.0")
+    };
+
+    render(
+      <ActionConfirmationContext.Provider value={requestConfirmation}>
+        <DiscoverRow
+          item={otherItem}
+          snapshot={snapshot({
+            isHomebrewCommandLocked: true,
+            homebrewDiscoverItems: [doneItem, otherItem],
+            homebrewDiscoverInstalledPendingRefreshItemIDs: [doneItem.id]
+          })}
+        />
+      </ActionConfirmationContext.Provider>
+    );
+
+    const busyButton = screen.getByRole("button", { name: "Busy" });
+    expect(busyButton).toBeDisabled();
+    fireEvent.click(busyButton);
     expect(requestConfirmation).not.toHaveBeenCalled();
     expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
   });
@@ -1420,6 +1561,41 @@ describe("renderer button parity", () => {
       />
     );
     expect(screen.getByRole("button", { name: "Update Brews" })).toBeInTheDocument();
+  });
+
+  it("keeps individual Homebrew update actions clickable while a Discover install is active", () => {
+    const second: HomebrewManagedItem = {
+      ...cask,
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula"
+    };
+
+    render(
+      <HomebrewSection
+        sectionID="outdated"
+        title="Outdated"
+        items={[cask, second]}
+        snapshot={snapshot({
+          homebrewItems: [cask, second],
+          homebrewDiscoverInstallingItemIDs: ["formula:fd"]
+        })}
+        empty="No updates."
+        showUpdateAll
+      />
+    );
+
+    const batchButton = screen.getByRole("button", { name: "Updating" });
+    expect(batchButton).toBeDisabled();
+    fireEvent.click(batchButton);
+    expect(window.baseline.performHomebrewUpdateAll).not.toHaveBeenCalled();
+
+    for (const updateButton of screen.getAllByRole("button", { name: "Update" })) {
+      expect(updateButton).toBeEnabled();
+      fireEvent.click(updateButton);
+    }
+    expect(window.baseline.performHomebrewUpdate).toHaveBeenCalledTimes(2);
   });
 
   it("renders full-window update sections as card grids with inline update actions", () => {
