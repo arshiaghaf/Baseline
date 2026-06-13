@@ -1001,6 +1001,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ]);
       const homebrewItems = homebrewInventory.items;
       if (sequence !== this.refreshSequence) {
+        void this.processHomebrewUpdateQueue();
         return;
       }
       this.latestHomebrewIndex = homebrewIndex;
@@ -1087,6 +1088,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       }
 
       if (sequence !== this.refreshSequence) {
+        void this.processHomebrewUpdateQueue();
         return;
       }
       const previousUpdates = new Map(this.state.updates.map((update) => [update.appID, update]));
@@ -1146,6 +1148,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       void this.processHomebrewUpdateQueue();
     } catch (error) {
       if (sequence !== this.refreshSequence) {
+        void this.processHomebrewUpdateQueue();
         return;
       }
       this.patch({
