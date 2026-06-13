@@ -113,6 +113,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private profileStatsMutationQueue: Promise<void> = Promise.resolve();
   private activeHomebrewCommandCount = 0;
   private activeHomebrewInventoryCount = 0;
+  private activeHomebrewInventoryTask?: {
+    updateMetadata: boolean;
+    task: Promise<HomebrewInventoryResult>;
+  };
   private readonly homebrewUpdateQueue: HomebrewUpdateQueueEntry[] = [];
   private isProcessingHomebrewUpdateQueue = false;
 
@@ -989,7 +993,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ]);
       const homebrewItems = homebrewInventory.items;
       if (sequence !== this.refreshSequence) {
-        void this.processHomebrewUpdateQueue();
         return;
       }
       this.latestHomebrewIndex = homebrewIndex;
@@ -1076,7 +1079,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       }
 
       if (sequence !== this.refreshSequence) {
-        void this.processHomebrewUpdateQueue();
         return;
       }
       const previousUpdates = new Map(this.state.updates.map((update) => [update.appID, update]));
@@ -1136,7 +1138,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       void this.processHomebrewUpdateQueue();
     } catch (error) {
       if (sequence !== this.refreshSequence) {
-        void this.processHomebrewUpdateQueue();
         return;
       }
       this.patch({
@@ -1183,6 +1184,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     lightweight: boolean,
     options: RefreshOptions
   ): Promise<HomebrewInventoryResult> {
+    const updateMetadata = !lightweight;
+    const activeHomebrewInventoryTask = this.activeHomebrewInventoryTask;
+    if (activeHomebrewInventoryTask) {
+      const result = await activeHomebrewInventoryTask.task;
+      if (!updateMetadata || activeHomebrewInventoryTask.updateMetadata) {
+        return result;
+      }
+    }
     if (this.isHomebrewCommandActive() && !options.allowHomebrewInventoryDuringActiveCommand) {
       return {
         items: this.state.homebrewItems,
@@ -1192,20 +1201,31 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
     this.activeHomebrewInventoryCount += 1;
     this.updateHomebrewCommandLockState();
+    const task = this.fetchFreshHomebrewInventory(updateMetadata);
+    this.activeHomebrewInventoryTask = { updateMetadata, task };
     try {
-      if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
-        const brew = await this.runBrewCommand(["--version"]);
-        this.hasCheckedHomebrewAvailability = true;
-        if (!brew.success) {
-          return emptyHomebrewInventoryResult();
-        }
-        this.patch({ isHomebrewInstalled: true });
-      }
-      return await this.homebrewInventory.fetchInventory({ updateMetadata: !lightweight });
+      return await task;
     } finally {
+      if (this.activeHomebrewInventoryTask?.task === task) {
+        this.activeHomebrewInventoryTask = undefined;
+      }
       this.activeHomebrewInventoryCount = Math.max(0, this.activeHomebrewInventoryCount - 1);
       this.updateHomebrewCommandLockState();
     }
+  }
+
+  private async fetchFreshHomebrewInventory(
+    updateMetadata: boolean
+  ): Promise<HomebrewInventoryResult> {
+    if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
+      const brew = await this.runBrewCommand(["--version"]);
+      this.hasCheckedHomebrewAvailability = true;
+      if (!brew.success) {
+        return emptyHomebrewInventoryResult();
+      }
+      this.patch({ isHomebrewInstalled: true });
+    }
+    return this.homebrewInventory.fetchInventory({ updateMetadata });
   }
 
   private scanDirectories(): string[] {
