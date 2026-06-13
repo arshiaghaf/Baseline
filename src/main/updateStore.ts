@@ -73,6 +73,7 @@ type RefreshOptions = {
 type HomebrewUpdateQueueEntry = {
   item: HomebrewManagedItem;
   profileStatsEvent?: ProfileStatsEvent;
+  requireOutdated: boolean;
   resolve: () => void;
   reject: (error: unknown) => void;
 };
@@ -409,12 +410,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!item?.isOutdated || !isValidHomebrewToken(item.token)) {
       return;
     }
-    await this.performHomebrewItemUpdate(item);
+    await this.performHomebrewItemUpdate(item, { requireOutdated: true });
   }
 
   private async performHomebrewItemUpdate(
     item: HomebrewManagedItem,
-    options: { profileStatsEvent?: ProfileStatsEvent } = {}
+    options: { profileStatsEvent?: ProfileStatsEvent; requireOutdated?: boolean } = {}
   ): Promise<void> {
     if (!isValidHomebrewToken(item.token)) {
       return;
@@ -439,6 +440,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.homebrewUpdateQueue.push({
         item,
         profileStatsEvent: options.profileStatsEvent,
+        requireOutdated: options.requireOutdated ?? false,
         resolve,
         reject
       });
@@ -495,12 +497,20 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private async runHomebrewQueuedUpdates(entries: HomebrewUpdateQueueEntry[]): Promise<void> {
     const itemsWithEvents = entries
-      .map((entry) => ({
-        entry,
-        item:
-          this.state.homebrewItems.find((candidate) => candidate.id === entry.item.id) ?? entry.item
-      }))
-      .filter(({ item }) => isValidHomebrewToken(item.token));
+      .map((entry) => {
+        const item = this.state.homebrewItems.find((candidate) => candidate.id === entry.item.id);
+        return item ? { entry, item } : undefined;
+      })
+      .filter(
+        (
+          itemWithEvent
+        ): itemWithEvent is { entry: HomebrewUpdateQueueEntry; item: HomebrewManagedItem } =>
+          Boolean(
+            itemWithEvent &&
+            (!itemWithEvent.entry.requireOutdated || itemWithEvent.item.isOutdated) &&
+            isValidHomebrewToken(itemWithEvent.item.token)
+          )
+      );
     if (itemsWithEvents.length === 0) {
       return;
     }
@@ -1126,6 +1136,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       });
       await this.refreshHomebrewDiscoverItems();
       await this.persist();
+      void this.processHomebrewUpdateQueue();
     } catch (error) {
       if (sequence !== this.refreshSequence) {
         return;
@@ -1134,6 +1145,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         isRefreshing: false,
         refreshErrorMessage: error instanceof Error ? error.message : "Refresh failed."
       });
+      void this.processHomebrewUpdateQueue();
     }
   }
 
@@ -1195,7 +1207,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     } finally {
       this.activeHomebrewInventoryCount = Math.max(0, this.activeHomebrewInventoryCount - 1);
       this.updateHomebrewCommandLockState();
-      void this.processHomebrewUpdateQueue();
     }
   }
 
