@@ -73,6 +73,7 @@ type RefreshOptions = {
 type HomebrewUpdateQueueEntry = {
   item: HomebrewManagedItem;
   profileStatsEvent?: ProfileStatsEvent;
+  appUpdateAppID?: string;
   requireOutdated: boolean;
   resolve: () => void;
   reject: (error: unknown) => void;
@@ -387,7 +388,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             appRecord,
             update,
             occurredAt: new Date().toISOString()
-          })
+          }),
+          appUpdateAppID: appID
         });
         return;
       }
@@ -415,7 +417,11 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private async performHomebrewItemUpdate(
     item: HomebrewManagedItem,
-    options: { profileStatsEvent?: ProfileStatsEvent; requireOutdated?: boolean } = {}
+    options: {
+      profileStatsEvent?: ProfileStatsEvent;
+      appUpdateAppID?: string;
+      requireOutdated?: boolean;
+    } = {}
   ): Promise<void> {
     if (!isValidHomebrewToken(item.token)) {
       return;
@@ -440,6 +446,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.homebrewUpdateQueue.push({
         item,
         profileStatsEvent: options.profileStatsEvent,
+        appUpdateAppID: options.appUpdateAppID,
         requireOutdated: options.requireOutdated ?? false,
         resolve,
         reject
@@ -507,7 +514,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ): itemWithEvent is { entry: HomebrewUpdateQueueEntry; item: HomebrewManagedItem } =>
           Boolean(
             itemWithEvent &&
-            (!itemWithEvent.entry.requireOutdated || itemWithEvent.item.isOutdated) &&
+            this.queuedHomebrewUpdateIsStillCurrent(itemWithEvent.entry, itemWithEvent.item) &&
             isValidHomebrewToken(itemWithEvent.item.token)
           )
       );
@@ -1301,6 +1308,24 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         }
       }
     }
+  }
+
+  private queuedHomebrewUpdateIsStillCurrent(
+    entry: HomebrewUpdateQueueEntry,
+    item: HomebrewManagedItem
+  ): boolean {
+    if (entry.requireOutdated && !item.isOutdated) {
+      return false;
+    }
+    if (!entry.appUpdateAppID) {
+      return true;
+    }
+    return this.state.updates.some(
+      (update) =>
+        update.appID === entry.appUpdateAppID &&
+        update.source === "homebrew" &&
+        update.homebrewToken?.toLowerCase() === item.token.toLowerCase()
+    );
   }
 
   private applyDiscoverInstallEvent(
