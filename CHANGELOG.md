@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-06-13
+
+### Added
+
+- Settings now include a private local Profile stats tab for Baseline-driven updates and installs, backed by signed local history and Keychain integrity checks. ([#138](https://github.com/arshiaghaf/Baseline/pull/138))
+- App, Homebrew, and Profile stats icon treatments now use more consistent depth, alignment, and source-specific styling. ([#141](https://github.com/arshiaghaf/Baseline/pull/141))
+- Dependency maintenance now covers GitHub Actions artifact publishing, app dependencies, Electron, and TypeScript/Vitest/ESLint/Prettier tooling updates. ([#134](https://github.com/arshiaghaf/Baseline/pull/134)), ([#135](https://github.com/arshiaghaf/Baseline/pull/135)), ([#136](https://github.com/arshiaghaf/Baseline/pull/136)), ([#137](https://github.com/arshiaghaf/Baseline/pull/137)), ([#139](https://github.com/arshiaghaf/Baseline/pull/139)), ([#140](https://github.com/arshiaghaf/Baseline/pull/140))
+
+### Fixed
+
+- Unused tool-status channels, stale setup state, duplicated action-state wiring, and unused renderer profile props were removed to reduce low-value complexity. ([#142](https://github.com/arshiaghaf/Baseline/pull/142))
+
 ## 0.2.0 — 2026-06-07
 
 ### Added
