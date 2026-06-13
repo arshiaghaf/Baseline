@@ -3163,6 +3163,87 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("queues burst-clicked individual Homebrew updates behind the active update", async () => {
+    const formula = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    });
+    const secondFormula = homebrewItem({
+      id: "formula:bat",
+      token: "bat",
+      name: "bat",
+      kind: "formula",
+      latestVersion: version("0.25.0"),
+      isOutdated: true
+    });
+    const cask = homebrewItem({
+      id: "cask:raycast",
+      token: "raycast",
+      name: "Raycast",
+      kind: "cask",
+      latestVersion: version("2.0.0"),
+      isOutdated: true
+    });
+    let resolveFirstUpdate!: (result: { success: boolean; status: number; output: string }) => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "upgrade" && command.includes("ripgrep")) {
+        return await new Promise((resolve) => {
+          resolveFirstUpdate = resolve;
+        });
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [formula, secondFormula, cask]
+      },
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [formula, secondFormula, cask],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      },
+      runBrewCommand
+    });
+
+    const firstUpdate = store.performHomebrewUpdate(formula.id);
+    await vi.waitFor(() => {
+      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+        ["upgrade", "ripgrep"]
+      ]);
+    });
+
+    const secondUpdate = store.performHomebrewUpdate(secondFormula.id);
+    const thirdUpdate = store.performHomebrewUpdate(cask.id);
+    await Promise.resolve();
+
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual(
+      expect.arrayContaining([secondFormula.id, cask.id])
+    );
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["upgrade", "ripgrep"]]);
+
+    resolveFirstUpdate({ success: true, status: 0, output: "" });
+    await Promise.all([firstUpdate, secondUpdate, thirdUpdate]);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["upgrade", "ripgrep"],
+      ["upgrade", "bat"],
+      ["upgrade", "--cask", "raycast"]
+    ]);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+    expect(store.getSnapshot().homebrewUpdatingItemIDs).toEqual([]);
+  });
+
   it("keeps Discover install state visible during unrelated refreshes", async () => {
     const discoverItem = {
       id: "formula:fd",
@@ -3680,6 +3761,57 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().homebrewItems[0]?.isOutdated).toBe(false);
     expect(store.getSnapshot().homebrewUpdatingItemIDs).not.toContain(outdatedItem.id);
     expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain(outdatedItem.id);
+  });
+
+  it("does not run stale app-backed Homebrew updates when the current cask is not outdated", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Example.app",
+      displayName: "Example",
+      bundleIdentifier: "com.example.app",
+      localVersion: version("1.0.0")
+    });
+    const currentItem = homebrewItem({
+      id: "cask:example",
+      token: "example",
+      name: "Example",
+      kind: "cask",
+      appID: app.id,
+      installedVersion: version("2.0.0"),
+      latestVersion: undefined,
+      isOutdated: false
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const openExternalURL = vi.fn(async () => true);
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "homebrew",
+            supportLevel: "limited",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            homebrewToken: "example",
+            checkedAt: "2026-05-20T12:00:00.000Z"
+          }
+        ],
+        homebrewItems: [currentItem]
+      },
+      runBrewCommand,
+      openExternalURL
+    });
+
+    await store.performAppUpdate(app.id);
+
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(openExternalURL).toHaveBeenCalledWith("https://formulae.brew.sh/cask/example");
+    expect(store.getSnapshot().homebrewUpdatingItemIDs).not.toContain(currentItem.id);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain(currentItem.id);
   });
 
   it("does not start Discover installs during active Homebrew maintenance", async () => {

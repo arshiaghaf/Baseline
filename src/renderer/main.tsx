@@ -980,7 +980,6 @@ type AppControlState = {
   isUninstalling: boolean;
   actionState: ActionState;
   isUpdating: boolean;
-  homebrewUpdateBlocked: boolean;
   homebrewUninstallBlocked: boolean;
 };
 
@@ -993,7 +992,6 @@ function appControlState(app: AppRecord, snapshot: BaselineSnapshot): AppControl
     : false;
   const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
   const homebrewCommandActive = isHomebrewCommandActive(snapshot);
-  const homebrewUpdateBlocked = false;
   const homebrewUninstallBlocked = Boolean(
     uninstallableItem && homebrewCommandActive && !isUninstalling
   );
@@ -1004,7 +1002,6 @@ function appControlState(app: AppRecord, snapshot: BaselineSnapshot): AppControl
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUpdateBlocked,
     homebrewUninstallBlocked
   };
 }
@@ -1039,7 +1036,6 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUpdateBlocked,
     homebrewUninstallBlocked
   } = appControlState(app, snapshot);
   const label = appSourceLabel(app, snapshot);
@@ -1052,7 +1048,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
           {update && (
             <UpdateActionButton
               state={actionState}
-              disabled={isUninstalling || homebrewUpdateBlocked}
+              disabled={isUninstalling}
               onAction={() => void window.baseline.performAppUpdate(app.id)}
             />
           )}
@@ -1239,7 +1235,6 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUpdateBlocked,
     homebrewUninstallBlocked
   } = appControlState(app, snapshot);
   const recentlyUpdatedRecord = snapshot.recentlyUpdated.find((record) => record.appID === app.id);
@@ -1253,7 +1248,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
           {update && (
             <UpdateActionButton
               state={actionState}
-              disabled={isUninstalling || homebrewUpdateBlocked}
+              disabled={isUninstalling}
               onAction={() => void window.baseline.performAppUpdate(app.id)}
             />
           )}
@@ -1296,7 +1291,6 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUpdateBlocked,
     homebrewUninstallBlocked
   } = appControlState(app, snapshot);
   const label = appSourceLabel(app, snapshot);
@@ -1313,7 +1307,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
               update
                 ? {
                     state: actionState,
-                    disabled: isUninstalling || homebrewUpdateBlocked,
+                    disabled: isUninstalling,
                     onAction: () => void window.baseline.performAppUpdate(app.id)
                   }
                 : undefined
@@ -1367,7 +1361,6 @@ export function AppRow({
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUpdateBlocked,
     homebrewUninstallBlocked
   } = appControlState(app, snapshot);
   const recentlyUpdatedRecord = recentlyUpdated
@@ -1401,7 +1394,7 @@ export function AppRow({
         {update && (
           <UpdateActionButton
             state={actionState}
-            disabled={isUninstalling || homebrewUpdateBlocked}
+            disabled={isUninstalling}
             onAction={() => void window.baseline.performAppUpdate(app.id)}
           />
         )}
@@ -1699,7 +1692,6 @@ type HomebrewControlState = {
   isUninstalling: boolean;
   isIgnored: boolean;
   updateState: ActionState;
-  homebrewUpdateBlocked: boolean;
   homebrewUninstallBlocked: boolean;
 };
 
@@ -1714,7 +1706,6 @@ function homebrewControlState(
   const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
   const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
   const progress = snapshot.homebrewBatchProgressByItemID[item.id];
-  const homebrewUpdateBlocked = false;
   const homebrewUninstallBlocked = isHomebrewCommandActive(snapshot) && !isUninstalling;
   return {
     isUpdating,
@@ -1727,7 +1718,6 @@ function homebrewControlState(
       progress,
       done
     }),
-    homebrewUpdateBlocked,
     homebrewUninstallBlocked
   };
 }
@@ -1740,14 +1730,8 @@ function HomebrewUpdateCard({
   snapshot: BaselineSnapshot;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const {
-    isUpdating,
-    isUninstalling,
-    isIgnored,
-    updateState,
-    homebrewUpdateBlocked,
-    homebrewUninstallBlocked
-  } = homebrewControlState(item, snapshot);
+  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
+    homebrewControlState(item, snapshot);
 
   return (
     <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
@@ -1757,7 +1741,7 @@ function HomebrewUpdateCard({
           {item.isOutdated && (
             <UpdateActionButton
               state={updateState}
-              disabled={isUninstalling || homebrewUpdateBlocked}
+              disabled={isUninstalling}
               onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
             />
           )}
@@ -1880,14 +1864,8 @@ function RecentHomebrewCard({
   appCaskLabel?: string;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const {
-    isUpdating,
-    isUninstalling,
-    isIgnored,
-    updateState,
-    homebrewUpdateBlocked,
-    homebrewUninstallBlocked
-  } = homebrewControlState(item, snapshot);
+  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
+    homebrewControlState(item, snapshot);
   const recentlyUpdatedRecord = snapshot.homebrewRecentlyUpdated.find(
     (record) => record.itemID === item.id
   );
@@ -1900,7 +1878,7 @@ function RecentHomebrewCard({
           {item.isOutdated && (
             <UpdateActionButton
               state={updateState}
-              disabled={isUninstalling || homebrewUpdateBlocked}
+              disabled={isUninstalling}
               onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
             />
           )}
@@ -1939,14 +1917,8 @@ function IgnoredHomebrewCard({
   snapshot: BaselineSnapshot;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const {
-    isUpdating,
-    isUninstalling,
-    isIgnored,
-    updateState,
-    homebrewUpdateBlocked,
-    homebrewUninstallBlocked
-  } = homebrewControlState(item, snapshot);
+  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
+    homebrewControlState(item, snapshot);
 
   return (
     <article className="item-card ignored-card ignored-row">
@@ -1960,7 +1932,7 @@ function IgnoredHomebrewCard({
               item.isOutdated
                 ? {
                     state: updateState,
-                    disabled: isUninstalling || homebrewUpdateBlocked,
+                    disabled: isUninstalling,
                     onAction: () => void window.baseline.performHomebrewUpdate(item.id)
                   }
                 : undefined
@@ -2004,14 +1976,8 @@ export function HomebrewRow({
   recentlyUpdated?: boolean;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const {
-    isUpdating,
-    isUninstalling,
-    isIgnored,
-    updateState,
-    homebrewUpdateBlocked,
-    homebrewUninstallBlocked
-  } = homebrewControlState(item, snapshot);
+  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
+    homebrewControlState(item, snapshot);
   const recentlyUpdatedAt = recentlyUpdated
     ? snapshot.homebrewRecentlyUpdated.find((record) => record.itemID === item.id)?.updatedAt
     : undefined;
@@ -2041,7 +2007,7 @@ export function HomebrewRow({
         {item.isOutdated && (
           <UpdateActionButton
             state={updateState}
-            disabled={isUninstalling || homebrewUpdateBlocked}
+            disabled={isUninstalling}
             onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
           />
         )}

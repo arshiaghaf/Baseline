@@ -74,6 +74,7 @@ type HomebrewUpdateQueueEntry = {
   item: HomebrewManagedItem;
   profileStatsEvent?: ProfileStatsEvent;
   appUpdateAppID?: string;
+  requiredRemoteVersion?: VersionValue;
   requireOutdated: boolean;
   resolve: () => void;
   reject: (error: unknown) => void;
@@ -366,14 +367,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         return;
       }
       const item = this.matchingHomebrewItemForApp(appRecord);
-      if (item) {
+      if (item && homebrewItemCanRunAppUpdate(item, update)) {
         await this.performHomebrewItemUpdate(item, {
           profileStatsEvent: appUpdateProfileStatsEvent({
             appRecord,
             update,
             occurredAt: new Date().toISOString()
           }),
-          appUpdateAppID: appID
+          appUpdateAppID: appID,
+          requiredRemoteVersion: update.remoteVersion
         });
         return;
       }
@@ -404,6 +406,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     options: {
       profileStatsEvent?: ProfileStatsEvent;
       appUpdateAppID?: string;
+      requiredRemoteVersion?: VersionValue;
       requireOutdated?: boolean;
     } = {}
   ): Promise<void> {
@@ -431,6 +434,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         item,
         profileStatsEvent: options.profileStatsEvent,
         appUpdateAppID: options.appUpdateAppID,
+        requiredRemoteVersion: options.requiredRemoteVersion,
         requireOutdated: options.requireOutdated ?? false,
         resolve,
         reject
@@ -1304,6 +1308,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (entry.requireOutdated && !item.isOutdated) {
       return false;
     }
+    if (
+      entry.requiredRemoteVersion &&
+      !isVersionGreater(entry.requiredRemoteVersion, item.installedVersion)
+    ) {
+      return false;
+    }
     if (!entry.appUpdateAppID) {
       return true;
     }
@@ -1582,10 +1592,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private updateHomebrewCommandLockState(): void {
-    this.patch({
-      isHomebrewCommandLocked:
-        this.activeHomebrewCommandCount > 0 || this.activeHomebrewInventoryCount > 0
-    });
+    const isHomebrewCommandLocked =
+      this.activeHomebrewCommandCount > 0 || this.activeHomebrewInventoryCount > 0;
+    if (this.state.isHomebrewCommandLocked === isHomebrewCommandLocked) {
+      return;
+    }
+    this.patch({ isHomebrewCommandLocked });
   }
 }
 
@@ -1776,6 +1788,10 @@ function canUseHomebrewAppUpdate(
       item.token.toLowerCase() === token &&
       homebrewCaskItemProvesAppOwnership(item, appRecord, caskIndex.byToken[token])
   );
+}
+
+function homebrewItemCanRunAppUpdate(item: HomebrewManagedItem, update: UpdateRecord): boolean {
+  return item.isOutdated || isVersionGreater(update.remoteVersion, item.installedVersion);
 }
 
 function requiresHomebrewOwnershipProof(appRecord: AppRecord): boolean {
