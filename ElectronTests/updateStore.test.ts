@@ -2625,7 +2625,31 @@ describe("update store helpers", () => {
         return { ...stats, signature: `sealed-${sealCount}` };
       })
     };
-    const store = await makeStore({ profileStatsIntegrity });
+    const app = appRecord({
+      bundlePath: "/Applications/Profiled App.app",
+      displayName: "Profiled App",
+      bundleIdentifier: "com.example.profiled",
+      localVersion: version("1.0.0")
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "appStore",
+            supportLevel: "supported",
+            localVersion: version("1.0.0"),
+            remoteVersion: version("2.0.0"),
+            appStoreItemID: 123,
+            checkedAt: "2026-06-01T12:00:00.000Z"
+          }
+        ]
+      },
+      profileStatsIntegrity
+    });
 
     const firstInstall = store.installHomebrewItem({
       id: "formula:bat",
@@ -2636,18 +2660,12 @@ describe("update store helpers", () => {
     });
     await firstSealStarted;
 
-    const secondInstall = store.installHomebrewItem({
-      id: "formula:fd",
-      kind: "formula",
-      token: "fd",
-      displayName: "fd",
-      version: version("1.0.0")
-    });
+    const appUpdate = store.performAppUpdate(app.id);
     await Promise.resolve();
     expect(profileStatsIntegrity.seal).toHaveBeenCalledTimes(1);
 
     resolveFirstSeal?.();
-    await Promise.all([firstInstall, secondInstall]);
+    await Promise.all([firstInstall, appUpdate]);
 
     expect(
       store.getSnapshot().profileStats.events.map((event) => ({
@@ -2656,7 +2674,7 @@ describe("update store helpers", () => {
         displayName: event.displayName
       }))
     ).toEqual([
-      { type: "homebrewInstall", targetID: "formula:fd", displayName: "fd" },
+      { type: "appUpdate", targetID: app.id, displayName: "Profiled App" },
       { type: "homebrewInstall", targetID: "formula:bat", displayName: "bat" }
     ]);
   });

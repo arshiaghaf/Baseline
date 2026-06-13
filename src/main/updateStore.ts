@@ -231,23 +231,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
   }
 
-  async testMasSetup(): Promise<void> {
-    if (!this.state.isMasInstalled) {
-      this.patch({
-        masTestSucceeded: false,
-        masTestMessage: "mas is not installed yet. Install mas to start App Store updates."
-      });
-      return;
-    }
-    const result = await this.runMasCommand(["outdated"]);
-    this.patch({
-      masTestSucceeded: result.success,
-      masTestMessage: result.success
-        ? "mas is ready, and Baseline can start App Store updates."
-        : "mas is installed, but it is not connected to your App Store account yet."
-    });
-  }
-
   async installMasWithHomebrew(): Promise<void> {
     const releaseHomebrewCommandLock = this.reserveHomebrewCommandLock();
     if (!releaseHomebrewCommandLock) {
@@ -257,12 +240,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       const result = await this.runBrewCommand(["install", "mas"]);
       const installed = await this.runMasCommand(["version"]);
       this.patch({
-        isMasInstalled: installed.success,
-        masTestSucceeded: result.success && installed.success,
-        masTestMessage:
-          result.success && installed.success
-            ? "mas was installed successfully."
-            : "We could not install mas automatically. Please use the install guide and try again."
+        isMasInstalled: result.success && installed.success
       });
     } finally {
       releaseHomebrewCommandLock();
