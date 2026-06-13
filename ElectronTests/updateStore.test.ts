@@ -3088,6 +3088,14 @@ describe("update store helpers", () => {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
           homebrewItem({
+            id: "formula:ripgrep",
+            token: "ripgrep",
+            name: "ripgrep",
+            kind: "formula",
+            latestVersion: version("14.1.0"),
+            isOutdated: true
+          }),
+          homebrewItem({
             id: "cask:raycast",
             token: "raycast",
             name: "Raycast",
@@ -3101,6 +3109,14 @@ describe("update store helpers", () => {
         homebrewInventory: {
           fetchInventory: async () => ({
             items: [
+              homebrewItem({
+                id: "formula:ripgrep",
+                token: "ripgrep",
+                name: "ripgrep",
+                kind: "formula",
+                latestVersion: version("14.1.0"),
+                isOutdated: true
+              }),
               homebrewItem({
                 id: "cask:raycast",
                 token: "raycast",
@@ -3121,20 +3137,23 @@ describe("update store helpers", () => {
     const install = store.installHomebrewItem(discoverItem);
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
 
+    const queuedFormulaUpdate = store.performHomebrewUpdate("formula:ripgrep");
     const queuedUpdate = store.performHomebrewUpdate("cask:raycast");
     await Promise.resolve();
     await store.performHomebrewUpdateAll();
     await store.uninstallHomebrewItem("cask:raycast");
 
+    expect(store.getSnapshot().homebrewUpdatingItemIDs).toContain("formula:ripgrep");
     expect(store.getSnapshot().homebrewUpdatingItemIDs).toContain("cask:raycast");
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
 
     resolveInstall({ success: true, status: 0, output: "" });
     await install;
-    await queuedUpdate;
+    await Promise.all([queuedFormulaUpdate, queuedUpdate]);
 
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["install", "fd"],
+      ["upgrade", "ripgrep"],
       ["upgrade", "--cask", "raycast"]
     ]);
   });
