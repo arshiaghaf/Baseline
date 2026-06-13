@@ -3163,39 +3163,6 @@ describe("update store helpers", () => {
     ]);
   });
 
-  it("does not install mas through Homebrew during an active Discover install", async () => {
-    const discoverItem = {
-      id: "formula:fd",
-      kind: "formula" as const,
-      token: "fd",
-      displayName: "fd",
-      presentation: "formula" as const,
-      version: version("10.0.0")
-    };
-    let resolveInstall!: (result: { success: boolean; status: number; output: string }) => void;
-    const runBrewCommand = vi.fn<
-      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
-    >(
-      async () =>
-        await new Promise((resolve) => {
-          resolveInstall = resolve;
-        })
-    );
-    const runMasCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({ runBrewCommand, runMasCommand });
-
-    const install = store.installHomebrewItem(discoverItem);
-    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
-
-    await store.installMasWithHomebrew();
-
-    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
-    expect(runMasCommand).not.toHaveBeenCalled();
-
-    resolveInstall({ success: true, status: 0, output: "" });
-    await install;
-  });
-
   it("keeps Discover install state visible during unrelated refreshes", async () => {
     const discoverItem = {
       id: "formula:fd",

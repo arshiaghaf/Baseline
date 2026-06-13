@@ -243,22 +243,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
   }
 
-  async installMasWithHomebrew(): Promise<void> {
-    const releaseHomebrewCommandLock = this.reserveHomebrewCommandLock();
-    if (!releaseHomebrewCommandLock) {
-      return;
-    }
-    try {
-      const result = await this.runBrewCommand(["install", "mas"]);
-      const installed = await this.runMasCommand(["version"]);
-      this.patch({
-        isMasInstalled: result.success && installed.success
-      });
-    } finally {
-      releaseHomebrewCommandLock();
-    }
-  }
-
   async setSearchText(searchText: string): Promise<void> {
     this.patch({ searchText });
     await this.refreshHomebrewDiscoverItems();
@@ -1437,23 +1421,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       await operation();
     } finally {
       this.patch({ appUpdatingIDs: removeFromArray(this.state.appUpdatingIDs, appID) });
-    }
-  }
-
-  private async withHomebrewUpdating(
-    itemID: string,
-    operation: () => Promise<void>
-  ): Promise<void> {
-    if (this.state.homebrewUpdatingItemIDs.includes(itemID)) {
-      return;
-    }
-    this.patch({ homebrewUpdatingItemIDs: addToArray(this.state.homebrewUpdatingItemIDs, itemID) });
-    try {
-      await operation();
-    } finally {
-      this.patch({
-        homebrewUpdatingItemIDs: removeFromArray(this.state.homebrewUpdatingItemIDs, itemID)
-      });
     }
   }
 
