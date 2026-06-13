@@ -1181,6 +1181,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     } finally {
       this.activeHomebrewInventoryCount = Math.max(0, this.activeHomebrewInventoryCount - 1);
       this.updateHomebrewCommandLockState();
+      void this.processHomebrewUpdateQueue();
     }
   }
 
