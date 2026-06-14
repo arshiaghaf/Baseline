@@ -32,4 +32,10 @@ describe("build numbers", () => {
     expect(buildNumberForAppVersion("0.3.0-beta.1")).toBeUndefined();
     expect(buildNumberForAppVersion("0.3.0+build.1")).toBeUndefined();
   });
+
+  it("does not derive release build numbers for components outside packed slots", () => {
+    expect(buildNumberForAppVersion("0.3.100")).toBeUndefined();
+    expect(buildNumberForAppVersion("0.100.0")).toBeUndefined();
+    expect(buildNumberForAppVersion("0.03.0")).toBeUndefined();
+  });
 });

@@ -90,9 +90,18 @@ function releaseBuildNumber(): string {
 }
 
 function releaseVersionBuildNumber(): string | undefined {
-  return process.env.BASELINE_RELEASE_BUILD === "1"
-    ? buildNumberForAppVersion(packageJSON.version)
-    : undefined;
+  if (process.env.BASELINE_RELEASE_BUILD !== "1") {
+    return undefined;
+  }
+
+  const buildNumber = buildNumberForAppVersion(packageJSON.version);
+  if (!buildNumber) {
+    throw new Error(
+      `Cannot derive release build number from package version ${packageJSON.version}. ` +
+        "Use a stable x.y.z version with minor and patch components below 100."
+    );
+  }
+  return buildNumber;
 }
 
 function gitCommitCount(): string | undefined {
