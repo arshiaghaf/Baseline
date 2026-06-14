@@ -27,4 +27,9 @@ describe("build numbers", () => {
     expect(buildNumberForAppVersion("1.1.0")).toBe("1010000");
     expect(buildNumberForAppVersion("3.0.0")).toBe("3000000");
   });
+
+  it("does not derive release build numbers for prerelease or build suffixes", () => {
+    expect(buildNumberForAppVersion("0.3.0-beta.1")).toBeUndefined();
+    expect(buildNumberForAppVersion("0.3.0+build.1")).toBeUndefined();
+  });
 });

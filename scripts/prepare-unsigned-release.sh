@@ -18,8 +18,8 @@ CHANGELOG_SECTION_PATH="$(mktemp)"
 
 trap 'rm -f "$CHANGELOG_SECTION_PATH"' EXIT
 
-if [[ ! "$VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+([-+][A-Za-z0-9._-]+)?$ ]]; then
-  echo "Version must look like 0.1.0 or 0.1.0-beta.1"
+if [[ ! "$VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+  echo "Version must look like 0.1.0"
   exit 1
 fi
 

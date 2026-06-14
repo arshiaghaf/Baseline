@@ -18,8 +18,8 @@ VOLUME_NAME="${APP_NAME} ${VERSION}"
 ARCH="$(uname -m)"
 PACKAGE_APP_PATH="$ROOT_DIR/out/${APP_NAME}-darwin-${ARCH}/${APP_NAME}.app"
 
-if [[ ! "$VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+([-+][A-Za-z0-9._-]+)?$ ]]; then
-  echo "Version must look like 0.1.0 or 0.1.0-beta.1"
+if [[ ! "$VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+  echo "Version must look like 0.1.0"
   exit 1
 fi
 

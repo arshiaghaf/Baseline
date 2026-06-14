@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 const buildNumberPattern = /^[0-9][0-9.]*$/u;
-const appVersionPattern = /^(\d+)\.(\d+)\.(\d+)(?:[-+][A-Za-z0-9._-]+)?$/u;
+const appVersionPattern = /^(\d+)\.(\d+)\.(\d+)$/u;
 
 export function validBuildNumber(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
