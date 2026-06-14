@@ -11,8 +11,8 @@ fi
 TAG="${1:-$(git describe --tags --abbrev=0)}"
 REPOSITORY="arshiaghaf/Baseline"
 
-if [[ ! "$TAG" =~ ^v[0-9]+[.][0-9]+[.][0-9]+([-+][A-Za-z0-9._-]+)?$ ]]; then
-  echo "Tag must look like v0.1.0 or v0.1.0-beta.1"
+if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)[.](0|[1-9][0-9]?)[.](0|[1-9][0-9]?)$ ]]; then
+  echo "Tag must look like v0.1.0 with minor and patch below 100"
   exit 1
 fi
 

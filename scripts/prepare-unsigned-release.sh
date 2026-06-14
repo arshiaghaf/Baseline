@@ -18,8 +18,8 @@ CHANGELOG_SECTION_PATH="$(mktemp)"
 
 trap 'rm -f "$CHANGELOG_SECTION_PATH"' EXIT
 
-if [[ ! "$VERSION" =~ ^[0-9]+[.][0-9]+[.][0-9]+([-+][A-Za-z0-9._-]+)?$ ]]; then
-  echo "Version must look like 0.1.0 or 0.1.0-beta.1"
+if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)[.](0|[1-9][0-9]?)[.](0|[1-9][0-9]?)$ ]]; then
+  echo "Version must look like 0.1.0 with minor and patch below 100"
   exit 1
 fi
 
@@ -118,7 +118,7 @@ if (releaseNoteLines.length === 0) {
 fs.writeFileSync(outputPath, `${releaseNoteLines.join("\n")}\n`);
 NODE
 
-scripts/create-unsigned-dmg.sh "$VERSION"
+BASELINE_RELEASE_BUILD=1 scripts/create-unsigned-dmg.sh "$VERSION"
 
 if [[ ! -f "$DMG_PATH" ]]; then
   echo "Expected DMG was not created at $DMG_PATH"
