@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-06-14
+
+### Fixed
+
+- Release artifacts now use version-derived build numbers for stable releases while preserving explicit rebuild overrides and development fallbacks. ([#143](https://github.com/arshiaghaf/Baseline/pull/143))
+
 ## 0.3.0 — 2026-06-13
 
 ### Added
