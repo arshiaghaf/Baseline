@@ -118,7 +118,7 @@ if (releaseNoteLines.length === 0) {
 fs.writeFileSync(outputPath, `${releaseNoteLines.join("\n")}\n`);
 NODE
 
-scripts/create-unsigned-dmg.sh "$VERSION"
+BASELINE_RELEASE_BUILD=1 scripts/create-unsigned-dmg.sh "$VERSION"
 
 if [[ ! -f "$DMG_PATH" ]]; then
   echo "Expected DMG was not created at $DMG_PATH"
