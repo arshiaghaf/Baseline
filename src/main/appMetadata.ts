@@ -5,8 +5,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import type { App } from "electron";
 import { formatAppDisplayVersion, type AppMetadata } from "../shared/appMetadata";
-
-const buildNumberPattern = /^[0-9][0-9.]*$/u;
+import { validBuildNumber } from "../shared/buildNumber";
 
 export function appMetadata(app: App): AppMetadata {
   const version = app.getVersion();
@@ -56,9 +55,4 @@ function runBuildNumberCommand(command: string, args: string[], cwd?: string): s
   } catch {
     return undefined;
   }
-}
-
-function validBuildNumber(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed && buildNumberPattern.test(trimmed) ? trimmed : undefined;
 }

@@ -40,6 +40,8 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Prepare unsigned release artifacts
+        env:
+          BASELINE_RELEASE_BUILD: "1"
         run: scripts/prepare-unsigned-release.sh "${{ steps.version.outputs.version }}"
 
       - name: Upload unsigned release artifacts

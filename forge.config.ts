@@ -7,8 +7,7 @@ import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { execFileSync } from "node:child_process";
 import packageJSON from "./package.json";
-
-const buildNumberPattern = /^[0-9][0-9.]*$/u;
+import { buildNumberForAppVersion, validBuildNumber } from "./src/shared/buildNumber";
 
 function macOSMajorVersion(): number | undefined {
   if (process.platform !== "darwin") {
@@ -82,10 +81,18 @@ export default config;
 
 function releaseBuildNumber(): string {
   return (
-    validBuildNumber(process.env.BASELINE_BUILD_NUMBER ?? process.env.GITHUB_RUN_NUMBER) ??
+    validBuildNumber(process.env.BASELINE_BUILD_NUMBER) ??
+    releaseVersionBuildNumber() ??
+    validBuildNumber(process.env.GITHUB_RUN_NUMBER) ??
     gitCommitCount() ??
     "1"
   );
+}
+
+function releaseVersionBuildNumber(): string | undefined {
+  return process.env.BASELINE_RELEASE_BUILD === "1"
+    ? buildNumberForAppVersion(packageJSON.version)
+    : undefined;
 }
 
 function gitCommitCount(): string | undefined {
@@ -99,9 +106,4 @@ function gitCommitCount(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function validBuildNumber(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed && buildNumberPattern.test(trimmed) ? trimmed : undefined;
 }
