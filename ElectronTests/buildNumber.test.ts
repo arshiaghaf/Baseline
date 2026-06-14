@@ -6,22 +6,25 @@ import { buildNumberForAppVersion, validBuildNumber } from "../src/shared/buildN
 
 describe("build numbers", () => {
   it("derives public release build numbers from app versions", () => {
-    expect(buildNumberForAppVersion("0.1.0")).toBe("100");
-    expect(buildNumberForAppVersion("0.2.0")).toBe("200");
-    expect(buildNumberForAppVersion("0.3.0")).toBe("300");
-    expect(buildNumberForAppVersion("0.3.1")).toBe("310");
-    expect(buildNumberForAppVersion("0.4.0")).toBe("400");
+    expect(buildNumberForAppVersion("0.1.0")).toBe("10000");
+    expect(buildNumberForAppVersion("0.2.0")).toBe("20000");
+    expect(buildNumberForAppVersion("0.3.0")).toBe("30000");
+    expect(buildNumberForAppVersion("0.3.1")).toBe("30100");
+    expect(buildNumberForAppVersion("0.4.0")).toBe("40000");
   });
 
   it("reserves one-off values between release builds for rebuilt artifacts", () => {
-    expect(buildNumberForAppVersion("0.3.0")).toBe("300");
-    expect(validBuildNumber("301")).toBe("301");
-    expect(buildNumberForAppVersion("0.3.1")).toBe("310");
+    expect(buildNumberForAppVersion("0.3.0")).toBe("30000");
+    expect(validBuildNumber("30001")).toBe("30001");
+    expect(buildNumberForAppVersion("0.3.1")).toBe("30100");
   });
 
   it("keeps pre-1.0 and post-1.0 build numbers monotonic", () => {
-    expect(buildNumberForAppVersion("1.0.0")).toBe("10000");
-    expect(buildNumberForAppVersion("1.0.1")).toBe("10010");
-    expect(buildNumberForAppVersion("1.1.0")).toBe("10100");
+    expect(buildNumberForAppVersion("0.3.10")).toBe("31000");
+    expect(buildNumberForAppVersion("0.4.0")).toBe("40000");
+    expect(buildNumberForAppVersion("1.0.0")).toBe("1000000");
+    expect(buildNumberForAppVersion("1.0.1")).toBe("1000100");
+    expect(buildNumberForAppVersion("1.1.0")).toBe("1010000");
+    expect(buildNumberForAppVersion("3.0.0")).toBe("3000000");
   });
 });

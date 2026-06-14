@@ -22,7 +22,6 @@ export function buildNumberForAppVersion(value: string): string | undefined {
     return undefined;
   }
 
-  const buildNumber =
-    major > 0 ? major * 10000 + minor * 100 + patch * 10 : minor * 100 + patch * 10;
+  const buildNumber = major * 1_000_000 + minor * 10_000 + patch * 100;
   return buildNumber > 0 ? String(buildNumber) : undefined;
 }
