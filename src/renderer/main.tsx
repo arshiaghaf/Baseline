@@ -127,21 +127,12 @@ const initialSnapshot: BaselineSnapshot = {
 function App() {
   const [snapshot, setSnapshot] = useState<BaselineSnapshot>(initialSnapshot);
   const [route, setRoute] = useState<Route>(currentRoute());
-  const [toolbarSearchOpen, setToolbarSearchOpen] = useState(false);
-  const previousSearchTextRef = useRef(initialSnapshot.searchText);
+  const [searchActive, setSearchActive] = useState(false);
 
   useEffect(() => {
     void window.baseline.getSnapshot().then(setSnapshot);
     return window.baseline.onSnapshotChanged(setSnapshot);
   }, []);
-
-  useEffect(() => {
-    const previousSearchText = previousSearchTextRef.current;
-    previousSearchTextRef.current = snapshot.searchText;
-    if (!previousSearchText.trim() && snapshot.searchText.trim()) {
-      setToolbarSearchOpen(true);
-    }
-  }, [snapshot.searchText]);
 
   useEffect(() => {
     const onHashChange = () => setRoute(currentRoute());
@@ -157,10 +148,10 @@ function App() {
     <Dashboard
       snapshot={snapshot}
       compact={route === "menubar"}
-      toolbarSearchOpen={toolbarSearchOpen}
-      onToolbarSearchOpenChange={setToolbarSearchOpen}
+      searchActive={searchActive}
+      onSearchActiveChange={setSearchActive}
       onOpenSettings={() => {
-        setToolbarSearchOpen(false);
+        setSearchActive(false);
         void window.baseline.showSettings();
       }}
     />
@@ -170,55 +161,55 @@ function App() {
 export function Dashboard({
   snapshot,
   compact,
-  toolbarSearchOpen: controlledToolbarSearchOpen,
-  onToolbarSearchOpenChange,
+  searchActive: controlledSearchActive,
+  onSearchActiveChange,
   onOpenSettings
 }: {
   snapshot: BaselineSnapshot;
   compact: boolean;
-  toolbarSearchOpen?: boolean;
-  onToolbarSearchOpenChange?: (open: boolean) => void;
+  searchActive?: boolean;
+  onSearchActiveChange?: (active: boolean) => void;
   onOpenSettings: () => void;
 }) {
   const selectedTab = snapshot.selectedTab;
-  const [uncontrolledToolbarSearchOpen, setUncontrolledToolbarSearchOpen] = useState(
-    Boolean(snapshot.searchText)
+  const [uncontrolledSearchActive, setUncontrolledSearchActive] = useState(
+    compact && Boolean(snapshot.searchText)
   );
-  const toolbarSearchOpen = controlledToolbarSearchOpen ?? uncontrolledToolbarSearchOpen;
-  const setToolbarSearchOpen = (open: boolean) => {
-    if (onToolbarSearchOpenChange) {
-      onToolbarSearchOpenChange(open);
+  const searchActive = controlledSearchActive ?? uncontrolledSearchActive;
+  const setSearchActive = (active: boolean) => {
+    if (onSearchActiveChange) {
+      onSearchActiveChange(active);
       return;
     }
-    setUncontrolledToolbarSearchOpen(open);
+    setUncontrolledSearchActive(active);
   };
   const previousSearchTextRef = useRef(snapshot.searchText);
   const derived = useMemo(
-    () => deriveSections(toolbarSearchOpen ? snapshot : { ...snapshot, searchText: "" }),
-    [snapshot, toolbarSearchOpen]
+    () => deriveSections(searchActive ? snapshot : { ...snapshot, searchText: "" }),
+    [snapshot, searchActive]
   );
   const sidebarDerived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
   const compactShellRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (controlledToolbarSearchOpen !== undefined) {
+    if (!compact || controlledSearchActive !== undefined) {
       return;
     }
     const previousSearchText = previousSearchTextRef.current;
     previousSearchTextRef.current = snapshot.searchText;
     if (!previousSearchText.trim() && snapshot.searchText.trim()) {
-      setToolbarSearchOpen(true);
+      setSearchActive(true);
     }
-  }, [controlledToolbarSearchOpen, snapshot.searchText]);
+  }, [compact, controlledSearchActive, snapshot.searchText]);
 
   useEffect(() => {
-    if (!compact || toolbarSearchOpen) {
+    if (!compact || searchActive) {
       return;
     }
 
     clearCompactPopoverControlFocus(document.activeElement, compactShellRef.current);
-  }, [compact, toolbarSearchOpen]);
+  }, [compact, searchActive]);
 
   const confirmAction = () => {
     if (!actionConfirmation) {
@@ -252,10 +243,10 @@ export function Dashboard({
           </div>
           <div className="topbar-actions">
             <ToolbarSearch
-              open={toolbarSearchOpen}
+              open={searchActive}
               snapshot={snapshot}
-              onToggle={() => setToolbarSearchOpen(!toolbarSearchOpen)}
-              onClose={() => setToolbarSearchOpen(false)}
+              onToggle={() => setSearchActive(!searchActive)}
+              onClose={() => setSearchActive(false)}
               toolbarButtonTabIndex={-1}
             />
             <button
@@ -285,20 +276,25 @@ export function Dashboard({
             snapshot={snapshot}
             derived={derived}
             compact={compact}
-            searchActive={toolbarSearchOpen}
+            searchActive={searchActive}
           />
         </section>
       </main>
     );
   } else {
-    const title = selectedTabTitle(selectedTab);
+    const title = searchActive ? "Search" : selectedTabTitle(selectedTab);
     shell = (
       <main className="app-shell">
         <Sidebar
           snapshot={snapshot}
           derived={sidebarDerived}
           route="main"
-          onNavigate={() => setToolbarSearchOpen(false)}
+          searchActive={searchActive}
+          onSelectSearch={() => {
+            window.location.hash = "/main";
+            setSearchActive(true);
+          }}
+          onNavigate={() => setSearchActive(false)}
         />
         <section className="workspace">
           <header className="topbar">
@@ -309,12 +305,6 @@ export function Dashboard({
               {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
                 <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
               ) : null}
-              <ToolbarSearch
-                open={toolbarSearchOpen}
-                snapshot={snapshot}
-                onToggle={() => setToolbarSearchOpen(!toolbarSearchOpen)}
-                onClose={() => setToolbarSearchOpen(false)}
-              />
               <button
                 className="toolbar-button refresh-button"
                 onClick={() => void window.baseline.refresh(false)}
@@ -347,7 +337,7 @@ export function Dashboard({
               snapshot={snapshot}
               derived={derived}
               compact={compact}
-              searchActive={toolbarSearchOpen}
+              searchActive={searchActive}
             />
           </section>
         </section>
@@ -419,11 +409,15 @@ function Sidebar({
   snapshot,
   derived,
   route,
+  searchActive = false,
+  onSelectSearch,
   onNavigate
 }: {
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
   route: "main" | "settings";
+  searchActive?: boolean;
+  onSelectSearch?: () => void;
   onNavigate?: () => void;
 }) {
   const selectTab = (tab: MenuTab) => {
@@ -436,7 +430,18 @@ function Sidebar({
     <aside className="sidebar">
       <nav className="source-list">
         <button
-          className={route === "main" && snapshot.selectedTab === "all" ? "selected" : ""}
+          className={route === "main" && searchActive ? "selected" : ""}
+          onClick={onSelectSearch}
+        >
+          <Search size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <span>Search</span>
+        </button>
+      </nav>
+      <nav className="source-list">
+        <button
+          className={
+            route === "main" && !searchActive && snapshot.selectedTab === "all" ? "selected" : ""
+          }
           onClick={() => selectTab("all")}
         >
           <Server size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -444,7 +449,9 @@ function Sidebar({
           <SidebarBadge count={combinedAvailableCount(derived)} />
         </button>
         <button
-          className={route === "main" && snapshot.selectedTab === "apps" ? "selected" : ""}
+          className={
+            route === "main" && !searchActive && snapshot.selectedTab === "apps" ? "selected" : ""
+          }
           onClick={() => selectTab("apps")}
         >
           <AppWindowMac size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -452,7 +459,11 @@ function Sidebar({
           <SidebarBadge count={derived.availableApps.length} />
         </button>
         <button
-          className={route === "main" && snapshot.selectedTab === "homebrew" ? "selected" : ""}
+          className={
+            route === "main" && !searchActive && snapshot.selectedTab === "homebrew"
+              ? "selected"
+              : ""
+          }
           onClick={() => selectTab("homebrew")}
         >
           <Beer size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -460,16 +471,24 @@ function Sidebar({
           <SidebarBadge count={derived.allHomebrewOutdated.length} />
         </button>
       </nav>
-      <nav className="source-list secondary-source-list">
+      <nav className="source-list">
         <button
-          className={route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}
+          className={
+            route === "main" && !searchActive && snapshot.selectedTab === "installed"
+              ? "selected"
+              : ""
+          }
           onClick={() => selectTab("installed")}
         >
           <CheckCircle2 size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Installed</span>
         </button>
         <button
-          className={route === "main" && snapshot.selectedTab === "ignored" ? "selected" : ""}
+          className={
+            route === "main" && !searchActive && snapshot.selectedTab === "ignored"
+              ? "selected"
+              : ""
+          }
           onClick={() => selectTab("ignored")}
         >
           <EyeOff size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -604,6 +623,9 @@ function SelectedTabContent({
   compact: boolean;
   searchActive: boolean;
 }) {
+  if (!compact && searchActive) {
+    return <SearchTab snapshot={snapshot} derived={derived} />;
+  }
   if (searchActive && snapshot.searchText.trim()) {
     return <SearchResults snapshot={snapshot} derived={derived} />;
   }
@@ -623,6 +645,67 @@ function SelectedTabContent({
     return <HomebrewTab snapshot={snapshot} derived={derived} />;
   }
   return <InstalledTab snapshot={snapshot} derived={derived} compact={compact} />;
+}
+
+function SearchTab({
+  snapshot,
+  derived
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+}) {
+  return (
+    <div className="stack search-tab">
+      <SearchField snapshot={snapshot} autoFocus />
+      {snapshot.searchText.trim() ? <SearchResults snapshot={snapshot} derived={derived} /> : null}
+    </div>
+  );
+}
+
+function SearchField({
+  snapshot,
+  autoFocus = false
+}: {
+  snapshot: BaselineSnapshot;
+  autoFocus?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!autoFocus) {
+      return;
+    }
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [autoFocus]);
+
+  const clearSearch = () => {
+    void window.baseline.setSearchText("");
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div className="search-box search-page-field">
+      <Search size={15} strokeWidth={toolbarIconStrokeWidth} />
+      <input
+        ref={inputRef}
+        value={snapshot.searchText}
+        onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
+        placeholder="Search"
+      />
+      {snapshot.searchText ? (
+        <button
+          className="search-clear-button"
+          onClick={clearSearch}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Clear Search"
+          aria-label="Clear Search"
+        >
+          <X size={12} />
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 function SearchResults({

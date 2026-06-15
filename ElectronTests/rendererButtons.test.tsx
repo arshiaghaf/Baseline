@@ -317,6 +317,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "apps",
@@ -345,7 +346,7 @@ describe("renderer button parity", () => {
       <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={snapshot()} />
     );
 
-    expect(toolbarButtonLabels(container)).toEqual(["Search", "Refresh"]);
+    expect(toolbarButtonLabels(container)).toEqual(["Refresh"]);
 
     rerender(
       <Dashboard
@@ -363,11 +364,7 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(toolbarButtonLabels(container)).toEqual([
-      "New Baseline Update Available",
-      "Search",
-      "Refresh"
-    ]);
+    expect(toolbarButtonLabels(container)).toEqual(["New Baseline Update Available", "Refresh"]);
 
     fireEvent.click(screen.getByRole("button", { name: "New Baseline Update Available" }));
 
@@ -382,7 +379,7 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("closes search mode on sidebar tab clicks without clearing the saved query", () => {
+  it("closes search mode on sidebar tab clicks without clearing the saved query", async () => {
     const formula: HomebrewManagedItem = {
       id: "formula:obsidian-cli",
       token: "obsidian-cli",
@@ -415,6 +412,8 @@ describe("renderer button parity", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
     expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
     expect(screen.queryByText("Example")).not.toBeInTheDocument();
@@ -424,7 +423,7 @@ describe("renderer button parity", () => {
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("apps");
     expect(window.baseline.setSearchText).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
-    expect(screen.getByText("Example")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Example")).toBeInTheDocument());
     expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
     expect(screen.queryByText("obsidian-cli")).not.toBeInTheDocument();
 
@@ -465,6 +464,8 @@ describe("renderer button parity", () => {
       <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={searchSnapshot} />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
 
@@ -499,34 +500,18 @@ describe("renderer button parity", () => {
       homebrewItems: [],
       homebrewDiscoverItems: [discoverItem]
     });
-    let searchOpen = true;
-    const setSearchOpen = vi.fn((open: boolean) => {
-      searchOpen = open;
-    });
 
     const { unmount } = render(
-      <Dashboard
-        compact={false}
-        onOpenSettings={() => undefined}
-        onToolbarSearchOpenChange={setSearchOpen}
-        toolbarSearchOpen={searchOpen}
-        snapshot={searchSnapshot}
-      />
+      <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={searchSnapshot} />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     expect(screen.getByText("Obsidian")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
-    expect(setSearchOpen).toHaveBeenCalledWith(false);
 
     unmount();
     render(
-      <Dashboard
-        compact={false}
-        onOpenSettings={() => undefined}
-        onToolbarSearchOpenChange={setSearchOpen}
-        toolbarSearchOpen={searchOpen}
-        snapshot={searchSnapshot}
-      />
+      <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={searchSnapshot} />
     );
 
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
@@ -550,9 +535,10 @@ describe("renderer button parity", () => {
       latestVersion: version("1.1.0"),
       isOutdated: true
     };
-    const { container } = render(
+    render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           apps: [app, installedApp],
@@ -562,9 +548,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    const [allButton, appsButton, homebrewButton] = Array.from(
-      container.querySelectorAll(".source-list button")
-    );
+    const allButton = screen.getByRole("button", { name: /All/ });
+    const appsButton = screen.getByRole("button", { name: /Apps/ });
+    const homebrewButton = screen.getByRole("button", { name: /Homebrew/ });
 
     expect(within(allButton as HTMLElement).getByText("2")).toBeInTheDocument();
     expect(within(appsButton as HTMLElement).getByText("1")).toBeInTheDocument();
@@ -575,7 +561,7 @@ describe("renderer button parity", () => {
   });
 
   it("hides sidebar update badges when counts are zero", () => {
-    const { container } = render(
+    render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -583,9 +569,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    const [allButton, appsButton, homebrewButton] = Array.from(
-      container.querySelectorAll(".source-list button")
-    );
+    const allButton = screen.getByRole("button", { name: "All" });
+    const appsButton = screen.getByRole("button", { name: "Apps" });
+    const homebrewButton = screen.getByRole("button", { name: "Homebrew" });
 
     expect(within(allButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
     expect(within(appsButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
@@ -1056,7 +1042,7 @@ describe("renderer button parity", () => {
     expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
   });
 
-  it("clears toolbar search from compact and main layouts", () => {
+  it("clears compact toolbar search and full-window sidebar search", () => {
     const { rerender } = render(
       <Dashboard
         compact
@@ -1076,14 +1062,15 @@ describe("renderer button parity", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
     expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
   });
 
-  it("opens toolbar search and collapses it on outside click without clearing text", async () => {
+  it("opens compact toolbar search and collapses it on outside click without clearing text", async () => {
     render(
       <Dashboard
-        compact={false}
+        compact
         onOpenSettings={() => undefined}
         snapshot={snapshot({ searchText: "obsidian" })}
       />
@@ -1122,7 +1109,7 @@ describe("renderer button parity", () => {
   it("runs adjacent toolbar actions before collapsing open search", async () => {
     render(
       <Dashboard
-        compact={false}
+        compact
         onOpenSettings={() => undefined}
         snapshot={snapshot({ searchText: "raycast" })}
       />
@@ -1513,6 +1500,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "homebrew",
@@ -1732,7 +1720,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
-        toolbarSearchOpen
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           searchText: "cli",
@@ -1772,7 +1760,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
-        toolbarSearchOpen
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           searchText: "cli",
@@ -1871,10 +1859,11 @@ describe("renderer button parity", () => {
       />
     );
 
+    const sourceLists = Array.from(container.querySelectorAll(".source-list"));
     expect(
-      Array.from(container.querySelectorAll(".secondary-source-list button")).map((button) =>
-        button.textContent?.trim()
-      )
+      within(sourceLists[2] as HTMLElement)
+        .getAllByRole("button")
+        .map((button) => button.textContent?.trim())
     ).toEqual(["Installed", "Ignored"]);
     fireEvent.click(screen.getByRole("button", { name: /Ignored/ }));
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("ignored");
@@ -1894,7 +1883,7 @@ describe("renderer button parity", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 2, name: "Ignored Apps and Homebrew" })
+      screen.getByRole("heading", { level: 2, name: /Ignored Apps and Homebrew/ })
     ).toBeInTheDocument();
     expect(screen.getByText("Example")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
@@ -1904,6 +1893,7 @@ describe("renderer button parity", () => {
     rerender(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "ignored",
@@ -1915,7 +1905,8 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Search" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Ignored" })).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
     expect(screen.queryByText("Example")).not.toBeInTheDocument();
     expect(screen.queryByText("No matches found.")).not.toBeInTheDocument();
@@ -2343,6 +2334,7 @@ describe("renderer button parity", () => {
     const { container } = render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "apps",
@@ -2408,6 +2400,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           searchText: "long-token-name",
@@ -2449,6 +2442,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "apps",
