@@ -429,13 +429,87 @@ button:disabled {
 }
 
 .search-page-field {
-  width: min(520px, 100%);
-  padding-right: 30px;
+  width: min(420px, 100%);
+  height: 42px;
+  gap: 10px;
+  padding: 0 42px 0 14px;
+  border-color: rgba(67, 67, 67, 0.06);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 246, 246, 0.96)), #ffffff;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 5px 14px rgba(0, 0, 0, 0.035);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background 150ms ease;
+}
+
+.search-page-field::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background:
+    radial-gradient(140% 140% at 0% 0%, rgba(255, 255, 255, 0.88), transparent 56%),
+    radial-gradient(140% 140% at 100% 100%, rgba(255, 255, 255, 0.5), transparent 58%);
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+.search-page-field:focus-within {
+  border-color: rgba(60, 60, 67, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(248, 248, 248, 0.98)), #ffffff;
+  box-shadow:
+    0 0 0 3px rgba(60, 60, 67, 0.045),
+    0 7px 18px rgba(0, 0, 0, 0.05);
+}
+
+.search-page-field svg {
+  flex: 0 0 auto;
+  color: rgba(60, 60, 67, 0.48);
+}
+
+.search-page-field:focus-within svg {
+  color: rgba(60, 60, 67, 0.58);
+}
+
+.search-page-field input {
+  height: 100%;
+  color: #1c1c1e;
+  font-size: 15px;
+  font-weight: 400;
 }
 
 .search-box .search-clear-button {
   top: 5px;
   right: 6px;
+}
+
+.search-page-field .search-clear-button {
+  top: 11px;
+  right: 12px;
+  background: rgba(60, 60, 67, 0.08);
+  color: rgba(60, 60, 67, 0.52);
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+@media (hover: hover) {
+  .search-page-field .search-clear-button:hover {
+    background: rgba(60, 60, 67, 0.13);
+    color: #1c1c1e;
+  }
 }
 
 .content {
@@ -2348,6 +2422,41 @@ button:disabled {
     color: rgba(235, 235, 245, 0.58);
   }
 
+  .search-page-field {
+    border-color: rgba(235, 235, 245, 0.1);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.095), rgba(255, 255, 255, 0.055)),
+      rgba(255, 255, 255, 0.04);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.055),
+      0 8px 22px rgba(0, 0, 0, 0.2);
+    color: rgba(235, 235, 245, 0.56);
+  }
+
+  .search-page-field::after {
+    background:
+      radial-gradient(140% 140% at 0% 0%, rgba(255, 255, 255, 0.12), transparent 58%),
+      radial-gradient(140% 140% at 100% 100%, rgba(255, 255, 255, 0.055), transparent 60%);
+  }
+
+  .search-page-field:focus-within {
+    border-color: rgba(235, 235, 245, 0.2);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.07)),
+      rgba(255, 255, 255, 0.05);
+    box-shadow:
+      0 0 0 3px rgba(235, 235, 245, 0.055),
+      0 10px 24px rgba(0, 0, 0, 0.24);
+  }
+
+  .search-page-field svg {
+    color: rgba(235, 235, 245, 0.44);
+  }
+
+  .search-page-field:focus-within svg {
+    color: rgba(235, 235, 245, 0.58);
+  }
+
   .toolbar-search input {
     border-color: rgba(235, 235, 245, 0.18);
     background: rgba(255, 255, 255, 0.08);
@@ -2372,6 +2481,18 @@ button:disabled {
 
   .search-clear-button {
     color: rgba(235, 235, 245, 0.5);
+  }
+
+  .search-page-field .search-clear-button {
+    background: rgba(235, 235, 245, 0.08);
+    color: rgba(235, 235, 245, 0.52);
+  }
+
+  @media (hover: hover) {
+    .search-page-field .search-clear-button:hover {
+      background: rgba(235, 235, 245, 0.13);
+      color: #fcfcfc;
+    }
   }
 
   .panel-title h2 {
