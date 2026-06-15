@@ -655,7 +655,7 @@ function SearchTab({
   derived: DerivedSections;
 }) {
   return (
-    <div className="stack search-tab">
+    <div className="stack">
       <SearchField snapshot={snapshot} autoFocus />
       {snapshot.searchText.trim() ? <SearchResults snapshot={snapshot} derived={derived} /> : null}
     </div>
