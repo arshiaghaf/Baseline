@@ -1,6 +1,6 @@
 # Baseline
 
-[![Release](https://img.shields.io/badge/release-latest-0a0a0c?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
+[![Release](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Farshiaghaf%2FBaseline%2Freleases%2Flatest&query=%24.tag_name&label=release&color=0a0a0c&style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
 &nbsp;
 [![Minimum macOS version: 14+](https://img.shields.io/badge/macOS-14.0%2B-0a0a0c?style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
 &nbsp;
