@@ -331,14 +331,15 @@ describe("renderer button parity", () => {
       />
     );
 
-    const discoverHeading = screen.getByText("Discover");
-    const homebrewHeading = screen.getByText("Homebrew Updates");
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    const discoverHeading = within(searchDialog).getByText("Discover");
+    const homebrewHeading = within(searchDialog).getByText("Homebrew Updates");
     expect(
       discoverHeading.compareDocumentPosition(homebrewHeading) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
-    expect(screen.queryByTitle("Collapse Discover")).not.toBeInTheDocument();
-    expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
+    expect(within(searchDialog).queryByTitle("Collapse Discover")).not.toBeInTheDocument();
+    expect(within(searchDialog).getByText("obsidian-cli")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
   });
 
   it("shows the main-window self-update shortcut only when self-update is available", () => {
@@ -379,6 +380,33 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("opens the main-window search palette from keyboard shortcuts without selecting the query", () => {
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          searchText: "obsidian"
+        })}
+      />
+    );
+
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    const searchField = within(searchDialog).getByDisplayValue("obsidian") as HTMLInputElement;
+    expect(searchField).toHaveFocus();
+    expect(searchField.selectionStart).toBe(searchField.value.length);
+    expect(searchField.selectionEnd).toBe(searchField.value.length);
+    expect(screen.getByRole("heading", { level: 1, name: "Apps" })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Apps" })).toBeInTheDocument();
+  });
+
   it("closes search mode on sidebar tab clicks without clearing the saved query", async () => {
     const formula: HomebrewManagedItem = {
       id: "formula:obsidian-cli",
@@ -414,24 +442,27 @@ describe("renderer button parity", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
-    expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
-    expect(screen.queryByText("Example")).not.toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("obsidian-cli")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("Example")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
 
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("apps");
     expect(window.baseline.setSearchText).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("Example")).toBeInTheDocument());
     expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
     expect(screen.queryByText("obsidian-cli")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
-    expect(screen.getByDisplayValue("obsidian")).toBeInTheDocument();
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
-    expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
+    const reopenedSearchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(reopenedSearchDialog).getByDisplayValue("obsidian")).toBeInTheDocument();
+    expect(within(reopenedSearchDialog).getByText("Obsidian")).toBeInTheDocument();
+    expect(within(reopenedSearchDialog).getByText("obsidian-cli")).toBeInTheDocument();
   });
 
   it("does not show discovery results after dismissing search into the Homebrew tab", () => {
@@ -466,8 +497,9 @@ describe("renderer button parity", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
-    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("ripgrep")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Homebrew/ }));
 
@@ -480,6 +512,7 @@ describe("renderer button parity", () => {
       />
     );
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
     expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
   });
@@ -506,7 +539,8 @@ describe("renderer button parity", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
 
     unmount();
@@ -555,9 +589,10 @@ describe("renderer button parity", () => {
     expect(within(allButton as HTMLElement).getByText("2")).toBeInTheDocument();
     expect(within(appsButton as HTMLElement).getByText("1")).toBeInTheDocument();
     expect(within(homebrewButton as HTMLElement).getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("Stable App")).toBeInTheDocument();
-    expect(screen.queryByText("Example")).not.toBeInTheDocument();
-    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Stable App")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("Example")).not.toBeInTheDocument();
+    expect(within(searchDialog).queryByText("ripgrep")).not.toBeInTheDocument();
   });
 
   it("hides sidebar update badges when counts are zero", () => {
@@ -1512,7 +1547,8 @@ describe("renderer button parity", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Install" }));
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    fireEvent.click(within(searchDialog).getByRole("button", { name: "Install" }));
     const dialog = screen.getByRole("dialog", { name: "Install Raycast?" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Install Raycast" }));
     expect(window.baseline.installHomebrewItem).toHaveBeenCalledWith(item);
@@ -1730,15 +1766,16 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByText("Example CLI")).toBeInTheDocument();
-    expect(screen.queryByText("App Updates")).not.toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Example CLI")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("App Updates")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Update Brews" }));
+    const formulaRow = within(searchDialog).getByText("ripgrep-cli").closest("article");
+    expect(formulaRow).not.toBeNull();
+    fireEvent.click(within(formulaRow as HTMLElement).getByRole("button", { name: "Update" }));
 
-    expect(window.baseline.performHomebrewUpdateAll).toHaveBeenCalledWith([
-      searchCask.id,
-      formula.id
-    ]);
+    expect(window.baseline.performHomebrewUpdate).toHaveBeenCalledWith(formula.id);
+    expect(window.baseline.performHomebrewUpdateAll).not.toHaveBeenCalled();
   });
 
   it("hides ignored app-backed Homebrew casks from search results", () => {
@@ -1771,8 +1808,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.queryByText("Example CLI")).not.toBeInTheDocument();
-    expect(screen.getByText("ripgrep-cli")).toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).queryByText("Example CLI")).not.toBeInTheDocument();
+    expect(within(searchDialog).getByText("ripgrep-cli")).toBeInTheDocument();
   });
 
   it("moves installed apps and Homebrew into the Installed sidebar item", () => {
@@ -1905,11 +1943,14 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 1, name: "Search" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "Ignored" })).toBeInTheDocument();
-    expect(screen.getByText("ripgrep")).toBeInTheDocument();
-    expect(screen.queryByText("Example")).not.toBeInTheDocument();
-    expect(screen.queryByText("No matches found.")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(
+      within(searchDialog).getByRole("heading", { level: 2, name: "Ignored Homebrew" })
+    ).toBeInTheDocument();
+    expect(within(searchDialog).getByText("ripgrep")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("Example")).not.toBeInTheDocument();
+    expect(within(searchDialog).queryByText("No matches found.")).not.toBeInTheDocument();
   });
 
   it("keeps app sections visible without Settings section controls", () => {
@@ -2331,7 +2372,7 @@ describe("renderer button parity", () => {
       version: version("1.0.0")
     };
 
-    const { container } = render(
+    render(
       <Dashboard
         compact={false}
         searchActive
@@ -2347,14 +2388,21 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByText("Notion Notes")).toBeInTheDocument();
-    expect(screen.getByText("notion-cli")).toBeInTheDocument();
-    expect(screen.getByText("Notion Calendar")).toBeInTheDocument();
-    expect(screen.queryByText("All your apps are up to date.")).not.toBeInTheDocument();
-    expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 2 })[0]).toHaveTextContent("Discover");
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Notion Notes")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("notion-cli")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("Notion Calendar")).toBeInTheDocument();
+    expect(
+      within(searchDialog).queryByText("All your apps are up to date.")
+    ).not.toBeInTheDocument();
+    expect(
+      within(searchDialog).queryByText("All your Homebrew items are up to date.")
+    ).not.toBeInTheDocument();
+    expect(within(searchDialog).getAllByRole("heading", { level: 2 })[0]).toHaveTextContent(
+      "Discover"
+    );
 
-    const sections = Array.from(container.querySelectorAll("section.panel"));
+    const sections = Array.from(searchDialog.querySelectorAll(".search-palette-section"));
     const discoverSection = sections.find((section) =>
       within(section as HTMLElement).queryByRole("heading", { name: "Discover" })
     ) as HTMLElement | undefined;
@@ -2370,10 +2418,10 @@ describe("renderer button parity", () => {
     expect(installedHomebrewSection).toBeDefined();
     expect(discoverSection!.querySelector(".rows .row")).not.toBeNull();
     expect(discoverSection!.querySelector(".item-card")).toBeNull();
-    expect(installedAppsSection!.querySelector(".card-grid .item-card")).not.toBeNull();
-    expect(installedAppsSection!.querySelector(".rows .row")).toBeNull();
-    expect(installedHomebrewSection!.querySelector(".card-grid .item-card")).not.toBeNull();
-    expect(installedHomebrewSection!.querySelector(".rows .row")).toBeNull();
+    expect(installedAppsSection!.querySelector(".rows .row")).not.toBeNull();
+    expect(installedAppsSection!.querySelector(".item-card")).toBeNull();
+    expect(installedHomebrewSection!.querySelector(".rows .row")).not.toBeNull();
+    expect(installedHomebrewSection!.querySelector(".item-card")).toBeNull();
   });
 
   it("shows app-backed Homebrew updates in search when the app result does not match", () => {
@@ -2411,9 +2459,14 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.queryByRole("heading", { name: "App Updates" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Homebrew Updates" })).toBeInTheDocument();
-    expect(screen.getByText("Long Token Name")).toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(
+      within(searchDialog).queryByRole("heading", { name: "App Updates" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(searchDialog).getByRole("heading", { name: "Homebrew Updates" })
+    ).toBeInTheDocument();
+    expect(within(searchDialog).getByText("Long Token Name")).toBeInTheDocument();
   });
 
   it("search hides cask-backed apps from Installed Apps", () => {
@@ -2455,10 +2508,11 @@ describe("renderer button parity", () => {
       />
     );
 
-    const installedApps = screen
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    const installedApps = within(searchDialog)
       .getByRole("heading", { name: "Installed Apps" })
       .closest("section");
-    const installedHomebrew = screen
+    const installedHomebrew = within(searchDialog)
       .getByRole("heading", { name: "Installed Homebrew" })
       .closest("section");
     expect(installedApps).not.toBeNull();

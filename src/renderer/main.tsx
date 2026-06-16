@@ -185,6 +185,10 @@ export function Dashboard({
   };
   const previousSearchTextRef = useRef(snapshot.searchText);
   const derived = useMemo(
+    () => deriveSections(compact && searchActive ? snapshot : { ...snapshot, searchText: "" }),
+    [snapshot, compact, searchActive]
+  );
+  const searchDerived = useMemo(
     () => deriveSections(searchActive ? snapshot : { ...snapshot, searchText: "" }),
     [snapshot, searchActive]
   );
@@ -210,6 +214,23 @@ export function Dashboard({
 
     clearCompactPopoverControlFocus(document.activeElement, compactShellRef.current);
   }, [compact, searchActive]);
+
+  useEffect(() => {
+    if (compact) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && (key === "f" || key === "k")) {
+        event.preventDefault();
+        setSearchActive(true);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [compact]);
 
   const confirmAction = () => {
     if (!actionConfirmation) {
@@ -282,14 +303,13 @@ export function Dashboard({
       </main>
     );
   } else {
-    const title = searchActive ? "Search" : selectedTabTitle(selectedTab);
+    const title = selectedTabTitle(selectedTab);
     shell = (
       <main className="app-shell">
         <Sidebar
           snapshot={snapshot}
           derived={sidebarDerived}
           route="main"
-          searchActive={searchActive}
           onSelectSearch={() => {
             window.location.hash = "/main";
             setSearchActive(true);
@@ -352,6 +372,13 @@ export function Dashboard({
         aria-hidden={actionConfirmation ? true : undefined}
       >
         {shell}
+        {!compact && searchActive && (
+          <SearchPalette
+            snapshot={snapshot}
+            derived={searchDerived}
+            onClose={() => setSearchActive(false)}
+          />
+        )}
       </div>
       {actionConfirmation && (
         <ActionConfirmationOverlay
@@ -409,14 +436,12 @@ function Sidebar({
   snapshot,
   derived,
   route,
-  searchActive = false,
   onSelectSearch,
   onNavigate
 }: {
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
   route: "main" | "settings";
-  searchActive?: boolean;
   onSelectSearch?: () => void;
   onNavigate?: () => void;
 }) {
@@ -429,19 +454,14 @@ function Sidebar({
   return (
     <aside className="sidebar">
       <nav className="source-list">
-        <button
-          className={route === "main" && searchActive ? "selected" : ""}
-          onClick={onSelectSearch}
-        >
+        <button onClick={onSelectSearch}>
           <Search size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Search</span>
         </button>
       </nav>
       <nav className="source-list">
         <button
-          className={
-            route === "main" && !searchActive && snapshot.selectedTab === "all" ? "selected" : ""
-          }
+          className={route === "main" && snapshot.selectedTab === "all" ? "selected" : ""}
           onClick={() => selectTab("all")}
         >
           <Server size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -449,9 +469,7 @@ function Sidebar({
           <SidebarBadge count={combinedAvailableCount(derived)} />
         </button>
         <button
-          className={
-            route === "main" && !searchActive && snapshot.selectedTab === "apps" ? "selected" : ""
-          }
+          className={route === "main" && snapshot.selectedTab === "apps" ? "selected" : ""}
           onClick={() => selectTab("apps")}
         >
           <AppWindowMac size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -459,11 +477,7 @@ function Sidebar({
           <SidebarBadge count={derived.availableApps.length} />
         </button>
         <button
-          className={
-            route === "main" && !searchActive && snapshot.selectedTab === "homebrew"
-              ? "selected"
-              : ""
-          }
+          className={route === "main" && snapshot.selectedTab === "homebrew" ? "selected" : ""}
           onClick={() => selectTab("homebrew")}
         >
           <Beer size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -473,22 +487,14 @@ function Sidebar({
       </nav>
       <nav className="source-list">
         <button
-          className={
-            route === "main" && !searchActive && snapshot.selectedTab === "installed"
-              ? "selected"
-              : ""
-          }
+          className={route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}
           onClick={() => selectTab("installed")}
         >
           <CheckCircle2 size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Installed</span>
         </button>
         <button
-          className={
-            route === "main" && !searchActive && snapshot.selectedTab === "ignored"
-              ? "selected"
-              : ""
-          }
+          className={route === "main" && snapshot.selectedTab === "ignored" ? "selected" : ""}
           onClick={() => selectTab("ignored")}
         >
           <EyeOff size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -623,10 +629,7 @@ function SelectedTabContent({
   compact: boolean;
   searchActive: boolean;
 }) {
-  if (!compact && searchActive) {
-    return <SearchTab snapshot={snapshot} derived={derived} />;
-  }
-  if (searchActive && snapshot.searchText.trim()) {
+  if (compact && searchActive && snapshot.searchText.trim()) {
     return <SearchResults snapshot={snapshot} derived={derived} />;
   }
   if (!compact && snapshot.selectedTab === "ignored") {
@@ -647,17 +650,52 @@ function SelectedTabContent({
   return <InstalledTab snapshot={snapshot} derived={derived} compact={compact} />;
 }
 
-function SearchTab({
+function SearchPalette({
   snapshot,
-  derived
+  derived,
+  onClose
 }: {
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
+  onClose: () => void;
 }) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="stack">
-      <SearchField snapshot={snapshot} autoFocus />
-      {snapshot.searchText.trim() ? <SearchResults snapshot={snapshot} derived={derived} /> : null}
+    <div
+      className="search-palette-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        className="search-palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <SearchField snapshot={snapshot} autoFocus />
+        {snapshot.searchText.trim() ? (
+          <SearchPaletteResults snapshot={snapshot} derived={derived} />
+        ) : (
+          <p className="search-palette-empty">
+            Search apps, Homebrew, installed, and ignored items.
+          </p>
+        )}
+      </section>
     </div>
   );
 }
@@ -675,8 +713,13 @@ function SearchField({
     if (!autoFocus) {
       return;
     }
-    inputRef.current?.focus();
-    inputRef.current?.select();
+    const input = inputRef.current;
+    if (!input) {
+      return;
+    }
+    input.focus();
+    const caretPosition = input.value.length;
+    input.setSelectionRange(caretPosition, caretPosition);
   }, [autoFocus]);
 
   const clearSearch = () => {
@@ -685,7 +728,7 @@ function SearchField({
   };
 
   return (
-    <div className="search-box search-page-field">
+    <div className="search-box search-palette-field">
       <Search size={15} strokeWidth={toolbarIconStrokeWidth} />
       <input
         ref={inputRef}
@@ -705,6 +748,93 @@ function SearchField({
         </button>
       ) : null}
     </div>
+  );
+}
+
+function SearchPaletteResults({
+  snapshot,
+  derived
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+}) {
+  const searchInstalledApps = derived.installedApps.filter(
+    (app) => !uninstallableHomebrewItemForApp(app, snapshot)
+  );
+  const hasResults =
+    snapshot.homebrewDiscoverItems.length > 0 ||
+    derived.availableApps.length > 0 ||
+    derived.allHomebrewOutdated.length > 0 ||
+    searchInstalledApps.length > 0 ||
+    derived.homebrewInstalled.length > 0 ||
+    derived.ignoredApps.length > 0 ||
+    derived.homebrewIgnored.length > 0;
+
+  if (!hasResults) {
+    return <p className="search-palette-empty">No matches found.</p>;
+  }
+
+  return (
+    <div className="search-palette-results">
+      {snapshot.homebrewDiscoverItems.length > 0 && (
+        <SearchPaletteSection title="Discover">
+          {snapshot.homebrewDiscoverItems.map((item) => (
+            <DiscoverRow key={item.id} item={item} snapshot={snapshot} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.availableApps.length > 0 && (
+        <SearchPaletteSection title="App Updates">
+          {derived.availableApps.map((app) => (
+            <AppRow key={app.id} app={app} snapshot={snapshot} recentlyUpdated={false} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.allHomebrewOutdated.length > 0 && (
+        <SearchPaletteSection title="Homebrew Updates">
+          {derived.allHomebrewOutdated.map((item) => (
+            <HomebrewRow key={item.id} item={item} snapshot={snapshot} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {searchInstalledApps.length > 0 && (
+        <SearchPaletteSection title="Installed Apps">
+          {searchInstalledApps.map((app) => (
+            <AppRow key={app.id} app={app} snapshot={snapshot} recentlyUpdated={false} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.homebrewInstalled.length > 0 && (
+        <SearchPaletteSection title="Installed Homebrew">
+          {derived.homebrewInstalled.map((item) => (
+            <HomebrewRow key={item.id} item={item} snapshot={snapshot} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.ignoredApps.length > 0 && (
+        <SearchPaletteSection title="Ignored Apps">
+          {derived.ignoredApps.map((app) => (
+            <AppRow key={app.id} app={app} snapshot={snapshot} recentlyUpdated={false} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.homebrewIgnored.length > 0 && (
+        <SearchPaletteSection title="Ignored Homebrew">
+          {derived.homebrewIgnored.map((item) => (
+            <HomebrewRow key={item.id} item={item} snapshot={snapshot} />
+          ))}
+        </SearchPaletteSection>
+      )}
+    </div>
+  );
+}
+
+function SearchPaletteSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="search-palette-section">
+      <h2>{title}</h2>
+      <div className="rows">{children}</div>
+    </section>
   );
 }
 

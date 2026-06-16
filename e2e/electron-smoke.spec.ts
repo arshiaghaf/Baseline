@@ -94,12 +94,15 @@ test("launches the Electron shell and renders the dashboard", async () => {
   await expect(page.getByRole("button", { name: "Apps", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Homebrew", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Search", exact: true }).click();
-  await expect(page.locator("h1")).toContainText("Search");
-  const searchField = page.getByPlaceholder("Search");
+  await expect(page.locator("h1")).toContainText("All");
+  const searchDialog = page.getByRole("dialog", { name: "Search" });
+  await expect(searchDialog).toBeVisible();
+  const searchField = searchDialog.getByPlaceholder("Search");
   await expect(searchField).toBeVisible();
   await searchField.fill("missing-app");
-  await expect(page.getByText("No matches found.")).toBeVisible();
-  await page.getByRole("button", { name: "All", exact: true }).click();
+  await expect(searchDialog.getByText("No matches found.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(searchDialog).not.toBeVisible();
   await expect(page.locator("h1")).toContainText("All");
   await expect.poll(() => page.evaluate(() => typeof window.baseline)).toBe("object");
   await expect(
