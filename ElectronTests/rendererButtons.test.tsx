@@ -479,6 +479,7 @@ describe("renderer button parity", () => {
 
     const searchDialog = screen.getByRole("dialog", { name: "Search" });
     fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
+    expect(within(searchDialog).getByRole("menu")).toHaveClass("row-action-menu-popover-fixed");
     expect(within(searchDialog).getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
 
     fireEvent.mouseDown(within(searchDialog).getByPlaceholderText("Search"));

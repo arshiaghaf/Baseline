@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
 // SPDX-License-Identifier: GPL-3.0-only
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
@@ -76,6 +76,10 @@ type RowUpdateMenuAction = {
   state: ActionState;
   disabled?: boolean;
   onAction: () => void;
+};
+type RowActionMenuPosition = {
+  left: number;
+  top: number;
 };
 type SettingsSectionID = "general" | "profile" | "appearance" | "diagnostics";
 
@@ -2540,7 +2544,11 @@ function RowMoreActionButton({
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [fixedPopoverPosition, setFixedPopoverPosition] = useState<RowActionMenuPosition>();
   const ignoreLabel = isIgnored ? "Unignore" : "Ignore";
+  const useFixedPopover = open && Boolean(menuRef.current?.closest(".search-palette"));
 
   useEffect(() => {
     if (!open) {
@@ -2566,6 +2574,50 @@ function RowMoreActionButton({
     };
   }, [open]);
 
+  useLayoutEffect(() => {
+    if (!open || !useFixedPopover) {
+      setFixedPopoverPosition(undefined);
+      return undefined;
+    }
+
+    const updatePopoverPosition = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) {
+        return;
+      }
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const popoverRect = popoverRef.current?.getBoundingClientRect();
+      const popoverWidth = popoverRect?.width || 142;
+      const popoverHeight =
+        popoverRect?.height || rowActionMenuEstimatedHeight(updateAction, canUninstall);
+      const viewportPadding = 8;
+      const gap = 6;
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - popoverWidth - viewportPadding);
+      const left = Math.min(Math.max(viewportPadding, triggerRect.right - popoverWidth), maxLeft);
+      const belowTop = triggerRect.bottom + gap;
+      const aboveTop = triggerRect.top - popoverHeight - gap;
+      const hasRoomBelow = belowTop + popoverHeight + viewportPadding <= window.innerHeight;
+      const top =
+        hasRoomBelow || aboveTop < viewportPadding
+          ? Math.min(belowTop, window.innerHeight - popoverHeight - viewportPadding)
+          : Math.max(viewportPadding, aboveTop);
+
+      setFixedPopoverPosition({
+        left,
+        top: Math.max(viewportPadding, top)
+      });
+    };
+
+    updatePopoverPosition();
+    window.addEventListener("resize", updatePopoverPosition);
+    window.addEventListener("scroll", updatePopoverPosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverPosition);
+      window.removeEventListener("scroll", updatePopoverPosition, true);
+    };
+  }, [canUninstall, open, updateAction, useFixedPopover]);
+
   const invokeIgnore = () => {
     setOpen(false);
     onToggleIgnore();
@@ -2588,6 +2640,7 @@ function RowMoreActionButton({
   return (
     <div className="row-action-menu" ref={menuRef}>
       <button
+        ref={triggerRef}
         className="secondary-icon-button"
         disabled={disabled}
         onClick={() => setOpen((isOpen) => !isOpen)}
@@ -2599,7 +2652,16 @@ function RowMoreActionButton({
         {uninstalling ? <UninstallActionGlyph /> : <MoreHorizontal size={15} />}
       </button>
       {open && (
-        <div className="row-action-menu-popover" role="menu">
+        <div
+          ref={popoverRef}
+          className={
+            useFixedPopover
+              ? "row-action-menu-popover row-action-menu-popover-fixed"
+              : "row-action-menu-popover"
+          }
+          role="menu"
+          style={fixedRowActionMenuStyle(useFixedPopover, fixedPopoverPosition)}
+        >
           {updateAction && (
             <button
               onClick={invokeUpdate}
@@ -2647,6 +2709,29 @@ function RowMoreActionButton({
       )}
     </div>
   );
+}
+
+function rowActionMenuEstimatedHeight(
+  updateAction: RowUpdateMenuAction | undefined,
+  canUninstall: boolean
+): number {
+  const itemCount = 1 + (updateAction ? 1 : 0) + (canUninstall ? 1 : 0);
+  return itemCount * 28 + 10;
+}
+
+function fixedRowActionMenuStyle(
+  useFixedPopover: boolean,
+  position: RowActionMenuPosition | undefined
+): React.CSSProperties | undefined {
+  if (!useFixedPopover) {
+    return undefined;
+  }
+
+  return {
+    left: position?.left ?? 0,
+    top: position?.top ?? 0,
+    visibility: position ? "visible" : "hidden"
+  };
 }
 
 function ProgressRing({ value }: { value: number }) {
