@@ -312,8 +312,9 @@ export function Dashboard({
           route="main"
           onSelectSearch={() => {
             window.location.hash = "/main";
-            setSearchActive(true);
+            setSearchActive(!searchActive);
           }}
+          onDismissSearch={() => setSearchActive(false)}
           onNavigate={() => setSearchActive(false)}
         />
         <section className="workspace">
@@ -437,12 +438,14 @@ function Sidebar({
   derived,
   route,
   onSelectSearch,
+  onDismissSearch,
   onNavigate
 }: {
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
   route: "main" | "settings";
   onSelectSearch?: () => void;
+  onDismissSearch?: () => void;
   onNavigate?: () => void;
 }) {
   const selectTab = (tab: MenuTab) => {
@@ -452,7 +455,7 @@ function Sidebar({
   };
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" onMouseDownCapture={onDismissSearch}>
       <nav className="source-list">
         <button onClick={onSelectSearch}>
           <Search size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -672,30 +675,31 @@ function SearchPalette({
   }, [onClose]);
 
   return (
-    <div
-      className="search-palette-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <section
-        className="search-palette"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Search"
-        onMouseDown={(event) => event.stopPropagation()}
+    <div className="search-palette-layer">
+      <div className="search-palette-backdrop" />
+      <div
+        className="search-palette-workspace"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            onClose();
+          }
+        }}
       >
-        <SearchField snapshot={snapshot} autoFocus />
-        {snapshot.searchText.trim() ? (
-          <SearchPaletteResults snapshot={snapshot} derived={derived} />
-        ) : (
-          <p className="search-palette-empty">
-            Search apps, Homebrew, installed, and ignored items.
-          </p>
-        )}
-      </section>
+        <section
+          className="search-palette"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Search"
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <SearchField snapshot={snapshot} autoFocus />
+          {snapshot.searchText.trim() ? (
+            <SearchPaletteResults snapshot={snapshot} derived={derived} />
+          ) : (
+            <p className="search-palette-empty">Search Homebrew for apps, packages, and tools.</p>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

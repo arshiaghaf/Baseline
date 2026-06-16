@@ -428,7 +428,7 @@ describe("renderer button parity", () => {
       version: version("1.6.0")
     };
 
-    render(
+    const { container } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -466,6 +466,15 @@ describe("renderer button parity", () => {
     expect(within(reopenedSearchDialog).getByDisplayValue("obsidian")).toBeInTheDocument();
     expect(within(reopenedSearchDialog).getByText("Obsidian")).toBeInTheDocument();
     expect(within(reopenedSearchDialog).getByText("obsidian-cli")).toBeInTheDocument();
+
+    fireEvent.mouseDown(container.querySelector(".sidebar") as HTMLElement);
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
   });
 
   it("does not show discovery results after dismissing search into the Homebrew tab", () => {
@@ -1081,7 +1090,7 @@ describe("renderer button parity", () => {
   });
 
   it("clears compact toolbar search and full-window sidebar search", () => {
-    const { rerender } = render(
+    const { unmount } = render(
       <Dashboard
         compact
         onOpenSettings={() => undefined}
@@ -1092,7 +1101,8 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
     expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
 
-    rerender(
+    unmount();
+    render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}

@@ -9,6 +9,7 @@
 
 :root {
   --sidebar-width: 196px;
+  --update-accent-rgb: 1, 105, 204;
 
   color: #0d0d0d;
   background: transparent;
@@ -47,7 +48,6 @@ button:disabled {
   --scrollbar-thumb: rgba(60, 60, 60, 0.07);
   --scrollbar-thumb-hover: rgba(60, 60, 60, 0.16);
   --scrollbar-track: transparent;
-  --update-accent-rgb: 1, 105, 204;
 
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
@@ -409,16 +409,28 @@ button:disabled {
   font-size: 13px;
 }
 
-.search-palette-backdrop {
+.search-palette-layer {
   position: fixed;
-  inset: 0 0 0 var(--sidebar-width);
+  inset: 0;
   z-index: 40;
+  pointer-events: none;
+  -webkit-app-region: no-drag;
+}
+
+.search-palette-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.search-palette-workspace {
+  position: absolute;
+  inset: 0 0 0 var(--sidebar-width);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding: 92px 48px 32px;
-  background: rgba(255, 255, 255, 0.45);
-  -webkit-app-region: no-drag;
+  pointer-events: auto;
 }
 
 .search-palette {
@@ -2522,7 +2534,7 @@ button:disabled {
   }
 
   .search-palette-backdrop {
-    background: rgba(0, 0, 0, 0.24);
+    background: rgba(0, 0, 0, 0.42);
   }
 
   .search-palette {
