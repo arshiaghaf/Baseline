@@ -508,18 +508,37 @@ function setElementInert(element: HTMLElement, inert: boolean): void {
 }
 
 const focusableSelector = [
-  "a[href]",
-  "button:not(:disabled)",
-  "input:not(:disabled)",
-  "select:not(:disabled)",
-  "textarea:not(:disabled)",
+  "a[href]:not([tabindex='-1'])",
+  "button:not(:disabled):not([tabindex='-1'])",
+  "input:not(:disabled):not([tabindex='-1'])",
+  "select:not(:disabled):not([tabindex='-1'])",
+  "textarea:not(:disabled):not([tabindex='-1'])",
   "[tabindex]:not([tabindex='-1'])"
 ].join(",");
 
 function focusableElementsIn(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
-    (element) => !element.closest("[aria-hidden='true']")
-  );
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector))
+    .filter(
+      (element) =>
+        !element.closest("[aria-hidden='true']") &&
+        element.getAttribute("tabindex") !== "-1" &&
+        element.tabIndex >= 0
+    )
+    .sort(compareDocumentOrder);
+}
+
+function compareDocumentOrder(lhs: HTMLElement, rhs: HTMLElement): number {
+  if (lhs === rhs) {
+    return 0;
+  }
+  const position = lhs.compareDocumentPosition(rhs);
+  if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+    return -1;
+  }
+  if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+    return 1;
+  }
+  return 0;
 }
 
 function trapFocusWithin(event: KeyboardEvent, container: HTMLElement | null): void {

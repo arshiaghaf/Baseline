@@ -425,6 +425,45 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Apps" })).toBeInTheDocument();
   });
 
+  it("skips non-tabbable status glyphs when trapping search palette focus", () => {
+    const item: HomebrewCaskDiscoveryItem = {
+      id: "formula:ray",
+      token: "ray",
+      displayName: "ray",
+      kind: "formula",
+      version: version("1.2.3")
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        searchActive
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "homebrew",
+          searchText: "ray",
+          apps: [],
+          updates: [],
+          homebrewItems: [],
+          homebrewDiscoverItems: [item],
+          homebrewDiscoverInstallingItemIDs: [item.id]
+        })}
+      />
+    );
+
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    const searchField = within(searchDialog).getByPlaceholderText("Search");
+    const clearButton = within(searchDialog).getByRole("button", { name: "Clear Search" });
+    const statusGlyph = within(searchDialog).getByRole("button", { name: "Updating" });
+    expect(statusGlyph).toHaveAttribute("tabindex", "-1");
+
+    clearButton.focus();
+    expect(clearButton).toHaveFocus();
+    fireEvent.keyDown(searchDialog, { key: "Tab" });
+
+    expect(searchField).toHaveFocus();
+  });
+
   it("closes search mode on backdrop clicks without clearing the saved query", async () => {
     const formula: HomebrewManagedItem = {
       id: "formula:obsidian-cli",
