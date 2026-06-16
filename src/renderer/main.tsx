@@ -222,7 +222,7 @@ export function Dashboard({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
-      if ((event.metaKey || event.ctrlKey) && (key === "f" || key === "k")) {
+      if (event.metaKey && (key === "f" || key === "k")) {
         event.preventDefault();
         setSearchActive(true);
       }

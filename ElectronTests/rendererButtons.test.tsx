@@ -392,6 +392,9 @@ describe("renderer button parity", () => {
       />
     );
 
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
+
     fireEvent.keyDown(document, { key: "k", metaKey: true });
 
     const searchDialog = screen.getByRole("dialog", { name: "Search" });
