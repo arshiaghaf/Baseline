@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ActionConfirmationContext,
+  App,
   AppRow,
   Dashboard,
   DiscoverRow,
@@ -2116,6 +2117,21 @@ describe("renderer button parity", () => {
     );
 
     await waitFor(() => expect(screen.getByPlaceholderText("Search")).toHaveFocus());
+  });
+
+  it("opens compact menu bar search when the production app loads a saved query", async () => {
+    vi.mocked(window.baseline.getSnapshot).mockResolvedValue(
+      snapshot({
+        searchText: "example"
+      })
+    );
+    window.location.hash = "/menubar";
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByPlaceholderText("Search")).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
+    expect(screen.getByText("Example")).toBeInTheDocument();
   });
 
   it("unifies app and Homebrew recently updated cards in the All tab without duplicating cask-backed apps", () => {

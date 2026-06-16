@@ -124,15 +124,24 @@ const initialSnapshot: BaselineSnapshot = {
   defaultScanDirectories: []
 };
 
-function App() {
+export function App() {
   const [snapshot, setSnapshot] = useState<BaselineSnapshot>(initialSnapshot);
   const [route, setRoute] = useState<Route>(currentRoute());
   const [searchActive, setSearchActive] = useState(false);
+  const previousSearchTextRef = useRef(initialSnapshot.searchText);
 
   useEffect(() => {
     void window.baseline.getSnapshot().then(setSnapshot);
     return window.baseline.onSnapshotChanged(setSnapshot);
   }, []);
+
+  useEffect(() => {
+    const previousSearchText = previousSearchTextRef.current;
+    previousSearchTextRef.current = snapshot.searchText;
+    if (route === "menubar" && !previousSearchText.trim() && snapshot.searchText.trim()) {
+      setSearchActive(true);
+    }
+  }, [route, snapshot.searchText]);
 
   useEffect(() => {
     const onHashChange = () => setRoute(currentRoute());
