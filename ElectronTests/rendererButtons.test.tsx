@@ -464,6 +464,30 @@ describe("renderer button parity", () => {
     expect(searchField).toHaveFocus();
   });
 
+  it("closes search palette row action menus on outside clicks inside the dialog", () => {
+    render(
+      <Dashboard
+        compact={false}
+        searchActive
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          searchText: "example"
+        })}
+      />
+    );
+
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
+    expect(within(searchDialog).getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
+
+    fireEvent.mouseDown(within(searchDialog).getByPlaceholderText("Search"));
+
+    expect(
+      within(searchDialog).queryByRole("menuitem", { name: "Ignore" })
+    ).not.toBeInTheDocument();
+  });
+
   it("closes search mode on backdrop clicks without clearing the saved query", async () => {
     const formula: HomebrewManagedItem = {
       id: "formula:obsidian-cli",

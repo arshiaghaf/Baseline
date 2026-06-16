@@ -855,7 +855,6 @@ function SearchPalette({
           aria-label="Search"
           tabIndex={-1}
           onKeyDownCapture={handleDialogKeyDown}
-          onMouseDown={(event) => event.stopPropagation()}
         >
           <SearchField snapshot={snapshot} autoFocus />
           {snapshot.searchText.trim() ? (
