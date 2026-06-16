@@ -453,11 +453,18 @@ function Sidebar({
     window.location.hash = "/main";
     void window.baseline.setSelectedTab(tab);
   };
+  const dismissSearchFromSidebarMouseDown = (event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target;
+    if (target instanceof Element && target.closest("[data-search-toggle='true']")) {
+      return;
+    }
+    onDismissSearch?.();
+  };
 
   return (
-    <aside className="sidebar" onMouseDownCapture={onDismissSearch}>
+    <aside className="sidebar" onMouseDownCapture={dismissSearchFromSidebarMouseDown}>
       <nav className="source-list">
-        <button onClick={onSelectSearch}>
+        <button data-search-toggle="true" onClick={onSelectSearch}>
           <Search size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Search</span>
         </button>

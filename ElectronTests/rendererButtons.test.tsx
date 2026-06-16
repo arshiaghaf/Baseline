@@ -470,10 +470,13 @@ describe("renderer button parity", () => {
     fireEvent.mouseDown(container.querySelector(".sidebar") as HTMLElement);
     expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    const searchButton = screen.getByRole("button", { name: "Search" });
+    fireEvent.mouseDown(searchButton);
+    fireEvent.click(searchButton);
     expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    fireEvent.mouseDown(searchButton);
+    fireEvent.click(searchButton);
     expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
   });
 
