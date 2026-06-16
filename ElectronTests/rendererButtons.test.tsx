@@ -380,7 +380,7 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens the main-window search palette from keyboard shortcuts without selecting the query", () => {
+  it("opens the main-window search palette from keyboard shortcuts without selecting the query", async () => {
     render(
       <Dashboard
         compact={false}
@@ -395,6 +395,11 @@ describe("renderer button parity", () => {
     fireEvent.keyDown(document, { key: "k", ctrlKey: true });
     expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
 
+    const appSurface = document.querySelector(".app-content-surface") as HTMLElement & {
+      inert?: boolean;
+    };
+    const refreshButton = screen.getByRole("button", { name: "Refresh" });
+    refreshButton.focus();
     fireEvent.keyDown(document, { key: "k", metaKey: true });
 
     const searchDialog = screen.getByRole("dialog", { name: "Search" });
@@ -402,15 +407,24 @@ describe("renderer button parity", () => {
     expect(searchField).toHaveFocus();
     expect(searchField.selectionStart).toBe(searchField.value.length);
     expect(searchField.selectionEnd).toBe(searchField.value.length);
-    expect(screen.getByRole("heading", { level: 1, name: "Apps" })).toBeInTheDocument();
+    expect(appSurface).toHaveAttribute("aria-hidden", "true");
+    expect(appSurface.inert).toBe(true);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Apps", hidden: true })
+    ).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
 
-    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument()
+    );
+    await waitFor(() => expect(refreshButton).toHaveFocus());
+    expect(appSurface).not.toHaveAttribute("aria-hidden");
+    expect(appSurface.inert).toBe(false);
     expect(screen.getByRole("heading", { level: 1, name: "Apps" })).toBeInTheDocument();
   });
 
-  it("closes search mode on sidebar tab clicks without clearing the saved query", async () => {
+  it("closes search mode on backdrop clicks without clearing the saved query", async () => {
     const formula: HomebrewManagedItem = {
       id: "formula:obsidian-cli",
       token: "obsidian-cli",
@@ -450,6 +464,7 @@ describe("renderer button parity", () => {
     expect(within(searchDialog).getByText("obsidian-cli")).toBeInTheDocument();
     expect(within(searchDialog).queryByText("Example")).not.toBeInTheDocument();
 
+    fireEvent.mouseDown(container.querySelector(".search-palette-backdrop") as HTMLElement);
     fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
 
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("apps");
@@ -467,7 +482,7 @@ describe("renderer button parity", () => {
     expect(within(reopenedSearchDialog).getByText("Obsidian")).toBeInTheDocument();
     expect(within(reopenedSearchDialog).getByText("obsidian-cli")).toBeInTheDocument();
 
-    fireEvent.mouseDown(container.querySelector(".sidebar") as HTMLElement);
+    fireEvent.mouseDown(container.querySelector(".search-palette-backdrop") as HTMLElement);
     expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
 
     const searchButton = screen.getByRole("button", { name: "Search" });
@@ -475,8 +490,7 @@ describe("renderer button parity", () => {
     fireEvent.click(searchButton);
     expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument();
 
-    fireEvent.mouseDown(searchButton);
-    fireEvent.click(searchButton);
+    fireEvent.mouseDown(container.querySelector(".search-palette-backdrop") as HTMLElement);
     expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
   });
 
@@ -516,6 +530,7 @@ describe("renderer button parity", () => {
     expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
     expect(within(searchDialog).queryByText("ripgrep")).not.toBeInTheDocument();
 
+    fireEvent.mouseDown(document.querySelector(".search-palette-backdrop") as HTMLElement);
     fireEvent.click(screen.getByRole("button", { name: /Homebrew/ }));
 
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("homebrew");
@@ -556,7 +571,7 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     const searchDialog = screen.getByRole("dialog", { name: "Search" });
     expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
+    fireEvent.mouseDown(document.querySelector(".search-palette-backdrop") as HTMLElement);
 
     unmount();
     render(
@@ -597,9 +612,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    const allButton = screen.getByRole("button", { name: /All/ });
-    const appsButton = screen.getByRole("button", { name: /Apps/ });
-    const homebrewButton = screen.getByRole("button", { name: /Homebrew/ });
+    const allButton = screen.getByRole("button", { name: /All/, hidden: true });
+    const appsButton = screen.getByRole("button", { name: /Apps/, hidden: true });
+    const homebrewButton = screen.getByRole("button", { name: /Homebrew/, hidden: true });
 
     expect(within(allButton as HTMLElement).getByText("2")).toBeInTheDocument();
     expect(within(appsButton as HTMLElement).getByText("1")).toBeInTheDocument();
@@ -1935,7 +1950,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Ignored", hidden: true })
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { level: 2, name: /Ignored Apps and Homebrew/ })
     ).toBeInTheDocument();
@@ -1959,7 +1976,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Ignored", hidden: true })
+    ).toBeInTheDocument();
     const searchDialog = screen.getByRole("dialog", { name: "Search" });
     expect(
       within(searchDialog).getByRole("heading", { level: 2, name: "Ignored Homebrew" })

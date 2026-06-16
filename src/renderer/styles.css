@@ -58,6 +58,11 @@ button:disabled {
   background: var(--sidebar-background);
 }
 
+.app-content-surface {
+  width: 100vw;
+  height: 100vh;
+}
+
 .app-shell,
 .app-shell * {
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
@@ -413,7 +418,7 @@ button:disabled {
   position: fixed;
   inset: 0;
   z-index: 40;
-  pointer-events: none;
+  pointer-events: auto;
   -webkit-app-region: no-drag;
 }
 

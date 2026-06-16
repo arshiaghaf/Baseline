@@ -195,6 +195,30 @@ export function Dashboard({
   const sidebarDerived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
   const compactShellRef = useRef<HTMLElement>(null);
+  const appContentRef = useRef<HTMLDivElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const searchPaletteReturnFocusRef = useRef<HTMLElement | null>(null);
+  const shouldRestoreSearchPaletteFocusRef = useRef(false);
+
+  const openSearchPalette = () => {
+    const activeElement = document.activeElement;
+    searchPaletteReturnFocusRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : searchButtonRef.current;
+    setSearchActive(true);
+  };
+  const closeSearchPalette = () => {
+    shouldRestoreSearchPaletteFocusRef.current = true;
+    setSearchActive(false);
+  };
+  const toggleSearchPalette = () => {
+    if (searchActive) {
+      closeSearchPalette();
+      return;
+    }
+    openSearchPalette();
+  };
 
   useEffect(() => {
     if (!compact || controlledSearchActive !== undefined) {
@@ -224,13 +248,43 @@ export function Dashboard({
       const key = event.key.toLowerCase();
       if (event.metaKey && (key === "f" || key === "k")) {
         event.preventDefault();
+        if (!searchActive) {
+          const activeElement = document.activeElement;
+          searchPaletteReturnFocusRef.current =
+            activeElement instanceof HTMLElement && activeElement !== document.body
+              ? activeElement
+              : searchButtonRef.current;
+        }
         setSearchActive(true);
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [compact]);
+  }, [compact, searchActive]);
+
+  useEffect(() => {
+    const appContent = appContentRef.current;
+    if (!appContent || compact) {
+      return undefined;
+    }
+
+    setElementInert(appContent, searchActive);
+    return () => setElementInert(appContent, false);
+  }, [compact, searchActive]);
+
+  useEffect(() => {
+    if (compact || searchActive || !shouldRestoreSearchPaletteFocusRef.current) {
+      return;
+    }
+
+    shouldRestoreSearchPaletteFocusRef.current = false;
+    const focusTarget = searchPaletteReturnFocusRef.current ?? searchButtonRef.current;
+    searchPaletteReturnFocusRef.current = null;
+    if (focusTarget?.isConnected) {
+      focusTarget.focus();
+    }
+  }, [compact, searchActive]);
 
   const confirmAction = () => {
     if (!actionConfirmation) {
@@ -243,6 +297,10 @@ export function Dashboard({
       return;
     }
     void window.baseline.uninstallHomebrewItem(confirmation.item.id);
+  };
+  const requestActionConfirmation = (confirmation: ActionConfirmation) => {
+    setSearchActive(false);
+    setActionConfirmation(confirmation);
   };
 
   let shell: React.ReactNode;
@@ -310,9 +368,10 @@ export function Dashboard({
           snapshot={snapshot}
           derived={sidebarDerived}
           route="main"
+          searchButtonRef={searchButtonRef}
           onSelectSearch={() => {
             window.location.hash = "/main";
-            setSearchActive(!searchActive);
+            toggleSearchPalette();
           }}
           onDismissSearch={() => setSearchActive(false)}
           onNavigate={() => setSearchActive(false)}
@@ -367,18 +426,20 @@ export function Dashboard({
   }
 
   return (
-    <ActionConfirmationContext.Provider value={setActionConfirmation}>
+    <ActionConfirmationContext.Provider value={requestActionConfirmation}>
       <div
         className={actionConfirmation ? "action-surface action-surface-disabled" : "action-surface"}
         aria-hidden={actionConfirmation ? true : undefined}
       >
-        {shell}
-        {!compact && searchActive && (
-          <SearchPalette
-            snapshot={snapshot}
-            derived={searchDerived}
-            onClose={() => setSearchActive(false)}
-          />
+        <div
+          ref={appContentRef}
+          className="app-content-surface"
+          aria-hidden={!compact && searchActive ? true : undefined}
+        >
+          {shell}
+        </div>
+        {!compact && searchActive && !actionConfirmation && (
+          <SearchPalette snapshot={snapshot} derived={searchDerived} onClose={closeSearchPalette} />
         )}
       </div>
       {actionConfirmation && (
@@ -433,10 +494,59 @@ function compactPopoverControlFocusTarget(
   return focusTarget;
 }
 
+function setElementInert(element: HTMLElement, inert: boolean): void {
+  (element as HTMLElement & { inert: boolean }).inert = inert;
+}
+
+const focusableSelector = [
+  "a[href]",
+  "button:not(:disabled)",
+  "input:not(:disabled)",
+  "select:not(:disabled)",
+  "textarea:not(:disabled)",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
+function focusableElementsIn(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector)).filter(
+    (element) => !element.closest("[aria-hidden='true']")
+  );
+}
+
+function trapFocusWithin(event: KeyboardEvent, container: HTMLElement | null): void {
+  if (!container) {
+    return;
+  }
+
+  const focusableElements = focusableElementsIn(container);
+  if (focusableElements.length === 0) {
+    event.preventDefault();
+    container.focus();
+    return;
+  }
+
+  const firstElement = focusableElements[0]!;
+  const lastElement = focusableElements[focusableElements.length - 1]!;
+  const activeElement = document.activeElement;
+  if (event.shiftKey) {
+    if (activeElement === firstElement || !container.contains(activeElement)) {
+      event.preventDefault();
+      lastElement.focus();
+    }
+    return;
+  }
+
+  if (activeElement === lastElement || !container.contains(activeElement)) {
+    event.preventDefault();
+    firstElement.focus();
+  }
+}
+
 function Sidebar({
   snapshot,
   derived,
   route,
+  searchButtonRef,
   onSelectSearch,
   onDismissSearch,
   onNavigate
@@ -444,6 +554,7 @@ function Sidebar({
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
   route: "main" | "settings";
+  searchButtonRef?: React.RefObject<HTMLButtonElement | null>;
   onSelectSearch?: () => void;
   onDismissSearch?: () => void;
   onNavigate?: () => void;
@@ -464,7 +575,7 @@ function Sidebar({
   return (
     <aside className="sidebar" onMouseDownCapture={dismissSearchFromSidebarMouseDown}>
       <nav className="source-list">
-        <button data-search-toggle="true" onClick={onSelectSearch}>
+        <button data-search-toggle="true" onClick={onSelectSearch} ref={searchButtonRef}>
           <Search size={16} strokeWidth={sidebarIconStrokeWidth} />
           <span>Search</span>
         </button>
@@ -669,21 +780,37 @@ function SearchPalette({
   derived: DerivedSections;
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const handleDialogKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key === "Tab") {
+      trapFocusWithin(event.nativeEvent, dialogRef.current);
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         onClose();
+        return;
+      }
+      if (event.key === "Tab") {
+        trapFocusWithin(event, dialogRef.current);
       }
     };
 
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [onClose]);
 
   return (
     <div className="search-palette-layer">
-      <div className="search-palette-backdrop" />
+      <div className="search-palette-backdrop" aria-hidden="true" onMouseDown={() => onClose()} />
       <div
         className="search-palette-workspace"
         onMouseDown={(event) => {
@@ -693,10 +820,13 @@ function SearchPalette({
         }}
       >
         <section
+          ref={dialogRef}
           className="search-palette"
           role="dialog"
           aria-modal="true"
           aria-label="Search"
+          tabIndex={-1}
+          onKeyDownCapture={handleDialogKeyDown}
           onMouseDown={(event) => event.stopPropagation()}
         >
           <SearchField snapshot={snapshot} autoFocus />
