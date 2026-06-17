@@ -526,9 +526,15 @@ describe("renderer button parity", () => {
       expect(menu).toHaveClass("row-action-menu-popover-floating");
       expect(searchDialog).toContainElement(menu);
       expect(menu).toHaveStyle({ visibility: "visible" });
-      const ignoreMenuItem = screen.getByRole("menuitem", { name: "Ignore" });
+      let ignoreMenuItem = screen.getByRole("menuitem", { name: "Ignore" });
       expect(ignoreMenuItem).toBeInTheDocument();
 
+      fireEvent.keyDown(ignoreMenuItem, { key: "Escape" });
+      expect(screen.queryByRole("menuitem", { name: "Ignore" })).not.toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument();
+
+      fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
+      ignoreMenuItem = screen.getByRole("menuitem", { name: "Ignore" });
       fireEvent.mouseDown(ignoreMenuItem);
       fireEvent.click(ignoreMenuItem);
       expect(window.baseline.toggleIgnoredApp).toHaveBeenCalledWith(app.id);

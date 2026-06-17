@@ -817,6 +817,9 @@ function SearchPalette({
   const dialogRef = useRef<HTMLElement>(null);
   const handleDialogKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Escape") {
+      if (hasOpenNestedMenu(dialogRef.current)) {
+        return;
+      }
       event.preventDefault();
       onClose();
       return;
@@ -829,6 +832,9 @@ function SearchPalette({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (hasOpenNestedMenu(dialogRef.current)) {
+          return;
+        }
         event.preventDefault();
         onClose();
         return;
@@ -872,6 +878,10 @@ function SearchPalette({
       </div>
     </div>
   );
+}
+
+function hasOpenNestedMenu(container: HTMLElement | null): boolean {
+  return Boolean(container?.querySelector("[role='menu']"));
 }
 
 function SearchField({
