@@ -3256,7 +3256,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             <div className="profile-stat-grid">
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
               <ProfileMetric label="Unique apps" value={String(profile.differentApps)} />
-              <ProfileMetric label="Installs" value={String(profile.discoverInstalls)} />
+              <ProfileMetric label="Homebrew Installs" value={String(profile.discoverInstalls)} />
               <ProfileMetric label="Favorite source" value={profile.favoriteChannelLabel} />
             </div>
           </div>

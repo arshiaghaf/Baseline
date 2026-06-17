@@ -1031,11 +1031,11 @@ describe("renderer button parity", () => {
     expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
     expect(screen.getByText("Unique apps")).toBeInTheDocument();
-    expect(screen.getByText("Installs")).toBeInTheDocument();
+    expect(screen.getByText("Homebrew Installs")).toBeInTheDocument();
     expect(screen.getByText(/Since .*2026/)).toBeInTheDocument();
     expect(
       [...document.querySelectorAll(".profile-metric > span")].map((metric) => metric.textContent)
-    ).toEqual(["Total updates", "Unique apps", "Installs", "Favorite source"]);
+    ).toEqual(["Total updates", "Unique apps", "Homebrew Installs", "Favorite source"]);
     expect(
       [...document.querySelectorAll(".profile-metric strong")].map((metric) => metric.textContent)
     ).toEqual(["10", "4", "1", "Sparkle"]);
