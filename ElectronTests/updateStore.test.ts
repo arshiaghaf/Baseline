@@ -2206,7 +2206,7 @@ describe("update store helpers", () => {
     await store.performAppUpdate(app.id);
 
     expect(runBrewCommand).toHaveBeenCalledWith(
-      ["upgrade", "--cask", "homebrew-managed"],
+      ["upgrade", "--cask", "--greedy", "homebrew-managed"],
       expect.any(Function)
     );
     expect(store.getSnapshot().profileStats.events).toEqual([
@@ -2261,7 +2261,7 @@ describe("update store helpers", () => {
     await store.performAppUpdate(app.id);
 
     expect(runBrewCommand).toHaveBeenCalledWith(
-      ["upgrade", "--cask", "homebrew-managed"],
+      ["upgrade", "--cask", "--greedy", "homebrew-managed"],
       expect.any(Function)
     );
   });
@@ -2390,7 +2390,7 @@ describe("update store helpers", () => {
     await linkedStore.performAppUpdate(app.id);
 
     expect(linkedBrewCommand).toHaveBeenCalledWith(
-      ["upgrade", "--cask", "sparkle-managed"],
+      ["upgrade", "--cask", "--greedy", "sparkle-managed"],
       expect.any(Function)
     );
   });
@@ -3290,7 +3290,7 @@ describe("update store helpers", () => {
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["install", "fd"],
       ["upgrade", "ripgrep"],
-      ["upgrade", "--cask", "raycast"]
+      ["upgrade", "--cask", "--greedy", "raycast"]
     ]);
   });
 
@@ -3369,7 +3369,7 @@ describe("update store helpers", () => {
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["upgrade", "ripgrep"],
       ["upgrade", "bat"],
-      ["upgrade", "--cask", "raycast"]
+      ["upgrade", "--cask", "--greedy", "raycast"]
     ]);
     expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
     expect(store.getSnapshot().homebrewUpdatingItemIDs).toEqual([]);

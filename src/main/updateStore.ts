@@ -455,7 +455,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   ): Promise<void> {
     const itemID = item.id;
     const command =
-      item.kind === "cask" ? ["upgrade", "--cask", item.token] : ["upgrade", item.token];
+      item.kind === "cask"
+        ? ["upgrade", "--cask", "--greedy", item.token]
+        : ["upgrade", item.token];
     const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
     const result = await this.runBrewWithEvents(command, (event) => {
       this.applyHomebrewProgressEvent(
@@ -543,7 +545,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     );
     const sequence = [
       ...(formulaTokens.length > 0 ? [["upgrade", ...formulaTokens]] : []),
-      ...(caskTokens.length > 0 ? [["upgrade", "--cask", ...caskTokens]] : [])
+      ...(caskTokens.length > 0 ? [["upgrade", "--cask", "--greedy", ...caskTokens]] : [])
     ];
     const completedItemIDs = new Set<string>();
     let success = true;
