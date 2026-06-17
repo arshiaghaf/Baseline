@@ -30,6 +30,16 @@ describe("security policy", () => {
     expect(isAllowedFeedURL("https://[::ffff:127.0.0.1]/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://[::ffff:10.0.0.4]/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://[::ffff:192.168.1.10]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::ffff:0:127.0.0.1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::ffff:0:a00:4]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::127.0.0.1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::7f00:1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::10.0.0.4]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[::a00:4]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[64:ff9b::127.0.0.1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[64:ff9b::7f00:1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[2001:4860:4860::8888]/feed.xml")).toBe(true);
+    expect(isAllowedFeedURL("https://[::ffff:0:808:808]/feed.xml")).toBe(true);
     expect(isAllowedFeedURL("https://updates.example.com/appcast.xml")).toBe(true);
   });
 

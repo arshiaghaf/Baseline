@@ -119,10 +119,9 @@ function isDisallowedIPv4(host: string): boolean {
 
 function isDisallowedIPv6(host: string): boolean {
   const normalized = host.toLowerCase();
-  const ipv4Mapped = normalized.match(/^::ffff:(?<mapped>[0-9a-f:.]+)$/u)?.groups?.mapped;
-  if (ipv4Mapped) {
-    const mapped = normalizeIPv4MappedAddress(ipv4Mapped);
-    return mapped ? isDisallowedIPv4(mapped) : true;
+  const embeddedIPv4 = embeddedIPv4Address(normalized);
+  if (embeddedIPv4) {
+    return isDisallowedIPv4(embeddedIPv4);
   }
 
   return (
@@ -134,22 +133,75 @@ function isDisallowedIPv6(host: string): boolean {
   );
 }
 
-function normalizeIPv4MappedAddress(raw: string): string | undefined {
-  if (isIP(raw) === 4) {
-    return raw;
-  }
-
-  const hexGroups = raw.split(":");
-  if (hexGroups.length !== 2) {
+function embeddedIPv4Address(host: string): string | undefined {
+  const groups = ipv6Groups(host);
+  if (!groups) {
     return undefined;
   }
 
-  const [highRaw, lowRaw] = hexGroups as [string, string];
-  const high = Number.parseInt(highRaw, 16);
-  const low = Number.parseInt(lowRaw, 16);
-  if ([high, low].some((value) => !Number.isInteger(value) || value < 0 || value > 0xffff)) {
+  const isIPv4Mapped = groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff;
+  const isIPv4Translated =
+    groups.slice(0, 4).every((group) => group === 0) && groups[4] === 0xffff && groups[5] === 0;
+  const isIPv4Compatible = groups.slice(0, 6).every((group) => group === 0);
+  const isWellKnownNAT64 =
+    groups[0] === 0x64 && groups[1] === 0xff9b && groups.slice(2, 6).every((group) => group === 0);
+  if (!isIPv4Mapped && !isIPv4Translated && !isIPv4Compatible && !isWellKnownNAT64) {
     return undefined;
   }
 
+  const high = groups[6]!;
+  const low = groups[7]!;
   return [high >> 8, high & 0xff, low >> 8, low & 0xff].join(".");
+}
+
+function ipv6Groups(host: string): number[] | undefined {
+  if (host.includes(".")) {
+    const lastColon = host.lastIndexOf(":");
+    if (lastColon === -1) {
+      return undefined;
+    }
+    const ipv4 = host.slice(lastColon + 1);
+    if (isIP(ipv4) !== 4) {
+      return undefined;
+    }
+    const bytes = ipv4.split(".").map((part) => Number.parseInt(part, 10));
+    const high = (bytes[0]! << 8) | bytes[1]!;
+    const low = (bytes[2]! << 8) | bytes[3]!;
+    return ipv6Groups(`${host.slice(0, lastColon)}:${high.toString(16)}:${low.toString(16)}`);
+  }
+
+  const compressionParts = host.split("::");
+  if (compressionParts.length > 2) {
+    return undefined;
+  }
+
+  if (compressionParts.length === 2) {
+    const [headRaw, tailRaw] = compressionParts as [string, string];
+    const head = ipv6GroupList(headRaw);
+    const tail = ipv6GroupList(tailRaw);
+    if (!head || !tail) {
+      return undefined;
+    }
+    const missing = 8 - head.length - tail.length;
+    if (missing < 1) {
+      return undefined;
+    }
+    return [...head, ...Array<number>(missing).fill(0), ...tail];
+  }
+
+  const groups = ipv6GroupList(host);
+  return groups?.length === 8 ? groups : undefined;
+}
+
+function ipv6GroupList(raw: string): number[] | undefined {
+  if (!raw) {
+    return [];
+  }
+  const groups = raw.split(":").map((group) => {
+    if (!/^[0-9a-f]{1,4}$/u.test(group)) {
+      return Number.NaN;
+    }
+    return Number.parseInt(group, 16);
+  });
+  return groups.every(Number.isInteger) ? groups : undefined;
 }
