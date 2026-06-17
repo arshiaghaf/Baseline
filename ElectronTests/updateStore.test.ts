@@ -23,7 +23,8 @@ import type {
   HomebrewCaskIndex,
   HomebrewManagedItem,
   PersistedSnapshot,
-  ProfileStats
+  ProfileStats,
+  UpdateRecord
 } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
@@ -718,6 +719,136 @@ describe("update store helpers", () => {
       source: "homebrew",
       remoteVersion: version("2.0.0"),
       homebrewToken: "precedence"
+    });
+  });
+
+  it("preserves previous App Store updates when App Store lookup transiently fails", async () => {
+    const installedApp = appRecord({
+      bundlePath: "/Applications/App Store Transient.app",
+      displayName: "App Store Transient",
+      bundleIdentifier: "com.example.app-store-transient",
+      sparkleFeedURL: "https://updates.example.com/app-store-transient.xml",
+      localVersion: version("1.0.0")
+    });
+    const previousUpdate: UpdateRecord = {
+      id: installedApp.id,
+      appID: installedApp.id,
+      source: "appStore",
+      supportLevel: "supported",
+      localVersion: version("1.0.0"),
+      remoteVersion: version("2.0.0"),
+      updateURL: "https://apps.apple.com/app/example",
+      appStoreItemID: 123,
+      checkedAt: "2026-05-20T12:00:00.000Z"
+    };
+    const sparkleLookup = vi.fn(async () => ({
+      type: "completed" as const,
+      value: {
+        remoteVersion: version("1.5.0"),
+        updateURL: "https://updates.example.com/download"
+      }
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [installedApp],
+        updates: [previousUpdate]
+      },
+      clients: {
+        scanner: { scanApplications: async () => [installedApp] },
+        appStore: { lookupOutcome: async () => ({ type: "transientFailure" as const }) },
+        sparkle: { lookupOutcome: sparkleLookup }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().updates).toEqual([previousUpdate]);
+    expect(store.getSnapshot().recentlyUpdated).toEqual([]);
+    expect(sparkleLookup).not.toHaveBeenCalled();
+  });
+
+  it("preserves previous Sparkle build-only updates when Sparkle lookup transiently fails", async () => {
+    const installedApp = appRecord({
+      bundlePath: "/Applications/Sparkle Transient.app",
+      displayName: "Sparkle Transient",
+      bundleIdentifier: "com.example.sparkle-transient",
+      sparkleFeedURL: "https://updates.example.com/sparkle-transient.xml",
+      localVersion: version("1.0"),
+      bundleVersion: version("100")
+    });
+    const previousUpdate: UpdateRecord = {
+      id: installedApp.id,
+      appID: installedApp.id,
+      source: "sparkle",
+      supportLevel: "limited",
+      localVersion: version("1.0"),
+      remoteVersion: version("1.0"),
+      localBuildVersion: version("100"),
+      remoteBuildVersion: version("101"),
+      updateURL: "https://updates.example.com/download",
+      checkedAt: "2026-05-20T12:00:00.000Z"
+    };
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [installedApp],
+        updates: [previousUpdate]
+      },
+      clients: {
+        scanner: { scanApplications: async () => [installedApp] },
+        appStore: { lookupOutcome: async () => ({ type: "completed" as const }) },
+        sparkle: { lookupOutcome: async () => ({ type: "transientFailure" as const }) }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().updates).toEqual([previousUpdate]);
+    expect(store.getSnapshot().recentlyUpdated).toEqual([]);
+  });
+
+  it("clears a previous app update after the installed version advances", async () => {
+    const previousApp = appRecord({
+      bundlePath: "/Applications/Advanced App.app",
+      displayName: "Advanced App",
+      bundleIdentifier: "com.example.advanced-app",
+      localVersion: version("1.0.0")
+    });
+    const refreshedApp = {
+      ...previousApp,
+      localVersion: version("2.0.0")
+    };
+    const previousUpdate: UpdateRecord = {
+      id: previousApp.id,
+      appID: previousApp.id,
+      source: "appStore",
+      supportLevel: "supported",
+      localVersion: version("1.0.0"),
+      remoteVersion: version("2.0.0"),
+      updateURL: "https://apps.apple.com/app/example",
+      checkedAt: "2026-05-20T12:00:00.000Z"
+    };
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [previousApp],
+        updates: [previousUpdate]
+      },
+      clients: {
+        scanner: { scanApplications: async () => [refreshedApp] },
+        appStore: { lookupOutcome: async () => ({ type: "transientFailure" as const }) }
+      }
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().updates).toEqual([]);
+    expect(store.getSnapshot().recentlyUpdated[0]).toMatchObject({
+      appID: previousApp.id,
+      source: "appStore",
+      fromVersion: version("1.0.0"),
+      toVersion: version("2.0.0")
     });
   });
 

@@ -70,6 +70,8 @@ type RefreshOptions = {
   allowHomebrewInventoryDuringActiveCommand?: boolean;
 };
 
+type AppLookupSource = Extract<UpdateRecord["source"], "appStore" | "sparkle">;
+
 type HomebrewUpdateQueueEntry = {
   item: HomebrewManagedItem;
   profileStatsEvent?: ProfileStatsEvent;
@@ -999,6 +1001,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       }
       this.latestHomebrewIndex = homebrewIndex;
       this.latestHomebrewFormulaIndex = homebrewFormulaIndex;
+      const previousUpdates = new Map(this.state.updates.map((update) => [update.appID, update]));
       const updates: UpdateRecord[] = [];
 
       for (const appRecord of apps) {
@@ -1027,6 +1030,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             });
             continue;
           }
+          if (outcome.type === "transientFailure") {
+            const previousUpdate = previousAppUpdateForTransientLookup(
+              previousUpdates,
+              appRecord,
+              "appStore"
+            );
+            if (previousUpdate) {
+              updates.push(previousUpdate);
+              continue;
+            }
+          }
         }
 
         if (appRecord.sparkleFeedURL) {
@@ -1051,6 +1065,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
               checkedAt: now
             });
             continue;
+          }
+          if (outcome.type === "transientFailure") {
+            const previousUpdate = previousAppUpdateForTransientLookup(
+              previousUpdates,
+              appRecord,
+              "sparkle"
+            );
+            if (previousUpdate) {
+              updates.push(previousUpdate);
+              continue;
+            }
           }
         }
 
@@ -1083,7 +1108,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (sequence !== this.refreshSequence) {
         return;
       }
-      const previousUpdates = new Map(this.state.updates.map((update) => [update.appID, update]));
       const previousHomebrewItems = this.state.homebrewItems;
       const reconciledHomebrewItems = reconcileHomebrewInventory(
         preservePreviousHomebrewOutdatedState(
@@ -1765,6 +1789,55 @@ function removeRecordKey<T>(record: Record<string, T>, key: string): Record<stri
   const next = { ...record };
   delete next[key];
   return next;
+}
+
+function previousAppUpdateForTransientLookup(
+  previousUpdates: Map<string, UpdateRecord>,
+  appRecord: AppRecord,
+  source: AppLookupSource
+): UpdateRecord | undefined {
+  const previousUpdate = previousUpdates.get(appRecord.id);
+  if (!previousUpdate || previousUpdate.source !== source) {
+    return undefined;
+  }
+  if (!canPreservePreviousAppUpdate(appRecord, previousUpdate)) {
+    return undefined;
+  }
+  return previousUpdate;
+}
+
+function canPreservePreviousAppUpdate(appRecord: AppRecord, previousUpdate: UpdateRecord): boolean {
+  if (previousUpdate.appID !== appRecord.id) {
+    return false;
+  }
+  if (compareVersions(previousUpdate.localVersion, appRecord.localVersion) !== 0) {
+    return false;
+  }
+  if (
+    previousUpdate.localBuildVersion &&
+    (!appRecord.bundleVersion ||
+      compareVersions(previousUpdate.localBuildVersion, appRecord.bundleVersion) !== 0)
+  ) {
+    return false;
+  }
+  return isAppUpdateNewerThanInstalledApp(previousUpdate, appRecord);
+}
+
+function isAppUpdateNewerThanInstalledApp(update: UpdateRecord, appRecord: AppRecord): boolean {
+  const versionComparison = compareVersions(update.remoteVersion, appRecord.localVersion);
+  if (versionComparison > 0) {
+    return true;
+  }
+  if (versionComparison < 0) {
+    return false;
+  }
+  if (!update.remoteBuildVersion || !update.localBuildVersion || !appRecord.bundleVersion) {
+    return false;
+  }
+  return (
+    compareVersions(update.localBuildVersion, appRecord.bundleVersion) === 0 &&
+    isVersionGreater(update.remoteBuildVersion, appRecord.bundleVersion)
+  );
 }
 
 function emptyHomebrewInventoryResult(): HomebrewInventoryResult {
