@@ -281,6 +281,44 @@ describe("bundle scanner", () => {
     });
   });
 
+  it("does not enable iOS software lookup for App Store UIKit bundles with mixed iPad and Mac idioms", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    const appPath = path.join(root, "UIKit Mixed Idiom App.app");
+    await writeAppPlist(appPath, {
+      displayName: "UIKit Mixed Idiom App",
+      bundleIdentifier: "com.example.uikit-mixed-idiom",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>UIApplicationSceneManifest</key>",
+        "  <dict>",
+        "    <key>UIApplicationSupportsMultipleScenes</key>",
+        "    <false/>",
+        "  </dict>",
+        "  <key>UIDeviceFamily</key>",
+        "  <array>",
+        "    <integer>2</integer>",
+        "    <integer>6</integer>",
+        "  </array>",
+        "  <key>UILaunchStoryboardName</key>",
+        "  <string>LaunchScreen</string>"
+      ].join("\n")
+    });
+    await mkdir(path.join(appPath, "Contents", "_MASReceipt"), { recursive: true });
+    await writeFile(path.join(appPath, "Contents", "_MASReceipt", "receipt"), "receipt");
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundlePath: appPath,
+      bundleIdentifier: "com.example.uikit-mixed-idiom",
+      sourceHint: "appStore",
+      isIOSAppOnMac: false,
+      hasAppStoreEvidence: true
+    });
+  });
+
   it("marks App Store UIKit Mac bundles with scalar device family as lookup eligible", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
     tempDirs.push(root);
