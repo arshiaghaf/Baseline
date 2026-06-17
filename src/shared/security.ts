@@ -140,10 +140,12 @@ function embeddedIPv4Address(host: string): string | undefined {
   }
 
   const isIPv4Mapped = groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff;
+  const isIPv4Translated =
+    groups.slice(0, 4).every((group) => group === 0) && groups[4] === 0xffff && groups[5] === 0;
   const isIPv4Compatible = groups.slice(0, 6).every((group) => group === 0);
   const isWellKnownNAT64 =
     groups[0] === 0x64 && groups[1] === 0xff9b && groups.slice(2, 6).every((group) => group === 0);
-  if (!isIPv4Mapped && !isIPv4Compatible && !isWellKnownNAT64) {
+  if (!isIPv4Mapped && !isIPv4Translated && !isIPv4Compatible && !isWellKnownNAT64) {
     return undefined;
   }
 
