@@ -130,6 +130,32 @@ function toolbarButtonLabels(container: HTMLElement): Array<string | null> {
     .map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"));
 }
 
+function domRect({
+  top,
+  right,
+  bottom,
+  left
+}: {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}): DOMRect {
+  const width = right - left;
+  const height = bottom - top;
+  return {
+    x: left,
+    y: top,
+    width,
+    height,
+    top,
+    right,
+    bottom,
+    left,
+    toJSON: () => ({})
+  } as DOMRect;
+}
+
 describe("renderer button parity", () => {
   beforeEach(() => {
     installBaselineMock();
@@ -465,28 +491,55 @@ describe("renderer button parity", () => {
   });
 
   it("closes search palette row action menus on outside clicks inside the dialog", () => {
-    render(
-      <Dashboard
-        compact={false}
-        searchActive
-        onOpenSettings={() => undefined}
-        snapshot={snapshot({
-          selectedTab: "apps",
-          searchText: "example"
-        })}
-      />
-    );
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+        if (this.classList.contains("search-palette-results")) {
+          return domRect({ top: 140, right: 802, bottom: 220, left: 218 });
+        }
+        if (this.classList.contains("search-palette")) {
+          return domRect({ top: 80, right: 820, bottom: 360, left: 200 });
+        }
+        if (this.getAttribute("aria-label") === "Actions") {
+          return domRect({ top: 184, right: 792, bottom: 212, left: 764 });
+        }
+        return originalGetBoundingClientRect.call(this);
+      });
 
-    const searchDialog = screen.getByRole("dialog", { name: "Search" });
-    fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
-    expect(within(searchDialog).getByRole("menu")).toHaveClass("row-action-menu-popover-fixed");
-    expect(within(searchDialog).getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
+    try {
+      render(
+        <Dashboard
+          compact={false}
+          searchActive
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            selectedTab: "apps",
+            searchText: "example"
+          })}
+        />
+      );
 
-    fireEvent.mouseDown(within(searchDialog).getByPlaceholderText("Search"));
+      const searchDialog = screen.getByRole("dialog", { name: "Search" });
+      fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
+      const menu = screen.getByRole("menu");
+      expect(menu).toHaveClass("row-action-menu-popover-floating");
+      expect(searchDialog).toContainElement(menu);
+      expect(menu).toHaveStyle({ visibility: "visible" });
+      const ignoreMenuItem = screen.getByRole("menuitem", { name: "Ignore" });
+      expect(ignoreMenuItem).toBeInTheDocument();
 
-    expect(
-      within(searchDialog).queryByRole("menuitem", { name: "Ignore" })
-    ).not.toBeInTheDocument();
+      fireEvent.mouseDown(ignoreMenuItem);
+      fireEvent.click(ignoreMenuItem);
+      expect(window.baseline.toggleIgnoredApp).toHaveBeenCalledWith(app.id);
+
+      fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
+      fireEvent.mouseDown(within(searchDialog).getByPlaceholderText("Search"));
+
+      expect(screen.queryByRole("menuitem", { name: "Ignore" })).not.toBeInTheDocument();
+    } finally {
+      rectSpy.mockRestore();
+    }
   });
 
   it("closes search mode on backdrop clicks without clearing the saved query", async () => {

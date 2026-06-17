@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
@@ -77,7 +78,8 @@ type RowUpdateMenuAction = {
   disabled?: boolean;
   onAction: () => void;
 };
-type RowActionMenuPosition = {
+type RowActionMenuPlacement = "below" | "above" | "floating";
+type RowActionMenuFloatingPosition = {
   left: number;
   top: number;
 };
@@ -2546,9 +2548,10 @@ function RowMoreActionButton({
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
-  const [fixedPopoverPosition, setFixedPopoverPosition] = useState<RowActionMenuPosition>();
+  const [popoverPlacement, setPopoverPlacement] = useState<RowActionMenuPlacement>("below");
+  const [floatingPopoverPosition, setFloatingPopoverPosition] =
+    useState<RowActionMenuFloatingPosition>();
   const ignoreLabel = isIgnored ? "Unignore" : "Ignore";
-  const useFixedPopover = open && Boolean(menuRef.current?.closest(".search-palette"));
 
   useEffect(() => {
     if (!open) {
@@ -2556,7 +2559,8 @@ function RowMoreActionButton({
     }
 
     const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !popoverRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -2575,48 +2579,70 @@ function RowMoreActionButton({
   }, [open]);
 
   useLayoutEffect(() => {
-    if (!open || !useFixedPopover) {
-      setFixedPopoverPosition(undefined);
+    if (!open) {
+      setPopoverPlacement("below");
+      setFloatingPopoverPosition(undefined);
       return undefined;
     }
 
-    const updatePopoverPosition = () => {
+    const updatePopoverPlacement = () => {
       const trigger = triggerRef.current;
-      if (!trigger) {
+      const clippingContainer =
+        menuRef.current?.closest(".search-palette-results") ??
+        menuRef.current?.closest(".search-palette");
+      if (!trigger || !(clippingContainer instanceof HTMLElement)) {
+        setPopoverPlacement("below");
+        setFloatingPopoverPosition(undefined);
         return;
       }
 
       const triggerRect = trigger.getBoundingClientRect();
+      const clippingRect = clippingContainer.getBoundingClientRect();
       const popoverRect = popoverRef.current?.getBoundingClientRect();
-      const popoverWidth = popoverRect?.width || 142;
+      const popoverWidth = popoverRect?.width || rowActionMenuEstimatedWidth;
       const popoverHeight =
         popoverRect?.height || rowActionMenuEstimatedHeight(updateAction, canUninstall);
       const viewportPadding = 8;
       const gap = 6;
-      const maxLeft = Math.max(viewportPadding, window.innerWidth - popoverWidth - viewportPadding);
-      const left = Math.min(Math.max(viewportPadding, triggerRect.right - popoverWidth), maxLeft);
-      const belowTop = triggerRect.bottom + gap;
-      const aboveTop = triggerRect.top - popoverHeight - gap;
-      const hasRoomBelow = belowTop + popoverHeight + viewportPadding <= window.innerHeight;
-      const top =
-        hasRoomBelow || aboveTop < viewportPadding
-          ? Math.min(belowTop, window.innerHeight - popoverHeight - viewportPadding)
-          : Math.max(viewportPadding, aboveTop);
+      const availableBelow = clippingRect.bottom - triggerRect.bottom - gap - viewportPadding;
+      const availableAbove = triggerRect.top - clippingRect.top - gap - viewportPadding;
 
-      setFixedPopoverPosition({
-        left,
-        top: Math.max(viewportPadding, top)
+      if (availableBelow >= popoverHeight) {
+        setPopoverPlacement("below");
+        setFloatingPopoverPosition(undefined);
+        return;
+      }
+
+      if (availableAbove >= popoverHeight) {
+        setPopoverPlacement("above");
+        setFloatingPopoverPosition(undefined);
+        return;
+      }
+
+      const preferredTop =
+        availableBelow >= availableAbove
+          ? triggerRect.bottom + gap
+          : triggerRect.top - popoverHeight - gap;
+      const maxTop = Math.max(
+        viewportPadding,
+        window.innerHeight - popoverHeight - viewportPadding
+      );
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - popoverWidth - viewportPadding);
+      setPopoverPlacement("floating");
+      setFloatingPopoverPosition({
+        left: Math.min(Math.max(viewportPadding, triggerRect.right - popoverWidth), maxLeft),
+        top: Math.min(Math.max(viewportPadding, preferredTop), maxTop)
       });
     };
 
-    updatePopoverPosition();
-    window.addEventListener("resize", updatePopoverPosition);
-    window.addEventListener("scroll", updatePopoverPosition, true);
+    updatePopoverPlacement();
+    window.addEventListener("resize", updatePopoverPlacement);
+    window.addEventListener("scroll", updatePopoverPlacement, true);
     return () => {
-      window.removeEventListener("resize", updatePopoverPosition);
-      window.removeEventListener("scroll", updatePopoverPosition, true);
+      window.removeEventListener("resize", updatePopoverPlacement);
+      window.removeEventListener("scroll", updatePopoverPlacement, true);
     };
-  }, [canUninstall, open, updateAction, useFixedPopover]);
+  }, [canUninstall, open, updateAction]);
 
   const invokeIgnore = () => {
     setOpen(false);
@@ -2636,6 +2662,60 @@ function RowMoreActionButton({
     setOpen(false);
     onUninstall();
   };
+  const popover = open ? (
+    <div
+      ref={popoverRef}
+      className={rowActionMenuPopoverClassName(popoverPlacement)}
+      role="menu"
+      style={
+        popoverPlacement === "floating"
+          ? floatingRowActionMenuStyle(floatingPopoverPosition)
+          : undefined
+      }
+    >
+      {updateAction && (
+        <button
+          onClick={invokeUpdate}
+          role="menuitem"
+          disabled={updateAction.disabled || updateAction.state.type !== "ready"}
+        >
+          {updateAction.state.type === "ready" ? (
+            <Download size={14} />
+          ) : updateAction.state.type === "queued" ? (
+            <ClockArrowDown size={14} />
+          ) : updateAction.state.type === "updating" ? (
+            updateAction.state.progress === undefined ? (
+              <RefreshCcw className="spin" size={14} />
+            ) : (
+              <ProgressRing value={updateAction.state.progress} />
+            )
+          ) : updateAction.state.type === "done" ? (
+            <Check className="done-glyph" size={14} strokeWidth={3} />
+          ) : (
+            <span className="failure-glyph">!</span>
+          )}
+          <span>
+            {updateAction.state.type === "ready" ? "Update" : actionStateLabel(updateAction.state)}
+          </span>
+        </button>
+      )}
+      <button onClick={invokeIgnore} role="menuitem" disabled={disabled}>
+        {isIgnored ? <EyeOff size={14} /> : <Eye size={14} />}
+        <span>{ignoreLabel}</span>
+      </button>
+      {canUninstall && (
+        <button
+          className="danger-menu-item"
+          onClick={invokeUninstall}
+          role="menuitem"
+          disabled={uninstallDisabled}
+        >
+          {uninstalling ? <UninstallActionGlyph /> : <Trash2 size={14} />}
+          <span>{uninstallLabel}</span>
+        </button>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div className="row-action-menu" ref={menuRef}>
@@ -2651,64 +2731,37 @@ function RowMoreActionButton({
       >
         {uninstalling ? <UninstallActionGlyph /> : <MoreHorizontal size={15} />}
       </button>
-      {open && (
-        <div
-          ref={popoverRef}
-          className={
-            useFixedPopover
-              ? "row-action-menu-popover row-action-menu-popover-fixed"
-              : "row-action-menu-popover"
-          }
-          role="menu"
-          style={fixedRowActionMenuStyle(useFixedPopover, fixedPopoverPosition)}
-        >
-          {updateAction && (
-            <button
-              onClick={invokeUpdate}
-              role="menuitem"
-              disabled={updateAction.disabled || updateAction.state.type !== "ready"}
-            >
-              {updateAction.state.type === "ready" ? (
-                <Download size={14} />
-              ) : updateAction.state.type === "queued" ? (
-                <ClockArrowDown size={14} />
-              ) : updateAction.state.type === "updating" ? (
-                updateAction.state.progress === undefined ? (
-                  <RefreshCcw className="spin" size={14} />
-                ) : (
-                  <ProgressRing value={updateAction.state.progress} />
-                )
-              ) : updateAction.state.type === "done" ? (
-                <Check className="done-glyph" size={14} strokeWidth={3} />
-              ) : (
-                <span className="failure-glyph">!</span>
-              )}
-              <span>
-                {updateAction.state.type === "ready"
-                  ? "Update"
-                  : actionStateLabel(updateAction.state)}
-              </span>
-            </button>
-          )}
-          <button onClick={invokeIgnore} role="menuitem" disabled={disabled}>
-            {isIgnored ? <EyeOff size={14} /> : <Eye size={14} />}
-            <span>{ignoreLabel}</span>
-          </button>
-          {canUninstall && (
-            <button
-              className="danger-menu-item"
-              onClick={invokeUninstall}
-              role="menuitem"
-              disabled={uninstallDisabled}
-            >
-              {uninstalling ? <UninstallActionGlyph /> : <Trash2 size={14} />}
-              <span>{uninstallLabel}</span>
-            </button>
-          )}
-        </div>
-      )}
+      {popoverPlacement === "floating" && popover
+        ? createPortal(popover, floatingRowActionMenuPortalTarget(menuRef.current))
+        : popover}
     </div>
   );
+}
+
+const rowActionMenuEstimatedWidth = 142;
+
+function rowActionMenuPopoverClassName(placement: RowActionMenuPlacement): string {
+  if (placement === "above") {
+    return "row-action-menu-popover row-action-menu-popover-above";
+  }
+  if (placement === "floating") {
+    return "row-action-menu-popover row-action-menu-popover-floating";
+  }
+  return "row-action-menu-popover";
+}
+
+function floatingRowActionMenuStyle(
+  position: RowActionMenuFloatingPosition | undefined
+): React.CSSProperties {
+  return {
+    left: position?.left ?? 0,
+    top: position?.top ?? 0,
+    visibility: position ? "visible" : "hidden"
+  };
+}
+
+function floatingRowActionMenuPortalTarget(menu: HTMLElement | null): HTMLElement {
+  return menu?.closest<HTMLElement>(".search-palette") ?? document.body;
 }
 
 function rowActionMenuEstimatedHeight(
@@ -2717,21 +2770,6 @@ function rowActionMenuEstimatedHeight(
 ): number {
   const itemCount = 1 + (updateAction ? 1 : 0) + (canUninstall ? 1 : 0);
   return itemCount * 28 + 10;
-}
-
-function fixedRowActionMenuStyle(
-  useFixedPopover: boolean,
-  position: RowActionMenuPosition | undefined
-): React.CSSProperties | undefined {
-  if (!useFixedPopover) {
-    return undefined;
-  }
-
-  return {
-    left: position?.left ?? 0,
-    top: position?.top ?? 0,
-    visibility: position ? "visible" : "hidden"
-  };
 }
 
 function ProgressRing({ value }: { value: number }) {
