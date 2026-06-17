@@ -524,7 +524,7 @@ describe("renderer button parity", () => {
       fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
       const menu = screen.getByRole("menu");
       expect(menu).toHaveClass("row-action-menu-popover-floating");
-      expect(searchDialog).toContainElement(menu);
+      expect(searchDialog).not.toContainElement(menu);
       expect(menu).toHaveStyle({ visibility: "visible" });
       let ignoreMenuItem = screen.getByRole("menuitem", { name: "Ignore" });
       expect(ignoreMenuItem).toBeInTheDocument();

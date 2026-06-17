@@ -2741,9 +2741,7 @@ function RowMoreActionButton({
       >
         {uninstalling ? <UninstallActionGlyph /> : <MoreHorizontal size={15} />}
       </button>
-      {popoverPlacement === "floating" && popover
-        ? createPortal(popover, floatingRowActionMenuPortalTarget(menuRef.current))
-        : popover}
+      {popoverPlacement === "floating" && popover ? createPortal(popover, document.body) : popover}
     </div>
   );
 }
@@ -2768,10 +2766,6 @@ function floatingRowActionMenuStyle(
     top: position?.top ?? 0,
     visibility: position ? "visible" : "hidden"
   };
-}
-
-function floatingRowActionMenuPortalTarget(menu: HTMLElement | null): HTMLElement {
-  return menu?.closest<HTMLElement>(".search-palette") ?? document.body;
 }
 
 function rowActionMenuEstimatedHeight(
