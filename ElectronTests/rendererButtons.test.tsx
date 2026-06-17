@@ -511,7 +511,6 @@ describe("renderer button parity", () => {
       render(
         <Dashboard
           compact={false}
-          searchActive
           onOpenSettings={() => undefined}
           snapshot={snapshot({
             selectedTab: "apps",
@@ -520,6 +519,7 @@ describe("renderer button parity", () => {
         />
       );
 
+      fireEvent.click(screen.getByRole("button", { name: "Search" }));
       const searchDialog = screen.getByRole("dialog", { name: "Search" });
       fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
       const menu = screen.getByRole("menu");

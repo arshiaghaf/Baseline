@@ -880,8 +880,14 @@ function SearchPalette({
   );
 }
 
+const searchPaletteFloatingRowMenuSelector =
+  "[data-search-palette-floating-row-menu='true'][role='menu']";
+
 function hasOpenNestedMenu(container: HTMLElement | null): boolean {
-  return Boolean(container?.querySelector("[role='menu']"));
+  return Boolean(
+    container?.querySelector("[role='menu']") ||
+    document.querySelector(searchPaletteFloatingRowMenuSelector)
+  );
 }
 
 function SearchField({
@@ -2672,10 +2678,14 @@ function RowMoreActionButton({
     setOpen(false);
     onUninstall();
   };
+  const isSearchPaletteRowMenu = Boolean(menuRef.current?.closest(".search-palette"));
   const popover = open ? (
     <div
       ref={popoverRef}
       className={rowActionMenuPopoverClassName(popoverPlacement)}
+      data-search-palette-floating-row-menu={
+        isSearchPaletteRowMenu && popoverPlacement === "floating" ? "true" : undefined
+      }
       role="menu"
       style={
         popoverPlacement === "floating"
