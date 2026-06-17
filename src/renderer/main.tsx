@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
 // SPDX-License-Identifier: GPL-3.0-only
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
   AlertTriangle,
@@ -77,6 +78,11 @@ type RowUpdateMenuAction = {
   disabled?: boolean;
   onAction: () => void;
 };
+type RowActionMenuPlacement = "below" | "above" | "floating";
+type RowActionMenuFloatingPosition = {
+  left: number;
+  top: number;
+};
 type SettingsSectionID = "general" | "profile" | "appearance" | "diagnostics";
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
@@ -124,10 +130,10 @@ const initialSnapshot: BaselineSnapshot = {
   defaultScanDirectories: []
 };
 
-function App() {
+export function App() {
   const [snapshot, setSnapshot] = useState<BaselineSnapshot>(initialSnapshot);
   const [route, setRoute] = useState<Route>(currentRoute());
-  const [toolbarSearchOpen, setToolbarSearchOpen] = useState(false);
+  const [searchActive, setSearchActive] = useState(false);
   const previousSearchTextRef = useRef(initialSnapshot.searchText);
 
   useEffect(() => {
@@ -138,10 +144,10 @@ function App() {
   useEffect(() => {
     const previousSearchText = previousSearchTextRef.current;
     previousSearchTextRef.current = snapshot.searchText;
-    if (!previousSearchText.trim() && snapshot.searchText.trim()) {
-      setToolbarSearchOpen(true);
+    if (route === "menubar" && !previousSearchText.trim() && snapshot.searchText.trim()) {
+      setSearchActive(true);
     }
-  }, [snapshot.searchText]);
+  }, [route, snapshot.searchText]);
 
   useEffect(() => {
     const onHashChange = () => setRoute(currentRoute());
@@ -157,10 +163,10 @@ function App() {
     <Dashboard
       snapshot={snapshot}
       compact={route === "menubar"}
-      toolbarSearchOpen={toolbarSearchOpen}
-      onToolbarSearchOpenChange={setToolbarSearchOpen}
+      searchActive={searchActive}
+      onSearchActiveChange={setSearchActive}
       onOpenSettings={() => {
-        setToolbarSearchOpen(false);
+        setSearchActive(false);
         void window.baseline.showSettings();
       }}
     />
@@ -170,55 +176,130 @@ function App() {
 export function Dashboard({
   snapshot,
   compact,
-  toolbarSearchOpen: controlledToolbarSearchOpen,
-  onToolbarSearchOpenChange,
+  searchActive: controlledSearchActive,
+  onSearchActiveChange,
   onOpenSettings
 }: {
   snapshot: BaselineSnapshot;
   compact: boolean;
-  toolbarSearchOpen?: boolean;
-  onToolbarSearchOpenChange?: (open: boolean) => void;
+  searchActive?: boolean;
+  onSearchActiveChange?: (active: boolean) => void;
   onOpenSettings: () => void;
 }) {
   const selectedTab = snapshot.selectedTab;
-  const [uncontrolledToolbarSearchOpen, setUncontrolledToolbarSearchOpen] = useState(
-    Boolean(snapshot.searchText)
+  const [uncontrolledSearchActive, setUncontrolledSearchActive] = useState(
+    compact && Boolean(snapshot.searchText)
   );
-  const toolbarSearchOpen = controlledToolbarSearchOpen ?? uncontrolledToolbarSearchOpen;
-  const setToolbarSearchOpen = (open: boolean) => {
-    if (onToolbarSearchOpenChange) {
-      onToolbarSearchOpenChange(open);
+  const searchActive = controlledSearchActive ?? uncontrolledSearchActive;
+  const setSearchActive = (active: boolean) => {
+    if (onSearchActiveChange) {
+      onSearchActiveChange(active);
       return;
     }
-    setUncontrolledToolbarSearchOpen(open);
+    setUncontrolledSearchActive(active);
   };
   const previousSearchTextRef = useRef(snapshot.searchText);
   const derived = useMemo(
-    () => deriveSections(toolbarSearchOpen ? snapshot : { ...snapshot, searchText: "" }),
-    [snapshot, toolbarSearchOpen]
+    () => deriveSections(compact && searchActive ? snapshot : { ...snapshot, searchText: "" }),
+    [snapshot, compact, searchActive]
+  );
+  const searchDerived = useMemo(
+    () => deriveSections(searchActive ? snapshot : { ...snapshot, searchText: "" }),
+    [snapshot, searchActive]
   );
   const sidebarDerived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
   const compactShellRef = useRef<HTMLElement>(null);
+  const appContentRef = useRef<HTMLDivElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
+  const searchPaletteReturnFocusRef = useRef<HTMLElement | null>(null);
+  const shouldRestoreSearchPaletteFocusRef = useRef(false);
+
+  const openSearchPalette = () => {
+    const activeElement = document.activeElement;
+    searchPaletteReturnFocusRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : searchButtonRef.current;
+    setSearchActive(true);
+  };
+  const closeSearchPalette = () => {
+    shouldRestoreSearchPaletteFocusRef.current = true;
+    setSearchActive(false);
+  };
+  const toggleSearchPalette = () => {
+    if (searchActive) {
+      closeSearchPalette();
+      return;
+    }
+    openSearchPalette();
+  };
 
   useEffect(() => {
-    if (controlledToolbarSearchOpen !== undefined) {
+    if (!compact || controlledSearchActive !== undefined) {
       return;
     }
     const previousSearchText = previousSearchTextRef.current;
     previousSearchTextRef.current = snapshot.searchText;
     if (!previousSearchText.trim() && snapshot.searchText.trim()) {
-      setToolbarSearchOpen(true);
+      setSearchActive(true);
     }
-  }, [controlledToolbarSearchOpen, snapshot.searchText]);
+  }, [compact, controlledSearchActive, snapshot.searchText]);
 
   useEffect(() => {
-    if (!compact || toolbarSearchOpen) {
+    if (!compact || searchActive) {
       return;
     }
 
     clearCompactPopoverControlFocus(document.activeElement, compactShellRef.current);
-  }, [compact, toolbarSearchOpen]);
+  }, [compact, searchActive]);
+
+  useEffect(() => {
+    if (compact) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      if (event.metaKey && (key === "f" || key === "k")) {
+        event.preventDefault();
+        if (!searchActive) {
+          const activeElement = document.activeElement;
+          searchPaletteReturnFocusRef.current =
+            activeElement instanceof HTMLElement && activeElement !== document.body
+              ? activeElement
+              : searchButtonRef.current;
+        }
+        setSearchActive(true);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [compact, searchActive]);
+
+  useEffect(() => {
+    const appContent = appContentRef.current;
+    if (!appContent || compact) {
+      return undefined;
+    }
+
+    setElementInert(appContent, searchActive);
+    return () => setElementInert(appContent, false);
+  }, [compact, searchActive]);
+
+  useEffect(() => {
+    if (compact || searchActive || !shouldRestoreSearchPaletteFocusRef.current) {
+      return;
+    }
+
+    shouldRestoreSearchPaletteFocusRef.current = false;
+    const focusTarget = searchPaletteReturnFocusRef.current ?? searchButtonRef.current;
+    searchPaletteReturnFocusRef.current = null;
+    if (focusTarget?.isConnected) {
+      focusTarget.focus();
+    }
+  }, [compact, searchActive]);
 
   const confirmAction = () => {
     if (!actionConfirmation) {
@@ -231,6 +312,10 @@ export function Dashboard({
       return;
     }
     void window.baseline.uninstallHomebrewItem(confirmation.item.id);
+  };
+  const requestActionConfirmation = (confirmation: ActionConfirmation) => {
+    setSearchActive(false);
+    setActionConfirmation(confirmation);
   };
 
   let shell: React.ReactNode;
@@ -252,10 +337,10 @@ export function Dashboard({
           </div>
           <div className="topbar-actions">
             <ToolbarSearch
-              open={toolbarSearchOpen}
+              open={searchActive}
               snapshot={snapshot}
-              onToggle={() => setToolbarSearchOpen(!toolbarSearchOpen)}
-              onClose={() => setToolbarSearchOpen(false)}
+              onToggle={() => setSearchActive(!searchActive)}
+              onClose={() => setSearchActive(false)}
               toolbarButtonTabIndex={-1}
             />
             <button
@@ -285,7 +370,7 @@ export function Dashboard({
             snapshot={snapshot}
             derived={derived}
             compact={compact}
-            searchActive={toolbarSearchOpen}
+            searchActive={searchActive}
           />
         </section>
       </main>
@@ -298,7 +383,13 @@ export function Dashboard({
           snapshot={snapshot}
           derived={sidebarDerived}
           route="main"
-          onNavigate={() => setToolbarSearchOpen(false)}
+          searchButtonRef={searchButtonRef}
+          onSelectSearch={() => {
+            window.location.hash = "/main";
+            toggleSearchPalette();
+          }}
+          onDismissSearch={() => setSearchActive(false)}
+          onNavigate={() => setSearchActive(false)}
         />
         <section className="workspace">
           <header className="topbar">
@@ -309,12 +400,6 @@ export function Dashboard({
               {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
                 <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
               ) : null}
-              <ToolbarSearch
-                open={toolbarSearchOpen}
-                snapshot={snapshot}
-                onToggle={() => setToolbarSearchOpen(!toolbarSearchOpen)}
-                onClose={() => setToolbarSearchOpen(false)}
-              />
               <button
                 className="toolbar-button refresh-button"
                 onClick={() => void window.baseline.refresh(false)}
@@ -347,7 +432,7 @@ export function Dashboard({
               snapshot={snapshot}
               derived={derived}
               compact={compact}
-              searchActive={toolbarSearchOpen}
+              searchActive={searchActive}
             />
           </section>
         </section>
@@ -356,12 +441,21 @@ export function Dashboard({
   }
 
   return (
-    <ActionConfirmationContext.Provider value={setActionConfirmation}>
+    <ActionConfirmationContext.Provider value={requestActionConfirmation}>
       <div
         className={actionConfirmation ? "action-surface action-surface-disabled" : "action-surface"}
         aria-hidden={actionConfirmation ? true : undefined}
       >
-        {shell}
+        <div
+          ref={appContentRef}
+          className="app-content-surface"
+          aria-hidden={!compact && searchActive ? true : undefined}
+        >
+          {shell}
+        </div>
+        {!compact && searchActive && !actionConfirmation && (
+          <SearchPalette snapshot={snapshot} derived={searchDerived} onClose={closeSearchPalette} />
+        )}
       </div>
       {actionConfirmation && (
         <ActionConfirmationOverlay
@@ -415,15 +509,88 @@ function compactPopoverControlFocusTarget(
   return focusTarget;
 }
 
+function setElementInert(element: HTMLElement, inert: boolean): void {
+  (element as HTMLElement & { inert: boolean }).inert = inert;
+}
+
+const focusableSelector = [
+  "a[href]:not([tabindex='-1'])",
+  "button:not(:disabled):not([tabindex='-1'])",
+  "input:not(:disabled):not([tabindex='-1'])",
+  "select:not(:disabled):not([tabindex='-1'])",
+  "textarea:not(:disabled):not([tabindex='-1'])",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
+function focusableElementsIn(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector))
+    .filter(
+      (element) =>
+        !element.closest("[aria-hidden='true']") &&
+        element.getAttribute("tabindex") !== "-1" &&
+        element.tabIndex >= 0
+    )
+    .sort(compareDocumentOrder);
+}
+
+function compareDocumentOrder(lhs: HTMLElement, rhs: HTMLElement): number {
+  if (lhs === rhs) {
+    return 0;
+  }
+  const position = lhs.compareDocumentPosition(rhs);
+  if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+    return -1;
+  }
+  if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+    return 1;
+  }
+  return 0;
+}
+
+function trapFocusWithin(event: KeyboardEvent, container: HTMLElement | null): void {
+  if (!container) {
+    return;
+  }
+
+  const focusableElements = focusableElementsIn(container);
+  if (focusableElements.length === 0) {
+    event.preventDefault();
+    container.focus();
+    return;
+  }
+
+  const firstElement = focusableElements[0]!;
+  const lastElement = focusableElements[focusableElements.length - 1]!;
+  const activeElement = document.activeElement;
+  if (event.shiftKey) {
+    if (activeElement === firstElement || !container.contains(activeElement)) {
+      event.preventDefault();
+      lastElement.focus();
+    }
+    return;
+  }
+
+  if (activeElement === lastElement || !container.contains(activeElement)) {
+    event.preventDefault();
+    firstElement.focus();
+  }
+}
+
 function Sidebar({
   snapshot,
   derived,
   route,
+  searchButtonRef,
+  onSelectSearch,
+  onDismissSearch,
   onNavigate
 }: {
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
   route: "main" | "settings";
+  searchButtonRef?: React.RefObject<HTMLButtonElement | null>;
+  onSelectSearch?: () => void;
+  onDismissSearch?: () => void;
   onNavigate?: () => void;
 }) {
   const selectTab = (tab: MenuTab) => {
@@ -431,9 +598,22 @@ function Sidebar({
     window.location.hash = "/main";
     void window.baseline.setSelectedTab(tab);
   };
+  const dismissSearchFromSidebarMouseDown = (event: React.MouseEvent<HTMLElement>) => {
+    const target = event.target;
+    if (target instanceof Element && target.closest("[data-search-toggle='true']")) {
+      return;
+    }
+    onDismissSearch?.();
+  };
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" onMouseDownCapture={dismissSearchFromSidebarMouseDown}>
+      <nav className="source-list">
+        <button data-search-toggle="true" onClick={onSelectSearch} ref={searchButtonRef}>
+          <Search size={16} strokeWidth={sidebarIconStrokeWidth} />
+          <span>Search</span>
+        </button>
+      </nav>
       <nav className="source-list">
         <button
           className={route === "main" && snapshot.selectedTab === "all" ? "selected" : ""}
@@ -460,7 +640,7 @@ function Sidebar({
           <SidebarBadge count={derived.allHomebrewOutdated.length} />
         </button>
       </nav>
-      <nav className="source-list secondary-source-list">
+      <nav className="source-list">
         <button
           className={route === "main" && snapshot.selectedTab === "installed" ? "selected" : ""}
           onClick={() => selectTab("installed")}
@@ -604,7 +784,7 @@ function SelectedTabContent({
   compact: boolean;
   searchActive: boolean;
 }) {
-  if (searchActive && snapshot.searchText.trim()) {
+  if (compact && searchActive && snapshot.searchText.trim()) {
     return <SearchResults snapshot={snapshot} derived={derived} />;
   }
   if (!compact && snapshot.selectedTab === "ignored") {
@@ -623,6 +803,229 @@ function SelectedTabContent({
     return <HomebrewTab snapshot={snapshot} derived={derived} />;
   }
   return <InstalledTab snapshot={snapshot} derived={derived} compact={compact} />;
+}
+
+function SearchPalette({
+  snapshot,
+  derived,
+  onClose
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const handleDialogKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape") {
+      if (hasOpenNestedMenu(dialogRef.current)) {
+        return;
+      }
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key === "Tab") {
+      trapFocusWithin(event.nativeEvent, dialogRef.current);
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (hasOpenNestedMenu(dialogRef.current)) {
+          return;
+        }
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key === "Tab") {
+        trapFocusWithin(event, dialogRef.current);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [onClose]);
+
+  return (
+    <div className="search-palette-layer">
+      <div className="search-palette-backdrop" aria-hidden="true" onMouseDown={() => onClose()} />
+      <div
+        className="search-palette-workspace"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            onClose();
+          }
+        }}
+      >
+        <section
+          ref={dialogRef}
+          className="search-palette"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Search"
+          tabIndex={-1}
+          onKeyDownCapture={handleDialogKeyDown}
+        >
+          <SearchField snapshot={snapshot} autoFocus />
+          {snapshot.searchText.trim() ? (
+            <SearchPaletteResults snapshot={snapshot} derived={derived} />
+          ) : (
+            <p className="search-palette-empty">Search Homebrew for apps, packages, and tools.</p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+const searchPaletteFloatingRowMenuSelector =
+  "[data-search-palette-floating-row-menu='true'][role='menu']";
+
+function hasOpenNestedMenu(container: HTMLElement | null): boolean {
+  return Boolean(
+    container?.querySelector("[role='menu']") ||
+    document.querySelector(searchPaletteFloatingRowMenuSelector)
+  );
+}
+
+function SearchField({
+  snapshot,
+  autoFocus = false
+}: {
+  snapshot: BaselineSnapshot;
+  autoFocus?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!autoFocus) {
+      return;
+    }
+    const input = inputRef.current;
+    if (!input) {
+      return;
+    }
+    input.focus();
+    const caretPosition = input.value.length;
+    input.setSelectionRange(caretPosition, caretPosition);
+  }, [autoFocus]);
+
+  const clearSearch = () => {
+    void window.baseline.setSearchText("");
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div className="search-box search-palette-field">
+      <Search size={15} strokeWidth={toolbarIconStrokeWidth} />
+      <input
+        ref={inputRef}
+        value={snapshot.searchText}
+        onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
+        placeholder="Search"
+      />
+      {snapshot.searchText ? (
+        <button
+          className="search-clear-button"
+          onClick={clearSearch}
+          onMouseDown={(event) => event.preventDefault()}
+          title="Clear Search"
+          aria-label="Clear Search"
+        >
+          <X size={12} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function SearchPaletteResults({
+  snapshot,
+  derived
+}: {
+  snapshot: BaselineSnapshot;
+  derived: DerivedSections;
+}) {
+  const searchInstalledApps = derived.installedApps.filter(
+    (app) => !uninstallableHomebrewItemForApp(app, snapshot)
+  );
+  const hasResults =
+    snapshot.homebrewDiscoverItems.length > 0 ||
+    derived.availableApps.length > 0 ||
+    derived.allHomebrewOutdated.length > 0 ||
+    searchInstalledApps.length > 0 ||
+    derived.homebrewInstalled.length > 0 ||
+    derived.ignoredApps.length > 0 ||
+    derived.homebrewIgnored.length > 0;
+
+  if (!hasResults) {
+    return <p className="search-palette-empty">No matches found.</p>;
+  }
+
+  return (
+    <div className="search-palette-results">
+      {snapshot.homebrewDiscoverItems.length > 0 && (
+        <SearchPaletteSection title="Discover">
+          {snapshot.homebrewDiscoverItems.map((item) => (
+            <DiscoverRow key={item.id} item={item} snapshot={snapshot} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.availableApps.length > 0 && (
+        <SearchPaletteSection title="App Updates">
+          {derived.availableApps.map((app) => (
+            <AppRow key={app.id} app={app} snapshot={snapshot} recentlyUpdated={false} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.allHomebrewOutdated.length > 0 && (
+        <SearchPaletteSection title="Homebrew Updates">
+          {derived.allHomebrewOutdated.map((item) => (
+            <HomebrewRow key={item.id} item={item} snapshot={snapshot} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {searchInstalledApps.length > 0 && (
+        <SearchPaletteSection title="Installed Apps">
+          {searchInstalledApps.map((app) => (
+            <AppRow key={app.id} app={app} snapshot={snapshot} recentlyUpdated={false} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.homebrewInstalled.length > 0 && (
+        <SearchPaletteSection title="Installed Homebrew">
+          {derived.homebrewInstalled.map((item) => (
+            <HomebrewRow key={item.id} item={item} snapshot={snapshot} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.ignoredApps.length > 0 && (
+        <SearchPaletteSection title="Ignored Apps">
+          {derived.ignoredApps.map((app) => (
+            <AppRow key={app.id} app={app} snapshot={snapshot} recentlyUpdated={false} />
+          ))}
+        </SearchPaletteSection>
+      )}
+      {derived.homebrewIgnored.length > 0 && (
+        <SearchPaletteSection title="Ignored Homebrew">
+          {derived.homebrewIgnored.map((item) => (
+            <HomebrewRow key={item.id} item={item} snapshot={snapshot} />
+          ))}
+        </SearchPaletteSection>
+      )}
+    </div>
+  );
+}
+
+function SearchPaletteSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="search-palette-section">
+      <h2>{title}</h2>
+      <div className="rows">{children}</div>
+    </section>
+  );
 }
 
 function SearchResults({
@@ -2159,6 +2562,11 @@ function RowMoreActionButton({
 }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [popoverPlacement, setPopoverPlacement] = useState<RowActionMenuPlacement>("below");
+  const [floatingPopoverPosition, setFloatingPopoverPosition] =
+    useState<RowActionMenuFloatingPosition>();
   const ignoreLabel = isIgnored ? "Unignore" : "Ignore";
 
   useEffect(() => {
@@ -2167,7 +2575,8 @@ function RowMoreActionButton({
     }
 
     const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !popoverRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -2184,6 +2593,72 @@ function RowMoreActionButton({
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPopoverPlacement("below");
+      setFloatingPopoverPosition(undefined);
+      return undefined;
+    }
+
+    const updatePopoverPlacement = () => {
+      const trigger = triggerRef.current;
+      const clippingContainer =
+        menuRef.current?.closest(".search-palette-results") ??
+        menuRef.current?.closest(".search-palette");
+      if (!trigger || !(clippingContainer instanceof HTMLElement)) {
+        setPopoverPlacement("below");
+        setFloatingPopoverPosition(undefined);
+        return;
+      }
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const clippingRect = clippingContainer.getBoundingClientRect();
+      const popoverRect = popoverRef.current?.getBoundingClientRect();
+      const popoverWidth = popoverRect?.width || rowActionMenuEstimatedWidth;
+      const popoverHeight =
+        popoverRect?.height || rowActionMenuEstimatedHeight(updateAction, canUninstall);
+      const viewportPadding = 8;
+      const gap = 6;
+      const availableBelow = clippingRect.bottom - triggerRect.bottom - gap - viewportPadding;
+      const availableAbove = triggerRect.top - clippingRect.top - gap - viewportPadding;
+
+      if (availableBelow >= popoverHeight) {
+        setPopoverPlacement("below");
+        setFloatingPopoverPosition(undefined);
+        return;
+      }
+
+      if (availableAbove >= popoverHeight) {
+        setPopoverPlacement("above");
+        setFloatingPopoverPosition(undefined);
+        return;
+      }
+
+      const preferredTop =
+        availableBelow >= availableAbove
+          ? triggerRect.bottom + gap
+          : triggerRect.top - popoverHeight - gap;
+      const maxTop = Math.max(
+        viewportPadding,
+        window.innerHeight - popoverHeight - viewportPadding
+      );
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - popoverWidth - viewportPadding);
+      setPopoverPlacement("floating");
+      setFloatingPopoverPosition({
+        left: Math.min(Math.max(viewportPadding, triggerRect.right - popoverWidth), maxLeft),
+        top: Math.min(Math.max(viewportPadding, preferredTop), maxTop)
+      });
+    };
+
+    updatePopoverPlacement();
+    window.addEventListener("resize", updatePopoverPlacement);
+    window.addEventListener("scroll", updatePopoverPlacement, true);
+    return () => {
+      window.removeEventListener("resize", updatePopoverPlacement);
+      window.removeEventListener("scroll", updatePopoverPlacement, true);
+    };
+  }, [canUninstall, open, updateAction]);
 
   const invokeIgnore = () => {
     setOpen(false);
@@ -2203,10 +2678,69 @@ function RowMoreActionButton({
     setOpen(false);
     onUninstall();
   };
+  const isSearchPaletteRowMenu = Boolean(menuRef.current?.closest(".search-palette"));
+  const popover = open ? (
+    <div
+      ref={popoverRef}
+      className={rowActionMenuPopoverClassName(popoverPlacement)}
+      data-search-palette-floating-row-menu={
+        isSearchPaletteRowMenu && popoverPlacement === "floating" ? "true" : undefined
+      }
+      role="menu"
+      style={
+        popoverPlacement === "floating"
+          ? floatingRowActionMenuStyle(floatingPopoverPosition)
+          : undefined
+      }
+    >
+      {updateAction && (
+        <button
+          onClick={invokeUpdate}
+          role="menuitem"
+          disabled={updateAction.disabled || updateAction.state.type !== "ready"}
+        >
+          {updateAction.state.type === "ready" ? (
+            <Download size={14} />
+          ) : updateAction.state.type === "queued" ? (
+            <ClockArrowDown size={14} />
+          ) : updateAction.state.type === "updating" ? (
+            updateAction.state.progress === undefined ? (
+              <RefreshCcw className="spin" size={14} />
+            ) : (
+              <ProgressRing value={updateAction.state.progress} />
+            )
+          ) : updateAction.state.type === "done" ? (
+            <Check className="done-glyph" size={14} strokeWidth={3} />
+          ) : (
+            <span className="failure-glyph">!</span>
+          )}
+          <span>
+            {updateAction.state.type === "ready" ? "Update" : actionStateLabel(updateAction.state)}
+          </span>
+        </button>
+      )}
+      <button onClick={invokeIgnore} role="menuitem" disabled={disabled}>
+        {isIgnored ? <EyeOff size={14} /> : <Eye size={14} />}
+        <span>{ignoreLabel}</span>
+      </button>
+      {canUninstall && (
+        <button
+          className="danger-menu-item"
+          onClick={invokeUninstall}
+          role="menuitem"
+          disabled={uninstallDisabled}
+        >
+          {uninstalling ? <UninstallActionGlyph /> : <Trash2 size={14} />}
+          <span>{uninstallLabel}</span>
+        </button>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div className="row-action-menu" ref={menuRef}>
       <button
+        ref={triggerRef}
         className="secondary-icon-button"
         disabled={disabled}
         onClick={() => setOpen((isOpen) => !isOpen)}
@@ -2217,55 +2751,39 @@ function RowMoreActionButton({
       >
         {uninstalling ? <UninstallActionGlyph /> : <MoreHorizontal size={15} />}
       </button>
-      {open && (
-        <div className="row-action-menu-popover" role="menu">
-          {updateAction && (
-            <button
-              onClick={invokeUpdate}
-              role="menuitem"
-              disabled={updateAction.disabled || updateAction.state.type !== "ready"}
-            >
-              {updateAction.state.type === "ready" ? (
-                <Download size={14} />
-              ) : updateAction.state.type === "queued" ? (
-                <ClockArrowDown size={14} />
-              ) : updateAction.state.type === "updating" ? (
-                updateAction.state.progress === undefined ? (
-                  <RefreshCcw className="spin" size={14} />
-                ) : (
-                  <ProgressRing value={updateAction.state.progress} />
-                )
-              ) : updateAction.state.type === "done" ? (
-                <Check className="done-glyph" size={14} strokeWidth={3} />
-              ) : (
-                <span className="failure-glyph">!</span>
-              )}
-              <span>
-                {updateAction.state.type === "ready"
-                  ? "Update"
-                  : actionStateLabel(updateAction.state)}
-              </span>
-            </button>
-          )}
-          <button onClick={invokeIgnore} role="menuitem" disabled={disabled}>
-            {isIgnored ? <EyeOff size={14} /> : <Eye size={14} />}
-            <span>{ignoreLabel}</span>
-          </button>
-          {canUninstall && (
-            <button
-              className="danger-menu-item"
-              onClick={invokeUninstall}
-              role="menuitem"
-              disabled={uninstallDisabled}
-            >
-              {uninstalling ? <UninstallActionGlyph /> : <Trash2 size={14} />}
-              <span>{uninstallLabel}</span>
-            </button>
-          )}
-        </div>
-      )}
+      {popoverPlacement === "floating" && popover ? createPortal(popover, document.body) : popover}
     </div>
   );
+}
+
+const rowActionMenuEstimatedWidth = 142;
+
+function rowActionMenuPopoverClassName(placement: RowActionMenuPlacement): string {
+  if (placement === "above") {
+    return "row-action-menu-popover row-action-menu-popover-above";
+  }
+  if (placement === "floating") {
+    return "row-action-menu-popover row-action-menu-popover-floating";
+  }
+  return "row-action-menu-popover";
+}
+
+function floatingRowActionMenuStyle(
+  position: RowActionMenuFloatingPosition | undefined
+): React.CSSProperties {
+  return {
+    left: position?.left ?? 0,
+    top: position?.top ?? 0,
+    visibility: position ? "visible" : "hidden"
+  };
+}
+
+function rowActionMenuEstimatedHeight(
+  updateAction: RowUpdateMenuAction | undefined,
+  canUninstall: boolean
+): number {
+  const itemCount = 1 + (updateAction ? 1 : 0) + (canUninstall ? 1 : 0);
+  return itemCount * 28 + 10;
 }
 
 function ProgressRing({ value }: { value: number }) {

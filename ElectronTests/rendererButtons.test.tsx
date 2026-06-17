@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ActionConfirmationContext,
+  App,
   AppRow,
   Dashboard,
   DiscoverRow,
@@ -127,6 +128,32 @@ function toolbarButtonLabels(container: HTMLElement): Array<string | null> {
   return within(container.querySelector(".topbar-actions") as HTMLElement)
     .getAllByRole("button")
     .map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"));
+}
+
+function domRect({
+  top,
+  right,
+  bottom,
+  left
+}: {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}): DOMRect {
+  const width = right - left;
+  const height = bottom - top;
+  return {
+    x: left,
+    y: top,
+    width,
+    height,
+    top,
+    right,
+    bottom,
+    left,
+    toJSON: () => ({})
+  } as DOMRect;
 }
 
 describe("renderer button parity", () => {
@@ -317,6 +344,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "apps",
@@ -330,14 +358,15 @@ describe("renderer button parity", () => {
       />
     );
 
-    const discoverHeading = screen.getByText("Discover");
-    const homebrewHeading = screen.getByText("Homebrew Updates");
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    const discoverHeading = within(searchDialog).getByText("Discover");
+    const homebrewHeading = within(searchDialog).getByText("Homebrew Updates");
     expect(
       discoverHeading.compareDocumentPosition(homebrewHeading) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy();
-    expect(screen.queryByTitle("Collapse Discover")).not.toBeInTheDocument();
-    expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
+    expect(within(searchDialog).queryByTitle("Collapse Discover")).not.toBeInTheDocument();
+    expect(within(searchDialog).getByText("obsidian-cli")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
   });
 
   it("shows the main-window self-update shortcut only when self-update is available", () => {
@@ -345,7 +374,7 @@ describe("renderer button parity", () => {
       <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={snapshot()} />
     );
 
-    expect(toolbarButtonLabels(container)).toEqual(["Search", "Refresh"]);
+    expect(toolbarButtonLabels(container)).toEqual(["Refresh"]);
 
     rerender(
       <Dashboard
@@ -363,11 +392,7 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(toolbarButtonLabels(container)).toEqual([
-      "New Baseline Update Available",
-      "Search",
-      "Refresh"
-    ]);
+    expect(toolbarButtonLabels(container)).toEqual(["New Baseline Update Available", "Refresh"]);
 
     fireEvent.click(screen.getByRole("button", { name: "New Baseline Update Available" }));
 
@@ -382,7 +407,148 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("closes search mode on sidebar tab clicks without clearing the saved query", () => {
+  it("opens the main-window search palette from keyboard shortcuts without selecting the query", async () => {
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          searchText: "obsidian"
+        })}
+      />
+    );
+
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
+
+    const appSurface = document.querySelector(".app-content-surface") as HTMLElement & {
+      inert?: boolean;
+    };
+    const refreshButton = screen.getByRole("button", { name: "Refresh" });
+    refreshButton.focus();
+    fireEvent.keyDown(document, { key: "k", metaKey: true });
+
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    const searchField = within(searchDialog).getByDisplayValue("obsidian") as HTMLInputElement;
+    expect(searchField).toHaveFocus();
+    expect(searchField.selectionStart).toBe(searchField.value.length);
+    expect(searchField.selectionEnd).toBe(searchField.value.length);
+    expect(appSurface).toHaveAttribute("aria-hidden", "true");
+    expect(appSurface.inert).toBe(true);
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Apps", hidden: true })
+    ).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument()
+    );
+    await waitFor(() => expect(refreshButton).toHaveFocus());
+    expect(appSurface).not.toHaveAttribute("aria-hidden");
+    expect(appSurface.inert).toBe(false);
+    expect(screen.getByRole("heading", { level: 1, name: "Apps" })).toBeInTheDocument();
+  });
+
+  it("skips non-tabbable status glyphs when trapping search palette focus", () => {
+    const item: HomebrewCaskDiscoveryItem = {
+      id: "formula:ray",
+      token: "ray",
+      displayName: "ray",
+      kind: "formula",
+      version: version("1.2.3")
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        searchActive
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "homebrew",
+          searchText: "ray",
+          apps: [],
+          updates: [],
+          homebrewItems: [],
+          homebrewDiscoverItems: [item],
+          homebrewDiscoverInstallingItemIDs: [item.id]
+        })}
+      />
+    );
+
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    const searchField = within(searchDialog).getByPlaceholderText("Search");
+    const clearButton = within(searchDialog).getByRole("button", { name: "Clear Search" });
+    const statusGlyph = within(searchDialog).getByRole("button", { name: "Updating" });
+    expect(statusGlyph).toHaveAttribute("tabindex", "-1");
+
+    clearButton.focus();
+    expect(clearButton).toHaveFocus();
+    fireEvent.keyDown(searchDialog, { key: "Tab" });
+
+    expect(searchField).toHaveFocus();
+  });
+
+  it("closes search palette row action menus on outside clicks inside the dialog", () => {
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+        if (this.classList.contains("search-palette-results")) {
+          return domRect({ top: 140, right: 802, bottom: 220, left: 218 });
+        }
+        if (this.classList.contains("search-palette")) {
+          return domRect({ top: 80, right: 820, bottom: 360, left: 200 });
+        }
+        if (this.getAttribute("aria-label") === "Actions") {
+          return domRect({ top: 184, right: 792, bottom: 212, left: 764 });
+        }
+        return originalGetBoundingClientRect.call(this);
+      });
+
+    try {
+      render(
+        <Dashboard
+          compact={false}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            selectedTab: "apps",
+            searchText: "example"
+          })}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Search" }));
+      const searchDialog = screen.getByRole("dialog", { name: "Search" });
+      fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
+      const menu = screen.getByRole("menu");
+      expect(menu).toHaveClass("row-action-menu-popover-floating");
+      expect(searchDialog).not.toContainElement(menu);
+      expect(menu).toHaveStyle({ visibility: "visible" });
+      let ignoreMenuItem = screen.getByRole("menuitem", { name: "Ignore" });
+      expect(ignoreMenuItem).toBeInTheDocument();
+
+      fireEvent.keyDown(ignoreMenuItem, { key: "Escape" });
+      expect(screen.queryByRole("menuitem", { name: "Ignore" })).not.toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument();
+
+      fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
+      ignoreMenuItem = screen.getByRole("menuitem", { name: "Ignore" });
+      fireEvent.mouseDown(ignoreMenuItem);
+      fireEvent.click(ignoreMenuItem);
+      expect(window.baseline.toggleIgnoredApp).toHaveBeenCalledWith(app.id);
+
+      fireEvent.click(within(searchDialog).getByRole("button", { name: "Actions" }));
+      fireEvent.mouseDown(within(searchDialog).getByPlaceholderText("Search"));
+
+      expect(screen.queryByRole("menuitem", { name: "Ignore" })).not.toBeInTheDocument();
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
+
+  it("closes search mode on backdrop clicks without clearing the saved query", async () => {
     const formula: HomebrewManagedItem = {
       id: "formula:obsidian-cli",
       token: "obsidian-cli",
@@ -400,7 +566,7 @@ describe("renderer button parity", () => {
       version: version("1.6.0")
     };
 
-    render(
+    const { container } = render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -415,24 +581,41 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
-    expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
-    expect(screen.queryByText("Example")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("obsidian-cli")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("Example")).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(container.querySelector(".search-palette-backdrop") as HTMLElement);
     fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
 
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("apps");
     expect(window.baseline.setSearchText).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
-    expect(screen.getByText("Example")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Example")).toBeInTheDocument());
     expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
     expect(screen.queryByText("obsidian-cli")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
-    expect(screen.getByDisplayValue("obsidian")).toBeInTheDocument();
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
-    expect(screen.getByText("obsidian-cli")).toBeInTheDocument();
+    const reopenedSearchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(reopenedSearchDialog).getByDisplayValue("obsidian")).toBeInTheDocument();
+    expect(within(reopenedSearchDialog).getByText("Obsidian")).toBeInTheDocument();
+    expect(within(reopenedSearchDialog).getByText("obsidian-cli")).toBeInTheDocument();
+
+    fireEvent.mouseDown(container.querySelector(".search-palette-backdrop") as HTMLElement);
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
+
+    const searchButton = screen.getByRole("button", { name: "Search" });
+    fireEvent.mouseDown(searchButton);
+    fireEvent.click(searchButton);
+    expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument();
+
+    fireEvent.mouseDown(container.querySelector(".search-palette-backdrop") as HTMLElement);
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
   });
 
   it("does not show discovery results after dismissing search into the Homebrew tab", () => {
@@ -465,9 +648,13 @@ describe("renderer button parity", () => {
       <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={searchSnapshot} />
     );
 
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
-    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
 
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("ripgrep")).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(document.querySelector(".search-palette-backdrop") as HTMLElement);
     fireEvent.click(screen.getByRole("button", { name: /Homebrew/ }));
 
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("homebrew");
@@ -479,6 +666,7 @@ describe("renderer button parity", () => {
       />
     );
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
     expect(screen.queryByText("Obsidian")).not.toBeInTheDocument();
   });
@@ -499,34 +687,19 @@ describe("renderer button parity", () => {
       homebrewItems: [],
       homebrewDiscoverItems: [discoverItem]
     });
-    let searchOpen = true;
-    const setSearchOpen = vi.fn((open: boolean) => {
-      searchOpen = open;
-    });
 
     const { unmount } = render(
-      <Dashboard
-        compact={false}
-        onOpenSettings={() => undefined}
-        onToolbarSearchOpenChange={setSearchOpen}
-        toolbarSearchOpen={searchOpen}
-        snapshot={searchSnapshot}
-      />
+      <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={searchSnapshot} />
     );
 
-    expect(screen.getByText("Obsidian")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Apps/ }));
-    expect(setSearchOpen).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Obsidian")).toBeInTheDocument();
+    fireEvent.mouseDown(document.querySelector(".search-palette-backdrop") as HTMLElement);
 
     unmount();
     render(
-      <Dashboard
-        compact={false}
-        onOpenSettings={() => undefined}
-        onToolbarSearchOpenChange={setSearchOpen}
-        toolbarSearchOpen={searchOpen}
-        snapshot={searchSnapshot}
-      />
+      <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={searchSnapshot} />
     );
 
     expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
@@ -550,9 +723,10 @@ describe("renderer button parity", () => {
       latestVersion: version("1.1.0"),
       isOutdated: true
     };
-    const { container } = render(
+    render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           apps: [app, installedApp],
@@ -562,20 +736,21 @@ describe("renderer button parity", () => {
       />
     );
 
-    const [allButton, appsButton, homebrewButton] = Array.from(
-      container.querySelectorAll(".source-list button")
-    );
+    const allButton = screen.getByRole("button", { name: /All/, hidden: true });
+    const appsButton = screen.getByRole("button", { name: /Apps/, hidden: true });
+    const homebrewButton = screen.getByRole("button", { name: /Homebrew/, hidden: true });
 
     expect(within(allButton as HTMLElement).getByText("2")).toBeInTheDocument();
     expect(within(appsButton as HTMLElement).getByText("1")).toBeInTheDocument();
     expect(within(homebrewButton as HTMLElement).getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("Stable App")).toBeInTheDocument();
-    expect(screen.queryByText("Example")).not.toBeInTheDocument();
-    expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Stable App")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("Example")).not.toBeInTheDocument();
+    expect(within(searchDialog).queryByText("ripgrep")).not.toBeInTheDocument();
   });
 
   it("hides sidebar update badges when counts are zero", () => {
-    const { container } = render(
+    render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -583,9 +758,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    const [allButton, appsButton, homebrewButton] = Array.from(
-      container.querySelectorAll(".source-list button")
-    );
+    const allButton = screen.getByRole("button", { name: "All" });
+    const appsButton = screen.getByRole("button", { name: "Apps" });
+    const homebrewButton = screen.getByRole("button", { name: "Homebrew" });
 
     expect(within(allButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
     expect(within(appsButton as HTMLElement).queryByText("0")).not.toBeInTheDocument();
@@ -1056,8 +1231,8 @@ describe("renderer button parity", () => {
     expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
   });
 
-  it("clears toolbar search from compact and main layouts", () => {
-    const { rerender } = render(
+  it("clears compact toolbar search and full-window sidebar search", () => {
+    const { unmount } = render(
       <Dashboard
         compact
         onOpenSettings={() => undefined}
@@ -1068,7 +1243,8 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
     expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
 
-    rerender(
+    unmount();
+    render(
       <Dashboard
         compact={false}
         onOpenSettings={() => undefined}
@@ -1076,14 +1252,15 @@ describe("renderer button parity", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
     fireEvent.click(screen.getByRole("button", { name: "Clear Search" }));
     expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
   });
 
-  it("opens toolbar search and collapses it on outside click without clearing text", async () => {
+  it("opens compact toolbar search and collapses it on outside click without clearing text", async () => {
     render(
       <Dashboard
-        compact={false}
+        compact
         onOpenSettings={() => undefined}
         snapshot={snapshot({ searchText: "obsidian" })}
       />
@@ -1122,7 +1299,7 @@ describe("renderer button parity", () => {
   it("runs adjacent toolbar actions before collapsing open search", async () => {
     render(
       <Dashboard
-        compact={false}
+        compact
         onOpenSettings={() => undefined}
         snapshot={snapshot({ searchText: "raycast" })}
       />
@@ -1513,6 +1690,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "homebrew",
@@ -1524,7 +1702,8 @@ describe("renderer button parity", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Install" }));
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    fireEvent.click(within(searchDialog).getByRole("button", { name: "Install" }));
     const dialog = screen.getByRole("dialog", { name: "Install Raycast?" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Install Raycast" }));
     expect(window.baseline.installHomebrewItem).toHaveBeenCalledWith(item);
@@ -1732,7 +1911,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
-        toolbarSearchOpen
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           searchText: "cli",
@@ -1742,15 +1921,16 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByText("Example CLI")).toBeInTheDocument();
-    expect(screen.queryByText("App Updates")).not.toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Example CLI")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("App Updates")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Update Brews" }));
+    const formulaRow = within(searchDialog).getByText("ripgrep-cli").closest("article");
+    expect(formulaRow).not.toBeNull();
+    fireEvent.click(within(formulaRow as HTMLElement).getByRole("button", { name: "Update" }));
 
-    expect(window.baseline.performHomebrewUpdateAll).toHaveBeenCalledWith([
-      searchCask.id,
-      formula.id
-    ]);
+    expect(window.baseline.performHomebrewUpdate).toHaveBeenCalledWith(formula.id);
+    expect(window.baseline.performHomebrewUpdateAll).not.toHaveBeenCalled();
   });
 
   it("hides ignored app-backed Homebrew casks from search results", () => {
@@ -1772,7 +1952,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
-        toolbarSearchOpen
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           searchText: "cli",
@@ -1783,8 +1963,9 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.queryByText("Example CLI")).not.toBeInTheDocument();
-    expect(screen.getByText("ripgrep-cli")).toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).queryByText("Example CLI")).not.toBeInTheDocument();
+    expect(within(searchDialog).getByText("ripgrep-cli")).toBeInTheDocument();
   });
 
   it("moves installed apps and Homebrew into the Installed sidebar item", () => {
@@ -1871,10 +2052,11 @@ describe("renderer button parity", () => {
       />
     );
 
+    const sourceLists = Array.from(container.querySelectorAll(".source-list"));
     expect(
-      Array.from(container.querySelectorAll(".secondary-source-list button")).map((button) =>
-        button.textContent?.trim()
-      )
+      within(sourceLists[2] as HTMLElement)
+        .getAllByRole("button")
+        .map((button) => button.textContent?.trim())
     ).toEqual(["Installed", "Ignored"]);
     fireEvent.click(screen.getByRole("button", { name: /Ignored/ }));
     expect(window.baseline.setSelectedTab).toHaveBeenCalledWith("ignored");
@@ -1892,9 +2074,11 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 2, name: "Ignored Apps and Homebrew" })
+      screen.getByRole("heading", { level: 1, name: "Ignored", hidden: true })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: /Ignored Apps and Homebrew/ })
     ).toBeInTheDocument();
     expect(screen.getByText("Example")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
@@ -1904,6 +2088,7 @@ describe("renderer button parity", () => {
     rerender(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "ignored",
@@ -1915,10 +2100,16 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { level: 1, name: "Ignored" })).toBeInTheDocument();
-    expect(screen.getByText("ripgrep")).toBeInTheDocument();
-    expect(screen.queryByText("Example")).not.toBeInTheDocument();
-    expect(screen.queryByText("No matches found.")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Ignored", hidden: true })
+    ).toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(
+      within(searchDialog).getByRole("heading", { level: 2, name: "Ignored Homebrew" })
+    ).toBeInTheDocument();
+    expect(within(searchDialog).getByText("ripgrep")).toBeInTheDocument();
+    expect(within(searchDialog).queryByText("Example")).not.toBeInTheDocument();
+    expect(within(searchDialog).queryByText("No matches found.")).not.toBeInTheDocument();
   });
 
   it("keeps app sections visible without Settings section controls", () => {
@@ -2049,6 +2240,21 @@ describe("renderer button parity", () => {
     );
 
     await waitFor(() => expect(screen.getByPlaceholderText("Search")).toHaveFocus());
+  });
+
+  it("opens compact menu bar search when the production app loads a saved query", async () => {
+    vi.mocked(window.baseline.getSnapshot).mockResolvedValue(
+      snapshot({
+        searchText: "example"
+      })
+    );
+    window.location.hash = "/menubar";
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByPlaceholderText("Search")).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
+    expect(screen.getByText("Example")).toBeInTheDocument();
   });
 
   it("unifies app and Homebrew recently updated cards in the All tab without duplicating cask-backed apps", () => {
@@ -2340,9 +2546,10 @@ describe("renderer button parity", () => {
       version: version("1.0.0")
     };
 
-    const { container } = render(
+    render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "apps",
@@ -2355,14 +2562,21 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.getByText("Notion Notes")).toBeInTheDocument();
-    expect(screen.getByText("notion-cli")).toBeInTheDocument();
-    expect(screen.getByText("Notion Calendar")).toBeInTheDocument();
-    expect(screen.queryByText("All your apps are up to date.")).not.toBeInTheDocument();
-    expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("heading", { level: 2 })[0]).toHaveTextContent("Discover");
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(within(searchDialog).getByText("Notion Notes")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("notion-cli")).toBeInTheDocument();
+    expect(within(searchDialog).getByText("Notion Calendar")).toBeInTheDocument();
+    expect(
+      within(searchDialog).queryByText("All your apps are up to date.")
+    ).not.toBeInTheDocument();
+    expect(
+      within(searchDialog).queryByText("All your Homebrew items are up to date.")
+    ).not.toBeInTheDocument();
+    expect(within(searchDialog).getAllByRole("heading", { level: 2 })[0]).toHaveTextContent(
+      "Discover"
+    );
 
-    const sections = Array.from(container.querySelectorAll("section.panel"));
+    const sections = Array.from(searchDialog.querySelectorAll(".search-palette-section"));
     const discoverSection = sections.find((section) =>
       within(section as HTMLElement).queryByRole("heading", { name: "Discover" })
     ) as HTMLElement | undefined;
@@ -2378,10 +2592,10 @@ describe("renderer button parity", () => {
     expect(installedHomebrewSection).toBeDefined();
     expect(discoverSection!.querySelector(".rows .row")).not.toBeNull();
     expect(discoverSection!.querySelector(".item-card")).toBeNull();
-    expect(installedAppsSection!.querySelector(".card-grid .item-card")).not.toBeNull();
-    expect(installedAppsSection!.querySelector(".rows .row")).toBeNull();
-    expect(installedHomebrewSection!.querySelector(".card-grid .item-card")).not.toBeNull();
-    expect(installedHomebrewSection!.querySelector(".rows .row")).toBeNull();
+    expect(installedAppsSection!.querySelector(".rows .row")).not.toBeNull();
+    expect(installedAppsSection!.querySelector(".item-card")).toBeNull();
+    expect(installedHomebrewSection!.querySelector(".rows .row")).not.toBeNull();
+    expect(installedHomebrewSection!.querySelector(".item-card")).toBeNull();
   });
 
   it("shows app-backed Homebrew updates in search when the app result does not match", () => {
@@ -2408,6 +2622,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           searchText: "long-token-name",
@@ -2418,9 +2633,14 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(screen.queryByRole("heading", { name: "App Updates" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Homebrew Updates" })).toBeInTheDocument();
-    expect(screen.getByText("Long Token Name")).toBeInTheDocument();
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    expect(
+      within(searchDialog).queryByRole("heading", { name: "App Updates" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(searchDialog).getByRole("heading", { name: "Homebrew Updates" })
+    ).toBeInTheDocument();
+    expect(within(searchDialog).getByText("Long Token Name")).toBeInTheDocument();
   });
 
   it("search hides cask-backed apps from Installed Apps", () => {
@@ -2449,6 +2669,7 @@ describe("renderer button parity", () => {
     render(
       <Dashboard
         compact={false}
+        searchActive
         onOpenSettings={() => undefined}
         snapshot={snapshot({
           selectedTab: "apps",
@@ -2461,10 +2682,11 @@ describe("renderer button parity", () => {
       />
     );
 
-    const installedApps = screen
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    const installedApps = within(searchDialog)
       .getByRole("heading", { name: "Installed Apps" })
       .closest("section");
-    const installedHomebrew = screen
+    const installedHomebrew = within(searchDialog)
       .getByRole("heading", { name: "Installed Homebrew" })
       .closest("section");
     expect(installedApps).not.toBeNull();
