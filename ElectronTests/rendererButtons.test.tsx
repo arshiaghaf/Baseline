@@ -1742,7 +1742,7 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Update Brews" })).toBeInTheDocument();
   });
 
-  it("keeps individual Homebrew update actions clickable while a Discover install is active", () => {
+  it("keeps Homebrew update actions clickable while a Discover install is active", () => {
     const second: HomebrewManagedItem = {
       ...cask,
       id: "formula:ripgrep",
@@ -1765,10 +1765,10 @@ describe("renderer button parity", () => {
       />
     );
 
-    const batchButton = screen.getByRole("button", { name: "Updating" });
-    expect(batchButton).toBeDisabled();
+    const batchButton = screen.getByRole("button", { name: "Update Brews" });
+    expect(batchButton).toBeEnabled();
     fireEvent.click(batchButton);
-    expect(window.baseline.performHomebrewUpdateAll).not.toHaveBeenCalled();
+    expect(window.baseline.performHomebrewUpdateAll).toHaveBeenCalledWith([cask.id, second.id]);
 
     for (const updateButton of screen.getAllByRole("button", { name: "Update" })) {
       expect(updateButton).toBeEnabled();
