@@ -1181,7 +1181,6 @@ function AllUpdatesSection({
   snapshot: BaselineSnapshot;
   derived: DerivedSections;
 }) {
-  const homebrewCommandActive = isHomebrewCommandActive(snapshot);
   const items: RecentGridItem[] = [
     ...derived.availableApps.map((app) => ({
       type: "app" as const,
@@ -1204,18 +1203,9 @@ function AllUpdatesSection({
         action={
           derived.allHomebrewOutdated.length > 1 ? (
             <UpdateActionButton
-              state={
-                homebrewCommandActive
-                  ? { type: "updating" }
-                  : derived.allHomebrewOutdated.every((item) =>
-                        snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id)
-                      )
-                    ? { type: "done" }
-                    : { type: "ready" }
-              }
+              state={homebrewBatchActionState(derived.allHomebrewOutdated, snapshot)}
               readyLabel="Update Brews"
               readyVariant="outline"
-              disabled={homebrewCommandActive}
               onAction={() => performHomebrewUpdateAllForItems(derived.allHomebrewOutdated)}
             />
           ) : undefined
@@ -2037,7 +2027,6 @@ export function HomebrewSection({
   cardLayout?: boolean;
 }) {
   const collapsed = collapsible && snapshot.collapsedHomebrewSectionIDs.includes(sectionID);
-  const homebrewCommandActive = isHomebrewCommandActive(snapshot);
   return (
     <section className="panel">
       <PanelTitle
@@ -2048,18 +2037,9 @@ export function HomebrewSection({
         action={
           showUpdateAll && items.length > 1 ? (
             <UpdateActionButton
-              state={
-                homebrewCommandActive
-                  ? { type: "updating" }
-                  : items.every((item) =>
-                        snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id)
-                      )
-                    ? { type: "done" }
-                    : { type: "ready" }
-              }
+              state={homebrewBatchActionState(items, snapshot)}
               readyLabel="Update Brews"
               readyVariant="outline"
-              disabled={homebrewCommandActive}
               onAction={() => performHomebrewUpdateAllForItems(items)}
             />
           ) : undefined
@@ -4031,6 +4011,16 @@ function combinedAvailableCount(derived: DerivedSections): number {
 
 function performHomebrewUpdateAllForItems(items: Pick<HomebrewManagedItem, "id">[]): void {
   void window.baseline.performHomebrewUpdateAll(items.map((item) => item.id));
+}
+
+function homebrewBatchActionState(
+  items: Pick<HomebrewManagedItem, "id">[],
+  snapshot: BaselineSnapshot
+): ActionState {
+  return items.length > 0 &&
+    items.every((item) => snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id))
+    ? { type: "done" }
+    : { type: "ready" };
 }
 
 function toggleCollapsedSection(

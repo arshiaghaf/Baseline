@@ -3294,6 +3294,92 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("queues visible Homebrew batch updates during an active Discover install", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    const formula = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    });
+    const cask = homebrewItem({
+      id: "cask:raycast",
+      token: "raycast",
+      name: "Raycast",
+      kind: "cask",
+      latestVersion: version("2.0.0"),
+      isOutdated: true
+    });
+    const ignoredFormula = homebrewItem({
+      id: "formula:ignored",
+      token: "ignored",
+      name: "ignored",
+      kind: "formula",
+      latestVersion: version("1.0.0"),
+      isOutdated: true
+    });
+    let resolveInstall!: (result: { success: boolean; status: number; output: string }) => void;
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "install") {
+        return await new Promise((resolve) => {
+          resolveInstall = resolve;
+        });
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        ignoredHomebrewItemIDs: [ignoredFormula.id],
+        homebrewItems: [formula, cask, ignoredFormula]
+      },
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [formula, cask, ignoredFormula],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      },
+      runBrewCommand
+    });
+
+    const install = store.installHomebrewItem(discoverItem);
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
+
+    await store.performHomebrewUpdateAll([formula.id, cask.id, ignoredFormula.id]);
+
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual(
+      expect.arrayContaining([formula.id, cask.id])
+    );
+    expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain(ignoredFormula.id);
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["install", "fd"]]);
+
+    resolveInstall({ success: true, status: 0, output: "" });
+    await install;
+
+    await vi.waitFor(() => {
+      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+        ["install", "fd"],
+        ["upgrade", "ripgrep"],
+        ["upgrade", "--cask", "--greedy", "raycast"]
+      ]);
+    });
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+  });
+
   it("queues burst-clicked individual Homebrew updates behind the active update", async () => {
     const formula = homebrewItem({
       id: "formula:ripgrep",
