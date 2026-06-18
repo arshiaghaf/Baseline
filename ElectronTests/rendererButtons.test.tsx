@@ -1742,6 +1742,33 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Update Brews" })).toBeInTheDocument();
   });
 
+  it("shows updated aggregate state when every section Homebrew item is pending refresh", () => {
+    const second: HomebrewManagedItem = {
+      ...cask,
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula"
+    };
+
+    render(
+      <HomebrewSection
+        sectionID="outdated"
+        title="Outdated"
+        items={[cask, second]}
+        snapshot={snapshot({
+          homebrewItems: [cask, second],
+          homebrewUpdatedPendingRefreshItemIDs: [cask.id, second.id]
+        })}
+        empty="No updates."
+        showUpdateAll
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Update Brews" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Updated" })).toHaveLength(3);
+  });
+
   it("keeps Homebrew update actions clickable while a Discover install is active", () => {
     const second: HomebrewManagedItem = {
       ...cask,
@@ -1828,6 +1855,41 @@ describe("renderer button parity", () => {
       "formula:fd",
       "formula:ripgrep"
     ]);
+  });
+
+  it("shows updated aggregate state in the combined updates section", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    };
+    const secondFormula: HomebrewManagedItem = {
+      id: "formula:fd",
+      token: "fd",
+      name: "fd",
+      kind: "formula",
+      installedVersion: version("9.0.0"),
+      latestVersion: version("10.0.0"),
+      isOutdated: true
+    };
+
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          homebrewItems: [formula, secondFormula],
+          homebrewUpdatedPendingRefreshItemIDs: [formula.id, secondFormula.id]
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Update Brews" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Updated" })).toHaveLength(3);
   });
 
   it("renders the Homebrew tab outdated section as a card grid", () => {
