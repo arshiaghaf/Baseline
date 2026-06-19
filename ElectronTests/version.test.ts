@@ -11,4 +11,13 @@ describe("version comparison", () => {
     expect(compareVersions(version("1.0"), version("1.0.0"))).toBe(0);
     expect(compareVersions(version(undefined), version(""))).toBe(0);
   });
+
+  it("orders prerelease suffixes before matching stable releases", () => {
+    expect(compareVersions(version("1.0.0"), version("1.0.0-beta.2"))).toBeGreaterThan(0);
+    expect(compareVersions(version("1.0.0-beta.2"), version("1.0.0"))).toBeLessThan(0);
+    expect(compareVersions(version("2.0"), version("2.0-rc.1"))).toBeGreaterThan(0);
+    expect(compareVersions(version("2.0-rc.1"), version("2.0"))).toBeLessThan(0);
+    expect(compareVersions(version("1.0.0-rc.1"), version("1.0.0-beta.9"))).toBeGreaterThan(0);
+    expect(compareVersions(version("1.0.0-beta.10"), version("1.0.0-beta.2"))).toBeGreaterThan(0);
+  });
 });

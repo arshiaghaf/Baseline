@@ -56,6 +56,40 @@ describe("ported clients", () => {
     expect(result?.appStoreItemID).toBe(987654321);
   });
 
+  it("uses stable App Store releases as updates over matching local prerelease builds", () => {
+    const client = new AppStoreLookupClient();
+    const stableRelease = Buffer.from(
+      JSON.stringify({
+        results: [
+          {
+            kind: "mac-software",
+            trackId: 123,
+            version: "1.0.0",
+            trackViewUrl: "https://apps.apple.com/app/example/id123"
+          }
+        ]
+      })
+    );
+    const betaRelease = Buffer.from(
+      JSON.stringify({
+        results: [
+          {
+            kind: "mac-software",
+            trackId: 123,
+            version: "1.0.0-beta.2",
+            trackViewUrl: "https://apps.apple.com/app/example/id123"
+          }
+        ]
+      })
+    );
+
+    expect(client.parseLookupResponse(stableRelease, version("1.0.0-beta.2"))).toMatchObject({
+      remoteVersion: version("1.0.0"),
+      appStoreItemID: 123
+    });
+    expect(client.parseLookupResponse(betaRelease, version("1.0.0"))).toBeUndefined();
+  });
+
   it("rejects iOS App Store records when installed app evidence is not enabled", () => {
     const data = Buffer.from(
       JSON.stringify({
@@ -174,6 +208,45 @@ describe("ported clients", () => {
     ).toBeUndefined();
   });
 
+  it("uses stable Sparkle releases as updates over matching local prerelease builds", () => {
+    const stableRelease = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <item>
+      <enclosure
+        url="https://example.com/download/1.0.0-beta.2.zip"
+        sparkle:version="102"
+        sparkle:shortVersionString="1.0.0-beta.2" />
+    </item>
+    <item>
+      <enclosure
+        url="https://example.com/download/1.0.0.zip"
+        sparkle:version="100"
+        sparkle:shortVersionString="1.0.0" />
+    </item>
+  </channel>
+</rss>`);
+    const betaRelease = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <item>
+      <enclosure
+        url="https://example.com/download/1.0.0-beta.2.zip"
+        sparkle:version="102"
+        sparkle:shortVersionString="1.0.0-beta.2" />
+    </item>
+  </channel>
+</rss>`);
+
+    expect(
+      new SparkleAppcastClient().parseAppcast(stableRelease, version("1.0.0-beta.2"))
+    ).toMatchObject({
+      remoteVersion: version("1.0.0"),
+      updateURL: "https://example.com/download/1.0.0.zip"
+    });
+    expect(new SparkleAppcastClient().parseAppcast(betaRelease, version("1.0.0"))).toBeUndefined();
+  });
+
   it("parses Homebrew cask schema drift fixtures", () => {
     const data = readFileSync(path.join(fixtures, "homebrew_cask_drift.json"));
     const index = new HomebrewCaskClient().parseIndex(data);
@@ -261,6 +334,52 @@ describe("ported clients", () => {
     ).toBe("pkg-backed-app");
     expect(
       client.lookupUpdate("com.example.pkgbacked", "Helper.app", version("1.0.0"), index)
+    ).toBeUndefined();
+  });
+
+  it("uses stable Homebrew cask versions as updates over matching local prerelease builds", () => {
+    const client = new HomebrewCaskClient();
+    const stableIndex = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "prerelease-app",
+            version: "1.0.0",
+            bundleIdentifier: "com.example.prerelease"
+          }
+        ])
+      )
+    );
+    const betaIndex = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "prerelease-app",
+            version: "1.0.0-beta.2",
+            bundleIdentifier: "com.example.prerelease"
+          }
+        ])
+      )
+    );
+
+    expect(
+      client.lookupUpdate(
+        "com.example.prerelease",
+        "Prerelease App.app",
+        version("1.0.0-beta.2"),
+        stableIndex
+      )
+    ).toMatchObject({
+      remoteVersion: version("1.0.0"),
+      token: "prerelease-app"
+    });
+    expect(
+      client.lookupUpdate(
+        "com.example.prerelease",
+        "Prerelease App.app",
+        version("1.0.0"),
+        betaIndex
+      )
     ).toBeUndefined();
   });
 
