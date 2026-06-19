@@ -297,19 +297,30 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   async addDirectory(directory: string): Promise<void> {
     const resolved = path.resolve(directory);
-    const directories = [...new Set([...this.state.additionalDirectories, resolved])];
+    if (
+      this.state.additionalDirectories.some((candidate) => path.resolve(candidate) === resolved)
+    ) {
+      return;
+    }
+    const directories = [...this.state.additionalDirectories, resolved];
     this.patch({ additionalDirectories: directories });
     await this.persist();
+    await this.refresh(false);
   }
 
   async removeDirectory(directory: string): Promise<void> {
     const resolved = path.resolve(directory);
+    const directories = this.state.additionalDirectories.filter(
+      (candidate) => path.resolve(candidate) !== resolved
+    );
+    if (directories.length === this.state.additionalDirectories.length) {
+      return;
+    }
     this.patch({
-      additionalDirectories: this.state.additionalDirectories.filter(
-        (candidate) => path.resolve(candidate) !== resolved
-      )
+      additionalDirectories: directories
     });
     await this.persist();
+    await this.refresh(false);
   }
 
   async openApp(appID: string): Promise<void> {

@@ -298,6 +298,88 @@ describe("update store helpers", () => {
     });
   });
 
+  it("refreshes app inventory after adding an additional scan directory", async () => {
+    let userData = "";
+    const scanState: { directory: string; app?: AppRecord } = { directory: "" };
+    const scannedDirectories: string[][] = [];
+    const store = await makeStore({
+      onUserData: (directory) => {
+        userData = directory;
+      },
+      clients: {
+        scanner: {
+          scanApplications: async (directories) => {
+            scannedDirectories.push(directories);
+            return scanState.app && directories.includes(scanState.directory)
+              ? [scanState.app]
+              : [];
+          }
+        }
+      }
+    });
+    scanState.directory = path.resolve(path.join(userData, "Extra Apps"));
+    const addedApp = appRecord({
+      bundlePath: path.join(scanState.directory, "Example.app"),
+      displayName: "Example",
+      localVersion: version("1.0.0")
+    });
+    scanState.app = addedApp;
+
+    await store.addDirectory(scanState.directory);
+
+    await vi.waitFor(() => {
+      expect(scannedDirectories).toContainEqual([
+        "/Applications",
+        path.join(os.homedir(), "Applications"),
+        scanState.directory
+      ]);
+      expect(store.getSnapshot().apps).toEqual([addedApp]);
+    });
+  });
+
+  it("refreshes app inventory after removing an additional scan directory", async () => {
+    let userData = "";
+    const scanState: { directory: string; app?: AppRecord } = { directory: "" };
+    const scannedDirectories: string[][] = [];
+    const store = await makeStore({
+      onUserData: (directory) => {
+        userData = directory;
+      },
+      clients: {
+        scanner: {
+          scanApplications: async (directories) => {
+            scannedDirectories.push(directories);
+            return scanState.app && directories.includes(scanState.directory)
+              ? [scanState.app]
+              : [];
+          }
+        }
+      }
+    });
+    scanState.directory = path.resolve(path.join(userData, "Extra Apps"));
+    const removableApp = appRecord({
+      bundlePath: path.join(scanState.directory, "Example.app"),
+      displayName: "Example",
+      localVersion: version("1.0.0")
+    });
+    scanState.app = removableApp;
+
+    await store.addDirectory(scanState.directory);
+    await vi.waitFor(() => {
+      expect(store.getSnapshot().apps).toEqual([removableApp]);
+    });
+
+    await store.removeDirectory(scanState.directory);
+
+    await vi.waitFor(() => {
+      expect(scannedDirectories.at(-1)).toEqual([
+        "/Applications",
+        path.join(os.homedir(), "Applications")
+      ]);
+      expect(store.getSnapshot().apps).toEqual([]);
+    });
+  });
+
   it("persists the started using date through store saves", async () => {
     let userData = "";
     const startedUsingAt = "2026-06-01T12:00:00.000Z";
