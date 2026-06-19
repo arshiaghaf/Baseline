@@ -27,6 +27,21 @@ const parser = new XMLParser({
   textNodeName: "#text"
 });
 
+const prereleaseLabels = new Set([
+  "dev",
+  "snapshot",
+  "nightly",
+  "canary",
+  "alpha",
+  "a",
+  "beta",
+  "b",
+  "pre",
+  "preview",
+  "rc",
+  "candidate"
+]);
+
 export class SparkleAppcastClient {
   async lookupOutcome(
     feedURL: string,
@@ -119,6 +134,14 @@ function isAppcastItemNewer(
 ): boolean {
   const marketingVersionComparison = compareVersions(item.parsedVersion, localVersion);
   if (marketingVersionComparison > 0) {
+    if (
+      isStableReleaseOverMatchingPrerelease(item.parsedVersion, localVersion) &&
+      localBuildVersion &&
+      !isVersionEmpty(localBuildVersion) &&
+      !isVersionEmpty(item.buildVersion)
+    ) {
+      return isVersionGreater(item.buildVersion, localBuildVersion);
+    }
     return true;
   }
   if (
@@ -130,6 +153,53 @@ function isAppcastItemNewer(
     return false;
   }
   return isVersionGreater(item.buildVersion, localBuildVersion);
+}
+
+function isStableReleaseOverMatchingPrerelease(
+  remoteVersion: VersionValue,
+  localVersion: VersionValue
+): boolean {
+  const remoteTokens = versionTokens(remoteVersion);
+  const localTokens = versionTokens(localVersion);
+
+  return (
+    !prereleaseToken(remoteTokens) &&
+    prereleaseToken(localTokens) !== undefined &&
+    compareVersions(remoteVersion, releaseCoreVersion(localVersion, localTokens)) === 0
+  );
+}
+
+type VersionToken = {
+  text: string;
+  index: number;
+  isNumeric: boolean;
+};
+
+function versionTokens(value: VersionValue): VersionToken[] {
+  return [
+    ...value.raw
+      .trim()
+      .toLowerCase()
+      .matchAll(/[a-z]+|\d+/giu)
+  ].map((match) => ({
+    text: match[0],
+    index: match.index ?? 0,
+    isNumeric: /^\d+$/u.test(match[0])
+  }));
+}
+
+function prereleaseToken(tokens: VersionToken[]): VersionToken | undefined {
+  return tokens.find((token, index) => {
+    if (token.isNumeric || !prereleaseLabels.has(token.text)) {
+      return false;
+    }
+    return tokens.slice(0, index).some((candidate) => candidate.isNumeric);
+  });
+}
+
+function releaseCoreVersion(value: VersionValue, tokens: VersionToken[]): VersionValue {
+  const marker = prereleaseToken(tokens);
+  return marker ? version(value.raw.slice(0, marker.index)) : value;
 }
 
 function normalizeItem(item: any): AppcastItem {
