@@ -215,6 +215,30 @@ describe("ported clients", () => {
     }
   });
 
+  it("keeps Mac App Store lookup requests filtered when Mac-capable software fallback is enabled", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 })
+      );
+
+    try {
+      await new AppStoreLookupClient().lookupOutcome(
+        "com.example.safari-extension",
+        version("1.0"),
+        {
+          includeMacCapableAppStoreSoftware: true
+        }
+      );
+
+      const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
+      expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.safari-extension");
+      expect(requestedURL.searchParams.get("entity")).toBe("macSoftware");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
   it("omits the entity filter when iOS App Store software lookup is enabled", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
