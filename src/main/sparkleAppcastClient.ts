@@ -138,10 +138,11 @@ function isAppcastItemNewer(
     if (
       isSameCorePrereleasePromotion(item.parsedVersion, localVersion) &&
       localBuildVersion &&
-      !isVersionEmpty(localBuildVersion) &&
-      !isVersionEmpty(item.buildVersion)
+      !isVersionEmpty(localBuildVersion)
     ) {
-      return isVersionGreater(item.buildVersion, localBuildVersion);
+      return (
+        !isVersionEmpty(item.buildVersion) && isVersionGreater(item.buildVersion, localBuildVersion)
+      );
     }
     return true;
   }

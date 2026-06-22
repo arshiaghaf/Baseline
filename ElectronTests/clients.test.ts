@@ -326,10 +326,27 @@ describe("ported clients", () => {
     </item>
   </channel>
 </rss>`);
+    const missingBuildRelease = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <item>
+      <enclosure
+        url="https://example.com/download/1.0.0-rc.1.zip"
+        sparkle:shortVersionString="1.0.0-rc.1" />
+    </item>
+  </channel>
+</rss>`);
 
     expect(
       new SparkleAppcastClient().parseAppcast(
         olderBuildRelease,
+        version("1.0.0-beta.9"),
+        version("109")
+      )
+    ).toBeUndefined();
+    expect(
+      new SparkleAppcastClient().parseAppcast(
+        missingBuildRelease,
         version("1.0.0-beta.9"),
         version("109")
       )
