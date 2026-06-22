@@ -4,17 +4,17 @@
 
 ### Added
 
-- Main-window search now opens as a command-palette overlay with keyboard shortcuts, focus restoration, and compact action-row results across app, Homebrew, Discover, installed, and ignored sections. ([#147](https://github.com/arshiaghaf/Baseline/pull/147))
+- Search now opens as a command-palette overlay in the main window, with keyboard shortcuts, focus restoration, and compact action results across apps, Homebrew, Discover, installed, and ignored items. ([#147](https://github.com/arshiaghaf/Baseline/pull/147))
 
 ### Fixed
 
-- Sparkle feed URL validation now blocks IPv6 hosts that encode loopback or private IPv4 addresses while preserving public IPv6 appcast hosts. ([#151](https://github.com/arshiaghaf/Baseline/pull/151))
-- App Store and Sparkle update records now survive transient lookup failures when the installed version still matches the prior update, preserving source precedence until a lookup definitively clears the update. ([#152](https://github.com/arshiaghaf/Baseline/pull/152))
-- UIKit App Store bundles that include the Mac idiom now stay on the Mac App Store lookup path, including mixed iPad/Mac metadata. ([#153](https://github.com/arshiaghaf/Baseline/pull/153))
-- Development tooling now resolves the patched `tar` override for GHSA-vmf3-w455-68vh / CVE-2026-53655. ([#154](https://github.com/arshiaghaf/Baseline/pull/154))
-- Individual and queued Homebrew cask upgrades now pass `--greedy`, matching Baseline's greedy outdated detection while leaving formula upgrades unchanged. ([#156](https://github.com/arshiaghaf/Baseline/pull/156))
-- The `Update Brews` control remains clickable while Homebrew is busy and queues eligible visible updates behind the active command. ([#157](https://github.com/arshiaghaf/Baseline/pull/157))
-- Adding or removing scan directories now triggers a full inventory refresh so saved directories and visible app results stay in sync. ([#159](https://github.com/arshiaghaf/Baseline/pull/159))
+- Sparkle appcast checks now block IPv6 hosts that hide loopback or private IPv4 addresses while still allowing public IPv6 feeds. ([#151](https://github.com/arshiaghaf/Baseline/pull/151))
+- Available App Store and Sparkle updates no longer disappear during temporary lookup failures when the installed app has not changed. ([#152](https://github.com/arshiaghaf/Baseline/pull/152))
+- Mac-capable UIKit App Store apps now stay on the Mac App Store update path, including mixed iPad/Mac metadata. ([#153](https://github.com/arshiaghaf/Baseline/pull/153))
+- Development tooling now uses the patched `tar` version for GHSA-vmf3-w455-68vh / CVE-2026-53655. ([#154](https://github.com/arshiaghaf/Baseline/pull/154))
+- Homebrew cask updates now use greedy upgrades where needed, matching Baseline's outdated detection while leaving formula updates unchanged. ([#156](https://github.com/arshiaghaf/Baseline/pull/156))
+- `Update Brews` can now queue eligible visible updates while Homebrew is already busy. ([#157](https://github.com/arshiaghaf/Baseline/pull/157))
+- Apps in added or removed scan folders now refresh immediately so the visible app list stays in sync. ([#159](https://github.com/arshiaghaf/Baseline/pull/159))
 
 ## 0.3.1 — 2026-06-14
 
