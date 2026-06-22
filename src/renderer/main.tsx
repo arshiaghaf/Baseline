@@ -20,7 +20,7 @@ import {
   FolderPlus,
   Info,
   Link2,
-  Lock,
+  LockKeyhole,
   Monitor,
   MoreHorizontal,
   Moon,
@@ -2990,7 +2990,7 @@ function ProfileTopbarIndicators() {
         tabIndex={0}
         aria-label="Private profile. Your profile is only visible to you and stays private on this Mac."
       >
-        <Lock size={13} strokeWidth={toolbarIconStrokeWidth} />
+        <LockKeyhole size={13} strokeWidth={toolbarIconStrokeWidth} />
         <span className="profile-topbar-indicator-label">Private</span>
         <span className="profile-topbar-tooltip" role="tooltip">
           Your profile is only visible to you and stays private on this Mac.
