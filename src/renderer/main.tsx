@@ -3290,7 +3290,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                       style={{ flexGrow: source.count }}
                     >
                       <span className="profile-source-tooltip" aria-hidden="true">
-                        {profileSourcePercentLabel(source, sourceMixTotal)}
+                        {profileSourceCountLabel(source)}
                       </span>
                     </span>
                   ))}
@@ -3307,7 +3307,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                         aria-hidden="true"
                       />
                       <span>{source.label}</span>
-                      <strong>{source.count}</strong>
+                      <strong>{profileSourcePercentLabel(source, sourceMixTotal)}</strong>
                     </div>
                   ))}
                 </div>
@@ -3782,9 +3782,13 @@ function profileSourcePercentLabel(
   total: number
 ): string {
   if (total <= 0) {
-    return `${source.label} 0%`;
+    return "0%";
   }
-  return `${source.label} ${Math.round((source.count / total) * 100)}%`;
+  return `${Math.round((source.count / total) * 100)}%`;
+}
+
+function profileSourceCountLabel(source: ProfileSummary["sourceMix"][number]): string {
+  return `${source.label} ${source.count} event${source.count === 1 ? "" : "s"}`;
 }
 
 function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sourceMix"] {

@@ -1072,7 +1072,9 @@ describe("renderer button parity", () => {
     expect(
       screen.queryByText("Tools you update with Baseline will appear here.")
     ).not.toBeInTheDocument();
-    expect(screen.getAllByText("Sparkle 45%")).toHaveLength(1);
+    expect(screen.getByText("Sparkle 5 events")).toBeInTheDocument();
+    expect(screen.getByText("45%")).toBeInTheDocument();
+    expect(screen.queryByText("Sparkle 45%")).not.toBeInTheDocument();
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
     expect(document.querySelector(".profile-start-panel-box")?.hasAttribute("title")).toBe(false);
     const sourceSegment = document.querySelector(".profile-source-segment") as HTMLElement;
