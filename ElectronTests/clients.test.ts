@@ -819,6 +819,36 @@ describe("ported clients", () => {
     expect(result.items.find((item) => item.token === "ripgrep")?.isOutdated).toBe(false);
   });
 
+  it("flags non-array Homebrew formula outdated sections without dropping cask metadata", () => {
+    const result = new HomebrewInventoryParser().buildInventoryWithStatus(
+      "ripgrep 14.0.0\n",
+      "notion 4.0.0\n",
+      JSON.stringify({ formulae: { name: "ripgrep", current_version: "14.1.0" } }),
+      JSON.stringify({ casks: [{ token: "notion", current_version: "4.1.0" }] })
+    );
+
+    expect(result.outdatedDetectionSucceeded).toBe(false);
+    expect(result.outdatedDetectionSucceededByKind).toEqual({ formula: false, cask: true });
+    expect(result.warning).toBe("Homebrew outdated status could not be read reliably.");
+    expect(result.items.find((item) => item.token === "ripgrep")?.isOutdated).toBe(false);
+    expect(result.items.find((item) => item.token === "notion")?.isOutdated).toBe(true);
+  });
+
+  it("flags non-array Homebrew cask outdated sections without dropping formula metadata", () => {
+    const result = new HomebrewInventoryParser().buildInventoryWithStatus(
+      "ripgrep 14.0.0\n",
+      "notion 4.0.0\n",
+      JSON.stringify({ formulae: [{ name: "ripgrep", current_version: "14.1.0" }] }),
+      JSON.stringify({ casks: { token: "notion", current_version: "4.1.0" } })
+    );
+
+    expect(result.outdatedDetectionSucceeded).toBe(false);
+    expect(result.outdatedDetectionSucceededByKind).toEqual({ formula: true, cask: false });
+    expect(result.warning).toBe("Homebrew outdated status could not be read reliably.");
+    expect(result.items.find((item) => item.token === "ripgrep")?.isOutdated).toBe(true);
+    expect(result.items.find((item) => item.token === "notion")?.isOutdated).toBe(false);
+  });
+
   it("uses the highest comparable installed Homebrew version", () => {
     const inventory = new HomebrewInventoryParser().buildInventory(
       "ripgrep 14.0.2 14.1.0 13.9.0\n",
