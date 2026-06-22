@@ -10,6 +10,7 @@ import { HomebrewFormulaClient } from "../src/main/homebrewFormulaClient";
 import { HomebrewInventoryParser } from "../src/main/homebrewInventoryClient";
 import { SelfUpdateClient } from "../src/main/selfUpdateClient";
 import { SparkleAppcastClient } from "../src/main/sparkleAppcastClient";
+import { byteLimits } from "../src/shared/security";
 import { version } from "../src/shared/version";
 
 const fixtures = path.join(process.cwd(), "ElectronTests", "Fixtures");
@@ -757,6 +758,40 @@ describe("ported clients", () => {
       )
     );
     expect(client.searchFormulae("rip", index, new Set()).at(0)?.token).toBe("ripgrep");
+  });
+
+  it("parses formula indexes above the cask index byte limit", () => {
+    const client = new HomebrewFormulaClient();
+    const payload = JSON.stringify([
+      {
+        name: "large-formula-index-entry",
+        versions: { stable: "1.2.3" },
+        homepage: "https://example.com/large-formula-index-entry",
+        desc: "x".repeat(byteLimits.homebrewCaskIndexMaxBytes)
+      }
+    ]);
+
+    expect(Buffer.byteLength(payload)).toBeGreaterThan(byteLimits.homebrewCaskIndexMaxBytes);
+
+    const index = client.parseIndex(Buffer.from(payload));
+
+    expect(index.byToken["large-formula-index-entry"]?.version.raw).toBe("1.2.3");
+    expect(client.searchFormulae("large formula", index, new Set()).at(0)?.token).toBe(
+      "large-formula-index-entry"
+    );
+  });
+
+  it("keeps cask indexes bounded by the cask byte limit", () => {
+    const client = new HomebrewCaskClient();
+    const payload = Buffer.alloc(byteLimits.homebrewCaskIndexMaxBytes + 1, " ");
+
+    const index = client.parseIndex(payload);
+
+    expect(index).toEqual({
+      byToken: {},
+      byBundleIdentifier: {},
+      byAppBundleName: {}
+    });
   });
 
   it("builds Homebrew inventory from installed and outdated output", () => {

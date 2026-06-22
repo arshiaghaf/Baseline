@@ -6,7 +6,8 @@ import { isIP } from "node:net";
 export const byteLimits = {
   appStoreLookupMaxBytes: 1 * 1024 * 1024,
   sparkleAppcastMaxBytes: 2 * 1024 * 1024,
-  homebrewIndexMaxBytes: 25 * 1024 * 1024
+  homebrewCaskIndexMaxBytes: 25 * 1024 * 1024,
+  homebrewFormulaIndexMaxBytes: 64 * 1024 * 1024
 };
 
 const homebrewTokenSegmentRegex = /^[a-z0-9][a-z0-9+._@-]{0,127}$/;
