@@ -86,7 +86,7 @@ export class HomebrewCaskClient {
   }
 
   parseIndex(data: Buffer): HomebrewCaskIndex {
-    if (data.byteLength > byteLimits.homebrewIndexMaxBytes) {
+    if (data.byteLength > byteLimits.homebrewCaskIndexMaxBytes) {
       return emptyHomebrewCaskIndex;
     }
 

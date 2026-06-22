@@ -26,7 +26,7 @@ export class HomebrewFormulaClient {
   }
 
   parseIndex(data: Buffer): HomebrewFormulaIndex {
-    if (data.byteLength > byteLimits.homebrewIndexMaxBytes) {
+    if (data.byteLength > byteLimits.homebrewFormulaIndexMaxBytes) {
       return emptyHomebrewFormulaIndex;
     }
     const raw = JSON.parse(data.toString("utf8")) as any[];
