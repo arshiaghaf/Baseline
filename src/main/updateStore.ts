@@ -1056,7 +1056,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             appRecord.localVersion,
             {
               includeIOSAppStoreSoftware:
-                appRecord.isIOSAppOnMac === true && appRecord.hasAppStoreEvidence === true
+                appRecord.isIOSAppOnMac === true && appRecord.hasAppStoreEvidence === true,
+              includeMacCapableAppStoreSoftware:
+                appRecord.isIOSAppOnMac !== true && appRecord.hasSafariWebExtension === true
             }
           );
           if (outcome.type === "completed" && outcome.value) {

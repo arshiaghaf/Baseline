@@ -1041,11 +1041,24 @@ describe("update store helpers", () => {
       sourceHint: "appStore",
       localVersion: version("1.0.0")
     });
+    const safariExtensionApp = appRecord({
+      bundlePath: "/Applications/Safari Extension App.app",
+      displayName: "Safari Extension App",
+      bundleIdentifier: "com.example.safari-extension-app",
+      sourceHint: "appStore",
+      localVersion: version("1.0.0"),
+      hasSafariWebExtension: true
+    });
     const lookupOutcome = vi.fn(async () => ({ type: "completed" as const }));
     const store = await makeStore({
       clients: {
         scanner: {
-          scanApplications: async () => [iOSAppOnMac, sideloadedIOSAppOnMac, nativeMacApp]
+          scanApplications: async () => [
+            iOSAppOnMac,
+            sideloadedIOSAppOnMac,
+            nativeMacApp,
+            safariExtensionApp
+          ]
         },
         appStore: { lookupOutcome }
       }
@@ -1057,19 +1070,25 @@ describe("update store helpers", () => {
       1,
       iOSAppOnMac.bundleIdentifier,
       iOSAppOnMac.localVersion,
-      { includeIOSAppStoreSoftware: true }
+      { includeIOSAppStoreSoftware: true, includeMacCapableAppStoreSoftware: false }
     );
     expect(lookupOutcome).toHaveBeenNthCalledWith(
       2,
       sideloadedIOSAppOnMac.bundleIdentifier,
       sideloadedIOSAppOnMac.localVersion,
-      { includeIOSAppStoreSoftware: false }
+      { includeIOSAppStoreSoftware: false, includeMacCapableAppStoreSoftware: false }
     );
     expect(lookupOutcome).toHaveBeenNthCalledWith(
       3,
       nativeMacApp.bundleIdentifier,
       nativeMacApp.localVersion,
-      { includeIOSAppStoreSoftware: false }
+      { includeIOSAppStoreSoftware: false, includeMacCapableAppStoreSoftware: false }
+    );
+    expect(lookupOutcome).toHaveBeenNthCalledWith(
+      4,
+      safariExtensionApp.bundleIdentifier,
+      safariExtensionApp.localVersion,
+      { includeIOSAppStoreSoftware: false, includeMacCapableAppStoreSoftware: true }
     );
   });
 

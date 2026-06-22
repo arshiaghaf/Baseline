@@ -386,6 +386,66 @@ describe("bundle scanner", () => {
     });
   });
 
+  it("marks native Safari web extension apps", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    const appPath = path.join(root, "Content Blocker.app");
+    await writeAppPlist(appPath, {
+      displayName: "Content Blocker",
+      bundleIdentifier: "com.example.content-blocker",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>CFBundleSupportedPlatforms</key>",
+        "  <array>",
+        "    <string>MacOSX</string>",
+        "  </array>",
+        "  <key>LSMinimumSystemVersion</key>",
+        "  <string>13.5</string>"
+      ].join("\n")
+    });
+    await writeExtensionPlist(
+      path.join(appPath, "Contents", "PlugIns", "Content Blocker Extension.appex"),
+      "com.apple.Safari.web-extension"
+    );
+    await mkdir(path.join(appPath, "Contents", "_MASReceipt"), { recursive: true });
+    await writeFile(path.join(appPath, "Contents", "_MASReceipt", "receipt"), "receipt");
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundlePath: appPath,
+      bundleIdentifier: "com.example.content-blocker",
+      sourceHint: "appStore",
+      isIOSAppOnMac: false,
+      hasAppStoreEvidence: true,
+      hasSafariWebExtension: true
+    });
+  });
+
+  it("does not mark other app extensions as Safari web extension apps", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    const appPath = path.join(root, "Native Service App.app");
+    await writeAppPlist(appPath, {
+      displayName: "Native Service App",
+      bundleIdentifier: "com.example.native-service",
+      version: "1.0.0"
+    });
+    await writeExtensionPlist(
+      path.join(appPath, "Contents", "PlugIns", "Service Extension.appex"),
+      "com.example.native-service-extension"
+    );
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundleIdentifier: "com.example.native-service",
+      hasSafariWebExtension: false
+    });
+  });
+
   it("scans App Store wrapper bundles for iOS-on-Mac apps", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
     tempDirs.push(root);
@@ -635,4 +695,28 @@ async function writeWrappedIOSAppPlist(
 `
     );
   }
+}
+
+async function writeExtensionPlist(
+  appExtensionPath: string,
+  extensionPoint: string
+): Promise<void> {
+  await mkdir(path.join(appExtensionPath, "Contents"), { recursive: true });
+  await writeFile(
+    path.join(appExtensionPath, "Contents", "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.example.extension</string>
+  <key>NSExtension</key>
+  <dict>
+    <key>NSExtensionPointIdentifier</key>
+    <string>${extensionPoint}</string>
+  </dict>
+</dict>
+</plist>
+`
+  );
 }
