@@ -119,26 +119,23 @@ function isDisallowedIPv4(host: string): boolean {
 
 function isDisallowedIPv6(host: string): boolean {
   const normalized = host.toLowerCase();
-  const embeddedIPv4 = embeddedIPv4Address(normalized);
+  const groups = ipv6Groups(normalized);
+  const embeddedIPv4 = groups ? embeddedIPv4Address(groups) : undefined;
   if (embeddedIPv4) {
     return isDisallowedIPv4(embeddedIPv4);
   }
+  const firstGroup = groups?.[0];
 
   return (
     normalized === "::" ||
     normalized === "::1" ||
-    normalized.startsWith("fe80:") ||
-    normalized.startsWith("fc") ||
-    normalized.startsWith("fd")
+    (firstGroup !== undefined &&
+      ((firstGroup >= 0xfe80 && firstGroup <= 0xfebf) ||
+        (firstGroup >= 0xfc00 && firstGroup <= 0xfdff)))
   );
 }
 
-function embeddedIPv4Address(host: string): string | undefined {
-  const groups = ipv6Groups(host);
-  if (!groups) {
-    return undefined;
-  }
-
+function embeddedIPv4Address(groups: number[]): string | undefined {
   const isIPv4Mapped = groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff;
   const isIPv4Translated =
     groups.slice(0, 4).every((group) => group === 0) && groups[4] === 0xffff && groups[5] === 0;

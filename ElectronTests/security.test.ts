@@ -38,6 +38,12 @@ describe("security policy", () => {
     expect(isAllowedFeedURL("https://[::a00:4]/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://[64:ff9b::127.0.0.1]/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://[64:ff9b::7f00:1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[fe80::1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[fe90::1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[fea0::1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[febf::1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[fc00::1]/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://[fdff::1]/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://[2001:4860:4860::8888]/feed.xml")).toBe(true);
     expect(isAllowedFeedURL("https://[::ffff:0:808:808]/feed.xml")).toBe(true);
     expect(isAllowedFeedURL("https://updates.example.com/appcast.xml")).toBe(true);
