@@ -40,8 +40,13 @@ export function isAllowedFeedURL(raw: string | URL): boolean {
     return false;
   }
 
-  const host = url.hostname.toLowerCase().replace(/^\[/u, "").replace(/\]$/u, "");
-  if (host === "localhost" || host.endsWith(".localhost")) {
+  const host = normalizedFeedHost(url.hostname);
+  if (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "local" ||
+    host.endsWith(".local")
+  ) {
     return false;
   }
 
@@ -99,6 +104,11 @@ function safeURL(raw: string): URL | undefined {
   } catch {
     return undefined;
   }
+}
+
+function normalizedFeedHost(hostname: string): string {
+  const host = hostname.toLowerCase().replace(/^\[/u, "").replace(/\]$/u, "");
+  return host.endsWith(".") ? host.slice(0, -1) : host;
 }
 
 function isDisallowedIPv4(host: string): boolean {
