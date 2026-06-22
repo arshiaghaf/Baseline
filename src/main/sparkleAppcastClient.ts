@@ -136,7 +136,7 @@ function isAppcastItemNewer(
   const marketingVersionComparison = compareVersions(item.parsedVersion, localVersion);
   if (marketingVersionComparison > 0) {
     if (
-      isStableReleaseOverMatchingPrerelease(item.parsedVersion, localVersion) &&
+      isSameCorePrereleasePromotion(item.parsedVersion, localVersion) &&
       localBuildVersion &&
       !isVersionEmpty(localBuildVersion) &&
       !isVersionEmpty(item.buildVersion)
@@ -156,7 +156,7 @@ function isAppcastItemNewer(
   return isVersionGreater(item.buildVersion, localBuildVersion);
 }
 
-function isStableReleaseOverMatchingPrerelease(
+function isSameCorePrereleasePromotion(
   remoteVersion: VersionValue,
   localVersion: VersionValue
 ): boolean {
@@ -164,9 +164,11 @@ function isStableReleaseOverMatchingPrerelease(
   const localTokens = versionTokens(localVersion);
 
   return (
-    !prereleaseToken(remoteTokens) &&
-    prereleaseToken(localTokens) !== undefined &&
-    compareVersions(remoteVersion, releaseCoreVersion(localVersion, localTokens)) === 0
+    (prereleaseToken(remoteTokens) !== undefined || prereleaseToken(localTokens) !== undefined) &&
+    compareVersions(
+      releaseCoreVersion(remoteVersion, remoteTokens),
+      releaseCoreVersion(localVersion, localTokens)
+    ) === 0
   );
 }
 

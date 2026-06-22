@@ -303,6 +303,50 @@ describe("ported clients", () => {
     expect(new SparkleAppcastClient().parseAppcast(betaRelease, version("1.0.0"))).toBeUndefined();
   });
 
+  it("requires newer Sparkle builds for matching-core prerelease promotions", () => {
+    const olderBuildRelease = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <item>
+      <enclosure
+        url="https://example.com/download/1.0.0-rc.1.zip"
+        sparkle:version="101"
+        sparkle:shortVersionString="1.0.0-rc.1" />
+    </item>
+  </channel>
+</rss>`);
+    const newerBuildRelease = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <item>
+      <enclosure
+        url="https://example.com/download/1.0.0-rc.1.zip"
+        sparkle:version="110"
+        sparkle:shortVersionString="1.0.0-rc.1" />
+    </item>
+  </channel>
+</rss>`);
+
+    expect(
+      new SparkleAppcastClient().parseAppcast(
+        olderBuildRelease,
+        version("1.0.0-beta.9"),
+        version("109")
+      )
+    ).toBeUndefined();
+    expect(
+      new SparkleAppcastClient().parseAppcast(
+        newerBuildRelease,
+        version("1.0.0-beta.9"),
+        version("109")
+      )
+    ).toMatchObject({
+      remoteVersion: version("1.0.0-rc.1"),
+      remoteBuildVersion: version("110"),
+      updateURL: "https://example.com/download/1.0.0-rc.1.zip"
+    });
+  });
+
   it("parses Homebrew cask schema drift fixtures", () => {
     const data = readFileSync(path.join(fixtures, "homebrew_cask_drift.json"));
     const index = new HomebrewCaskClient().parseIndex(data);
