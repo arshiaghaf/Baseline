@@ -1059,7 +1059,8 @@ describe("renderer button parity", () => {
     ).toEqual(["10", "4", "1", "Sparkle"]);
     expect(screen.queryByText("Favorite channel")).not.toBeInTheDocument();
     expect(screen.getByText("Favorite source")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Source mix" })).not.toBeInTheDocument();
+    expect(document.querySelector(".profile-source-section")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Most updated apps" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Most updated tools" })).toBeInTheDocument();
     expect(

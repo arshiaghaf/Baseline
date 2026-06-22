@@ -3273,7 +3273,6 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           </div>
         </section>
         <section className="panel settings-panel profile-source-section">
-          <PanelTitle title="Source mix" />
           <div className="settings-panel-box profile-source-panel-box">
             {activeSourceMix.length > 0 ? (
               <div className="profile-source-list">
