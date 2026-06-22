@@ -1025,6 +1025,24 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
 
     expect(screen.getAllByRole("heading", { name: "Profile" })).toHaveLength(1);
+    const profileIndicators = document.querySelector(".profile-topbar-indicators") as HTMLElement;
+    expect(profileIndicators).not.toBeNull();
+    expect(within(profileIndicators).getByText("Private")).toBeInTheDocument();
+    expect(
+      within(profileIndicators).getByLabelText(
+        "Private profile. Your profile is only visible to you and stays private on this Mac."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(profileIndicators).getByText(
+        "Your profile is only visible to you and stays private on this Mac."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(profileIndicators).getByText(
+        "Only updates and installs completed with Baseline are counted."
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Time with Baseline" })).not.toBeInTheDocument();
     expect(screen.getByText("with Baseline")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
@@ -1094,10 +1112,12 @@ describe("renderer button parity", () => {
     expect(screen.getByText("1 update · Formula")).toBeInTheDocument();
     expect([...topToolTiles].some((tile) => tile.textContent?.includes("Orion"))).toBe(false);
     expect(
-      screen.getByText(
+      screen.queryByText(
         "Only updates and installs completed with Baseline are counted. Stats stay private on this Mac."
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(document.querySelector(".profile-footer-panel")).toBeNull();
+    expect(document.querySelector(".profile-footer-row")).toBeNull();
     expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
     expect(screen.queryByText("Verified")).not.toBeInTheDocument();
     expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
