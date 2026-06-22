@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0 — 2026-06-22
+
+### Added
+
+- Main-window search now opens as a command-palette overlay with keyboard shortcuts, focus restoration, and compact action-row results across app, Homebrew, Discover, installed, and ignored sections. ([#147](https://github.com/arshiaghaf/Baseline/pull/147))
+
+### Fixed
+
+- Sparkle feed URL validation now blocks IPv6 hosts that encode loopback or private IPv4 addresses while preserving public IPv6 appcast hosts. ([#151](https://github.com/arshiaghaf/Baseline/pull/151))
+- App Store and Sparkle update records now survive transient lookup failures when the installed version still matches the prior update, preserving source precedence until a lookup definitively clears the update. ([#152](https://github.com/arshiaghaf/Baseline/pull/152))
+- UIKit App Store bundles that include the Mac idiom now stay on the Mac App Store lookup path, including mixed iPad/Mac metadata. ([#153](https://github.com/arshiaghaf/Baseline/pull/153))
+- Development tooling now resolves the patched `tar` override for GHSA-vmf3-w455-68vh / CVE-2026-53655. ([#154](https://github.com/arshiaghaf/Baseline/pull/154))
+- Individual and queued Homebrew cask upgrades now pass `--greedy`, matching Baseline's greedy outdated detection while leaving formula upgrades unchanged. ([#156](https://github.com/arshiaghaf/Baseline/pull/156))
+- The `Update Brews` control remains clickable while Homebrew is busy and queues eligible visible updates behind the active command. ([#157](https://github.com/arshiaghaf/Baseline/pull/157))
+- Adding or removing scan directories now triggers a full inventory refresh so saved directories and visible app results stay in sync. ([#159](https://github.com/arshiaghaf/Baseline/pull/159))
+
 ## 0.3.1 — 2026-06-14
 
 ### Fixed
