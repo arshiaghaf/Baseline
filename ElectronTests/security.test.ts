@@ -21,7 +21,12 @@ describe("security policy", () => {
 
   it("rejects local and private feed hosts", () => {
     expect(isAllowedFeedURL("https://localhost/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://localhost./feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://updates.local/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://updates.local./feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://local/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://127.0.0.1/feed.xml")).toBe(false);
+    expect(isAllowedFeedURL("https://127.0.0.1./feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://10.0.0.4/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://192.168.1.10/feed.xml")).toBe(false);
     expect(isAllowedFeedURL("https://[::1]/feed.xml")).toBe(false);
