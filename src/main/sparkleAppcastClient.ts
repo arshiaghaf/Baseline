@@ -94,9 +94,10 @@ export class SparkleAppcastClient {
         parsedVersion: version(item.shortVersionString ?? item.buildVersion)
       }))
       .filter(({ parsedVersion }) => !isVersionEmpty(parsedVersion))
+      .filter((candidate) => isAppcastItemNewer(candidate, localVersion, localBuildVersion))
       .sort((lhs, rhs) => -1 * compareAppcastItems(lhs, rhs))[0];
 
-    if (!best || !isAppcastItemNewer(best, localVersion, localBuildVersion)) {
+    if (!best) {
       return undefined;
     }
 

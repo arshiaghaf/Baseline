@@ -243,6 +243,23 @@ describe("ported clients", () => {
     </item>
   </channel>
 </rss>`);
+    const stableOlderBuildWithNewerBetaRelease = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+  <channel>
+    <item>
+      <enclosure
+        url="https://example.com/download/1.0.0-beta.3.zip"
+        sparkle:version="103"
+        sparkle:shortVersionString="1.0.0-beta.3" />
+    </item>
+    <item>
+      <enclosure
+        url="https://example.com/download/1.0.0.zip"
+        sparkle:version="100"
+        sparkle:shortVersionString="1.0.0" />
+    </item>
+  </channel>
+</rss>`);
     const betaRelease = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
   <channel>
@@ -272,6 +289,17 @@ describe("ported clients", () => {
         version("102")
       )
     ).toBeUndefined();
+    expect(
+      new SparkleAppcastClient().parseAppcast(
+        stableOlderBuildWithNewerBetaRelease,
+        version("1.0.0-beta.2"),
+        version("102")
+      )
+    ).toMatchObject({
+      remoteVersion: version("1.0.0-beta.3"),
+      remoteBuildVersion: version("103"),
+      updateURL: "https://example.com/download/1.0.0-beta.3.zip"
+    });
     expect(new SparkleAppcastClient().parseAppcast(betaRelease, version("1.0.0"))).toBeUndefined();
   });
 
