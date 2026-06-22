@@ -1072,7 +1072,7 @@ describe("renderer button parity", () => {
     expect(
       screen.queryByText("Tools you update with Baseline will appear here.")
     ).not.toBeInTheDocument();
-    expect(screen.getByText("Sparkle 5 events")).toBeInTheDocument();
+    expect(screen.getByText("5 updates via Sparkle")).toBeInTheDocument();
     expect(screen.getByText("45%")).toBeInTheDocument();
     expect(screen.queryByText("Sparkle 45%")).not.toBeInTheDocument();
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);

@@ -3788,7 +3788,7 @@ function profileSourcePercentLabel(
 }
 
 function profileSourceCountLabel(source: ProfileSummary["sourceMix"][number]): string {
-  return `${source.label} ${source.count} event${source.count === 1 ? "" : "s"}`;
+  return `${source.count} update${source.count === 1 ? "" : "s"} via ${source.label}`;
 }
 
 function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sourceMix"] {
