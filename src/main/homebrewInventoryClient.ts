@@ -90,8 +90,8 @@ export class HomebrewInventoryParser {
   ): HomebrewInventoryResult {
     const formulaInstalled = this.parseInstalledVersions(formulaVersionsOutput);
     const caskInstalled = this.parseInstalledVersions(caskVersionsOutput, "cask");
-    const formulaOutdated = this.parseOutdatedMetadata(formulaOutdatedJSON);
-    const caskOutdated = this.parseOutdatedMetadata(caskOutdatedJSON);
+    const formulaOutdated = this.parseOutdatedMetadata(formulaOutdatedJSON, "formula");
+    const caskOutdated = this.parseOutdatedMetadata(caskOutdatedJSON, "cask");
     const items = this.buildItems(
       formulaInstalled,
       caskInstalled,
@@ -194,7 +194,10 @@ export class HomebrewInventoryParser {
     return result;
   }
 
-  private parseOutdatedMetadata(raw: string): {
+  private parseOutdatedMetadata(
+    raw: string,
+    kindValue: HomebrewManagedItemKind
+  ): {
     metadata: Map<string, OutdatedMetadata>;
     valid: boolean;
   } {
@@ -209,8 +212,12 @@ export class HomebrewInventoryParser {
       return { metadata: result, valid: false };
     }
 
-    this.populateOutdatedMetadata(result, parsed?.formulae ?? [], "formula");
-    this.populateOutdatedMetadata(result, parsed?.casks ?? [], "cask");
+    const items = parsed?.[outdatedMetadataKey(kindValue)] ?? [];
+    if (!Array.isArray(items)) {
+      return { metadata: result, valid: false };
+    }
+
+    this.populateOutdatedMetadata(result, items, kindValue);
     return { metadata: result, valid: true };
   }
 
@@ -234,6 +241,10 @@ export class HomebrewInventoryParser {
 
 function key(kindValue: HomebrewManagedItemKind, token: string): string {
   return `${kindValue}:${token.toLowerCase()}`;
+}
+
+function outdatedMetadataKey(kindValue: HomebrewManagedItemKind): "formulae" | "casks" {
+  return kindValue === "formula" ? "formulae" : "casks";
 }
 
 function currentVersion(item: any, kindValue: HomebrewManagedItemKind): string {
