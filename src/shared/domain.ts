@@ -20,6 +20,7 @@ export type AppRecord = {
   sourceHint: UpdateSource;
   isIOSAppOnMac?: boolean;
   hasAppStoreEvidence?: boolean;
+  hasSafariWebExtension?: boolean;
   sparkleFeedURL?: string;
   iconDataURL?: string;
 };

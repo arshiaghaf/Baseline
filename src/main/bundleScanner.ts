@@ -18,6 +18,7 @@ type AppBundleInfo = {
   info: InfoPlist;
   isIOSAppOnMac: boolean;
   hasAppStoreEvidence: boolean;
+  hasSafariWebExtension: boolean;
   iconResourcesPath: string;
 };
 type IconLoadResult = { dataURL?: string };
@@ -96,7 +97,8 @@ export class BundleScannerClient {
     if (!bundleInfo) {
       return undefined;
     }
-    const { info, isIOSAppOnMac, hasAppStoreEvidence, iconResourcesPath } = bundleInfo;
+    const { info, isIOSAppOnMac, hasAppStoreEvidence, hasSafariWebExtension, iconResourcesPath } =
+      bundleInfo;
     if (isWebAppBundle(info)) {
       return undefined;
     }
@@ -128,6 +130,7 @@ export class BundleScannerClient {
       sourceHint,
       isIOSAppOnMac,
       hasAppStoreEvidence: hasMasReceipt || hasAppStoreEvidence,
+      hasSafariWebExtension,
       sparkleFeedURL,
       iconDataURL: await this.appIconDataURL(appPath, iconResourcesPath, info)
     };
@@ -142,6 +145,7 @@ export class BundleScannerClient {
         isIOSAppOnMac:
           isIOSAppOnMacInfo(info) || (hasAppStoreEvidence && isUIKitMacAppStoreInfo(info)),
         hasAppStoreEvidence,
+        hasSafariWebExtension: await this.hasSafariWebExtension(appPath),
         iconResourcesPath: path.join(appPath, "Contents", "Resources")
       };
     }
@@ -166,6 +170,7 @@ export class BundleScannerClient {
             info,
             isIOSAppOnMac: true,
             hasAppStoreEvidence: await this.hasWrappedAppStoreEvidence(appPath, entry.name, info),
+            hasSafariWebExtension: false,
             iconResourcesPath: path.join(wrapperPath, entry.name)
           };
         }
@@ -184,6 +189,30 @@ export class BundleScannerClient {
     } catch {
       return false;
     }
+  }
+
+  private async hasSafariWebExtension(appPath: string): Promise<boolean> {
+    const pluginsPath = path.join(appPath, "Contents", "PlugIns");
+    try {
+      const entries = await readdir(pluginsPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || !entry.name.endsWith(".appex")) {
+          continue;
+        }
+        const info = await readInfoPlistAtPath(
+          path.join(pluginsPath, entry.name, "Contents", "Info.plist")
+        );
+        if (
+          stringValue(recordValue(info?.NSExtension)?.NSExtensionPointIdentifier) ===
+          "com.apple.Safari.web-extension"
+        ) {
+          return true;
+        }
+      }
+    } catch {
+      return false;
+    }
+    return false;
   }
 
   private async hasWrappedAppStoreEvidence(

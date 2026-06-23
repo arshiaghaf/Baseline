@@ -109,6 +109,61 @@ describe("ported clients", () => {
     expect(new AppStoreLookupClient().parseLookupResponse(data, version("1.0"))).toBeUndefined();
   });
 
+  it("accepts Mac-capable App Store software records only when fallback is enabled", () => {
+    const data = Buffer.from(
+      JSON.stringify({
+        resultCount: 1,
+        results: [
+          {
+            kind: "software",
+            bundleId: "com.example.mac-capable",
+            supportedDevices: ["MacDesktop-MacDesktop", "iPhone15-iPhone15"],
+            trackId: 123,
+            version: "2.0",
+            trackViewUrl: "https://apps.apple.com/app/example/id123"
+          }
+        ]
+      })
+    );
+
+    expect(
+      new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
+        bundleIdentifier: "com.example.mac-capable"
+      })
+    ).toBeUndefined();
+
+    const result = new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
+      bundleIdentifier: "com.example.mac-capable",
+      includeMacCapableAppStoreSoftware: true
+    });
+
+    expect(result?.remoteVersion.raw).toBe("2.0");
+    expect(result?.appStoreItemID).toBe(123);
+  });
+
+  it("rejects iOS-only App Store software records on Mac lookup paths", () => {
+    const data = Buffer.from(
+      JSON.stringify({
+        resultCount: 1,
+        results: [
+          {
+            kind: "software",
+            bundleId: "com.example.ios-only",
+            supportedDevices: ["iPhone15-iPhone15", "iPadAir11M3-iPadAir11M3"],
+            trackId: 123,
+            version: "2.0"
+          }
+        ]
+      })
+    );
+
+    expect(
+      new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
+        bundleIdentifier: "com.example.ios-only"
+      })
+    ).toBeUndefined();
+  });
+
   it("prefers matching iOS App Store records for installed iOS-on-Mac apps", () => {
     const data = Buffer.from(
       JSON.stringify({
@@ -154,6 +209,30 @@ describe("ported clients", () => {
 
       const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
       expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.mac-app");
+      expect(requestedURL.searchParams.get("entity")).toBe("macSoftware");
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("keeps Mac App Store lookup requests filtered when Mac-capable software fallback is enabled", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 })
+      );
+
+    try {
+      await new AppStoreLookupClient().lookupOutcome(
+        "com.example.safari-extension",
+        version("1.0"),
+        {
+          includeMacCapableAppStoreSoftware: true
+        }
+      );
+
+      const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
+      expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.safari-extension");
       expect(requestedURL.searchParams.get("entity")).toBe("macSoftware");
     } finally {
       fetchMock.mockRestore();
