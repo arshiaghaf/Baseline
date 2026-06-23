@@ -1078,6 +1078,7 @@ describe("renderer button parity", () => {
     expect(screen.getByText("5 updates via Sparkle")).toBeInTheDocument();
     expect(screen.getByText("50%")).toBeInTheDocument();
     expect(screen.queryByText("Sparkle 45%")).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Sparkle: 5 updates (50%)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
     expect(document.querySelector(".profile-start-panel-box")?.hasAttribute("title")).toBe(false);
     const sourceSegment = document.querySelector(".profile-source-segment") as HTMLElement;

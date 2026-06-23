@@ -3770,10 +3770,10 @@ function profileSourceShareLabel(
   total: number
 ): string {
   if (total <= 0) {
-    return `${source.label}: no recorded events`;
+    return `${source.label}: no recorded updates`;
   }
   const percent = Math.round((source.count / total) * 100);
-  return `${source.label}: ${source.count} event${source.count === 1 ? "" : "s"} (${percent}%)`;
+  return `${source.label}: ${source.count} update${source.count === 1 ? "" : "s"} (${percent}%)`;
 }
 
 function profileSourcePercentLabel(
