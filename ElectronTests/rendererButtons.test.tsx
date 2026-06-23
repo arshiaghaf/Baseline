@@ -1067,13 +1067,16 @@ describe("renderer button parity", () => {
       screen.queryByText("Update or install something with Baseline to build a source history.")
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByText("Update something with Baseline to build a source history.")
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByText("Apps you update with Baseline will appear here.")
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText("Tools you update with Baseline will appear here.")
     ).not.toBeInTheDocument();
     expect(screen.getByText("5 updates via Sparkle")).toBeInTheDocument();
-    expect(screen.getByText("45%")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
     expect(screen.queryByText("Sparkle 45%")).not.toBeInTheDocument();
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
     expect(document.querySelector(".profile-start-panel-box")?.hasAttribute("title")).toBe(false);
@@ -1145,7 +1148,7 @@ describe("renderer button parity", () => {
 
     expect(screen.getByText("No history")).toBeInTheDocument();
     expect(
-      screen.getByText("Update or install something with Baseline to build a source history.")
+      screen.getByText("Update something with Baseline to build a source history.")
     ).toBeInTheDocument();
     expect(screen.getByText("Apps you update with Baseline will appear here.")).toBeInTheDocument();
     expect(

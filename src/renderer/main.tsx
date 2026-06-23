@@ -3314,7 +3314,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
               </div>
             ) : (
               <p className="profile-empty-state">
-                Update or install something with Baseline to build a source history.
+                Update something with Baseline to build a source history.
               </p>
             )}
           </div>
@@ -3729,7 +3729,8 @@ type ProfileSummary = {
 
 function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   const events = snapshot.profileStats.events;
-  const sourceMix = buildProfileSourceMix(events);
+  const updateEvents = events.filter(isProfileUpdateEvent);
+  const sourceMix = buildProfileSourceMix(updateEvents);
   const favorite = sourceMix.reduce((best, item) => (item.count > best.count ? item : best));
   const topApps = buildTopUpdatedApps(events, snapshot.apps);
   const topHomebrewItems = buildTopUpdatedHomebrewItems(
@@ -3738,9 +3739,7 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
     snapshot.apps,
     snapshot.updates
   );
-  const totalUpdates = events.filter(
-    (event) => event.type === "appUpdate" || event.type === "homebrewUpdate"
-  ).length;
+  const totalUpdates = updateEvents.length;
   const differentApps = new Set(
     events.filter((event) => event.type === "appUpdate").map((event) => event.targetID)
   ).size;
@@ -3789,6 +3788,10 @@ function profileSourcePercentLabel(
 
 function profileSourceCountLabel(source: ProfileSummary["sourceMix"][number]): string {
   return `${source.count} update${source.count === 1 ? "" : "s"} via ${source.label}`;
+}
+
+function isProfileUpdateEvent(event: ProfileStatsEvent): boolean {
+  return event.type === "appUpdate" || event.type === "homebrewUpdate";
 }
 
 function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sourceMix"] {
