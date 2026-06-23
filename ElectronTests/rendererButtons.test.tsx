@@ -1025,6 +1025,24 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Profile" }));
 
     expect(screen.getAllByRole("heading", { name: "Profile" })).toHaveLength(1);
+    const profileIndicators = document.querySelector(".profile-topbar-indicators") as HTMLElement;
+    expect(profileIndicators).not.toBeNull();
+    expect(within(profileIndicators).getByText("Private")).toBeInTheDocument();
+    expect(
+      within(profileIndicators).getByLabelText(
+        "Private profile. Your profile is only visible to you and stays private on this Mac."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(profileIndicators).getByText(
+        "Your profile is only visible to you and stays private on this Mac."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(profileIndicators).getByText(
+        "Only updates and installs completed with Baseline are counted."
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Time with Baseline" })).not.toBeInTheDocument();
     expect(screen.getByText("with Baseline")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
@@ -1041,11 +1059,15 @@ describe("renderer button parity", () => {
     ).toEqual(["10", "4", "1", "Sparkle"]);
     expect(screen.queryByText("Favorite channel")).not.toBeInTheDocument();
     expect(screen.getByText("Favorite source")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Source mix" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Source mix" })).not.toBeInTheDocument();
+    expect(document.querySelector(".profile-source-section")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Most updated apps" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Most updated tools" })).toBeInTheDocument();
     expect(
       screen.queryByText("Update or install something with Baseline to build a source history.")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Update something with Baseline to build a source history.")
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText("Apps you update with Baseline will appear here.")
@@ -1053,7 +1075,10 @@ describe("renderer button parity", () => {
     expect(
       screen.queryByText("Tools you update with Baseline will appear here.")
     ).not.toBeInTheDocument();
-    expect(screen.getAllByText("Sparkle 45%")).toHaveLength(1);
+    expect(screen.getByText("5 updates via Sparkle")).toBeInTheDocument();
+    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.queryByText("Sparkle 45%")).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText("Sparkle: 5 updates (50%)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
     expect(document.querySelector(".profile-start-panel-box")?.hasAttribute("title")).toBe(false);
     const sourceSegment = document.querySelector(".profile-source-segment") as HTMLElement;
@@ -1094,10 +1119,12 @@ describe("renderer button parity", () => {
     expect(screen.getByText("1 update · Formula")).toBeInTheDocument();
     expect([...topToolTiles].some((tile) => tile.textContent?.includes("Orion"))).toBe(false);
     expect(
-      screen.getByText(
+      screen.queryByText(
         "Only updates and installs completed with Baseline are counted. Stats stay private on this Mac."
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(document.querySelector(".profile-footer-panel")).toBeNull();
+    expect(document.querySelector(".profile-footer-row")).toBeNull();
     expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
     expect(screen.queryByText("Verified")).not.toBeInTheDocument();
     expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
@@ -1122,7 +1149,7 @@ describe("renderer button parity", () => {
 
     expect(screen.getByText("No history")).toBeInTheDocument();
     expect(
-      screen.getByText("Update or install something with Baseline to build a source history.")
+      screen.getByText("Update something with Baseline to build a source history.")
     ).toBeInTheDocument();
     expect(screen.getByText("Apps you update with Baseline will appear here.")).toBeInTheDocument();
     expect(

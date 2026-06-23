@@ -18,7 +18,9 @@ import {
   Eye,
   EyeOff,
   FolderPlus,
+  Info,
   Link2,
+  LockKeyhole,
   Monitor,
   MoreHorizontal,
   Moon,
@@ -2958,9 +2960,10 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
       <SettingsSidebar selectedSection={selectedSection} onSelectSection={setSelectedSection} />
       <section className="workspace">
         <header className="topbar">
-          <div>
+          <div className="topbar-title">
             <h1>{selectedItem?.label ?? "Settings"}</h1>
           </div>
+          {selectedSection === "profile" && <ProfileTopbarIndicators />}
         </header>
 
         <section className="content settings-content">
@@ -2976,6 +2979,34 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
         </section>
       </section>
     </main>
+  );
+}
+
+function ProfileTopbarIndicators() {
+  return (
+    <div className="topbar-actions profile-topbar-indicators" aria-label="Profile privacy details">
+      <span
+        className="toolbar-button refresh-button profile-topbar-indicator private"
+        tabIndex={0}
+        aria-label="Private profile. Your profile is only visible to you and stays private on this Mac."
+      >
+        <LockKeyhole size={13} strokeWidth={toolbarIconStrokeWidth} />
+        <span className="profile-topbar-indicator-label">Private</span>
+        <span className="profile-topbar-tooltip" role="tooltip">
+          Your profile is only visible to you and stays private on this Mac.
+        </span>
+      </span>
+      <span
+        className="toolbar-button refresh-button profile-topbar-indicator icon-only"
+        tabIndex={0}
+        aria-label="Only updates and installs completed with Baseline are counted."
+      >
+        <Info size={15} strokeWidth={toolbarIconStrokeWidth} />
+        <span className="profile-topbar-tooltip" role="tooltip">
+          Only updates and installs completed with Baseline are counted.
+        </span>
+      </span>
+    </div>
   );
 }
 
@@ -3242,7 +3273,6 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           </div>
         </section>
         <section className="panel settings-panel profile-source-section">
-          <PanelTitle title="Source mix" />
           <div className="settings-panel-box profile-source-panel-box">
             {activeSourceMix.length > 0 ? (
               <div className="profile-source-list">
@@ -3260,7 +3290,7 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                       style={{ flexGrow: source.count }}
                     >
                       <span className="profile-source-tooltip" aria-hidden="true">
-                        {profileSourcePercentLabel(source, sourceMixTotal)}
+                        {profileSourceCountLabel(source)}
                       </span>
                     </span>
                   ))}
@@ -3277,14 +3307,14 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                         aria-hidden="true"
                       />
                       <span>{source.label}</span>
-                      <strong>{source.count}</strong>
+                      <strong>{profileSourcePercentLabel(source, sourceMixTotal)}</strong>
                     </div>
                   ))}
                 </div>
               </div>
             ) : (
               <p className="profile-empty-state">
-                Update or install something with Baseline to build a source history.
+                Update something with Baseline to build a source history.
               </p>
             )}
           </div>
@@ -3351,9 +3381,9 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
           </div>
         </section>
       </div>
-      <section className="panel settings-panel profile-footer-panel">
-        <div className="settings-panel-box">
-          {shouldShowResetWarning && (
+      {shouldShowResetWarning && (
+        <section className="panel settings-panel profile-footer-panel">
+          <div className="settings-panel-box">
             <div className="settings-row settings-row-action profile-warning-row">
               <SettingsRowText
                 label="Stats were reset"
@@ -3368,15 +3398,9 @@ function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
                 <X size={15} />
               </button>
             </div>
-          )}
-          <div className="settings-row profile-footer-row">
-            <span className="profile-footer-text">
-              Only updates and installs completed with Baseline are counted. Stats stay private on
-              this Mac.
-            </span>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }
@@ -3705,7 +3729,8 @@ type ProfileSummary = {
 
 function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   const events = snapshot.profileStats.events;
-  const sourceMix = buildProfileSourceMix(events);
+  const updateEvents = events.filter(isProfileUpdateEvent);
+  const sourceMix = buildProfileSourceMix(updateEvents);
   const favorite = sourceMix.reduce((best, item) => (item.count > best.count ? item : best));
   const topApps = buildTopUpdatedApps(events, snapshot.apps);
   const topHomebrewItems = buildTopUpdatedHomebrewItems(
@@ -3714,9 +3739,7 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
     snapshot.apps,
     snapshot.updates
   );
-  const totalUpdates = events.filter(
-    (event) => event.type === "appUpdate" || event.type === "homebrewUpdate"
-  ).length;
+  const totalUpdates = updateEvents.length;
   const differentApps = new Set(
     events.filter((event) => event.type === "appUpdate").map((event) => event.targetID)
   ).size;
@@ -3747,10 +3770,10 @@ function profileSourceShareLabel(
   total: number
 ): string {
   if (total <= 0) {
-    return `${source.label}: no recorded events`;
+    return `${source.label}: no recorded updates`;
   }
   const percent = Math.round((source.count / total) * 100);
-  return `${source.label}: ${source.count} event${source.count === 1 ? "" : "s"} (${percent}%)`;
+  return `${source.label}: ${source.count} update${source.count === 1 ? "" : "s"} (${percent}%)`;
 }
 
 function profileSourcePercentLabel(
@@ -3758,9 +3781,17 @@ function profileSourcePercentLabel(
   total: number
 ): string {
   if (total <= 0) {
-    return `${source.label} 0%`;
+    return "0%";
   }
-  return `${source.label} ${Math.round((source.count / total) * 100)}%`;
+  return `${Math.round((source.count / total) * 100)}%`;
+}
+
+function profileSourceCountLabel(source: ProfileSummary["sourceMix"][number]): string {
+  return `${source.count} update${source.count === 1 ? "" : "s"} via ${source.label}`;
+}
+
+function isProfileUpdateEvent(event: ProfileStatsEvent): boolean {
+  return event.type === "appUpdate" || event.type === "homebrewUpdate";
 }
 
 function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sourceMix"] {
