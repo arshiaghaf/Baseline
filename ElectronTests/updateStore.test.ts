@@ -2630,6 +2630,35 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("runs Homebrew cleanup after successful direct formula updates", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "formula:managed",
+            token: "managed",
+            name: "managed",
+            kind: "formula",
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdate("formula:managed");
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["upgrade", "managed"],
+      ["cleanup"]
+    ]);
+  });
+
   it("keeps successful Homebrew updates when follow-up cleanup fails", async () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
@@ -2917,6 +2946,41 @@ describe("update store helpers", () => {
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["install", "bat"],
       ["cleanup"]
+    ]);
+  });
+
+  it("keeps successful Homebrew Discover installs when follow-up cleanup fails", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => ({
+      success: command[0] !== "cleanup",
+      status: command[0] === "cleanup" ? 1 : 0,
+      output: command[0] === "cleanup" ? "Error: cleanup failed" : ""
+    }));
+    const store = await makeStore({ runBrewCommand });
+
+    await store.installHomebrewItem({
+      id: "formula:bat",
+      kind: "formula",
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    });
+
+    const snapshot = store.getSnapshot();
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["install", "bat"],
+      ["cleanup"]
+    ]);
+    expect(snapshot.refreshErrorMessage).toBeUndefined();
+    expect(snapshot.lastRefreshNoticeMessage).toContain("Homebrew cleanup did not complete");
+    expect(snapshot.profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewInstall",
+        targetID: "formula:bat",
+        displayName: "bat",
+        channel: "homebrew"
+      })
     ]);
   });
 
