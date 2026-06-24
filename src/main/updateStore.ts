@@ -496,6 +496,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.patch({
         refreshErrorMessage: undefined,
         homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID),
+        homebrewBatchProgressByItemID: {
+          ...this.state.homebrewBatchProgressByItemID,
+          [itemID]: HomebrewMaintenanceProgressStage.finalizing
+        }
+      });
+      await this.recordProfileStatsEvents([
+        profileStatsEvent ??
+          homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
+      ]);
+      const cleanupNotice = await this.runPostSuccessHomebrewCleanup();
+      this.patch({
         homebrewUpdatedPendingRefreshItemIDs: addToArray(
           this.state.homebrewUpdatedPendingRefreshItemIDs,
           itemID
@@ -505,11 +516,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           [itemID]: 1
         }
       });
-      await this.recordProfileStatsEvents([
-        profileStatsEvent ??
-          homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
-      ]);
       await this.holdSuccessfulUpdate();
+      await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
+      this.applyHomebrewCleanupNotice(cleanupNotice);
     } else {
       this.patch({
         refreshErrorMessage: `Homebrew update failed for ${item.name}.`,
@@ -520,8 +529,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         }
       });
       this.scheduleHomebrewBatchFailureClear([itemID]);
+      await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
     }
-    await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
   }
 
   private async runHomebrewQueuedUpdates(entries: HomebrewUpdateQueueEntry[]): Promise<void> {
@@ -602,7 +611,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const completedIDs = success
       ? affectedIDs
       : affectedIDs.filter((id) => completedItemIDs.has(id));
-    const failedIDs = affectedIDs.filter((id) => !completedItemIDs.has(id));
+    const failedIDs = success ? [] : affectedIDs.filter((id) => !completedItemIDs.has(id));
     this.patch({
       refreshErrorMessage: success ? undefined : "Homebrew update failed.",
       homebrewBatchFailedItemIDs: success
@@ -615,18 +624,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
               )
             ])
           ],
-      homebrewUpdatedPendingRefreshItemIDs:
-        completedIDs.length > 0
-          ? [...new Set([...this.state.homebrewUpdatedPendingRefreshItemIDs, ...completedIDs])]
-          : this.state.homebrewUpdatedPendingRefreshItemIDs,
       homebrewBatchProgressByItemID: {
         ...this.state.homebrewBatchProgressByItemID,
-        ...Object.fromEntries(affectedIDs.map((id) => [id, 1]))
+        ...Object.fromEntries(
+          completedIDs.map((id) => [id, HomebrewMaintenanceProgressStage.finalizing])
+        ),
+        ...Object.fromEntries(failedIDs.map((id) => [id, 1]))
       }
     });
     if (!success) {
       this.scheduleHomebrewBatchFailureClear(failedIDs);
     }
+    let cleanupNotice: string | undefined;
     if (completedIDs.length > 0) {
       const occurredAt = new Date().toISOString();
       await this.recordProfileStatsEvents(
@@ -637,9 +646,20 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
               entry.profileStatsEvent ?? homebrewUpdateProfileStatsEvent({ item, occurredAt })
           )
       );
+      cleanupNotice = await this.runPostSuccessHomebrewCleanup();
+      this.patch({
+        homebrewUpdatedPendingRefreshItemIDs: [
+          ...new Set([...this.state.homebrewUpdatedPendingRefreshItemIDs, ...completedIDs])
+        ],
+        homebrewBatchProgressByItemID: {
+          ...this.state.homebrewBatchProgressByItemID,
+          ...Object.fromEntries(completedIDs.map((id) => [id, 1]))
+        }
+      });
       await this.holdSuccessfulUpdate();
     }
     await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
+    this.applyHomebrewCleanupNotice(cleanupNotice);
   }
 
   async performHomebrewUpdateAll(itemIDs?: string[]): Promise<void> {
@@ -701,8 +721,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ["update"],
         ...(formulaTokens.length > 0 ? [["upgrade", ...formulaTokens]] : []),
         ...(caskTokens.length > 0 ? [["upgrade", "--cask", "--greedy", ...caskTokens]] : []),
-        ["autoremove"],
-        ["cleanup"]
+        ["autoremove"]
       ];
       const completedItemIDs = new Set<string>();
       let success = true;
@@ -733,6 +752,19 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ? affectedIDs
         : affectedIDs.filter((id) => completedItemIDs.has(id));
       const failedIDs = affectedIDs.filter((id) => !completedItemIDs.has(id));
+      let cleanupNotice: string | undefined;
+
+      if (success) {
+        this.patch({
+          homebrewBatchProgressByItemID: {
+            ...this.state.homebrewBatchProgressByItemID,
+            ...Object.fromEntries(
+              completedIDs.map((id) => [id, HomebrewMaintenanceProgressStage.finalizing])
+            )
+          }
+        });
+        cleanupNotice = await this.runPostSuccessHomebrewCleanup();
+      }
 
       this.patch({
         isRunningHomebrewMaintenance: false,
@@ -770,6 +802,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         await this.holdSuccessfulUpdate();
       }
       await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
+      this.applyHomebrewCleanupNotice(cleanupNotice);
     } finally {
       releaseHomebrewCommandLock();
     }
@@ -855,16 +888,20 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.applyDiscoverInstallEvent(event, parser, itemID, item.token.toLowerCase());
       });
       this.patch({
-        homebrewDiscoverInstallingItemIDs: removeFromArray(
-          this.state.homebrewDiscoverInstallingItemIDs,
-          itemID
-        ),
-        homebrewDiscoverInstalledPendingRefreshItemIDs: success
-          ? addToArray(this.state.homebrewDiscoverInstalledPendingRefreshItemIDs, itemID)
-          : this.state.homebrewDiscoverInstalledPendingRefreshItemIDs,
+        homebrewDiscoverInstallingItemIDs: success
+          ? this.state.homebrewDiscoverInstallingItemIDs
+          : removeFromArray(this.state.homebrewDiscoverInstallingItemIDs, itemID),
+        homebrewDiscoverInstalledPendingRefreshItemIDs:
+          this.state.homebrewDiscoverInstalledPendingRefreshItemIDs,
         homebrewDiscoverFailedItemIDs: success
           ? removeFromArray(this.state.homebrewDiscoverFailedItemIDs, itemID)
           : addToArray(this.state.homebrewDiscoverFailedItemIDs, itemID),
+        homebrewDiscoverProgressByItemID: success
+          ? {
+              ...this.state.homebrewDiscoverProgressByItemID,
+              [itemID]: HomebrewMaintenanceProgressStage.finalizing
+            }
+          : this.state.homebrewDiscoverProgressByItemID,
         refreshErrorMessage: success
           ? undefined
           : `Homebrew install failed for ${item.displayName}.`
@@ -873,8 +910,24 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.hasCheckedHomebrewAvailability = true;
         this.patch({ isHomebrewInstalled: true });
         await this.recordProfileStatsEvents([homebrewInstallProfileStatsEvent(item)]);
+        const cleanupNotice = await this.runPostSuccessHomebrewCleanup();
+        this.patch({
+          homebrewDiscoverInstallingItemIDs: removeFromArray(
+            this.state.homebrewDiscoverInstallingItemIDs,
+            itemID
+          ),
+          homebrewDiscoverInstalledPendingRefreshItemIDs: addToArray(
+            this.state.homebrewDiscoverInstalledPendingRefreshItemIDs,
+            itemID
+          ),
+          homebrewDiscoverProgressByItemID: {
+            ...this.state.homebrewDiscoverProgressByItemID,
+            [itemID]: 1
+          }
+        });
         await this.holdSuccessfulUpdate();
         await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
+        this.applyHomebrewCleanupNotice(cleanupNotice);
       } else {
         this.scheduleHomebrewDiscoverFailureClear(itemID);
       }
@@ -1362,6 +1415,24 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.emit("homebrewCommand", finished);
     onEvent(finished);
     return result;
+  }
+
+  private async runPostSuccessHomebrewCleanup(): Promise<string | undefined> {
+    const result = await this.runBrewWithResultEvents(["cleanup"], () => undefined);
+    return result.success
+      ? undefined
+      : "Homebrew cleanup did not complete after the Homebrew operation. Old downloads may still be retained.";
+  }
+
+  private applyHomebrewCleanupNotice(message: string | undefined): void {
+    if (!message) {
+      return;
+    }
+    this.patch({
+      lastRefreshNoticeMessage: this.state.lastRefreshNoticeMessage
+        ? `${this.state.lastRefreshNoticeMessage} ${message}`
+        : message
+    });
   }
 
   private applyHomebrewProgressEvent(

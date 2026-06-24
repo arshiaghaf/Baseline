@@ -10,8 +10,8 @@ export type HomebrewMaintenanceRunEvent =
 
 export const HomebrewMaintenanceProgressStage = {
   queued: 0.0,
-  downloading: 0.78,
-  installing: 0.83,
+  downloading: 0.32,
+  installing: 0.72,
   finalizing: 0.92,
   completed: 1.0
 } as const;
