@@ -61,6 +61,7 @@ import {
   isCask,
   normalizedHomebrewAppName
 } from "../shared/homebrewAppLinking";
+import { HomebrewMaintenanceProgressStage } from "../shared/homebrewProgress";
 import { compareVersions } from "../shared/version";
 import "./styles.css";
 
@@ -2768,10 +2769,89 @@ function rowActionMenuEstimatedHeight(
   return itemCount * 28 + 10;
 }
 
+type SyntheticProgressRange = {
+  floor: number;
+  cap: number;
+  speedMs: number;
+};
+
+const syntheticProgressRanges = {
+  starting: { cap: 0.28, speedMs: 5000 },
+  downloading: { cap: 0.58, speedMs: 9000 },
+  installing: { cap: 0.84, speedMs: 6500 },
+  finalizing: { cap: 0.96, speedMs: 3500 }
+} as const;
+
+function syntheticProgressRange(value: number): SyntheticProgressRange {
+  const clamped = clampProgress(value);
+  if (clamped >= HomebrewMaintenanceProgressStage.completed) {
+    return { floor: HomebrewMaintenanceProgressStage.completed, cap: 1, speedMs: 1 };
+  }
+  if (clamped >= HomebrewMaintenanceProgressStage.finalizing) {
+    return {
+      floor: Math.max(clamped, HomebrewMaintenanceProgressStage.finalizing),
+      ...syntheticProgressRanges.finalizing
+    };
+  }
+  if (clamped >= HomebrewMaintenanceProgressStage.installing) {
+    return {
+      floor: Math.max(clamped, HomebrewMaintenanceProgressStage.installing),
+      ...syntheticProgressRanges.installing
+    };
+  }
+  if (clamped >= HomebrewMaintenanceProgressStage.downloading) {
+    return {
+      floor: Math.max(clamped, HomebrewMaintenanceProgressStage.downloading),
+      ...syntheticProgressRanges.downloading
+    };
+  }
+  if (clamped > HomebrewMaintenanceProgressStage.queued) {
+    return {
+      floor: clamped,
+      ...syntheticProgressRanges.starting
+    };
+  }
+  return { floor: HomebrewMaintenanceProgressStage.queued, cap: 0, speedMs: 1 };
+}
+
+function clampProgress(value: number): number {
+  return Math.max(0, Math.min(value, 1));
+}
+
+function easedProgress(range: SyntheticProgressRange, elapsedMs: number): number {
+  if (range.cap <= range.floor) {
+    return range.floor;
+  }
+  return range.floor + (range.cap - range.floor) * (1 - Math.exp(-elapsedMs / range.speedMs));
+}
+
+function useSyntheticProgress(value: number): number {
+  const range = syntheticProgressRange(value);
+  const [renderedProgress, setRenderedProgress] = useState(range.floor);
+
+  useEffect(() => {
+    setRenderedProgress(range.floor);
+    if (range.cap <= range.floor) {
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      const nextProgress = easedProgress(range, Date.now() - startedAt);
+      setRenderedProgress(nextProgress);
+      if (range.cap - nextProgress < 0.001) {
+        window.clearInterval(timer);
+      }
+    }, 120);
+    return () => window.clearInterval(timer);
+  }, [range.floor, range.cap, range.speedMs]);
+
+  return Math.min(Math.max(renderedProgress, range.floor), range.cap);
+}
+
 function ProgressRing({ value }: { value: number }) {
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
-  const clamped = Math.max(0, Math.min(value, 1));
+  const progress = useSyntheticProgress(value);
   return (
     <svg className="progress-ring" viewBox="0 0 16 16" aria-hidden="true">
       <circle className="progress-ring-track" cx="8" cy="8" r={radius} />
@@ -2781,7 +2861,7 @@ function ProgressRing({ value }: { value: number }) {
         cy="8"
         r={radius}
         strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - clamped)}
+        strokeDashoffset={circumference * (1 - progress)}
       />
     </svg>
   );
