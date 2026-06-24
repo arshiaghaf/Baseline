@@ -309,6 +309,40 @@ describe("renderer button parity", () => {
     }
   });
 
+  it("eases active Homebrew update progress from the queued marker", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(
+        <UpdateActionButton
+          state={{
+            type: "updating",
+            progress: HomebrewMaintenanceProgressStage.queued
+          }}
+          onAction={() => undefined}
+        />
+      );
+
+      const initialProgress = progressRingValue(container);
+      expect(initialProgress).toBeCloseTo(HomebrewMaintenanceProgressStage.queued);
+
+      act(() => {
+        vi.advanceTimersByTime(2500);
+      });
+
+      const easedProgress = progressRingValue(container);
+      expect(easedProgress).toBeGreaterThan(initialProgress);
+      expect(easedProgress).toBeLessThan(0.28);
+
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+
+      expect(progressRingValue(container)).toBeCloseTo(0.28, 2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("resets easing from the next Homebrew progress stage", () => {
     vi.useFakeTimers();
     try {

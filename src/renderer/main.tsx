@@ -2811,7 +2811,10 @@ function syntheticProgressRange(value: number): SyntheticProgressRange {
       ...syntheticProgressRanges.starting
     };
   }
-  return { floor: HomebrewMaintenanceProgressStage.queued, cap: 0, speedMs: 1 };
+  return {
+    floor: HomebrewMaintenanceProgressStage.queued,
+    ...syntheticProgressRanges.starting
+  };
 }
 
 function clampProgress(value: number): number {
