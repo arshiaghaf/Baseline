@@ -1817,7 +1817,7 @@ describe("update store helpers", () => {
     ]);
   });
 
-  it("records profile stats for batch upgrades completed before maintenance fails", async () => {
+  it("keeps successful batch upgrades when follow-up cleanup fails", async () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async (command) => ({
@@ -1861,7 +1861,10 @@ describe("update store helpers", () => {
       ["autoremove"],
       ["cleanup"]
     ]);
-    expect(store.getSnapshot().profileStats.events).toEqual([
+    const snapshot = store.getSnapshot();
+    expect(snapshot.refreshErrorMessage).toBeUndefined();
+    expect(snapshot.lastRefreshNoticeMessage).toContain("Homebrew cleanup did not complete");
+    expect(snapshot.profileStats.events).toEqual([
       expect.objectContaining({
         type: "homebrewUpdate",
         targetID: "formula:ripgrep",
@@ -1874,6 +1877,75 @@ describe("update store helpers", () => {
         displayName: "Visual Studio Code",
         channel: "homebrew"
       })
+    ]);
+  });
+
+  it("keeps bulk Homebrew updates finalizing until cleanup completes", async () => {
+    let resolveCleanup!: (result: { success: boolean; status: number; output: string }) => void;
+    let cleanupStarted!: () => void;
+    const cleanupStartedPromise = new Promise<void>((resolve) => {
+      cleanupStarted = resolve;
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "cleanup") {
+        cleanupStarted();
+        return await new Promise((resolve) => {
+          resolveCleanup = resolve;
+        });
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const formula = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("14.0.0"),
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    });
+    const cask = homebrewItem({
+      id: "cask:visual-studio-code",
+      token: "visual-studio-code",
+      name: "Visual Studio Code",
+      kind: "cask",
+      installedVersion: version("1.99.0"),
+      latestVersion: version("1.100.0"),
+      isOutdated: true
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [formula, cask]
+      },
+      runBrewCommand
+    });
+
+    const update = store.performHomebrewUpdateAll();
+    await cleanupStartedPromise;
+
+    const cleanupSnapshot = store.getSnapshot();
+    expect(cleanupSnapshot.isRunningHomebrewMaintenance).toBe(true);
+    expect(cleanupSnapshot.homebrewBatchProgressByItemID[formula.id]).toBe(
+      HomebrewMaintenanceProgressStage.finalizing
+    );
+    expect(cleanupSnapshot.homebrewBatchProgressByItemID[cask.id]).toBe(
+      HomebrewMaintenanceProgressStage.finalizing
+    );
+    expect(cleanupSnapshot.homebrewUpdatedPendingRefreshItemIDs).not.toContain(formula.id);
+    expect(cleanupSnapshot.homebrewUpdatedPendingRefreshItemIDs).not.toContain(cask.id);
+
+    resolveCleanup({ success: true, status: 0, output: "" });
+    await update;
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "ripgrep"],
+      ["upgrade", "--cask", "--greedy", "visual-studio-code"],
+      ["autoremove"],
+      ["cleanup"]
     ]);
   });
 

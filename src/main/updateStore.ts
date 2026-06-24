@@ -721,8 +721,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ["update"],
         ...(formulaTokens.length > 0 ? [["upgrade", ...formulaTokens]] : []),
         ...(caskTokens.length > 0 ? [["upgrade", "--cask", "--greedy", ...caskTokens]] : []),
-        ["autoremove"],
-        ["cleanup"]
+        ["autoremove"]
       ];
       const completedItemIDs = new Set<string>();
       let success = true;
@@ -753,6 +752,19 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ? affectedIDs
         : affectedIDs.filter((id) => completedItemIDs.has(id));
       const failedIDs = affectedIDs.filter((id) => !completedItemIDs.has(id));
+      let cleanupNotice: string | undefined;
+
+      if (success) {
+        this.patch({
+          homebrewBatchProgressByItemID: {
+            ...this.state.homebrewBatchProgressByItemID,
+            ...Object.fromEntries(
+              completedIDs.map((id) => [id, HomebrewMaintenanceProgressStage.finalizing])
+            )
+          }
+        });
+        cleanupNotice = await this.runPostSuccessHomebrewCleanup();
+      }
 
       this.patch({
         isRunningHomebrewMaintenance: false,
@@ -790,6 +802,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         await this.holdSuccessfulUpdate();
       }
       await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
+      this.applyHomebrewCleanupNotice(cleanupNotice);
     } finally {
       releaseHomebrewCommandLock();
     }
