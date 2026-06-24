@@ -18,6 +18,7 @@ import {
   preservePreviousHomebrewOutdatedState,
   UpdateStore
 } from "../src/main/updateStore";
+import { HomebrewMaintenanceProgressStage } from "../src/shared/homebrewProgress";
 import type {
   AppRecord,
   HomebrewCaskIndex,
@@ -2659,6 +2660,59 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("keeps direct Homebrew updates finalizing until cleanup completes", async () => {
+    let resolveCleanup!: (result: { success: boolean; status: number; output: string }) => void;
+    let cleanupStarted!: () => void;
+    const cleanupStartedPromise = new Promise<void>((resolve) => {
+      cleanupStarted = resolve;
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "cleanup") {
+        cleanupStarted();
+        return await new Promise((resolve) => {
+          resolveCleanup = resolve;
+        });
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const itemID = "cask:managed";
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: itemID,
+            token: "managed",
+            name: "Managed",
+            kind: "cask",
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    const update = store.performHomebrewUpdate(itemID);
+    await cleanupStartedPromise;
+
+    const cleanupSnapshot = store.getSnapshot();
+    expect(cleanupSnapshot.homebrewBatchProgressByItemID[itemID]).toBe(
+      HomebrewMaintenanceProgressStage.finalizing
+    );
+    expect(cleanupSnapshot.homebrewUpdatedPendingRefreshItemIDs).not.toContain(itemID);
+
+    resolveCleanup({ success: true, status: 0, output: "" });
+    await update;
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["upgrade", "--cask", "--greedy", "managed"],
+      ["cleanup"]
+    ]);
+  });
+
   it("keeps successful Homebrew updates when follow-up cleanup fails", async () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
@@ -2943,6 +2997,51 @@ describe("update store helpers", () => {
         channel: "homebrew"
       })
     ]);
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["install", "bat"],
+      ["cleanup"]
+    ]);
+  });
+
+  it("keeps Homebrew Discover installs finalizing until cleanup completes", async () => {
+    let resolveCleanup!: (result: { success: boolean; status: number; output: string }) => void;
+    let cleanupStarted!: () => void;
+    const cleanupStartedPromise = new Promise<void>((resolve) => {
+      cleanupStarted = resolve;
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "cleanup") {
+        cleanupStarted();
+        return await new Promise((resolve) => {
+          resolveCleanup = resolve;
+        });
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({ runBrewCommand });
+    const item = {
+      id: "formula:bat",
+      kind: "formula" as const,
+      token: "bat",
+      displayName: "bat",
+      version: version("1.0.0")
+    };
+
+    const install = store.installHomebrewItem(item);
+    await cleanupStartedPromise;
+
+    const cleanupSnapshot = store.getSnapshot();
+    expect(cleanupSnapshot.homebrewDiscoverInstallingItemIDs).toContain(item.id);
+    expect(cleanupSnapshot.homebrewDiscoverInstalledPendingRefreshItemIDs).not.toContain(item.id);
+    expect(cleanupSnapshot.homebrewDiscoverProgressByItemID[item.id]).toBe(
+      HomebrewMaintenanceProgressStage.finalizing
+    );
+
+    resolveCleanup({ success: true, status: 0, output: "" });
+    await install;
+
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["install", "bat"],
       ["cleanup"]
