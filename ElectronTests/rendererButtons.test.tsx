@@ -312,7 +312,7 @@ describe("renderer button parity", () => {
   it("eases active Homebrew update progress from the queued marker", () => {
     vi.useFakeTimers();
     try {
-      const { container } = render(
+      const { container, rerender } = render(
         <UpdateActionButton
           state={{
             type: "updating",
@@ -333,17 +333,31 @@ describe("renderer button parity", () => {
       expect(easedProgress).toBeGreaterThan(initialProgress);
       expect(easedProgress).toBeLessThan(0.28);
 
+      rerender(
+        <UpdateActionButton
+          state={{
+            type: "updating",
+            progress: HomebrewMaintenanceProgressStage.downloading
+          }}
+          onAction={() => undefined}
+        />
+      );
+      expect(progressRingValue(container)).toBeCloseTo(easedProgress);
+      expect(progressRingValue(container)).toBeLessThan(
+        HomebrewMaintenanceProgressStage.downloading
+      );
+
       act(() => {
         vi.advanceTimersByTime(60_000);
       });
 
-      expect(progressRingValue(container)).toBeCloseTo(0.28, 2);
+      expect(progressRingValue(container)).toBeCloseTo(0.58, 2);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("resets easing from the next Homebrew progress stage", () => {
+  it("continues easing toward the next Homebrew progress stage without jumping", () => {
     vi.useFakeTimers();
     try {
       const { container, rerender } = render(
@@ -360,6 +374,7 @@ describe("renderer button parity", () => {
         vi.advanceTimersByTime(60_000);
       });
       expect(progressRingValue(container)).toBeCloseTo(0.58, 2);
+      const downloadingCapProgress = progressRingValue(container);
 
       rerender(
         <UpdateActionButton
@@ -370,7 +385,10 @@ describe("renderer button parity", () => {
           onAction={() => undefined}
         />
       );
-      expect(progressRingValue(container)).toBeCloseTo(HomebrewMaintenanceProgressStage.installing);
+      expect(progressRingValue(container)).toBeCloseTo(downloadingCapProgress);
+      expect(progressRingValue(container)).toBeLessThan(
+        HomebrewMaintenanceProgressStage.installing
+      );
 
       act(() => {
         vi.advanceTimersByTime(60_000);

@@ -2769,8 +2769,7 @@ function rowActionMenuEstimatedHeight(
   return itemCount * 28 + 10;
 }
 
-type SyntheticProgressRange = {
-  floor: number;
+type SyntheticProgressTarget = {
   cap: number;
   speedMs: number;
 };
@@ -2782,73 +2781,61 @@ const syntheticProgressRanges = {
   finalizing: { cap: 0.96, speedMs: 3500 }
 } as const;
 
-function syntheticProgressRange(value: number): SyntheticProgressRange {
+function syntheticProgressTarget(value: number): SyntheticProgressTarget {
   const clamped = clampProgress(value);
   if (clamped >= HomebrewMaintenanceProgressStage.completed) {
-    return { floor: HomebrewMaintenanceProgressStage.completed, cap: 1, speedMs: 1 };
+    return { cap: 1, speedMs: 1 };
   }
   if (clamped >= HomebrewMaintenanceProgressStage.finalizing) {
-    return {
-      floor: Math.max(clamped, HomebrewMaintenanceProgressStage.finalizing),
-      ...syntheticProgressRanges.finalizing
-    };
+    return syntheticProgressRanges.finalizing;
   }
   if (clamped >= HomebrewMaintenanceProgressStage.installing) {
-    return {
-      floor: Math.max(clamped, HomebrewMaintenanceProgressStage.installing),
-      ...syntheticProgressRanges.installing
-    };
+    return syntheticProgressRanges.installing;
   }
   if (clamped >= HomebrewMaintenanceProgressStage.downloading) {
-    return {
-      floor: Math.max(clamped, HomebrewMaintenanceProgressStage.downloading),
-      ...syntheticProgressRanges.downloading
-    };
+    return syntheticProgressRanges.downloading;
   }
-  if (clamped > HomebrewMaintenanceProgressStage.queued) {
-    return {
-      floor: clamped,
-      ...syntheticProgressRanges.starting
-    };
-  }
-  return {
-    floor: HomebrewMaintenanceProgressStage.queued,
-    ...syntheticProgressRanges.starting
-  };
+  return syntheticProgressRanges.starting;
 }
 
 function clampProgress(value: number): number {
   return Math.max(0, Math.min(value, 1));
 }
 
-function easedProgress(range: SyntheticProgressRange, elapsedMs: number): number {
-  if (range.cap <= range.floor) {
-    return range.floor;
+function easedProgress(start: number, target: SyntheticProgressTarget, elapsedMs: number): number {
+  if (target.cap <= start) {
+    return start;
   }
-  return range.floor + (range.cap - range.floor) * (1 - Math.exp(-elapsedMs / range.speedMs));
+  return start + (target.cap - start) * (1 - Math.exp(-elapsedMs / target.speedMs));
 }
 
 function useSyntheticProgress(value: number): number {
-  const range = syntheticProgressRange(value);
-  const [renderedProgress, setRenderedProgress] = useState(range.floor);
+  const initialProgress = Math.min(clampProgress(value), syntheticProgressTarget(value).cap);
+  const [renderedProgress, setRenderedProgress] = useState(initialProgress);
+  const renderedProgressRef = useRef(renderedProgress);
 
   useEffect(() => {
-    setRenderedProgress(range.floor);
-    if (range.cap <= range.floor) {
+    renderedProgressRef.current = renderedProgress;
+  }, [renderedProgress]);
+
+  const target = syntheticProgressTarget(value);
+  useEffect(() => {
+    const start = renderedProgressRef.current;
+    if (target.cap <= start) {
       return;
     }
     const startedAt = Date.now();
     const timer = window.setInterval(() => {
-      const nextProgress = easedProgress(range, Date.now() - startedAt);
+      const nextProgress = easedProgress(start, target, Date.now() - startedAt);
       setRenderedProgress(nextProgress);
-      if (range.cap - nextProgress < 0.001) {
+      if (target.cap - nextProgress < 0.001) {
         window.clearInterval(timer);
       }
     }, 120);
     return () => window.clearInterval(timer);
-  }, [range.floor, range.cap, range.speedMs]);
+  }, [target.cap, target.speedMs]);
 
-  return Math.min(Math.max(renderedProgress, range.floor), range.cap);
+  return Math.min(renderedProgress, target.cap);
 }
 
 function ProgressRing({ value }: { value: number }) {
