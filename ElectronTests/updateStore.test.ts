@@ -2272,7 +2272,9 @@ describe("update store helpers", () => {
       bundleIdentifier: "com.example.homebrew",
       localVersion: version("1.0.0")
     });
-    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
     const store = await makeStore({
       persisted: {
         ...defaultPersistedSnapshot(),
@@ -2306,10 +2308,10 @@ describe("update store helpers", () => {
 
     await store.performAppUpdate(app.id);
 
-    expect(runBrewCommand).toHaveBeenCalledWith(
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["upgrade", "--cask", "--greedy", "homebrew-managed"],
-      expect.any(Function)
-    );
+      ["cleanup"]
+    ]);
     expect(store.getSnapshot().profileStats.events).toEqual([
       expect.objectContaining({
         type: "appUpdate",
@@ -2327,7 +2329,9 @@ describe("update store helpers", () => {
       bundleIdentifier: "com.example.homebrew",
       localVersion: version("1.0.0")
     });
-    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
     const store = await makeStore({
       persisted: {
         ...defaultPersistedSnapshot(),
@@ -2361,10 +2365,10 @@ describe("update store helpers", () => {
 
     await store.performAppUpdate(app.id);
 
-    expect(runBrewCommand).toHaveBeenCalledWith(
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["upgrade", "--cask", "--greedy", "homebrew-managed"],
-      expect.any(Function)
-    );
+      ["cleanup"]
+    ]);
   });
 
   it("uses external fallback for unmanaged Homebrew-backed app updates", async () => {
@@ -2479,7 +2483,9 @@ describe("update store helpers", () => {
     expect(openExternalURL).not.toHaveBeenCalled();
     expect(openAppBundle).toHaveBeenCalledWith(app.bundlePath);
 
-    const linkedBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const linkedBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
     const linkedStore = await makeStore({
       persisted: {
         ...persisted,
@@ -2490,10 +2496,10 @@ describe("update store helpers", () => {
 
     await linkedStore.performAppUpdate(app.id);
 
-    expect(linkedBrewCommand).toHaveBeenCalledWith(
+    expect(linkedBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["upgrade", "--cask", "--greedy", "sparkle-managed"],
-      expect.any(Function)
-    );
+      ["cleanup"]
+    ]);
   });
 
   it("derives external fallback URLs for persisted Homebrew-backed app updates without URLs", async () => {
@@ -2593,6 +2599,79 @@ describe("update store helpers", () => {
     await store.performHomebrewUpdate("cask:unsafe");
 
     expect(runBrewCommand).not.toHaveBeenCalled();
+  });
+
+  it("runs Homebrew cleanup after successful direct cask updates", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:managed",
+            token: "managed",
+            name: "Managed",
+            kind: "cask",
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdate("cask:managed");
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["upgrade", "--cask", "--greedy", "managed"],
+      ["cleanup"]
+    ]);
+  });
+
+  it("keeps successful Homebrew updates when follow-up cleanup fails", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => ({
+      success: command[0] !== "cleanup",
+      status: command[0] === "cleanup" ? 1 : 0,
+      output: command[0] === "cleanup" ? "Error: cleanup failed" : ""
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [
+          homebrewItem({
+            id: "cask:managed",
+            token: "managed",
+            name: "Managed",
+            kind: "cask",
+            latestVersion: version("2.0.0"),
+            isOutdated: true
+          })
+        ]
+      },
+      runBrewCommand
+    });
+
+    await store.performHomebrewUpdate("cask:managed");
+
+    const snapshot = store.getSnapshot();
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["upgrade", "--cask", "--greedy", "managed"],
+      ["cleanup"]
+    ]);
+    expect(snapshot.refreshErrorMessage).toBeUndefined();
+    expect(snapshot.lastRefreshNoticeMessage).toContain("Homebrew cleanup did not complete");
+    expect(snapshot.profileStats.events).toEqual([
+      expect.objectContaining({
+        type: "homebrewUpdate",
+        targetID: "cask:managed",
+        displayName: "Managed",
+        channel: "homebrew"
+      })
+    ]);
   });
 
   it("rejects Homebrew uninstall for formula and unsafe cask tokens", async () => {
@@ -2814,7 +2893,10 @@ describe("update store helpers", () => {
   });
 
   it("records profile stats for successful Homebrew Discover installs", async () => {
-    const store = await makeStore();
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({ runBrewCommand });
 
     await store.installHomebrewItem({
       id: "formula:bat",
@@ -2831,6 +2913,10 @@ describe("update store helpers", () => {
         displayName: "bat",
         channel: "homebrew"
       })
+    ]);
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["install", "bat"],
+      ["cleanup"]
     ]);
   });
 
@@ -3130,12 +3216,14 @@ describe("update store helpers", () => {
     let resolveCommand!: (result: { success: boolean; status: number; output: string }) => void;
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
-    >(
-      async () =>
-        await new Promise((resolve) => {
-          resolveCommand = resolve;
-        })
-    );
+    >(async (command) => {
+      if (command[0] === "cleanup") {
+        return { success: true, status: 0, output: "" };
+      }
+      return await new Promise((resolve) => {
+        resolveCommand = resolve;
+      });
+    });
     const store = await makeStore({ runBrewCommand });
 
     const firstInstall = store.installHomebrewItem(item);
@@ -3147,7 +3235,10 @@ describe("update store helpers", () => {
     resolveCommand({ success: true, status: 0, output: "" });
     await Promise.all([firstInstall, secondInstall]);
 
-    expect(runBrewCommand).toHaveBeenCalledOnce();
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["install", "ripgrep"],
+      ["cleanup"]
+    ]);
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
   });
 
@@ -3176,6 +3267,9 @@ describe("update store helpers", () => {
         return await new Promise((resolve) => {
           resolveAvailability = resolve;
         });
+      }
+      if (command[0] === "cleanup") {
+        return { success: true, status: 0, output: "" };
       }
       return await new Promise((resolve) => {
         resolveInstall = resolve;
@@ -3207,6 +3301,12 @@ describe("update store helpers", () => {
     resolveInstall({ success: true, status: 0, output: "" });
     await Promise.all([firstInstall, secondInstall]);
 
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["--version"],
+      ["--version"],
+      ["install", "ripgrep"],
+      ["cleanup"]
+    ]);
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).not.toContain(item.id);
   });
 
@@ -3224,6 +3324,9 @@ describe("update store helpers", () => {
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async (command) => {
       if (command[0] === "--version") {
+        return { success: true, status: 0, output: "" };
+      }
+      if (command[0] === "cleanup") {
         return { success: true, status: 0, output: "" };
       }
       return await new Promise((resolve) => {
@@ -3256,6 +3359,12 @@ describe("update store helpers", () => {
 
     resolveInstall({ success: true, status: 0, output: "" });
     await install;
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["--version"],
+      ["install", "fd"],
+      ["cleanup"]
+    ]);
   });
 
   it("blocks Discover installs while a tool-status Homebrew check is active", async () => {
@@ -3390,8 +3499,10 @@ describe("update store helpers", () => {
 
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["install", "fd"],
+      ["cleanup"],
       ["upgrade", "ripgrep"],
-      ["upgrade", "--cask", "--greedy", "raycast"]
+      ["upgrade", "--cask", "--greedy", "raycast"],
+      ["cleanup"]
     ]);
   });
 
@@ -3474,8 +3585,10 @@ describe("update store helpers", () => {
     await vi.waitFor(() => {
       expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
         ["install", "fd"],
+        ["cleanup"],
         ["upgrade", "ripgrep"],
-        ["upgrade", "--cask", "--greedy", "raycast"]
+        ["upgrade", "--cask", "--greedy", "raycast"],
+        ["cleanup"]
       ]);
     });
     expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
@@ -3555,8 +3668,10 @@ describe("update store helpers", () => {
 
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
       ["upgrade", "ripgrep"],
+      ["cleanup"],
       ["upgrade", "bat"],
-      ["upgrade", "--cask", "--greedy", "raycast"]
+      ["upgrade", "--cask", "--greedy", "raycast"],
+      ["cleanup"]
     ]);
     expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
     expect(store.getSnapshot().homebrewUpdatingItemIDs).toEqual([]);
@@ -3850,7 +3965,10 @@ describe("update store helpers", () => {
     await refresh;
     await update;
 
-    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["upgrade", "ripgrep"]]);
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["upgrade", "ripgrep"],
+      ["cleanup"]
+    ]);
     expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
     expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain(item.id);
   });
@@ -3923,7 +4041,10 @@ describe("update store helpers", () => {
     });
     await Promise.all([staleRefresh, winningRefresh, update]);
 
-    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["upgrade", "ripgrep"]]);
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["upgrade", "ripgrep"],
+      ["cleanup"]
+    ]);
     expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain(item.id);
   });
 
