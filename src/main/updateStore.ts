@@ -611,7 +611,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const completedIDs = success
       ? affectedIDs
       : affectedIDs.filter((id) => completedItemIDs.has(id));
-    const failedIDs = affectedIDs.filter((id) => !completedItemIDs.has(id));
+    const failedIDs = success ? [] : affectedIDs.filter((id) => !completedItemIDs.has(id));
     this.patch({
       refreshErrorMessage: success ? undefined : "Homebrew update failed.",
       homebrewBatchFailedItemIDs: success

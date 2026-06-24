@@ -3669,6 +3669,110 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("keeps successful queued Homebrew batches finalizing until cleanup completes", async () => {
+    const discoverItem = {
+      id: "formula:fd",
+      kind: "formula" as const,
+      token: "fd",
+      displayName: "fd",
+      presentation: "formula" as const,
+      version: version("10.0.0")
+    };
+    const formula = homebrewItem({
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      latestVersion: version("14.1.0"),
+      isOutdated: true
+    });
+    const cask = homebrewItem({
+      id: "cask:raycast",
+      token: "raycast",
+      name: "Raycast",
+      kind: "cask",
+      latestVersion: version("2.0.0"),
+      isOutdated: true
+    });
+    let resolveInstall!: (result: { success: boolean; status: number; output: string }) => void;
+    let resolveQueuedCleanup!: (result: {
+      success: boolean;
+      status: number;
+      output: string;
+    }) => void;
+    let cleanupCount = 0;
+    let queuedCleanupStarted!: () => void;
+    const queuedCleanupStartedPromise = new Promise<void>((resolve) => {
+      queuedCleanupStarted = resolve;
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "install") {
+        return await new Promise((resolve) => {
+          resolveInstall = resolve;
+        });
+      }
+      if (command[0] === "cleanup") {
+        cleanupCount += 1;
+        if (cleanupCount === 2) {
+          queuedCleanupStarted();
+          return await new Promise((resolve) => {
+            resolveQueuedCleanup = resolve;
+          });
+        }
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [formula, cask]
+      },
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [formula, cask],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      },
+      runBrewCommand
+    });
+
+    const install = store.installHomebrewItem(discoverItem);
+    expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toContain(discoverItem.id);
+
+    const queuedFormulaUpdate = store.performHomebrewUpdate(formula.id);
+    const queuedCaskUpdate = store.performHomebrewUpdate(cask.id);
+
+    resolveInstall({ success: true, status: 0, output: "" });
+    await install;
+    await queuedCleanupStartedPromise;
+
+    const cleanupSnapshot = store.getSnapshot();
+    expect(cleanupSnapshot.homebrewBatchProgressByItemID[formula.id]).toBe(
+      HomebrewMaintenanceProgressStage.finalizing
+    );
+    expect(cleanupSnapshot.homebrewBatchProgressByItemID[cask.id]).toBe(
+      HomebrewMaintenanceProgressStage.finalizing
+    );
+    expect(cleanupSnapshot.homebrewUpdatedPendingRefreshItemIDs).not.toContain(formula.id);
+    expect(cleanupSnapshot.homebrewUpdatedPendingRefreshItemIDs).not.toContain(cask.id);
+
+    resolveQueuedCleanup({ success: true, status: 0, output: "" });
+    await Promise.all([queuedFormulaUpdate, queuedCaskUpdate]);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["install", "fd"],
+      ["cleanup"],
+      ["upgrade", "ripgrep"],
+      ["upgrade", "--cask", "--greedy", "raycast"],
+      ["cleanup"]
+    ]);
+  });
+
   it("queues visible Homebrew batch updates during an active Discover install", async () => {
     const discoverItem = {
       id: "formula:fd",
