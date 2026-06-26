@@ -5,12 +5,12 @@
 ### Added
 
 - Profile stats now surface privacy and counting guidance in toolbar controls, with clearer source-mix percentages and cleaner Profile layout. ([#177](https://github.com/arshiaghaf/Baseline/pull/177))
+- Homebrew progress rings now advance smoothly through each stage while keeping Homebrew output as the source of truth. ([#179](https://github.com/arshiaghaf/Baseline/pull/179))
 
 ### Fixed
 
 - Safari web extension apps can now use App Store software fallback results without allowing ordinary Mac App Store apps to pick up iOS-style versions. ([#176](https://github.com/arshiaghaf/Baseline/pull/176))
 - Homebrew updates and Discover installs now clean up cached downloads after successful runs while treating cleanup failures as non-blocking notices. ([#178](https://github.com/arshiaghaf/Baseline/pull/178))
-- Homebrew progress rings now advance smoothly through each stage while keeping Homebrew output as the source of truth. ([#179](https://github.com/arshiaghaf/Baseline/pull/179))
 
 ## 0.4.0 — 2026-06-22
 
