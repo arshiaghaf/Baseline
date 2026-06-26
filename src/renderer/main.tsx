@@ -61,6 +61,7 @@ import {
   isCask,
   normalizedHomebrewAppName
 } from "../shared/homebrewAppLinking";
+import { HomebrewMaintenanceProgressStage } from "../shared/homebrewProgress";
 import { compareVersions } from "../shared/version";
 import "./styles.css";
 
@@ -2768,10 +2769,79 @@ function rowActionMenuEstimatedHeight(
   return itemCount * 28 + 10;
 }
 
+type SyntheticProgressTarget = {
+  cap: number;
+  speedMs: number;
+};
+
+const syntheticProgressRanges = {
+  starting: { cap: 0.28, speedMs: 5000 },
+  downloading: { cap: 0.58, speedMs: 9000 },
+  installing: { cap: 0.84, speedMs: 6500 },
+  finalizing: { cap: 0.96, speedMs: 3500 }
+} as const;
+
+function syntheticProgressTarget(value: number): SyntheticProgressTarget {
+  const clamped = clampProgress(value);
+  if (clamped >= HomebrewMaintenanceProgressStage.completed) {
+    return { cap: 1, speedMs: 1 };
+  }
+  if (clamped >= HomebrewMaintenanceProgressStage.finalizing) {
+    return syntheticProgressRanges.finalizing;
+  }
+  if (clamped >= HomebrewMaintenanceProgressStage.installing) {
+    return syntheticProgressRanges.installing;
+  }
+  if (clamped >= HomebrewMaintenanceProgressStage.downloading) {
+    return syntheticProgressRanges.downloading;
+  }
+  return syntheticProgressRanges.starting;
+}
+
+function clampProgress(value: number): number {
+  return Math.max(0, Math.min(value, 1));
+}
+
+function easedProgress(start: number, target: SyntheticProgressTarget, elapsedMs: number): number {
+  if (target.cap <= start) {
+    return start;
+  }
+  return start + (target.cap - start) * (1 - Math.exp(-elapsedMs / target.speedMs));
+}
+
+function useSyntheticProgress(value: number): number {
+  const initialProgress = Math.min(clampProgress(value), syntheticProgressTarget(value).cap);
+  const [renderedProgress, setRenderedProgress] = useState(initialProgress);
+  const renderedProgressRef = useRef(renderedProgress);
+
+  useEffect(() => {
+    renderedProgressRef.current = renderedProgress;
+  }, [renderedProgress]);
+
+  const target = syntheticProgressTarget(value);
+  useEffect(() => {
+    const start = renderedProgressRef.current;
+    if (target.cap <= start) {
+      return;
+    }
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      const nextProgress = easedProgress(start, target, Date.now() - startedAt);
+      setRenderedProgress(nextProgress);
+      if (target.cap - nextProgress < 0.001) {
+        window.clearInterval(timer);
+      }
+    }, 120);
+    return () => window.clearInterval(timer);
+  }, [target.cap, target.speedMs]);
+
+  return Math.min(renderedProgress, target.cap);
+}
+
 function ProgressRing({ value }: { value: number }) {
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
-  const clamped = Math.max(0, Math.min(value, 1));
+  const progress = useSyntheticProgress(value);
   return (
     <svg className="progress-ring" viewBox="0 0 16 16" aria-hidden="true">
       <circle className="progress-ring-track" cx="8" cy="8" r={radius} />
@@ -2781,7 +2851,7 @@ function ProgressRing({ value }: { value: number }) {
         cy="8"
         r={radius}
         strokeDasharray={circumference}
-        strokeDashoffset={circumference * (1 - clamped)}
+        strokeDashoffset={circumference * (1 - progress)}
       />
     </svg>
   );

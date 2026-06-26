@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ActionConfirmationContext,
@@ -11,7 +11,8 @@ import {
   DiscoverRow,
   HomebrewRow,
   HomebrewSection,
-  SettingsView
+  SettingsView,
+  UpdateActionButton
 } from "../src/renderer/main";
 import type {
   AppRecord,
@@ -21,6 +22,7 @@ import type {
   UpdateRecord
 } from "../src/shared/domain";
 import { defaultPersistedSnapshot, profileStatsSignatureVersion } from "../src/shared/domain";
+import { HomebrewMaintenanceProgressStage } from "../src/shared/homebrewProgress";
 import { version } from "../src/shared/version";
 
 const app: AppRecord = {
@@ -128,6 +130,15 @@ function toolbarButtonLabels(container: HTMLElement): Array<string | null> {
   return within(container.querySelector(".topbar-actions") as HTMLElement)
     .getAllByRole("button")
     .map((button) => button.getAttribute("aria-label") ?? button.getAttribute("title"));
+}
+
+function progressRingValue(container: HTMLElement): number {
+  const radius = 6;
+  const circumference = 2 * Math.PI * radius;
+  const progressRing = container.querySelector(".progress-ring-value");
+  expect(progressRing).not.toBeNull();
+  const offset = Number(progressRing?.getAttribute("stroke-dashoffset"));
+  return 1 - offset / circumference;
 }
 
 function domRect({
@@ -262,6 +273,130 @@ describe("renderer button parity", () => {
 
     expect(screen.queryByRole("button", { name: "Updating" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Updated" })).toBeInTheDocument();
+  });
+
+  it("eases Homebrew update progress within the current stage", () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(
+        <UpdateActionButton
+          state={{
+            type: "updating",
+            progress: HomebrewMaintenanceProgressStage.downloading
+          }}
+          onAction={() => undefined}
+        />
+      );
+
+      const initialProgress = progressRingValue(container);
+      expect(initialProgress).toBeCloseTo(HomebrewMaintenanceProgressStage.downloading);
+
+      act(() => {
+        vi.advanceTimersByTime(4500);
+      });
+
+      const easedProgress = progressRingValue(container);
+      expect(easedProgress).toBeGreaterThan(initialProgress);
+      expect(easedProgress).toBeLessThan(0.58);
+
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+
+      expect(progressRingValue(container)).toBeCloseTo(0.58, 2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("eases active Homebrew update progress from the queued marker", () => {
+    vi.useFakeTimers();
+    try {
+      const { container, rerender } = render(
+        <UpdateActionButton
+          state={{
+            type: "updating",
+            progress: HomebrewMaintenanceProgressStage.queued
+          }}
+          onAction={() => undefined}
+        />
+      );
+
+      const initialProgress = progressRingValue(container);
+      expect(initialProgress).toBeCloseTo(HomebrewMaintenanceProgressStage.queued);
+
+      act(() => {
+        vi.advanceTimersByTime(2500);
+      });
+
+      const easedProgress = progressRingValue(container);
+      expect(easedProgress).toBeGreaterThan(initialProgress);
+      expect(easedProgress).toBeLessThan(0.28);
+
+      rerender(
+        <UpdateActionButton
+          state={{
+            type: "updating",
+            progress: HomebrewMaintenanceProgressStage.downloading
+          }}
+          onAction={() => undefined}
+        />
+      );
+      expect(progressRingValue(container)).toBeCloseTo(easedProgress);
+      expect(progressRingValue(container)).toBeLessThan(
+        HomebrewMaintenanceProgressStage.downloading
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+
+      expect(progressRingValue(container)).toBeCloseTo(0.58, 2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("continues easing toward the next Homebrew progress stage without jumping", () => {
+    vi.useFakeTimers();
+    try {
+      const { container, rerender } = render(
+        <UpdateActionButton
+          state={{
+            type: "updating",
+            progress: HomebrewMaintenanceProgressStage.downloading
+          }}
+          onAction={() => undefined}
+        />
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(progressRingValue(container)).toBeCloseTo(0.58, 2);
+      const downloadingCapProgress = progressRingValue(container);
+
+      rerender(
+        <UpdateActionButton
+          state={{
+            type: "updating",
+            progress: HomebrewMaintenanceProgressStage.installing
+          }}
+          onAction={() => undefined}
+        />
+      );
+      expect(progressRingValue(container)).toBeCloseTo(downloadingCapProgress);
+      expect(progressRingValue(container)).toBeLessThan(
+        HomebrewMaintenanceProgressStage.installing
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(progressRingValue(container)).toBeCloseTo(0.84, 2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps Homebrew app updates clickable during active Homebrew commands", () => {
