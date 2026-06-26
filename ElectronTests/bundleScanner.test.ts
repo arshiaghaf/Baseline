@@ -204,7 +204,7 @@ describe("bundle scanner", () => {
     });
   });
 
-  it("marks App Store UIKit Mac bundles as App Store software lookup eligible", async () => {
+  it("marks receipt-backed UIKit iPad bundles as App Store software lookup eligible", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
     tempDirs.push(root);
 
@@ -241,6 +241,53 @@ describe("bundle scanner", () => {
       bundleIdentifier: "com.example.uikit-mac",
       sourceHint: "appStore",
       isIOSAppOnMac: true,
+      hasAppStoreEvidence: true
+    });
+  });
+
+  it("does not enable iOS software lookup for native macOS UIKit App Store bundles", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+
+    const appPath = path.join(root, "Native UIKit Mac App.app");
+    await writeAppPlist(appPath, {
+      displayName: "Native UIKit Mac App",
+      bundleIdentifier: "com.example.native-uikit-mac",
+      version: "1.0.0",
+      extraKeys: [
+        "  <key>CFBundleSupportedPlatforms</key>",
+        "  <array>",
+        "    <string>MacOSX</string>",
+        "  </array>",
+        "  <key>DTPlatformName</key>",
+        "  <string>macosx</string>",
+        "  <key>DTSDKName</key>",
+        "  <string>macosx26.5</string>",
+        "  <key>LSMinimumSystemVersion</key>",
+        "  <string>26.0</string>",
+        "  <key>UIApplicationSceneManifest</key>",
+        "  <dict>",
+        "    <key>UIApplicationSupportsMultipleScenes</key>",
+        "    <false/>",
+        "  </dict>",
+        "  <key>UIDeviceFamily</key>",
+        "  <array>",
+        "    <integer>2</integer>",
+        "  </array>",
+        "  <key>UILaunchStoryboardName</key>",
+        "  <string>LaunchScreen</string>"
+      ].join("\n")
+    });
+    await mkdir(path.join(appPath, "Contents", "_MASReceipt"), { recursive: true });
+    await writeFile(path.join(appPath, "Contents", "_MASReceipt", "receipt"), "receipt");
+
+    const records = await new BundleScannerClient().scanApplications([root]);
+
+    expect(records[0]).toMatchObject({
+      bundlePath: appPath,
+      bundleIdentifier: "com.example.native-uikit-mac",
+      sourceHint: "appStore",
+      isIOSAppOnMac: false,
       hasAppStoreEvidence: true
     });
   });
