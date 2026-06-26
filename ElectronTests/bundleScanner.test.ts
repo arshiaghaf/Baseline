@@ -265,6 +265,8 @@ describe("bundle scanner", () => {
         "  <string>macosx26.5</string>",
         "  <key>LSMinimumSystemVersion</key>",
         "  <string>26.0</string>",
+        "  <key>UIDesignRequiresCompatibility</key>",
+        "  <true/>",
         "  <key>UIApplicationSceneManifest</key>",
         "  <dict>",
         "    <key>UIApplicationSupportsMultipleScenes</key>",

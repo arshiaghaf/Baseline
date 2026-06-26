@@ -349,11 +349,13 @@ function numberArrayValue(value: unknown): number[] {
 }
 
 function isIOSAppOnMacInfo(info: InfoPlist): boolean {
-  return (
-    info.LSRequiresIPhoneOS === true ||
-    info.UIDesignRequiresCompatibility === true ||
-    stringArrayValue(info.CFBundleSupportedPlatforms).includes("iPhoneOS")
-  );
+  if (stringArrayValue(info.CFBundleSupportedPlatforms).includes("iPhoneOS")) {
+    return true;
+  }
+  if (hasNativeMacOSBuildMetadata(info)) {
+    return false;
+  }
+  return info.LSRequiresIPhoneOS === true || info.UIDesignRequiresCompatibility === true;
 }
 
 function isUIKitMacAppStoreInfo(info: InfoPlist): boolean {
