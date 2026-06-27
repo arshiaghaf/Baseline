@@ -349,14 +349,19 @@ function numberArrayValue(value: unknown): number[] {
 }
 
 function isIOSAppOnMacInfo(info: InfoPlist): boolean {
-  return (
-    info.LSRequiresIPhoneOS === true ||
-    info.UIDesignRequiresCompatibility === true ||
-    stringArrayValue(info.CFBundleSupportedPlatforms).includes("iPhoneOS")
-  );
+  if (stringArrayValue(info.CFBundleSupportedPlatforms).includes("iPhoneOS")) {
+    return true;
+  }
+  if (hasNativeMacOSBuildMetadata(info)) {
+    return false;
+  }
+  return info.LSRequiresIPhoneOS === true || info.UIDesignRequiresCompatibility === true;
 }
 
 function isUIKitMacAppStoreInfo(info: InfoPlist): boolean {
+  if (hasNativeMacOSBuildMetadata(info)) {
+    return false;
+  }
   const deviceFamily = numberArrayValue(info.UIDeviceFamily);
   if (deviceFamily.includes(6)) {
     return false;
@@ -367,6 +372,12 @@ function isUIKitMacAppStoreInfo(info: InfoPlist): boolean {
     stringValue(info.UIMainStoryboardFile) !== undefined ||
     stringValue(info.UILaunchStoryboardName) !== undefined;
   return hasUIKitDeviceFamily && hasUIKitLifecycle;
+}
+
+function hasNativeMacOSBuildMetadata(info: InfoPlist): boolean {
+  const platformName = stringValue(info.DTPlatformName)?.toLowerCase();
+  const sdkName = stringValue(info.DTSDKName)?.toLowerCase();
+  return platformName === "macosx" || sdkName?.startsWith("macosx") === true;
 }
 
 function iconCandidatePaths(resourcesPath: string, info: InfoPlist): string[] {
