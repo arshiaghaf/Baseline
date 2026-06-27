@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — 2026-06-26
+
+### Fixed
+
+- Native Mac App Store apps with UIKit compatibility metadata now stay on the Mac update path instead of accepting iOS catalog versions. ([#180](https://github.com/arshiaghaf/Baseline/pull/180))
+
 ## 0.5.0 — 2026-06-26
 
 ### Added
