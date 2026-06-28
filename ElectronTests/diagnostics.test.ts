@@ -84,7 +84,8 @@ describe("diagnostics report", () => {
     });
     const directDownloadApp = appRecord({
       id: "app:direct",
-      displayName: "Direct App"
+      displayName: "Direct App",
+      bundleIdentifier: "com.example.direct"
     });
     const homebrewApp = appRecord({
       id: "app:managed",
@@ -157,9 +158,48 @@ describe("diagnostics report", () => {
     expect(report).toContain("- Direct-download candidates without known feed: 1");
     expect(report).toContain("- Homebrew app updates with installed cask link: 1");
     expect(report).toContain("- Homebrew app updates without installed cask link: 1");
+    expect(report).toContain("- Listed: 1 of 1");
+    expect(report).toContain(
+      "- Direct App | bundle: com.example.direct | hint: Unknown | selected: Homebrew | action: Open app | linked cask: No | reason: Homebrew selected without installed cask link"
+    );
     expect(report).toContain("- Homebrew detected: Yes");
     expect(report).toContain("- Formulae: 1");
     expect(report).toContain("- Casks: 2");
     expect(report).toContain("- App-linked casks: 1");
+  });
+
+  it("caps route exception rows without including full app paths", () => {
+    const apps = Array.from({ length: 12 }, (_, index) =>
+      appRecord({
+        id: `app:route-exception-${index + 1}`,
+        bundlePath: `/Sensitive/Route Exception ${index + 1}.app`,
+        bundleIdentifier: `com.example.route-exception-${index + 1}`,
+        displayName: `Route Exception ${index + 1}`
+      })
+    );
+    const updates = apps.map((app, index) =>
+      appUpdate({
+        appID: app.id,
+        id: app.id,
+        source: "homebrew",
+        supportLevel: "limited",
+        homebrewToken: `route-exception-${index + 1}`,
+        updateURL: `https://formulae.brew.sh/cask/route-exception-${index + 1}`
+      })
+    );
+
+    const report = renderDiagnostics(
+      snapshot({
+        apps,
+        updates
+      }),
+      "0.2.0",
+      "darwin"
+    );
+
+    expect(report).toContain("- Listed: 10 of 12 (truncated)");
+    expect(report).toContain("Route Exception 10 | bundle: com.example.route-exception-10");
+    expect(report).not.toContain("Route Exception 11 | bundle: com.example.route-exception-11");
+    expect(report).not.toContain("/Sensitive/Route Exception");
   });
 });
