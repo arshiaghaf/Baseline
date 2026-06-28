@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 — 2026-06-28
+
+### Fixed
+
+- App updates now use Homebrew only when the installed cask actually owns the app, preventing direct-download or self-updating apps from being routed through unrelated cask catalog matches. ([#181](https://github.com/arshiaghaf/Baseline/pull/181))
+
 ## 0.5.1 — 2026-06-26
 
 ### Fixed
