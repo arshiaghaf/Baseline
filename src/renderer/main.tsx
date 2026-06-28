@@ -56,10 +56,8 @@ import {
 } from "../shared/domain";
 import {
   homebrewItemHasAppRepresentation,
-  homebrewItemIdentifiers,
   homebrewItemMatchesApp,
-  isCask,
-  normalizedHomebrewAppName
+  isCask
 } from "../shared/homebrewAppLinking";
 import { HomebrewMaintenanceProgressStage } from "../shared/homebrewProgress";
 import { compareVersions } from "../shared/version";
@@ -3806,8 +3804,7 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   const topHomebrewItems = buildTopUpdatedHomebrewItems(
     events,
     snapshot.homebrewItems,
-    snapshot.apps,
-    snapshot.updates
+    snapshot.apps
   );
   const totalUpdates = updateEvents.length;
   const differentApps = new Set(
@@ -3914,11 +3911,9 @@ function buildTopUpdatedApps(
 function buildTopUpdatedHomebrewItems(
   events: ProfileStatsEvent[],
   homebrewItems: HomebrewManagedItem[],
-  apps: AppRecord[],
-  updates: UpdateRecord[]
+  apps: AppRecord[]
 ): ProfileSummary["topHomebrewItems"] {
   const itemsByID = new Map(homebrewItems.map((item) => [item.id, item]));
-  const updatesByAppID = new Map(updates.map((update) => [update.appID, update]));
   const counts = new Map<
     string,
     {
@@ -3934,7 +3929,7 @@ function buildTopUpdatedHomebrewItems(
       continue;
     }
     const item = itemsByID.get(event.targetID);
-    if (!isProfileHomebrewToolEvent(event, item, apps, updatesByAppID)) {
+    if (!isProfileHomebrewToolEvent(event, item, apps)) {
       continue;
     }
     const current = counts.get(event.targetID);
@@ -3958,8 +3953,7 @@ function buildTopUpdatedHomebrewItems(
 function isProfileHomebrewToolEvent(
   event: ProfileStatsEvent,
   item: HomebrewManagedItem | undefined,
-  apps: AppRecord[],
-  updatesByAppID: Map<string, UpdateRecord>
+  apps: AppRecord[]
 ): boolean {
   if (item?.kind === "formula" || event.targetID.startsWith("formula:")) {
     return true;
@@ -3967,7 +3961,7 @@ function isProfileHomebrewToolEvent(
   if (!item) {
     return false;
   }
-  if (homebrewItemHasAppRepresentation(item, apps, updatesByAppID)) {
+  if (homebrewItemHasAppRepresentation(item, apps)) {
     return false;
   }
   if (item.presentation === "app") {
@@ -4190,8 +4184,7 @@ function deriveSections(snapshot: BaselineSnapshot) {
         (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
       );
   const allHomebrewOutdated = homebrewOutdated.filter(
-    (item) =>
-      !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew, updatesByAppID)
+    (item) => !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew)
   );
   const homebrewInstalled = snapshot.homebrewItems
     .filter((item) => !item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
@@ -4235,22 +4228,7 @@ function matchingAppForHomebrewItem(
     return appFromExplicitLink;
   }
 
-  const identifiers = homebrewItemIdentifiers(item);
-  const matchingUpdate = snapshot.updates.find(
-    (update) =>
-      update.homebrewToken && identifiers.has(normalizedHomebrewAppName(update.homebrewToken))
-  );
-  const appFromUpdate = matchingUpdate
-    ? snapshot.apps.find((app) => app.id === matchingUpdate.appID)
-    : undefined;
-  if (appFromUpdate?.sourceHint === "sparkle") {
-    return undefined;
-  }
-  if (appFromUpdate?.iconDataURL) {
-    return appFromUpdate;
-  }
-
-  return appFromUpdate;
+  return undefined;
 }
 
 function uninstallableHomebrewItemForApp(
@@ -4262,20 +4240,6 @@ function uninstallableHomebrewItemForApp(
   );
   if (matchedByExplicitLink) {
     return matchedByExplicitLink;
-  }
-  if (app.sourceHint === "sparkle") {
-    return undefined;
-  }
-
-  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  if (update?.homebrewToken) {
-    const token = normalizedHomebrewAppName(update.homebrewToken);
-    const matchedByUpdate = snapshot.homebrewItems.find(
-      (item) => item.kind === "cask" && normalizedHomebrewAppName(item.token) === token
-    );
-    if (matchedByUpdate) {
-      return matchedByUpdate;
-    }
   }
 
   return undefined;

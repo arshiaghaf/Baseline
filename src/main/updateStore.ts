@@ -34,11 +34,7 @@ import {
 } from "../shared/homebrewProgress";
 import { homebrewItemHasAppRepresentation } from "../shared/homebrewAppLinking";
 import type { PreferencePatch } from "../shared/ipc";
-import {
-  isAllowedExternalURL,
-  isValidHomebrewToken,
-  sanitizeExternalURL
-} from "../shared/security";
+import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
 import {
   compareVersions,
   isVersionEmpty,
@@ -396,14 +392,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         });
         return;
       }
-      if (requiresHomebrewOwnershipProof(appRecord)) {
-        await this.routeExternalUpdate(appRecord, { ...update, updateURL: undefined });
-        return;
-      }
-      await this.routeExternalUpdate(appRecord, {
-        ...update,
-        updateURL: update.updateURL ?? homebrewCaskPageURL(update.homebrewToken)
-      });
+      await this.routeExternalUpdate(appRecord, { ...update, updateURL: undefined });
       return;
     }
 
@@ -824,8 +813,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         isValidHomebrewToken(item.token) &&
         !homebrewItemHasAppRepresentation(
           item,
-          requestedItemIDs ? ignoredApps : appsRepresentedOutsideHomebrew,
-          updatesByAppID
+          requestedItemIDs ? ignoredApps : appsRepresentedOutsideHomebrew
         )
     );
   }
@@ -1539,12 +1527,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       (item) =>
         item.kind === "cask" &&
         item.token.toLowerCase() === token &&
-        (!requiresHomebrewOwnershipProof(appRecord) ||
-          homebrewCaskItemProvesAppOwnership(
-            item,
-            appRecord,
-            this.latestHomebrewIndex.byToken[token]
-          ))
+        homebrewCaskItemProvesAppOwnership(item, appRecord, this.latestHomebrewIndex.byToken[token])
     );
   }
 
@@ -1883,10 +1866,6 @@ function profileStatsChannel(
   return "unknown";
 }
 
-function homebrewCaskPageURL(token: string): string | undefined {
-  return sanitizeExternalURL(`https://formulae.brew.sh/cask/${token}`);
-}
-
 function toggleSet(set: Set<string>, value: string): void {
   if (set.has(value)) {
     set.delete(value);
@@ -2006,9 +1985,6 @@ function canUseHomebrewAppUpdate(
   homebrewItems: HomebrewManagedItem[],
   caskIndex: HomebrewCaskIndex
 ): boolean {
-  if (!requiresHomebrewOwnershipProof(appRecord)) {
-    return true;
-  }
   const token = homebrewToken.toLowerCase();
   return homebrewItems.some(
     (item) =>
@@ -2020,10 +1996,6 @@ function canUseHomebrewAppUpdate(
 
 function homebrewItemCanRunAppUpdate(item: HomebrewManagedItem, update: UpdateRecord): boolean {
   return item.isOutdated || isVersionGreater(update.remoteVersion, item.installedVersion);
-}
-
-function requiresHomebrewOwnershipProof(appRecord: AppRecord): boolean {
-  return appRecord.sourceHint === "sparkle";
 }
 
 function homebrewCaskItemProvesAppOwnership(

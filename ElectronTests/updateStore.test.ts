@@ -725,15 +725,43 @@ describe("update store helpers", () => {
       sparkleFeedURL: "https://updates.example.com/appcast.xml",
       localVersion: version("1.0.0")
     });
+    const precedenceCaskEntry = {
+      token: "precedence",
+      version: version("2.0.0"),
+      presentation: "app" as const,
+      bundleIdentifiers: ["com.example.precedence"],
+      appBundleNames: ["precedence.app"]
+    };
     const clients = {
       scanner: { scanApplications: async () => [precedenceApp] },
       homebrew: {
-        fetchIndex: async () => emptyHomebrewCaskIndex,
+        fetchIndex: async () => ({
+          byToken: { precedence: precedenceCaskEntry },
+          byBundleIdentifier: { "com.example.precedence": precedenceCaskEntry },
+          byAppBundleName: { "precedence.app": [precedenceCaskEntry] }
+        }),
         lookupUpdate: () => ({
           remoteVersion: version("2.0.0"),
           token: "precedence"
         }),
         searchCasks: () => []
+      },
+      homebrewInventory: {
+        fetchInventory: async () => ({
+          items: [
+            homebrewItem({
+              id: "cask:precedence",
+              token: "precedence",
+              name: "Precedence",
+              kind: "cask",
+              installedVersion: version("1.0.0"),
+              latestVersion: version("2.0.0"),
+              isOutdated: true
+            })
+          ],
+          outdatedDetectionSucceeded: true,
+          outdatedDetectionSucceededByKind: { formula: true, cask: true }
+        })
       }
     };
     const storeWithAppStore = await makeStore({
@@ -2370,6 +2398,7 @@ describe("update store helpers", () => {
             token: "homebrew-managed",
             name: "Homebrew Managed",
             kind: "cask",
+            appID: app.id,
             installedVersion: version("1.0.0"),
             latestVersion: version("2.0.0"),
             isOutdated: true
@@ -2428,6 +2457,7 @@ describe("update store helpers", () => {
             token: "homebrew-managed",
             name: "Homebrew Managed",
             kind: "cask",
+            appID: app.id,
             installedVersion: version("1.0.0"),
             isOutdated: false
           })
@@ -2444,7 +2474,7 @@ describe("update store helpers", () => {
     ]);
   });
 
-  it("uses external fallback for unmanaged Homebrew-backed app updates", async () => {
+  it("does not create Homebrew app updates without installed cask ownership", async () => {
     const app = appRecord({
       bundlePath: "/Applications/Manual Homebrew Match.app",
       displayName: "Manual Homebrew Match",
@@ -2455,6 +2485,14 @@ describe("update store helpers", () => {
     const openExternalURL = vi.fn(async () => true);
     const openAppBundle = vi.fn(async () => undefined);
     const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const caskEntry = {
+      token: "manual-homebrew-match",
+      version: version("2.0.0"),
+      homepageURL: fallbackURL,
+      presentation: "app" as const,
+      bundleIdentifiers: ["com.example.manual-homebrew-match"],
+      appBundleNames: ["manual homebrew match.app"]
+    };
     const store = await makeStore({
       openExternalURL,
       openAppBundle,
@@ -2462,7 +2500,11 @@ describe("update store helpers", () => {
       clients: {
         scanner: { scanApplications: async () => [app] },
         homebrew: {
-          fetchIndex: async () => emptyHomebrewCaskIndex,
+          fetchIndex: async () => ({
+            byToken: { "manual-homebrew-match": caskEntry },
+            byBundleIdentifier: { "com.example.manual-homebrew-match": caskEntry },
+            byAppBundleName: { "manual homebrew match.app": [caskEntry] }
+          }),
           lookupUpdate: () => ({
             remoteVersion: version("2.0.0"),
             token: "manual-homebrew-match",
@@ -2472,17 +2514,7 @@ describe("update store helpers", () => {
         },
         homebrewInventory: {
           fetchInventory: async () => ({
-            items: [
-              homebrewItem({
-                id: "formula:manual-homebrew-match",
-                token: "manual-homebrew-match",
-                name: "manual-homebrew-match",
-                kind: "formula",
-                installedVersion: version("1.0.0"),
-                latestVersion: version("2.0.0"),
-                isOutdated: true
-              })
-            ],
+            items: [],
             outdatedDetectionSucceeded: true,
             outdatedDetectionSucceededByKind: { formula: true, cask: true }
           })
@@ -2491,16 +2523,10 @@ describe("update store helpers", () => {
     });
 
     await store.refresh(false);
-    expect(store.getSnapshot().updates[0]).toMatchObject({
-      source: "homebrew",
-      homebrewToken: "manual-homebrew-match",
-      updateURL: fallbackURL
-    });
 
-    await store.performAppUpdate(app.id);
-
+    expect(store.getSnapshot().updates).toEqual([]);
     expect(runBrewCommand).not.toHaveBeenCalled();
-    expect(openExternalURL).toHaveBeenCalledWith(fallbackURL);
+    expect(openExternalURL).not.toHaveBeenCalled();
     expect(openAppBundle).not.toHaveBeenCalled();
   });
 
@@ -2575,7 +2601,7 @@ describe("update store helpers", () => {
     ]);
   });
 
-  it("derives external fallback URLs for persisted Homebrew-backed app updates without URLs", async () => {
+  it("opens the app for persisted Homebrew-backed app updates without cask ownership", async () => {
     const app = appRecord({
       bundlePath: "/Applications/Persisted Homebrew Match.app",
       displayName: "Persisted Homebrew Match",
@@ -2610,10 +2636,8 @@ describe("update store helpers", () => {
     await store.performAppUpdate(app.id);
 
     expect(runBrewCommand).not.toHaveBeenCalled();
-    expect(openExternalURL).toHaveBeenCalledWith(
-      "https://formulae.brew.sh/cask/persisted-homebrew-match"
-    );
-    expect(openAppBundle).not.toHaveBeenCalled();
+    expect(openExternalURL).not.toHaveBeenCalled();
+    expect(openAppBundle).toHaveBeenCalledWith(app.bundlePath);
   });
 
   it("rejects unsafe Homebrew-backed app update tokens", async () => {
@@ -4715,6 +4739,7 @@ describe("update store helpers", () => {
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
     const openExternalURL = vi.fn(async () => true);
+    const openAppBundle = vi.fn(async () => undefined);
     const store = await makeStore({
       persisted: {
         ...defaultPersistedSnapshot(),
@@ -4734,13 +4759,15 @@ describe("update store helpers", () => {
         homebrewItems: [currentItem]
       },
       runBrewCommand,
-      openExternalURL
+      openExternalURL,
+      openAppBundle
     });
 
     await store.performAppUpdate(app.id);
 
     expect(runBrewCommand).not.toHaveBeenCalled();
-    expect(openExternalURL).toHaveBeenCalledWith("https://formulae.brew.sh/cask/example");
+    expect(openExternalURL).not.toHaveBeenCalled();
+    expect(openAppBundle).toHaveBeenCalledWith(app.bundlePath);
     expect(store.getSnapshot().homebrewUpdatingItemIDs).not.toContain(currentItem.id);
     expect(store.getSnapshot().homebrewQueuedItemIDs).not.toContain(currentItem.id);
   });

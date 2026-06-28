@@ -39,6 +39,7 @@ const cask: HomebrewManagedItem = {
   token: "example",
   name: "Example",
   kind: "cask",
+  appID: app.id,
   installedVersion: version("1.0.0"),
   latestVersion: version("2.0.0"),
   isOutdated: true
@@ -916,6 +917,7 @@ describe("renderer button parity", () => {
     };
     const fallbackCask: HomebrewManagedItem = {
       ...cask,
+      appID: undefined,
       name: "example-cask",
       presentation: "app"
     };
@@ -2182,7 +2184,7 @@ describe("renderer button parity", () => {
           searchText: "cli",
           ignoredIDs: [app.id],
           updates: [{ ...update, homebrewToken: searchCask.token }],
-          homebrewItems: [searchCask, formula]
+          homebrewItems: [{ ...searchCask, appID: app.id }, formula]
         })}
       />
     );
@@ -2490,6 +2492,7 @@ describe("renderer button parity", () => {
     };
     const standaloneCask: HomebrewManagedItem = {
       ...cask,
+      appID: undefined,
       id: "cask:standalone",
       token: "standalone",
       name: "Standalone",
@@ -2840,7 +2843,8 @@ describe("renderer button parity", () => {
       ...cask,
       id: "cask:long-token-name",
       token: "long-token-name",
-      name: "Long Token Name"
+      name: "Long Token Name",
+      appID: shortNamedApp.id
     };
 
     render(
@@ -2979,6 +2983,7 @@ describe("renderer button parity", () => {
     };
     const nonAppCask: HomebrewManagedItem = {
       ...cask,
+      appID: undefined,
       id: "cask:managed",
       token: "managed",
       name: "managed",
