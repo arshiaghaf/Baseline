@@ -157,8 +157,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.profileStatsIntegrity =
       options.profileStatsIntegrity ?? new KeychainProfileStatsIntegrity();
     this.successRefreshDelayMS = options.successRefreshDelayMS ?? successfulUpdateHoldMs;
+    const persisted = sanitizePersistedSnapshotForRuntime(options.persisted);
     this.state = {
-      ...options.persisted,
+      ...persisted,
       isMasInstalled: false,
       isHomebrewInstalled: false,
       isChecking: false,
@@ -1785,6 +1786,46 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     profileStatsResetAcknowledgedID: snapshot.profileStatsResetAcknowledgedID,
     lastRefreshDate: snapshot.lastRefreshDate
   };
+}
+
+function sanitizePersistedSnapshotForRuntime(snapshot: PersistedSnapshot): PersistedSnapshot {
+  const updates = snapshot.updates.filter((update) =>
+    persistedUpdateHasValidRuntimeRoute(update, snapshot)
+  );
+
+  if (updates.length === snapshot.updates.length) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    updates
+  };
+}
+
+function persistedUpdateHasValidRuntimeRoute(
+  update: UpdateRecord,
+  snapshot: PersistedSnapshot
+): boolean {
+  if (update.source !== "homebrew") {
+    return true;
+  }
+
+  const token = update.homebrewToken?.toLowerCase();
+  if (!token || !isValidHomebrewToken(token)) {
+    return false;
+  }
+  if (!snapshot.apps.some((app) => app.id === update.appID)) {
+    return false;
+  }
+
+  return snapshot.homebrewItems.some(
+    (item) =>
+      item.kind === "cask" &&
+      item.appID === update.appID &&
+      item.token.toLowerCase() === token &&
+      isValidHomebrewToken(item.token)
+  );
 }
 
 function appUpdateProfileStatsEvent({

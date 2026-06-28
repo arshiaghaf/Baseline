@@ -2601,6 +2601,56 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("removes persisted Homebrew app updates without installed cask ownership before refresh", async () => {
+    const app = appRecord({
+      bundlePath: "/Applications/Persisted Token Match.app",
+      displayName: "Persisted Token Match",
+      bundleIdentifier: "com.example.persisted-token-match",
+      localVersion: version("1.0.0")
+    });
+    const staleUpdate: UpdateRecord = {
+      id: app.id,
+      appID: app.id,
+      source: "homebrew",
+      supportLevel: "limited",
+      localVersion: version("1.0.0"),
+      remoteVersion: version("2.0.0"),
+      homebrewToken: "persisted-token-match",
+      updateURL: "https://formulae.brew.sh/cask/persisted-token-match",
+      checkedAt: "2026-05-20T12:00:00.000Z"
+    };
+    const tokenOnlyCask = homebrewItem({
+      id: "cask:persisted-token-match",
+      token: "persisted-token-match",
+      name: "Persisted Token Match",
+      kind: "cask",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("2.0.0"),
+      isOutdated: true
+    });
+    const staleStore = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [staleUpdate],
+        homebrewItems: [tokenOnlyCask]
+      }
+    });
+
+    expect(staleStore.getSnapshot().updates).toEqual([]);
+
+    const linkedStore = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        updates: [staleUpdate],
+        homebrewItems: [{ ...tokenOnlyCask, appID: app.id }]
+      }
+    });
+
+    expect(linkedStore.getSnapshot().updates).toEqual([staleUpdate]);
+  });
+
   it("opens the app for persisted Homebrew-backed app updates without cask ownership", async () => {
     const app = appRecord({
       bundlePath: "/Applications/Persisted Homebrew Match.app",
@@ -2640,7 +2690,7 @@ describe("update store helpers", () => {
     expect(openAppBundle).toHaveBeenCalledWith(app.bundlePath);
   });
 
-  it("rejects unsafe Homebrew-backed app update tokens", async () => {
+  it("removes unsafe persisted Homebrew-backed app update tokens before use", async () => {
     const app = appRecord({
       bundlePath: "/Applications/Unsafe Managed.app",
       displayName: "Unsafe Managed",
@@ -2668,10 +2718,12 @@ describe("update store helpers", () => {
       runBrewCommand
     });
 
+    expect(store.getSnapshot().updates).toEqual([]);
+
     await store.performAppUpdate(app.id);
 
     expect(runBrewCommand).not.toHaveBeenCalled();
-    expect(store.getSnapshot().refreshErrorMessage).toContain("Blocked unsafe Homebrew token");
+    expect(store.getSnapshot().refreshErrorMessage).toBeUndefined();
   });
 
   it("rejects unsafe direct Homebrew update tokens", async () => {
