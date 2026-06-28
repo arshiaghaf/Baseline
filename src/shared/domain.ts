@@ -139,10 +139,7 @@ export type ProfileStatsEvent = {
 };
 
 export type ProfileStatsIntegrityStatus =
-  | "pending"
-  | "verified"
-  | "unavailable"
-  | "resetAfterTamper";
+  "pending" | "verified" | "unavailable" | "resetAfterTamper";
 
 export type ProfileStatsResetNotice = {
   id: string;
