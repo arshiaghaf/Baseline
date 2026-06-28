@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import type { BaselineSnapshot, UpdateSource } from "./domain";
-import { sourceDisplayName } from "./domain";
+import { homebrewPresentationLabel, sourceDisplayName } from "./domain";
+import { homebrewItemHasAppRepresentation } from "./homebrewAppLinking";
 import { formatAppDisplayVersion, type AppMetadata } from "./appMetadata";
 
 const routeExceptionLimit = 10;
@@ -16,7 +17,13 @@ export function renderDiagnostics(
   const appHintCounts = sourceCounts(snapshot.apps.map((app) => app.sourceHint));
   const homebrewFormulas = snapshot.homebrewItems.filter((item) => item.kind === "formula");
   const homebrewCasks = snapshot.homebrewItems.filter((item) => item.kind === "cask");
-  const appLinkedCasks = homebrewCasks.filter((item) => Boolean(item.appID));
+  const appLinkedCasks = homebrewCasks.filter((item) =>
+    homebrewItemHasAppRepresentation(item, snapshot.apps)
+  );
+  const appLinkedCaskIDs = new Set(appLinkedCasks.map((item) => item.appID).filter(Boolean));
+  const appsLinkedToHomebrewCasks = snapshot.apps.filter((app) => appLinkedCaskIDs.has(app.id));
+  const appsNotLinkedToHomebrewCasks = snapshot.apps.length - appsLinkedToHomebrewCasks.length;
+  const casksByPresentation = formatCaskPresentationCounts(homebrewCasks);
   const homebrewAppUpdates = snapshot.updates.filter((update) => update.source === "homebrew");
   const homebrewAppUpdatesWithInstalledCask = homebrewAppUpdates.filter((update) =>
     snapshot.homebrewItems.some(
@@ -61,7 +68,9 @@ export function renderDiagnostics(
   lines.push(
     "",
     "Apps",
-    `- Scanned apps: ${snapshot.apps.length}`,
+    `- Scanned app bundles: ${snapshot.apps.length}`,
+    `- App bundles linked to Homebrew casks: ${appsLinkedToHomebrewCasks.length}`,
+    `- App bundles not linked to Homebrew casks: ${appsNotLinkedToHomebrewCasks}`,
     `- Available updates: ${snapshot.updates.length}`,
     `- Ignored: ${snapshot.ignoredIDs.length}`,
     `- Source hints: ${formatSourceCounts(appHintCounts)}`,
@@ -86,6 +95,7 @@ export function renderDiagnostics(
     `- Items: ${snapshot.homebrewItems.length}`,
     `- Formulae: ${homebrewFormulas.length}`,
     `- Casks: ${homebrewCasks.length}`,
+    `- Cask presentations: ${casksByPresentation}`,
     `- App-linked casks: ${appLinkedCasks.length}`,
     `- Outdated: ${snapshot.homebrewItems.filter((item) => item.isOutdated).length}`,
     `- Installed/current: ${snapshot.homebrewItems.filter((item) => !item.isOutdated).length}`,
@@ -128,6 +138,21 @@ function formatSourceCounts(counts: Map<UpdateSource, number>): string {
   const formatted = [...counts.entries()]
     .filter(([, count]) => count > 0)
     .map(([source, count]) => `${sourceDisplayName(source)}: ${count}`)
+    .join(", ");
+  return formatted || "None";
+}
+
+function formatCaskPresentationCounts(
+  casks: Array<Pick<BaselineSnapshot["homebrewItems"][number], "kind" | "presentation">>
+): string {
+  const counts = new Map<string, number>();
+  for (const cask of casks) {
+    const label = homebrewPresentationLabel(cask.kind, cask.presentation);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const formatted = [...counts.entries()]
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => `${label}: ${count}`)
     .join(", ");
   return formatted || "None";
 }

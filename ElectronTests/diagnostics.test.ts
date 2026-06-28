@@ -150,6 +150,9 @@ describe("diagnostics report", () => {
       "darwin"
     );
 
+    expect(report).toContain("- Scanned app bundles: 4");
+    expect(report).toContain("- App bundles linked to Homebrew casks: 1");
+    expect(report).toContain("- App bundles not linked to Homebrew casks: 3");
     expect(report).toContain(
       "- Source hints: App Store: 1, In-app updater: 1, Unknown: 1, Homebrew: 1"
     );
@@ -165,6 +168,7 @@ describe("diagnostics report", () => {
     expect(report).toContain("- Homebrew detected: Yes");
     expect(report).toContain("- Formulae: 1");
     expect(report).toContain("- Casks: 2");
+    expect(report).toContain("- Cask presentations: App Cask: 1, CLI Cask: 1");
     expect(report).toContain("- App-linked casks: 1");
   });
 
