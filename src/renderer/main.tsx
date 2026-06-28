@@ -56,10 +56,8 @@ import {
 } from "../shared/domain";
 import {
   homebrewItemHasAppRepresentation,
-  homebrewItemIdentifiers,
   homebrewItemMatchesApp,
-  isCask,
-  normalizedHomebrewAppName
+  isCask
 } from "../shared/homebrewAppLinking";
 import { HomebrewMaintenanceProgressStage } from "../shared/homebrewProgress";
 import { compareVersions } from "../shared/version";
@@ -79,6 +77,7 @@ type RequestActionConfirmation = (confirmation: ActionConfirmation) => void;
 type RowUpdateMenuAction = {
   state: ActionState;
   disabled?: boolean;
+  readyLabel?: string;
   onAction: () => void;
 };
 type RowActionMenuPlacement = "below" | "above" | "floating";
@@ -1445,6 +1444,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
             <UpdateActionButton
               state={actionState}
               disabled={isUninstalling}
+              readyLabel={appUpdateReadyLabel(app, snapshot, update)}
               onAction={() => void window.baseline.performAppUpdate(app.id)}
             />
           )}
@@ -1645,6 +1645,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
             <UpdateActionButton
               state={actionState}
               disabled={isUninstalling}
+              readyLabel={appUpdateReadyLabel(app, snapshot, update)}
               onAction={() => void window.baseline.performAppUpdate(app.id)}
             />
           )}
@@ -1704,6 +1705,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
                 ? {
                     state: actionState,
                     disabled: isUninstalling,
+                    readyLabel: appUpdateReadyLabel(app, snapshot, update),
                     onAction: () => void window.baseline.performAppUpdate(app.id)
                   }
                 : undefined
@@ -1791,6 +1793,7 @@ export function AppRow({
           <UpdateActionButton
             state={actionState}
             disabled={isUninstalling}
+            readyLabel={appUpdateReadyLabel(app, snapshot, update)}
             onAction={() => void window.baseline.performAppUpdate(app.id)}
           />
         )}
@@ -2698,7 +2701,9 @@ function RowMoreActionButton({
             <span className="failure-glyph">!</span>
           )}
           <span>
-            {updateAction.state.type === "ready" ? "Update" : actionStateLabel(updateAction.state)}
+            {updateAction.state.type === "ready"
+              ? (updateAction.readyLabel ?? "Update")
+              : actionStateLabel(updateAction.state)}
           </span>
         </button>
       )}
@@ -3161,6 +3166,7 @@ function SettingsPane({
                 description="Find updates for installed casks and formulae."
                 missingDetail="Homebrew is not detected on this Mac. Install Homebrew to enable this source."
                 ready={snapshot.isHomebrewInstalled}
+                readyDetail={homebrewReadyDetail(snapshot)}
               />
               <ToolStatus
                 label="mas"
@@ -3745,17 +3751,19 @@ function ToolStatus({
   description,
   missingDetail,
   ready,
+  readyDetail,
   enabled = true
 }: {
   label: string;
   description: string;
   missingDetail: string;
   ready: boolean;
+  readyDetail?: string;
   enabled?: boolean;
 }) {
   const active = ready && enabled;
   const statusLabel = ready ? (enabled ? "Enabled" : "Not used") : "Not detected";
-  const detail = ready ? description : `${description} ${missingDetail}`;
+  const detail = ready ? (readyDetail ?? description) : `${description} ${missingDetail}`;
   return (
     <div className="settings-row settings-row-status">
       <SettingsRowText label={label} description={detail} />
@@ -3765,6 +3773,35 @@ function ToolStatus({
       </span>
     </div>
   );
+}
+
+function homebrewReadyDetail(snapshot: BaselineSnapshot): string {
+  const caskCount = snapshot.homebrewItems.filter((item) => item.kind === "cask").length;
+  const formulaCount = snapshot.homebrewItems.filter((item) => item.kind === "formula").length;
+  const appLinkedCaskCount = snapshot.homebrewItems.filter(
+    (item) => item.kind === "cask" && item.appID
+  ).length;
+
+  if (caskCount === 0) {
+    return `Homebrew detected with 0 installed casks and ${countLabel(
+      formulaCount,
+      "formula",
+      "formulae"
+    )}; app updates will not use Homebrew unless a matching cask is installed.`;
+  }
+
+  return `Homebrew detected with ${countLabel(
+    caskCount,
+    "installed cask"
+  )}, ${countLabel(appLinkedCaskCount, "app-linked cask")}, and ${countLabel(
+    formulaCount,
+    "formula",
+    "formulae"
+  )}.`;
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 type ProfileSummary = {
@@ -3806,8 +3843,7 @@ function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
   const topHomebrewItems = buildTopUpdatedHomebrewItems(
     events,
     snapshot.homebrewItems,
-    snapshot.apps,
-    snapshot.updates
+    snapshot.apps
   );
   const totalUpdates = updateEvents.length;
   const differentApps = new Set(
@@ -3914,11 +3950,9 @@ function buildTopUpdatedApps(
 function buildTopUpdatedHomebrewItems(
   events: ProfileStatsEvent[],
   homebrewItems: HomebrewManagedItem[],
-  apps: AppRecord[],
-  updates: UpdateRecord[]
+  apps: AppRecord[]
 ): ProfileSummary["topHomebrewItems"] {
   const itemsByID = new Map(homebrewItems.map((item) => [item.id, item]));
-  const updatesByAppID = new Map(updates.map((update) => [update.appID, update]));
   const counts = new Map<
     string,
     {
@@ -3934,7 +3968,7 @@ function buildTopUpdatedHomebrewItems(
       continue;
     }
     const item = itemsByID.get(event.targetID);
-    if (!isProfileHomebrewToolEvent(event, item, apps, updatesByAppID)) {
+    if (!isProfileHomebrewToolEvent(event, item, apps)) {
       continue;
     }
     const current = counts.get(event.targetID);
@@ -3958,8 +3992,7 @@ function buildTopUpdatedHomebrewItems(
 function isProfileHomebrewToolEvent(
   event: ProfileStatsEvent,
   item: HomebrewManagedItem | undefined,
-  apps: AppRecord[],
-  updatesByAppID: Map<string, UpdateRecord>
+  apps: AppRecord[]
 ): boolean {
   if (item?.kind === "formula" || event.targetID.startsWith("formula:")) {
     return true;
@@ -3967,7 +4000,7 @@ function isProfileHomebrewToolEvent(
   if (!item) {
     return false;
   }
-  if (homebrewItemHasAppRepresentation(item, apps, updatesByAppID)) {
+  if (homebrewItemHasAppRepresentation(item, apps)) {
     return false;
   }
   if (item.presentation === "app") {
@@ -4021,9 +4054,24 @@ function startedUsingSummary(createdAt: string): ProfileSummary["startedUsing"] 
 }
 
 function sourceLabel(update: UpdateRecord): string {
-  if (update.source === "appStore") return "App Store";
-  if (update.source === "sparkle") return "Sparkle";
-  if (update.source === "homebrew") return "Homebrew";
+  if (update.source === "unknown") return "Update";
+  return sourceDisplayName(update.source);
+}
+
+function appUpdateReadyLabel(
+  app: AppRecord,
+  snapshot: BaselineSnapshot,
+  update: UpdateRecord
+): string {
+  if (update.source === "homebrew" && !uninstallableHomebrewItemForApp(app, snapshot)) {
+    return "Open app";
+  }
+  if (update.source === "sparkle") {
+    return "Open updater";
+  }
+  if (update.source === "web") {
+    return "Open website";
+  }
   return "Update";
 }
 
@@ -4190,8 +4238,7 @@ function deriveSections(snapshot: BaselineSnapshot) {
         (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
       );
   const allHomebrewOutdated = homebrewOutdated.filter(
-    (item) =>
-      !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew, updatesByAppID)
+    (item) => !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew)
   );
   const homebrewInstalled = snapshot.homebrewItems
     .filter((item) => !item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))
@@ -4235,22 +4282,7 @@ function matchingAppForHomebrewItem(
     return appFromExplicitLink;
   }
 
-  const identifiers = homebrewItemIdentifiers(item);
-  const matchingUpdate = snapshot.updates.find(
-    (update) =>
-      update.homebrewToken && identifiers.has(normalizedHomebrewAppName(update.homebrewToken))
-  );
-  const appFromUpdate = matchingUpdate
-    ? snapshot.apps.find((app) => app.id === matchingUpdate.appID)
-    : undefined;
-  if (appFromUpdate?.sourceHint === "sparkle") {
-    return undefined;
-  }
-  if (appFromUpdate?.iconDataURL) {
-    return appFromUpdate;
-  }
-
-  return appFromUpdate;
+  return undefined;
 }
 
 function uninstallableHomebrewItemForApp(
@@ -4262,20 +4294,6 @@ function uninstallableHomebrewItemForApp(
   );
   if (matchedByExplicitLink) {
     return matchedByExplicitLink;
-  }
-  if (app.sourceHint === "sparkle") {
-    return undefined;
-  }
-
-  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  if (update?.homebrewToken) {
-    const token = normalizedHomebrewAppName(update.homebrewToken);
-    const matchedByUpdate = snapshot.homebrewItems.find(
-      (item) => item.kind === "cask" && normalizedHomebrewAppName(item.token) === token
-    );
-    if (matchedByUpdate) {
-      return matchedByUpdate;
-    }
   }
 
   return undefined;

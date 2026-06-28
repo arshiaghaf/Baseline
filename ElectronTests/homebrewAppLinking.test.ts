@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { homebrewItemHasAppRepresentation } from "../src/shared/homebrewAppLinking";
-import type { AppRecord, HomebrewManagedItem, UpdateRecord } from "../src/shared/domain";
+import type { AppRecord, HomebrewManagedItem } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
 const app: AppRecord = {
@@ -26,58 +26,27 @@ const codeCask: HomebrewManagedItem = {
 };
 
 describe("Homebrew app linking", () => {
-  it("matches casks to app updates by Homebrew token", () => {
-    const update: UpdateRecord = {
-      id: app.id,
-      appID: app.id,
-      source: "homebrew",
-      supportLevel: "supported",
-      localVersion: version("1.0.0"),
-      remoteVersion: version("2.0.0"),
-      homebrewToken: "visual-studio-code",
-      checkedAt: "2026-04-30T12:00:00.000Z"
-    };
-
-    expect(homebrewItemHasAppRepresentation(codeCask, [app], new Map([[app.id, update]]))).toBe(
-      true
-    );
+  it("does not use token-only Homebrew updates as app-backed proof", () => {
+    expect(homebrewItemHasAppRepresentation(codeCask, [app])).toBe(false);
   });
 
   it("matches casks to ignored apps by explicit app link", () => {
-    expect(homebrewItemHasAppRepresentation({ ...codeCask, appID: app.id }, [app], new Map())).toBe(
-      true
-    );
+    expect(homebrewItemHasAppRepresentation({ ...codeCask, appID: app.id }, [app])).toBe(true);
   });
 
   it("does not use app bundle names alone as app-backed proof", () => {
-    expect(homebrewItemHasAppRepresentation(codeCask, [app], new Map())).toBe(false);
+    expect(homebrewItemHasAppRepresentation(codeCask, [app])).toBe(false);
   });
 
-  it("does not use token-only Homebrew updates as app-backed proof for Sparkle-origin apps", () => {
+  it("still keeps explicitly linked Sparkle-origin casks represented by app rows", () => {
     const sparkleApp = {
       ...app,
       sourceHint: "sparkle" as const
     };
-    const update: UpdateRecord = {
-      id: sparkleApp.id,
-      appID: sparkleApp.id,
-      source: "homebrew",
-      supportLevel: "limited",
-      localVersion: version("1.0.0"),
-      remoteVersion: version("2.0.0"),
-      homebrewToken: "visual-studio-code",
-      checkedAt: "2026-04-30T12:00:00.000Z"
-    };
 
+    expect(homebrewItemHasAppRepresentation(codeCask, [sparkleApp])).toBe(false);
     expect(
-      homebrewItemHasAppRepresentation(codeCask, [sparkleApp], new Map([[sparkleApp.id, update]]))
-    ).toBe(false);
-    expect(
-      homebrewItemHasAppRepresentation(
-        { ...codeCask, appID: sparkleApp.id },
-        [sparkleApp],
-        new Map([[sparkleApp.id, update]])
-      )
+      homebrewItemHasAppRepresentation({ ...codeCask, appID: sparkleApp.id }, [sparkleApp])
     ).toBe(true);
   });
 
@@ -92,6 +61,6 @@ describe("Homebrew app linking", () => {
       isOutdated: true
     };
 
-    expect(homebrewItemHasAppRepresentation(formula, [app], new Map())).toBe(false);
+    expect(homebrewItemHasAppRepresentation(formula, [app])).toBe(false);
   });
 });

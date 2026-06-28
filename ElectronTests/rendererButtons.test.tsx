@@ -39,6 +39,7 @@ const cask: HomebrewManagedItem = {
   token: "example",
   name: "Example",
   kind: "cask",
+  appID: app.id,
   installedVersion: version("1.0.0"),
   latestVersion: version("2.0.0"),
   isOutdated: true
@@ -222,6 +223,7 @@ describe("renderer button parity", () => {
 
     expect(screen.getByText("1.0 (100)")).toBeInTheDocument();
     expect(screen.getByText("1.0 (101)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open updater" })).toBeInTheDocument();
   });
 
   it("shows matched Homebrew cask progress on app update buttons", () => {
@@ -428,9 +430,12 @@ describe("renderer button parity", () => {
       />
     );
 
-    const updateButton = screen.getByRole("button", { name: "Update" });
+    const updateButton = screen
+      .getAllByRole("button", { name: "Open app" })
+      .find((button) => button.classList.contains("update-action-button"));
+    expect(updateButton).toBeDefined();
     expect(updateButton).toBeEnabled();
-    fireEvent.click(updateButton);
+    fireEvent.click(updateButton as HTMLButtonElement);
     expect(window.baseline.performAppUpdate).toHaveBeenCalledWith(sparkleBackedApp.id);
   });
 
@@ -916,6 +921,7 @@ describe("renderer button parity", () => {
     };
     const fallbackCask: HomebrewManagedItem = {
       ...cask,
+      appID: undefined,
       name: "example-cask",
       presentation: "app"
     };
@@ -934,7 +940,7 @@ describe("renderer button parity", () => {
 
     expect(screen.getByText("Example")).toBeInTheDocument();
     expect(screen.getByText("example-cask")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Open app" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Open app" })).toHaveLength(2);
   });
 
   it("shows settings sections as sidebar tabs without search-filtered badges", () => {
@@ -987,6 +993,33 @@ describe("renderer button parity", () => {
     expect(screen.queryByRole("button", { name: "All" })).not.toBeInTheDocument();
     expect(screen.queryByText("Stable App")).not.toBeInTheDocument();
     expect(screen.queryByText("ripgrep")).not.toBeInTheDocument();
+  });
+
+  it("shows when Homebrew is installed but has no installed casks", () => {
+    const formula: HomebrewManagedItem = {
+      id: "formula:ripgrep",
+      token: "ripgrep",
+      name: "ripgrep",
+      kind: "formula",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("1.1.0"),
+      isOutdated: true
+    };
+
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          homebrewItems: [formula],
+          isHomebrewInstalled: true
+        })}
+      />
+    );
+
+    expect(
+      screen.getByText(
+        "Homebrew detected with 0 installed casks and 1 formula; app updates will not use Homebrew unless a matching cask is installed."
+      )
+    ).toBeInTheDocument();
   });
 
   it("shows local profile stats in a settings tab below general", () => {
@@ -1191,7 +1224,7 @@ describe("renderer button parity", () => {
     ).toEqual(["Total updates", "Unique apps", "Homebrew Installs", "Favorite source"]);
     expect(
       [...document.querySelectorAll(".profile-metric strong")].map((metric) => metric.textContent)
-    ).toEqual(["10", "4", "1", "Sparkle"]);
+    ).toEqual(["10", "4", "1", "In-app updater"]);
     expect(screen.queryByText("Favorite channel")).not.toBeInTheDocument();
     expect(screen.getByText("Favorite source")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Source mix" })).not.toBeInTheDocument();
@@ -1210,11 +1243,11 @@ describe("renderer button parity", () => {
     expect(
       screen.queryByText("Tools you update with Baseline will appear here.")
     ).not.toBeInTheDocument();
-    expect(screen.getByText("5 updates via Sparkle")).toBeInTheDocument();
+    expect(screen.getByText("5 updates via In-app updater")).toBeInTheDocument();
     expect(screen.getByText("50%")).toBeInTheDocument();
-    expect(screen.queryByText("Sparkle 45%")).not.toBeInTheDocument();
-    expect(screen.getAllByLabelText("Sparkle: 5 updates (50%)").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Sparkle").length).toBeGreaterThan(0);
+    expect(screen.queryByText("In-app updater 45%")).not.toBeInTheDocument();
+    expect(screen.getAllByLabelText("In-app updater: 5 updates (50%)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("In-app updater").length).toBeGreaterThan(0);
     expect(document.querySelector(".profile-start-panel-box")?.hasAttribute("title")).toBe(false);
     const sourceSegment = document.querySelector(".profile-source-segment") as HTMLElement;
     expect(sourceSegment).not.toBeNull();
@@ -2182,7 +2215,7 @@ describe("renderer button parity", () => {
           searchText: "cli",
           ignoredIDs: [app.id],
           updates: [{ ...update, homebrewToken: searchCask.token }],
-          homebrewItems: [searchCask, formula]
+          homebrewItems: [{ ...searchCask, appID: app.id }, formula]
         })}
       />
     );
@@ -2490,6 +2523,7 @@ describe("renderer button parity", () => {
     };
     const standaloneCask: HomebrewManagedItem = {
       ...cask,
+      appID: undefined,
       id: "cask:standalone",
       token: "standalone",
       name: "Standalone",
@@ -2666,7 +2700,7 @@ describe("renderer button parity", () => {
     );
 
     expect(
-      within(container.querySelector(".recent-card") as HTMLElement).getByText("Sparkle")
+      within(container.querySelector(".recent-card") as HTMLElement).getByText("In-app updater")
     ).toBeInTheDocument();
 
     rerender(
@@ -2840,7 +2874,8 @@ describe("renderer button parity", () => {
       ...cask,
       id: "cask:long-token-name",
       token: "long-token-name",
-      name: "Long Token Name"
+      name: "Long Token Name",
+      appID: shortNamedApp.id
     };
 
     render(
@@ -2979,6 +3014,7 @@ describe("renderer button parity", () => {
     };
     const nonAppCask: HomebrewManagedItem = {
       ...cask,
+      appID: undefined,
       id: "cask:managed",
       token: "managed",
       name: "managed",

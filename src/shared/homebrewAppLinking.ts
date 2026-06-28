@@ -1,20 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
 // SPDX-License-Identifier: GPL-3.0-only
 
-import type {
-  AppRecord,
-  HomebrewCaskDiscoveryItem,
-  HomebrewManagedItem,
-  UpdateRecord
-} from "./domain";
+import type { AppRecord, HomebrewCaskDiscoveryItem, HomebrewManagedItem } from "./domain";
 
 export function homebrewItemHasAppRepresentation(
   item: Pick<HomebrewManagedItem, "kind" | "token"> &
     Partial<
       Pick<HomebrewManagedItem, "appID" | "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">
     >,
-  apps: AppRecord[],
-  updatesByAppID: Map<string, UpdateRecord>
+  apps: AppRecord[]
 ): boolean {
   if (!isCask(item.kind)) {
     return false;
@@ -23,17 +17,7 @@ export function homebrewItemHasAppRepresentation(
     return true;
   }
 
-  const identifiers = homebrewItemIdentifiers(item);
-  return apps.some((app) => {
-    const update = updatesByAppID.get(app.id);
-    if (app.sourceHint === "sparkle") {
-      return false;
-    }
-    if (update?.homebrewToken && identifiers.has(normalizedHomebrewAppName(update.homebrewToken))) {
-      return true;
-    }
-    return false;
-  });
+  return false;
 }
 
 export function homebrewItemMatchesApp(
@@ -51,21 +35,6 @@ export function homebrewItemMatchesApp(
   }
 
   return false;
-}
-
-export function homebrewItemIdentifiers(
-  item: Pick<HomebrewManagedItem, "token"> &
-    Partial<Pick<HomebrewManagedItem, "name"> & Pick<HomebrewCaskDiscoveryItem, "displayName">>
-): Set<string> {
-  return new Set(
-    [item.token, item.name, item.displayName]
-      .filter((value): value is string => Boolean(value))
-      .map(normalizedHomebrewAppName)
-  );
-}
-
-export function normalizedHomebrewAppName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
 }
 
 export function isCask(kind: string): boolean {

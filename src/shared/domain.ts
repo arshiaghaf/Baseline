@@ -317,9 +317,9 @@ export function homebrewDiscoverID(kind: HomebrewManagedItemKind, token: string)
 export function sourceDisplayName(source: UpdateSource): string {
   return {
     appStore: "App Store",
-    sparkle: "Sparkle",
+    sparkle: "In-app updater",
     homebrew: "Homebrew",
-    web: "Web",
+    web: "Publisher website",
     unknown: "Unknown"
   }[source];
 }

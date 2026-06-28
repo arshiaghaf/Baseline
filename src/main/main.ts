@@ -365,12 +365,11 @@ function trayUpdateTitle(snapshot: BaselineSnapshot): string {
   const appsRepresentedOutsideHomebrew = snapshot.apps.filter(
     (app) => visibleAppUpdateIDs.has(app.id) || ignored.has(app.id)
   );
-  const updatesByAppID = new Map(snapshot.updates.map((update) => [update.appID, update]));
   const visibleHomebrewUpdates = snapshot.homebrewItems.filter(
     (item) =>
       item.isOutdated &&
       !ignoredHomebrew.has(item.id) &&
-      !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew, updatesByAppID)
+      !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew)
   );
   const visibleUpdates = visibleAppUpdates.length + visibleHomebrewUpdates.length;
   if (visibleUpdates === 0) {
