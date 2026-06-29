@@ -2004,9 +2004,17 @@ export function preservePreviousHomebrewOutdatedState(
     if (!previous?.isOutdated) {
       return item;
     }
+    const preserveSameVersionCaskUpdate =
+      previous.latestVersion !== undefined &&
+      homebrewReportedSameVersionCaskUpdate(
+        previous,
+        item.installedVersion,
+        previous.latestVersion
+      );
     if (
       previous.latestVersion &&
-      !isVersionGreater(previous.latestVersion, item.installedVersion)
+      !isVersionGreater(previous.latestVersion, item.installedVersion) &&
+      !preserveSameVersionCaskUpdate
     ) {
       return item;
     }
@@ -2216,6 +2224,7 @@ function homebrewReportedSameVersionCaskUpdate(
   latestVersion: VersionValue
 ): boolean {
   return (
+    item.kind === "cask" &&
     item.isOutdated &&
     compareVersions(latestVersion, installedVersion) === 0 &&
     compareVersions(installedVersion, item.installedVersion) === 0

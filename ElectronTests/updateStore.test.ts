@@ -270,6 +270,62 @@ describe("update store helpers", () => {
     expect(reconciled.find((item) => item.id === "cask:notion")?.isOutdated).toBe(false);
   });
 
+  it("keeps same-version cask updates when cask outdated detection is unreliable", () => {
+    const current = [
+      homebrewItem({
+        id: "cask:build-only-cask",
+        token: "build-only-cask",
+        name: "Build Only Cask",
+        kind: "cask",
+        installedVersion: version("1.0.0"),
+        isOutdated: false
+      }),
+      homebrewItem({
+        id: "formula:same-version-formula",
+        token: "same-version-formula",
+        name: "same-version-formula",
+        kind: "formula",
+        installedVersion: version("1.0.0"),
+        isOutdated: false
+      })
+    ];
+    const previous = [
+      homebrewItem({
+        id: "cask:build-only-cask",
+        token: "build-only-cask",
+        name: "Build Only Cask",
+        kind: "cask",
+        installedVersion: version("1.0.0"),
+        latestVersion: version("1.0.0"),
+        isOutdated: true,
+        releaseDate: "2026-06-01T12:00:00.000Z"
+      }),
+      homebrewItem({
+        id: "formula:same-version-formula",
+        token: "same-version-formula",
+        name: "same-version-formula",
+        kind: "formula",
+        installedVersion: version("1.0.0"),
+        latestVersion: version("1.0.0"),
+        isOutdated: true
+      })
+    ];
+
+    const reconciled = preservePreviousHomebrewOutdatedState(current, previous, {
+      formula: false,
+      cask: false
+    });
+
+    expect(reconciled.find((item) => item.id === "cask:build-only-cask")).toMatchObject({
+      latestVersion: version("1.0.0"),
+      isOutdated: true,
+      releaseDate: "2026-06-01T12:00:00.000Z"
+    });
+    const formula = reconciled.find((item) => item.id === "formula:same-version-formula");
+    expect(formula?.isOutdated).toBe(false);
+    expect(formula?.latestVersion).toBeUndefined();
+  });
+
   it("persists resolved additional scan directories", async () => {
     let userData = "";
     const store = await makeStore({
