@@ -1486,6 +1486,54 @@ describe("update store helpers", () => {
     });
   });
 
+  it("preserves cask updates when only Homebrew build metadata changed", async () => {
+    const buildOnlyCask = homebrewItem({
+      id: "cask:build-only-cask",
+      token: "build-only-cask",
+      name: "Build Only Cask",
+      kind: "cask",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("1.0.0"),
+      isOutdated: true
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    const store = await makeStore({
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [buildOnlyCask],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      },
+      runBrewCommand
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+      id: "cask:build-only-cask",
+      latestVersion: version("1.0.0"),
+      isOutdated: true
+    });
+
+    await store.performHomebrewUpdateAll(["cask:build-only-cask"]);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "--cask", "--greedy", "build-only-cask"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+  });
+
   it("does not use loose name matches to change cask installed versions", async () => {
     const sameNameApp = appRecord({
       bundlePath: "/Applications/Self Updating App.app",

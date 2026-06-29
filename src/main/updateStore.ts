@@ -2098,8 +2098,17 @@ function reconcileHomebrewInventory(
     const presentation: HomebrewManagedItem["presentation"] = appID
       ? "app"
       : (caskEntry?.presentation ?? previousItem?.presentation ?? item.presentation);
+    const latestVersionComparison = latestVersion
+      ? compareVersions(latestVersion, installedVersion)
+      : undefined;
+    const keepHomebrewReportedSameVersionUpdate =
+      latestVersion !== undefined &&
+      homebrewReportedSameVersionCaskUpdate(item, installedVersion, latestVersion);
 
-    if (!latestVersion || !isVersionGreater(latestVersion, installedVersion)) {
+    if (
+      !latestVersion ||
+      ((latestVersionComparison ?? 0) <= 0 && !keepHomebrewReportedSameVersionUpdate)
+    ) {
       return {
         ...item,
         appID,
@@ -2198,6 +2207,18 @@ function bestHomebrewCaskLatestVersion(
   }
   return candidates.reduce((latest, candidate) =>
     compareVersions(candidate, latest) > 0 ? candidate : latest
+  );
+}
+
+function homebrewReportedSameVersionCaskUpdate(
+  item: HomebrewManagedItem,
+  installedVersion: VersionValue,
+  latestVersion: VersionValue
+): boolean {
+  return (
+    item.isOutdated &&
+    compareVersions(latestVersion, installedVersion) === 0 &&
+    compareVersions(installedVersion, item.installedVersion) === 0
   );
 }
 
