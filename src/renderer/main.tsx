@@ -90,6 +90,7 @@ type SettingsSectionID = "general" | "profile" | "appearance" | "diagnostics";
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 const sidebarIconStrokeWidth = 1.5;
 const toolbarIconStrokeWidth = 1.5;
+const compactVersionLabelMaxLength = 9;
 const settingsSidebarItems: Array<{
   id: SettingsSectionID;
   label: string;
@@ -1473,6 +1474,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
             <VersionChange
               from={appUpdateVersionChange(update).from}
               to={appUpdateVersionChange(update).to}
+              collapseLong
             />
           ) : (
             app.localVersion.raw || "unknown"
@@ -1732,6 +1734,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
             <VersionChange
               from={appUpdateVersionChange(update).from}
               to={appUpdateVersionChange(update).to}
+              collapseLong
             />
           ) : (
             app.localVersion.raw || "unknown"
@@ -2156,6 +2159,7 @@ function HomebrewUpdateCard({
             <VersionChange
               from={item.installedVersion.raw || "unknown"}
               to={item.latestVersion.raw}
+              collapseLong
             />
           ) : (
             item.installedVersion.raw || "unknown"
@@ -2345,6 +2349,7 @@ function IgnoredHomebrewCard({
             <VersionChange
               from={item.installedVersion.raw || "unknown"}
               to={item.latestVersion.raw}
+              collapseLong
             />
           ) : (
             item.installedVersion.raw || "unknown"
@@ -3708,7 +3713,23 @@ function Empty({ text }: { text: string }) {
   return <p className="empty">{text}</p>;
 }
 
-function VersionChange({ from, to }: { from: string; to: string }) {
+function VersionChange({
+  from,
+  to,
+  collapseLong = false
+}: {
+  from: string;
+  to: string;
+  collapseLong?: boolean;
+}) {
+  if (collapseLong && hasLongVersionLabel(from, to)) {
+    return (
+      <span className="version-token" title={`${from} → ${to}`}>
+        {to}
+      </span>
+    );
+  }
+
   return (
     <>
       <span className="version-token">{from}</span>
@@ -3716,6 +3737,10 @@ function VersionChange({ from, to }: { from: string; to: string }) {
       <span className="version-token">{to}</span>
     </>
   );
+}
+
+function hasLongVersionLabel(...labels: string[]): boolean {
+  return labels.some((label) => label.length > compactVersionLabelMaxLength);
 }
 
 function appUpdateVersionChange(update: UpdateRecord): { from: string; to: string } {

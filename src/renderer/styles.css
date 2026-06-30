@@ -927,7 +927,10 @@ button:disabled {
 }
 
 .item-card .row-main p {
+  overflow: hidden;
   margin-top: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
 }
 
