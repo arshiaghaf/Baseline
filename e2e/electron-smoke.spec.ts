@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { _electron as electron, expect, test } from "@playwright/test";
-import { access, mkdtemp } from "node:fs/promises";
+import { access, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { defaultPersistedSnapshot } from "../src/shared/domain";
+import { version } from "../src/shared/version";
 
 const expectedBaselineAPI = [
   "acknowledgeProfileStatsReset",
@@ -218,6 +220,88 @@ test("reopens settings after renderer-side back navigation", async () => {
     await window.baseline.showSettings();
   });
   await expect(page.locator("h1")).toContainText("General");
+
+  await closeApp(app);
+});
+
+test("renders long update versions inside Electron update cards", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  const longVersionApp = {
+    id: "app:long-version",
+    bundlePath: "/Applications/Long Version.app",
+    displayName: "Long Version App",
+    bundleIdentifier: "com.example.long-version",
+    localVersion: version("2026.625.2148"),
+    sourceHint: "unknown" as const
+  };
+  const longVersionFormula = {
+    id: "formula:long-version-tool",
+    token: "long-version-tool",
+    name: "Long Version Tool",
+    kind: "formula" as const,
+    installedVersion: version("116.0.5845.179"),
+    latestVersion: version("117.0.5938.132"),
+    isOutdated: true
+  };
+
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    `${JSON.stringify(
+      {
+        ...defaultPersistedSnapshot("2026-04-30T12:00:00.000Z"),
+        apps: [longVersionApp],
+        updates: [
+          {
+            id: longVersionApp.id,
+            appID: longVersionApp.id,
+            source: "appStore",
+            supportLevel: "supported",
+            localVersion: version("2026.625.2148"),
+            remoteVersion: version("2026.628.2035"),
+            checkedAt: "2026-04-30T12:00:00.000Z"
+          }
+        ],
+        homebrewItems: [longVersionFormula],
+        showMenuBarIcon: false
+      },
+      null,
+      2
+    )}\n`,
+    "utf8"
+  );
+
+  const app = await launchBaseline({ userData });
+  const page = await app.firstWindow();
+  await expect(page.locator("h1")).toContainText("All");
+  await expect(page.locator(".update-card")).toHaveCount(2);
+
+  const appCard = page.locator(".update-card").filter({ hasText: longVersionApp.displayName });
+  const formulaCard = page.locator(".update-card").filter({ hasText: longVersionFormula.name });
+  await expect(appCard).toContainText("2026.628.2035");
+  await expect(appCard).not.toContainText("2026.625.2148");
+  await expect(appCard).not.toContainText("→");
+  await expect(formulaCard).toContainText("117.0.5938.132");
+  await expect(formulaCard).not.toContainText("116.0.5845.179");
+  await expect(formulaCard).not.toContainText("→");
+
+  const versionLineMetrics = await page
+    .locator(".update-card .item-card-main p")
+    .evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        clientWidth: node.clientWidth,
+        scrollWidth: node.scrollWidth,
+        text: node.textContent?.trim()
+      }))
+    );
+  expect(versionLineMetrics).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ text: "2026.628.2035" }),
+      expect.objectContaining({ text: "117.0.5938.132" })
+    ])
+  );
+  expect(versionLineMetrics.every((metrics) => metrics.scrollWidth <= metrics.clientWidth)).toBe(
+    true
+  );
 
   await closeApp(app);
 });

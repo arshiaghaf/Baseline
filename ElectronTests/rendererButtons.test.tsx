@@ -2052,6 +2052,56 @@ describe("renderer button parity", () => {
     ]);
   });
 
+  it("shows only the new version on update cards when version labels are long", () => {
+    const longVersionApp: AppRecord = {
+      ...app,
+      id: "app:long-version",
+      displayName: "Long Version App",
+      bundleIdentifier: "com.example.long-version",
+      localVersion: version("2026.625.2148")
+    };
+    const longVersionUpdate: UpdateRecord = {
+      id: longVersionApp.id,
+      appID: longVersionApp.id,
+      source: "appStore",
+      supportLevel: "supported",
+      localVersion: version("2026.625.2148"),
+      remoteVersion: version("2026.628.2035"),
+      checkedAt: "2026-04-30T12:00:00.000Z"
+    };
+    const longVersionFormula: HomebrewManagedItem = {
+      id: "formula:long-version-tool",
+      token: "long-version-tool",
+      name: "Long Version Tool",
+      kind: "formula",
+      installedVersion: version("116.0.5845.179"),
+      latestVersion: version("117.0.5938.132"),
+      isOutdated: true
+    };
+    const { container } = render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          apps: [longVersionApp],
+          updates: [longVersionUpdate],
+          homebrewItems: [longVersionFormula]
+        })}
+      />
+    );
+
+    const cards = Array.from(container.querySelectorAll(".update-card"));
+    const appCard = cards.find((card) => card.textContent?.includes(longVersionApp.displayName));
+    const homebrewCard = cards.find((card) => card.textContent?.includes(longVersionFormula.name));
+
+    expect(appCard).toHaveTextContent("2026.628.2035");
+    expect(appCard).not.toHaveTextContent("2026.625.2148");
+    expect(appCard).not.toHaveTextContent("→");
+    expect(homebrewCard).toHaveTextContent("117.0.5938.132");
+    expect(homebrewCard).not.toHaveTextContent("116.0.5845.179");
+    expect(homebrewCard).not.toHaveTextContent("→");
+  });
+
   it("shows updated aggregate state in the combined updates section", () => {
     const formula: HomebrewManagedItem = {
       id: "formula:ripgrep",
