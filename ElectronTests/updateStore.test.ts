@@ -122,6 +122,48 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("records completed same-version cask updates as recently updated", () => {
+    const now = "2026-04-30T12:00:00.000Z";
+    const records = mergeHomebrewRecentlyUpdatedRecords(
+      [],
+      [
+        homebrewItem({
+          id: "cask:build-only-cask",
+          token: "build-only-cask",
+          name: "Build Only Cask",
+          kind: "cask",
+          installedVersion: version("1.0.0"),
+          latestVersion: version("1.0.0"),
+          isOutdated: true
+        })
+      ],
+      [
+        homebrewItem({
+          id: "cask:build-only-cask",
+          token: "build-only-cask",
+          name: "Build Only Cask",
+          kind: "cask",
+          installedVersion: version("1.0.0"),
+          isOutdated: false
+        })
+      ],
+      now,
+      {
+        completedItemIDs: ["cask:build-only-cask"],
+        currentDate: new Date("2026-05-01T12:00:00.000Z")
+      }
+    );
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        itemID: "cask:build-only-cask",
+        kind: "cask",
+        fromVersion: version("1.0.0"),
+        toVersion: version("1.0.0")
+      })
+    ]);
+  });
+
   it("keeps the newest Homebrew recent record per item", () => {
     const records = mergeHomebrewRecentlyUpdatedRecords(
       [
@@ -1543,7 +1585,7 @@ describe("update store helpers", () => {
   });
 
   it("preserves cask updates when only Homebrew build metadata changed", async () => {
-    const buildOnlyCask = homebrewItem({
+    const outdatedBuildOnlyCask = homebrewItem({
       id: "cask:build-only-cask",
       token: "build-only-cask",
       name: "Build Only Cask",
@@ -1552,6 +1594,11 @@ describe("update store helpers", () => {
       latestVersion: version("1.0.0"),
       isOutdated: true
     });
+    const currentBuildOnlyCask = homebrewItem({
+      ...outdatedBuildOnlyCask,
+      latestVersion: undefined,
+      isOutdated: false
+    });
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({
@@ -1559,14 +1606,18 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
+    let inventoryCalls = 0;
     const store = await makeStore({
       clients: {
         homebrewInventory: {
-          fetchInventory: async () => ({
-            items: [buildOnlyCask],
-            outdatedDetectionSucceeded: true,
-            outdatedDetectionSucceededByKind: { formula: true, cask: true }
-          })
+          fetchInventory: async () => {
+            inventoryCalls += 1;
+            return {
+              items: [inventoryCalls > 1 ? currentBuildOnlyCask : outdatedBuildOnlyCask],
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true }
+            };
+          }
         }
       },
       runBrewCommand
@@ -1587,6 +1638,13 @@ describe("update store helpers", () => {
       ["upgrade", "--cask", "--greedy", "build-only-cask"],
       ["autoremove"],
       ["cleanup"]
+    ]);
+    expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual([
+      expect.objectContaining({
+        itemID: "cask:build-only-cask",
+        fromVersion: version("1.0.0"),
+        toVersion: version("1.0.0")
+      })
     ]);
   });
 

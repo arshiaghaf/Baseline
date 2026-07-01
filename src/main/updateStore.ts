@@ -1214,7 +1214,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.state.homebrewRecentlyUpdated,
         previousHomebrewItems,
         reconciledHomebrewItems,
-        now
+        now,
+        { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
       );
       const preserveHomebrewCommandState =
         this.isHomebrewCommandActive() && !options.allowHomebrewInventoryDuringActiveCommand;
@@ -2157,17 +2158,29 @@ export function mergeHomebrewRecentlyUpdatedRecords(
   previousItems: HomebrewManagedItem[],
   currentItems: HomebrewManagedItem[],
   now: string,
-  options: { currentDate?: Date } = {}
+  options: { completedItemIDs?: string[]; currentDate?: Date } = {}
 ): HomebrewRecentlyUpdatedRecord[] {
   const records = [...existingRecords];
   const previousByID = new Map(previousItems.map((item) => [item.id, item]));
+  const completedItemIDs = new Set(options.completedItemIDs ?? []);
 
   for (const currentItem of currentItems) {
     const previousItem = previousByID.get(currentItem.id);
     if (!previousItem) {
       continue;
     }
-    if (compareVersions(currentItem.installedVersion, previousItem.installedVersion) <= 0) {
+    const versionComparison = compareVersions(
+      currentItem.installedVersion,
+      previousItem.installedVersion
+    );
+    const completedSameVersionCaskUpdate =
+      versionComparison === 0 &&
+      currentItem.kind === "cask" &&
+      previousItem.kind === "cask" &&
+      previousItem.isOutdated &&
+      !currentItem.isOutdated &&
+      completedItemIDs.has(currentItem.id);
+    if (versionComparison < 0 || (versionComparison === 0 && !completedSameVersionCaskUpdate)) {
       continue;
     }
     records.unshift({
