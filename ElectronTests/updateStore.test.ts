@@ -122,6 +122,48 @@ describe("update store helpers", () => {
     ]);
   });
 
+  it("records completed same-version cask updates as recently updated", () => {
+    const now = "2026-04-30T12:00:00.000Z";
+    const records = mergeHomebrewRecentlyUpdatedRecords(
+      [],
+      [
+        homebrewItem({
+          id: "cask:build-only-cask",
+          token: "build-only-cask",
+          name: "Build Only Cask",
+          kind: "cask",
+          installedVersion: version("1.0.0"),
+          latestVersion: version("1.0.0"),
+          isOutdated: true
+        })
+      ],
+      [
+        homebrewItem({
+          id: "cask:build-only-cask",
+          token: "build-only-cask",
+          name: "Build Only Cask",
+          kind: "cask",
+          installedVersion: version("1.0.0"),
+          isOutdated: false
+        })
+      ],
+      now,
+      {
+        completedItemIDs: ["cask:build-only-cask"],
+        currentDate: new Date("2026-05-01T12:00:00.000Z")
+      }
+    );
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        itemID: "cask:build-only-cask",
+        kind: "cask",
+        fromVersion: version("1.0.0"),
+        toVersion: version("1.0.0")
+      })
+    ]);
+  });
+
   it("keeps the newest Homebrew recent record per item", () => {
     const records = mergeHomebrewRecentlyUpdatedRecords(
       [
@@ -268,6 +310,62 @@ describe("update store helpers", () => {
 
     expect(reconciled.find((item) => item.id === "formula:ripgrep")?.isOutdated).toBe(true);
     expect(reconciled.find((item) => item.id === "cask:notion")?.isOutdated).toBe(false);
+  });
+
+  it("keeps same-version cask updates when cask outdated detection is unreliable", () => {
+    const current = [
+      homebrewItem({
+        id: "cask:build-only-cask",
+        token: "build-only-cask",
+        name: "Build Only Cask",
+        kind: "cask",
+        installedVersion: version("1.0.0"),
+        isOutdated: false
+      }),
+      homebrewItem({
+        id: "formula:same-version-formula",
+        token: "same-version-formula",
+        name: "same-version-formula",
+        kind: "formula",
+        installedVersion: version("1.0.0"),
+        isOutdated: false
+      })
+    ];
+    const previous = [
+      homebrewItem({
+        id: "cask:build-only-cask",
+        token: "build-only-cask",
+        name: "Build Only Cask",
+        kind: "cask",
+        installedVersion: version("1.0.0"),
+        latestVersion: version("1.0.0"),
+        isOutdated: true,
+        releaseDate: "2026-06-01T12:00:00.000Z"
+      }),
+      homebrewItem({
+        id: "formula:same-version-formula",
+        token: "same-version-formula",
+        name: "same-version-formula",
+        kind: "formula",
+        installedVersion: version("1.0.0"),
+        latestVersion: version("1.0.0"),
+        isOutdated: true
+      })
+    ];
+
+    const reconciled = preservePreviousHomebrewOutdatedState(current, previous, {
+      formula: false,
+      cask: false
+    });
+
+    expect(reconciled.find((item) => item.id === "cask:build-only-cask")).toMatchObject({
+      latestVersion: version("1.0.0"),
+      isOutdated: true,
+      releaseDate: "2026-06-01T12:00:00.000Z"
+    });
+    const formula = reconciled.find((item) => item.id === "formula:same-version-formula");
+    expect(formula?.isOutdated).toBe(false);
+    expect(formula?.latestVersion).toBeUndefined();
   });
 
   it("persists resolved additional scan directories", async () => {
@@ -1484,6 +1582,70 @@ describe("update store helpers", () => {
       latestVersion: version("1.2026.130.1"),
       isOutdated: true
     });
+  });
+
+  it("preserves cask updates when only Homebrew build metadata changed", async () => {
+    const outdatedBuildOnlyCask = homebrewItem({
+      id: "cask:build-only-cask",
+      token: "build-only-cask",
+      name: "Build Only Cask",
+      kind: "cask",
+      installedVersion: version("1.0.0"),
+      latestVersion: version("1.0.0"),
+      isOutdated: true
+    });
+    const currentBuildOnlyCask = homebrewItem({
+      ...outdatedBuildOnlyCask,
+      latestVersion: undefined,
+      isOutdated: false
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    let inventoryCalls = 0;
+    const store = await makeStore({
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => {
+            inventoryCalls += 1;
+            return {
+              items: [inventoryCalls > 1 ? currentBuildOnlyCask : outdatedBuildOnlyCask],
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true }
+            };
+          }
+        }
+      },
+      runBrewCommand
+    });
+
+    await store.refresh(false);
+
+    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+      id: "cask:build-only-cask",
+      latestVersion: version("1.0.0"),
+      isOutdated: true
+    });
+
+    await store.performHomebrewUpdateAll(["cask:build-only-cask"]);
+
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["update"],
+      ["upgrade", "--cask", "--greedy", "build-only-cask"],
+      ["autoremove"],
+      ["cleanup"]
+    ]);
+    expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual([
+      expect.objectContaining({
+        itemID: "cask:build-only-cask",
+        fromVersion: version("1.0.0"),
+        toVersion: version("1.0.0")
+      })
+    ]);
   });
 
   it("does not use loose name matches to change cask installed versions", async () => {

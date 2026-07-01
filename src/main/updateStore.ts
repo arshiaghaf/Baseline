@@ -1214,7 +1214,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.state.homebrewRecentlyUpdated,
         previousHomebrewItems,
         reconciledHomebrewItems,
-        now
+        now,
+        { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
       );
       const preserveHomebrewCommandState =
         this.isHomebrewCommandActive() && !options.allowHomebrewInventoryDuringActiveCommand;
@@ -2004,9 +2005,17 @@ export function preservePreviousHomebrewOutdatedState(
     if (!previous?.isOutdated) {
       return item;
     }
+    const preserveSameVersionCaskUpdate =
+      previous.latestVersion !== undefined &&
+      homebrewReportedSameVersionCaskUpdate(
+        previous,
+        item.installedVersion,
+        previous.latestVersion
+      );
     if (
       previous.latestVersion &&
-      !isVersionGreater(previous.latestVersion, item.installedVersion)
+      !isVersionGreater(previous.latestVersion, item.installedVersion) &&
+      !preserveSameVersionCaskUpdate
     ) {
       return item;
     }
@@ -2098,8 +2107,17 @@ function reconcileHomebrewInventory(
     const presentation: HomebrewManagedItem["presentation"] = appID
       ? "app"
       : (caskEntry?.presentation ?? previousItem?.presentation ?? item.presentation);
+    const latestVersionComparison = latestVersion
+      ? compareVersions(latestVersion, installedVersion)
+      : undefined;
+    const keepHomebrewReportedSameVersionUpdate =
+      latestVersion !== undefined &&
+      homebrewReportedSameVersionCaskUpdate(item, installedVersion, latestVersion);
 
-    if (!latestVersion || !isVersionGreater(latestVersion, installedVersion)) {
+    if (
+      !latestVersion ||
+      ((latestVersionComparison ?? 0) <= 0 && !keepHomebrewReportedSameVersionUpdate)
+    ) {
       return {
         ...item,
         appID,
@@ -2140,17 +2158,29 @@ export function mergeHomebrewRecentlyUpdatedRecords(
   previousItems: HomebrewManagedItem[],
   currentItems: HomebrewManagedItem[],
   now: string,
-  options: { currentDate?: Date } = {}
+  options: { completedItemIDs?: string[]; currentDate?: Date } = {}
 ): HomebrewRecentlyUpdatedRecord[] {
   const records = [...existingRecords];
   const previousByID = new Map(previousItems.map((item) => [item.id, item]));
+  const completedItemIDs = new Set(options.completedItemIDs ?? []);
 
   for (const currentItem of currentItems) {
     const previousItem = previousByID.get(currentItem.id);
     if (!previousItem) {
       continue;
     }
-    if (compareVersions(currentItem.installedVersion, previousItem.installedVersion) <= 0) {
+    const versionComparison = compareVersions(
+      currentItem.installedVersion,
+      previousItem.installedVersion
+    );
+    const completedSameVersionCaskUpdate =
+      versionComparison === 0 &&
+      currentItem.kind === "cask" &&
+      previousItem.kind === "cask" &&
+      previousItem.isOutdated &&
+      !currentItem.isOutdated &&
+      completedItemIDs.has(currentItem.id);
+    if (versionComparison < 0 || (versionComparison === 0 && !completedSameVersionCaskUpdate)) {
       continue;
     }
     records.unshift({
@@ -2198,6 +2228,19 @@ function bestHomebrewCaskLatestVersion(
   }
   return candidates.reduce((latest, candidate) =>
     compareVersions(candidate, latest) > 0 ? candidate : latest
+  );
+}
+
+function homebrewReportedSameVersionCaskUpdate(
+  item: HomebrewManagedItem,
+  installedVersion: VersionValue,
+  latestVersion: VersionValue
+): boolean {
+  return (
+    item.kind === "cask" &&
+    item.isOutdated &&
+    compareVersions(latestVersion, installedVersion) === 0 &&
+    compareVersions(installedVersion, item.installedVersion) === 0
   );
 }
 
