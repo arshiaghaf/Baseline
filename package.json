@@ -28,10 +28,10 @@
     "forge": "./forge.config.ts"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.9.3",
-    "lucide-react": "^1.21.0",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "fast-xml-parser": "^5.10.1",
+    "lucide-react": "^1.26.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "overrides": {
     "@tootallnate/once": "^3.0.1",
