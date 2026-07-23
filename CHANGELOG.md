@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 — 2026-07-23
+
+### Fixed
+
+- Homebrew cask updates that change only build metadata now remain visible, can be installed, and appear in Recently Updated after completion. ([#186](https://github.com/arshiaghaf/Baseline/pull/186))
+- Long app and Homebrew version changes now stay within update cards while preserving the full old-to-new value on hover. ([#187](https://github.com/arshiaghaf/Baseline/pull/187))
+
 ## 0.5.2 — 2026-06-28
 
 ### Fixed

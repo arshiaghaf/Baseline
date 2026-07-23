@@ -1,6 +1,6 @@
 {
   "name": "baseline",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Baseline is a standalone macOS Electron app for finding app updates through public update sources.",
   "main": ".vite/build/main.js",
   "scripts": {
