@@ -57,7 +57,7 @@
     "electron": "^43.2.0",
     "eslint": "^10.7.0",
     "jsdom": "^29.1.1",
-    "postcss": "^8.5.20",
+    "postcss": "^8.5.26",
     "prettier": "^3.9.5",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
