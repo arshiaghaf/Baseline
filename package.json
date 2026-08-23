@@ -28,8 +28,8 @@
     "forge": "./forge.config.ts"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.10.1",
-    "lucide-react": "^1.26.0",
+    "fast-xml-parser": "^5.11.0",
+    "lucide-react": "^1.33.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
