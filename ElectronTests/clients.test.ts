@@ -841,23 +841,36 @@ describe("ported clients", () => {
 
   it("parses formula indexes above the cask index byte limit", () => {
     const client = new HomebrewFormulaClient();
-    const payload = JSON.stringify([
+    const entry = JSON.stringify([
       {
         name: "large-formula-index-entry",
         versions: { stable: "1.2.3" },
         homepage: "https://example.com/large-formula-index-entry",
-        desc: "x".repeat(byteLimits.homebrewCaskIndexMaxBytes)
+        desc: "A searchable formula."
       }
     ]);
 
-    expect(Buffer.byteLength(payload)).toBeGreaterThan(byteLimits.homebrewCaskIndexMaxBytes);
+    // JSON whitespace exercises the byte boundary without creating a huge searchable description.
+    const payload = Buffer.alloc(byteLimits.homebrewCaskIndexMaxBytes + 1, " ");
+    payload.write(entry);
 
-    const index = client.parseIndex(Buffer.from(payload));
+    expect(payload.byteLength).toBeGreaterThan(byteLimits.homebrewCaskIndexMaxBytes);
+    expect(payload.byteLength).toBeLessThanOrEqual(byteLimits.homebrewFormulaIndexMaxBytes);
+
+    const index = client.parseIndex(payload);
 
     expect(index.byToken["large-formula-index-entry"]?.version.raw).toBe("1.2.3");
+    expect(index.byToken["large-formula-index-entry"]?.description).toBe("A searchable formula.");
     expect(client.searchFormulae("large formula", index, new Set()).at(0)?.token).toBe(
       "large-formula-index-entry"
     );
+  });
+
+  it("keeps formula indexes bounded by the formula byte limit", () => {
+    const client = new HomebrewFormulaClient();
+    const payload = Buffer.alloc(byteLimits.homebrewFormulaIndexMaxBytes + 1, " ");
+
+    expect(client.parseIndex(payload)).toEqual({ byToken: {} });
   });
 
   it("keeps cask indexes bounded by the cask byte limit", () => {
