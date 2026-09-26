@@ -5,18 +5,13 @@ import { describe, expect, it } from "vitest";
 import { buildNumberForAppVersion, validBuildNumber } from "../src/shared/buildNumber";
 
 describe("build numbers", () => {
-  it("derives public release build numbers from app versions", () => {
+  it("derives public release build numbers with room for one-off rebuilds", () => {
     expect(buildNumberForAppVersion("0.1.0")).toBe("10000");
     expect(buildNumberForAppVersion("0.2.0")).toBe("20000");
     expect(buildNumberForAppVersion("0.3.0")).toBe("30000");
-    expect(buildNumberForAppVersion("0.3.1")).toBe("30100");
-    expect(buildNumberForAppVersion("0.4.0")).toBe("40000");
-  });
-
-  it("reserves one-off values between release builds for rebuilt artifacts", () => {
-    expect(buildNumberForAppVersion("0.3.0")).toBe("30000");
     expect(validBuildNumber("30001")).toBe("30001");
     expect(buildNumberForAppVersion("0.3.1")).toBe("30100");
+    expect(buildNumberForAppVersion("0.4.0")).toBe("40000");
   });
 
   it("keeps pre-1.0 and post-1.0 build numbers monotonic", () => {
