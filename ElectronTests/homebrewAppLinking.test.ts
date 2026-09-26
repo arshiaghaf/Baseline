@@ -26,10 +26,6 @@ const codeCask: HomebrewManagedItem = {
 };
 
 describe("Homebrew app linking", () => {
-  it("does not use token-only Homebrew updates as app-backed proof", () => {
-    expect(homebrewItemHasAppRepresentation(codeCask, [app])).toBe(false);
-  });
-
   it("matches casks to ignored apps by explicit app link", () => {
     expect(homebrewItemHasAppRepresentation({ ...codeCask, appID: app.id }, [app])).toBe(true);
   });

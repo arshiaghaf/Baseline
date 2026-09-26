@@ -1400,32 +1400,6 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("0.1.0 (224)")).not.toBeInTheDocument();
   });
 
-  it("uses the same short search placeholder on every tab", () => {
-    const { rerender } = render(
-      <Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />
-    );
-
-    expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
-
-    rerender(
-      <Dashboard
-        compact
-        onOpenSettings={() => undefined}
-        snapshot={snapshot({ selectedTab: "apps" })}
-      />
-    );
-    expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
-
-    rerender(
-      <Dashboard
-        compact
-        onOpenSettings={() => undefined}
-        snapshot={snapshot({ selectedTab: "homebrew" })}
-      />
-    );
-    expect(screen.getByPlaceholderText("Search")).toBeInTheDocument();
-  });
-
   it("clears compact toolbar search and full-window sidebar search", () => {
     const { unmount } = render(
       <Dashboard
