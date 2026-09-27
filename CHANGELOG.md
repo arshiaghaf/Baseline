@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — 2026-09-27
+
+### Fixed
+
+- Formula index boundary tests now reduce fixture allocation and search work while preserving coverage above the cask byte limit. ([#233](https://github.com/arshiaghaf/Baseline/pull/233))
+- Updated runtime and development dependencies to keep Baseline’s app and tooling current. ([#220](https://github.com/arshiaghaf/Baseline/pull/220)), ([#207](https://github.com/arshiaghaf/Baseline/pull/207)), ([#216](https://github.com/arshiaghaf/Baseline/pull/216)), ([#218](https://github.com/arshiaghaf/Baseline/pull/218)), ([#214](https://github.com/arshiaghaf/Baseline/pull/214)), ([#217](https://github.com/arshiaghaf/Baseline/pull/217)), ([#222](https://github.com/arshiaghaf/Baseline/pull/222)), ([#219](https://github.com/arshiaghaf/Baseline/pull/219)), ([#204](https://github.com/arshiaghaf/Baseline/pull/204)), ([#221](https://github.com/arshiaghaf/Baseline/pull/221)), ([#224](https://github.com/arshiaghaf/Baseline/pull/224)), ([#227](https://github.com/arshiaghaf/Baseline/pull/227)), ([#223](https://github.com/arshiaghaf/Baseline/pull/223)), ([#226](https://github.com/arshiaghaf/Baseline/pull/226)), ([#229](https://github.com/arshiaghaf/Baseline/pull/229)), ([#230](https://github.com/arshiaghaf/Baseline/pull/230)), ([#231](https://github.com/arshiaghaf/Baseline/pull/231)), ([#232](https://github.com/arshiaghaf/Baseline/pull/232))
+
 ## 0.6.0 — 2026-07-23
 
 ### Fixed
