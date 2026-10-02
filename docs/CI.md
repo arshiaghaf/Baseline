@@ -4,7 +4,7 @@ This repository uses GitHub Actions for pull request and `main` branch validatio
 
 Baseline is an Electron app that targets macOS first, so CI runs across
 GitHub's macOS hosted runners: `macos-26`, `macos-26-intel`, `macos-15`,
-`macos-15-intel`, and `macos-14`.
+and `macos-15-intel`.
 
 The CI workflow:
 
