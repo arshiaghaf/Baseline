@@ -41,7 +41,7 @@ const config: ForgeConfig = {
     appCategoryType: "public.app-category.utilities",
     asar: true,
     extendInfo: {
-      LSMinimumSystemVersion: "14.0"
+      LSMinimumSystemVersion: "15.0"
     }
   },
   rebuildConfig: {},
