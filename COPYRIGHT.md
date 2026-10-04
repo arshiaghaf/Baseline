@@ -1,6 +1,6 @@
 # Copyright
 
-Copyright (C) 2026 Arshia Ghaffarian.
+Copyright (C) 2026 Arshia Ghaf.
 
 Unless a file states otherwise, Baseline source code and project documentation
 are licensed under the GNU General Public License v3.0 only

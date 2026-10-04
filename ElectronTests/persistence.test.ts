@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
