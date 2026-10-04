@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.2 — 2026-10-04
+
+### Added
+
+- Baseline now requires macOS 15 or later. ([#236](https://github.com/arshiaghaf/Baseline/pull/236))
+
+### Fixed
+
+- Updated archive extraction dependencies to address security advisories and preserve safe extraction behavior in development tooling. ([#242](https://github.com/arshiaghaf/Baseline/pull/242)), ([#243](https://github.com/arshiaghaf/Baseline/pull/243))
+
 ## 0.6.1 — 2026-09-27
 
 ### Fixed
