@@ -85,7 +85,7 @@ Developer documentation:
 Baseline is licensed under `GPL-3.0-only`. See [LICENSE](LICENSE) for the full
 GNU General Public License v3.0 text.
 
-Copyright (C) 2026 Arshia Ghaffarian.
+Copyright (C) 2026 Arshia Ghaf.
 
 Distributed modified versions must remain licensed under the GPL and include
 the corresponding source code, license text, copyright notices, and other notices

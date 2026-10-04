@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Arshia Ghaffarian
+// SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
 import {
@@ -70,7 +70,7 @@ if (hasSingleInstanceLock) {
     app.setAboutPanelOptions({
       applicationVersion: metadata.version,
       version: metadata.buildNumber,
-      copyright: "© 2026 Arshia Ghaffarian"
+      copyright: "© 2026 Arshia Ghaf"
     });
 
     const persistence = new SnapshotPersistence(app.getPath("userData"));
