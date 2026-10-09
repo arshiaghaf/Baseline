@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import type {
   PersistedSnapshot,
@@ -19,23 +20,78 @@ export { defaultPersistedSnapshot };
 
 export class SnapshotPersistence {
   private readonly snapshotPath: string;
+  private readonly backupPath: string;
+  private saveQueue: Promise<void> = Promise.resolve();
 
   constructor(userDataPath: string) {
     this.snapshotPath = path.join(userDataPath, "baseline-snapshot.json");
+    this.backupPath = `${this.snapshotPath}.backup`;
   }
 
   async load(): Promise<PersistedSnapshot> {
-    try {
-      const raw = await readFile(this.snapshotPath, "utf8");
-      return normalizeSnapshot(JSON.parse(raw) as Partial<PersistedSnapshot>);
-    } catch {
-      return defaultPersistedSnapshot();
+    await this.saveQueue;
+    for (const candidate of [this.snapshotPath, this.backupPath]) {
+      const saved = await readSnapshot(candidate);
+      if (saved) {
+        return saved.snapshot;
+      }
     }
+    return defaultPersistedSnapshot();
   }
 
   async save(snapshot: PersistedSnapshot): Promise<void> {
-    await mkdir(path.dirname(this.snapshotPath), { recursive: true });
-    await writeFile(this.snapshotPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
+    // Capture at call time, before another store mutation can change the snapshot.
+    const contents = `${JSON.stringify(snapshot, null, 2)}\n`;
+    const save = this.saveQueue.then(async () => {
+      await mkdir(path.dirname(this.snapshotPath), { recursive: true });
+      const previous = await readSnapshot(this.snapshotPath, true);
+      const backup = previous ?? (await readSnapshot(this.backupPath, true));
+      // Never replace a valid backup with a corrupt primary during recovery.
+      await replaceSnapshot(this.backupPath, backup?.contents ?? contents);
+      await replaceSnapshot(this.snapshotPath, contents);
+    });
+    this.saveQueue = save.catch(() => undefined);
+    await save;
+  }
+}
+
+async function readSnapshot(
+  snapshotPath: string,
+  rejectReadErrors = false
+): Promise<{ contents: string; snapshot: PersistedSnapshot } | undefined> {
+  let contents: string;
+  try {
+    contents = await readFile(snapshotPath, "utf8");
+  } catch (error) {
+    if (rejectReadErrors && (error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+    return undefined;
+  }
+  try {
+    const input: unknown = JSON.parse(contents);
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      return undefined;
+    }
+    return { contents, snapshot: normalizeSnapshot(input as Partial<PersistedSnapshot>) };
+  } catch {
+    return undefined;
+  }
+}
+
+async function replaceSnapshot(snapshotPath: string, contents: string): Promise<void> {
+  const temporaryPath = `${snapshotPath}.${randomUUID()}.tmp`;
+  try {
+    const file = await open(temporaryPath, "wx", 0o600);
+    try {
+      await file.writeFile(contents, "utf8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await rename(temporaryPath, snapshotPath);
+  } finally {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
   }
 }
 
