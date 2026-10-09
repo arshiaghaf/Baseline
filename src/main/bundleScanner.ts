@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import type { AppRecord, UpdateSource } from "../shared/domain";
 import { isAllowedFeedURL } from "../shared/security";
 import { version } from "../shared/version";
+import { IconCache, type IconLoadResult } from "./iconCache";
 
 const execFileAsync = promisify(execFile);
 
@@ -21,7 +22,6 @@ type AppBundleInfo = {
   hasSafariWebExtension: boolean;
   iconResourcesPath: string;
 };
-type IconLoadResult = { dataURL?: string };
 type IconExecFileAsync = (
   file: string,
   args: string[],
@@ -45,6 +45,8 @@ const iconRuntime: {
 } = { ...defaultIconRuntime };
 
 export class BundleScannerClient {
+  private readonly icons = new IconCache(loadIconFileDataURL);
+
   async scanApplications(directories: string[]): Promise<AppRecord[]> {
     const seen = new Set<string>();
     const records: AppRecord[] = [];
@@ -272,7 +274,7 @@ export class BundleScannerClient {
     info: InfoPlist
   ): Promise<IconLoadResult> {
     for (const iconPath of iconCandidatePaths(iconResourcesPath, info)) {
-      const result = await loadIconFileDataURL(iconPath);
+      const result = await this.icons.get(iconPath);
       if (result.dataURL) {
         return result;
       }
