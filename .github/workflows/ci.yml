@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-26, macos-26-intel, macos-15, macos-15-intel]
+        os: [xcode-27, macos-26, macos-26-intel, macos-15, macos-15-intel]
 
     steps:
       - name: Check out repository
@@ -37,6 +37,12 @@ jobs:
           sw_vers
           uname -a
           uname -m
+          xcode-select -p
+          xcodebuild -version
+          if [[ "${{ matrix.os }}" == "xcode-27" ]]; then
+            [[ "$(sw_vers -productVersion)" == 27.* ]]
+            [[ "$(uname -m)" == "arm64" ]]
+          fi
           node --version
           npm --version
 
