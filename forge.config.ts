@@ -8,6 +8,7 @@ import { VitePlugin } from "@electron-forge/plugin-vite";
 import { execFileSync } from "node:child_process";
 import packageJSON from "./package.json";
 import { buildNumberForAppVersion, validBuildNumber } from "./src/shared/buildNumber";
+import { localAdHocSigningOptions, verifyPackagedMacSignatures } from "./macSigning.config";
 
 function macOSMajorVersion(): number | undefined {
   if (process.platform !== "darwin") {
@@ -40,9 +41,13 @@ const config: ForgeConfig = {
     appBundleId: "com.arshiaghaf.baseline",
     appCategoryType: "public.app-category.utilities",
     asar: true,
+    osxSign: localAdHocSigningOptions(),
     extendInfo: {
       LSMinimumSystemVersion: "15.0"
     }
+  },
+  hooks: {
+    postPackage: verifyPackagedMacSignatures
   },
   rebuildConfig: {},
   makers: [
