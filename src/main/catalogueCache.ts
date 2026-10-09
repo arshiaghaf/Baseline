@@ -19,6 +19,7 @@ export class CatalogueCache<T> {
     value: T;
     checkedAt: number;
     freshUntil: number;
+    displayFreshUntil: number;
     etag?: string;
     modified?: string;
   };
@@ -40,7 +41,11 @@ export class CatalogueCache<T> {
     const usable = metadata && now - metadata.checkedAt <= maxStaleMS;
     return {
       checkedAt: metadata ? new Date(metadata.checkedAt).toISOString() : undefined,
-      stale: Boolean(usable && (this.lastRequestFailed || now >= metadata!.freshUntil)),
+      stale: Boolean(
+        usable &&
+        (this.lastRequestFailed ||
+          now >= (this.entry?.displayFreshUntil ?? this.uncachedResponse!.freshUntil))
+      ),
       unavailable: !usable
     };
   }
@@ -73,21 +78,25 @@ export class CatalogueCache<T> {
       const checkedAt = Date.now();
       const cacheControl = response.headers.get("cache-control") ?? "";
       const maxAge = /(?:^|,)\s*max-age=(\d+)/i.exec(cacheControl)?.[1];
-      const ttl = /(?:^|,)\s*(?:no-cache|no-store)\b/i.test(cacheControl)
+      const mustRevalidate = /(?:^|,)\s*(?:no-cache|no-store)\b/i.test(cacheControl);
+      const ttl = mustRevalidate
         ? 0
         : Math.max(
             0,
             Math.min(freshnessMS, maxAge === undefined ? freshnessMS : Number(maxAge) * 1000) -
               Math.max(0, Number(response.headers.get("age")) || 0) * 1000
           );
+      // A live response is current even when cache policy forbids storage or
+      // demands revalidation next time. Its display status is separate from TTL.
+      const displayFreshUntil = checkedAt + (mustRevalidate ? freshnessMS : ttl);
       this.lastRequestFailed = false;
       this.uncachedResponse = undefined;
       if (response.status === 304 && this.entry) {
         const value = this.entry.value;
         this.entry = /(?:^|,)\s*no-store\b/i.test(cacheControl)
           ? undefined
-          : { ...this.entry, checkedAt, freshUntil: checkedAt + ttl };
-        if (!this.entry) this.uncachedResponse = { checkedAt, freshUntil: checkedAt + ttl };
+          : { ...this.entry, checkedAt, freshUntil: checkedAt + ttl, displayFreshUntil };
+        if (!this.entry) this.uncachedResponse = { checkedAt, freshUntil: displayFreshUntil };
         this.retryAfter = 0;
         return value;
       }
@@ -102,10 +111,11 @@ export class CatalogueCache<T> {
             value,
             checkedAt,
             freshUntil: checkedAt + ttl,
+            displayFreshUntil,
             etag: response.headers.get("etag") ?? undefined,
             modified: response.headers.get("last-modified") ?? undefined
           };
-      if (!this.entry) this.uncachedResponse = { checkedAt, freshUntil: checkedAt + ttl };
+      if (!this.entry) this.uncachedResponse = { checkedAt, freshUntil: displayFreshUntil };
       this.retryAfter = 0;
       return value;
     } catch {

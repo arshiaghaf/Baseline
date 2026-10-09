@@ -117,6 +117,48 @@ describe("catalogue freshness and last-good indexes", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it.each(["no-store", "no-cache"])(
+    "reports a live %s response as current while still revalidating the next request",
+    async (directive) => {
+      const { cache, fetchMock } = fixture();
+      fetchMock.mockResolvedValueOnce(
+        new Response('["fresh"]', {
+          headers: { "cache-control": directive, etag: '"fresh"' }
+        })
+      );
+      expect(await cache.fetch()).toEqual(["fresh"]);
+      expect(cache.status).toMatchObject({ stale: false, unavailable: false });
+      fetchMock.mockRejectedValueOnce(new Error("offline"));
+      expect(await cache.fetch()).toEqual(directive === "no-store" ? [] : ["fresh"]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(cache.status).toMatchObject(
+        directive === "no-store"
+          ? { stale: false, unavailable: true }
+          : { stale: true, unavailable: false }
+      );
+    }
+  );
+
+  it("reports a no-store 304 as a live success and discards its validators", async () => {
+    const { cache, fetchMock, response } = fixture();
+    fetchMock.mockResolvedValueOnce(response());
+    const first = await cache.fetch();
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, {
+        status: 304,
+        headers: { "cache-control": "no-store" }
+      })
+    );
+    expect(await cache.fetch({ force: true })).toBe(first);
+    expect(cache.status).toMatchObject({ stale: false, unavailable: false });
+    fetchMock.mockResolvedValueOnce(new Response('["next"]'));
+    await cache.fetch();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ headers: {} })
+    );
+  });
+
   it.each([HomebrewCaskClient, HomebrewFormulaClient])(
     "rejects wrong JSON shape without poisoning a client cache",
     async (Client) => {
