@@ -20,6 +20,7 @@ export class CatalogueCache<T> {
     checkedAt: number;
     freshUntil: number;
     displayFreshUntil: number;
+    cacheControl: string;
     etag?: string;
     modified?: string;
   };
@@ -76,7 +77,10 @@ export class CatalogueCache<T> {
       if (this.entry?.modified) headers["If-Modified-Since"] = this.entry.modified;
       const response = await fetch(this.url, { headers, signal: AbortSignal.timeout(12000) });
       const checkedAt = Date.now();
-      const cacheControl = response.headers.get("cache-control") ?? "";
+      const cacheControl =
+        response.headers.get("cache-control") ??
+        (response.status === 304 ? this.entry?.cacheControl : undefined) ??
+        "";
       const maxAge = /(?:^|,)\s*max-age=(\d+)/i.exec(cacheControl)?.[1];
       const mustRevalidate = /(?:^|,)\s*(?:no-cache|no-store)\b/i.test(cacheControl);
       const ttl = mustRevalidate
@@ -88,14 +92,22 @@ export class CatalogueCache<T> {
           );
       // A live response is current even when cache policy forbids storage or
       // demands revalidation next time. Its display status is separate from TTL.
-      const displayFreshUntil = checkedAt + (mustRevalidate ? freshnessMS : ttl);
+      const displayFreshUntil = checkedAt + (ttl || freshnessMS);
       this.lastRequestFailed = false;
       this.uncachedResponse = undefined;
       if (response.status === 304 && this.entry) {
         const value = this.entry.value;
         this.entry = /(?:^|,)\s*no-store\b/i.test(cacheControl)
           ? undefined
-          : { ...this.entry, checkedAt, freshUntil: checkedAt + ttl, displayFreshUntil };
+          : {
+              ...this.entry,
+              checkedAt,
+              freshUntil: checkedAt + ttl,
+              displayFreshUntil,
+              cacheControl,
+              etag: response.headers.get("etag") ?? this.entry.etag,
+              modified: response.headers.get("last-modified") ?? this.entry.modified
+            };
         if (!this.entry) this.uncachedResponse = { checkedAt, freshUntil: displayFreshUntil };
         this.retryAfter = 0;
         return value;
@@ -112,6 +124,7 @@ export class CatalogueCache<T> {
             checkedAt,
             freshUntil: checkedAt + ttl,
             displayFreshUntil,
+            cacheControl,
             etag: response.headers.get("etag") ?? undefined,
             modified: response.headers.get("last-modified") ?? undefined
           };
