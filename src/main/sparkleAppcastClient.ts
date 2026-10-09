@@ -24,7 +24,8 @@ type AppcastItem = {
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
-  textNodeName: "#text"
+  textNodeName: "#text",
+  parseTagValue: false
 });
 
 const prereleaseLabels = new Set([
@@ -90,6 +91,7 @@ export class SparkleAppcastClient {
     const best = items
       .map((item) => ({
         item,
+        hasMarketingVersion: Boolean(item.shortVersionString?.trim()),
         buildVersion: version(item.buildVersion),
         parsedVersion: version(item.shortVersionString ?? item.buildVersion)
       }))
@@ -118,9 +120,22 @@ export class SparkleAppcastClient {
 }
 
 function compareAppcastItems(
-  lhs: { parsedVersion: VersionValue; buildVersion: VersionValue },
-  rhs: { parsedVersion: VersionValue; buildVersion: VersionValue }
+  lhs: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
+  rhs: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean }
 ): number {
+  if (
+    (!lhs.hasMarketingVersion || !rhs.hasMarketingVersion) &&
+    !isVersionEmpty(lhs.buildVersion) &&
+    !isVersionEmpty(rhs.buildVersion)
+  ) {
+    const buildComparison = compareVersions(lhs.buildVersion, rhs.buildVersion);
+    if (buildComparison !== 0) {
+      return buildComparison;
+    }
+    if (lhs.hasMarketingVersion !== rhs.hasMarketingVersion) {
+      return lhs.hasMarketingVersion ? 1 : -1;
+    }
+  }
   const versionComparison = compareVersions(lhs.parsedVersion, rhs.parsedVersion);
   if (versionComparison !== 0) {
     return versionComparison;
@@ -129,10 +144,15 @@ function compareAppcastItems(
 }
 
 function isAppcastItemNewer(
-  item: { parsedVersion: VersionValue; buildVersion: VersionValue },
+  item: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
   localVersion: VersionValue,
   localBuildVersion?: VersionValue
 ): boolean {
+  if (!item.hasMarketingVersion && localBuildVersion && !isVersionEmpty(localBuildVersion)) {
+    return (
+      !isVersionEmpty(item.buildVersion) && isVersionGreater(item.buildVersion, localBuildVersion)
+    );
+  }
   const marketingVersionComparison = compareVersions(item.parsedVersion, localVersion);
   if (marketingVersionComparison > 0) {
     if (
@@ -209,8 +229,11 @@ function releaseCoreVersion(value: VersionValue, tokens: VersionToken[]): Versio
 function normalizeItem(item: any): AppcastItem {
   return {
     shortVersionString:
-      item?.["@_sparkle:shortVersionString"] ?? item?.enclosure?.["@_sparkle:shortVersionString"],
-    buildVersion: item?.["@_sparkle:version"] ?? item?.enclosure?.["@_sparkle:version"],
+      stringText(item?.["sparkle:shortVersionString"])?.trim() ||
+      (item?.["@_sparkle:shortVersionString"] ?? item?.enclosure?.["@_sparkle:shortVersionString"]),
+    buildVersion:
+      stringText(item?.["sparkle:version"])?.trim() ||
+      (item?.["@_sparkle:version"] ?? item?.enclosure?.["@_sparkle:version"]),
     enclosureURL: item?.enclosure?.["@_url"],
     releaseNotesURL:
       stringText(item?.["sparkle:releaseNotesLink"]) ?? stringText(item?.releaseNotesLink),
