@@ -13,6 +13,7 @@ import {
   profileStatsSignatureVersion
 } from "../src/shared/domain";
 import { SnapshotPersistence } from "../src/main/persistence";
+import { SparkleAppcastClient } from "../src/main/sparkleAppcastClient";
 import {
   mergeHomebrewRecentlyUpdatedRecords,
   preservePreviousHomebrewOutdatedState,
@@ -976,6 +977,113 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().recentlyUpdated).toEqual([]);
     expect(sparkleLookup).not.toHaveBeenCalled();
   });
+
+  it("retains build-only Sparkle updates through lookup, disk restore, and transient refresh", async () => {
+    const installedApp = appRecord({
+      bundlePath: "/Applications/Build Version.app",
+      displayName: "Build Version",
+      localVersion: version("2026.1"),
+      bundleVersion: version("200"),
+      sparkleFeedURL: "https://updates.example.com/build-only.xml"
+    });
+    const xml = Buffer.from(
+      '<rss><channel><item><enclosure url="https://example.com/update.zip" sparkle:version="201" /></item></channel></rss>'
+    );
+    const result = new SparkleAppcastClient().parseAppcast(
+      xml,
+      installedApp.localVersion,
+      installedApp.bundleVersion
+    );
+    expect(result).toMatchObject({
+      remoteVersion: version("201"),
+      remoteBuildVersion: version("201"),
+      versionComparison: "build"
+    });
+    let userData = "";
+    const fresh = await makeStore({
+      onUserData: (directory) => {
+        userData = directory;
+      },
+      clients: {
+        scanner: { scanApplications: async () => [installedApp] },
+        sparkle: { lookupOutcome: async () => ({ type: "completed" as const, value: result }) }
+      }
+    });
+    await fresh.refresh(false);
+    expect(fresh.getSnapshot().updates).toHaveLength(1);
+    const persisted = await new SnapshotPersistence(userData).load();
+    expect(persisted.updates[0]?.sparkleVersionComparison).toBe("build");
+    const restored = await makeStore({
+      persisted,
+      clients: {
+        scanner: { scanApplications: async () => [installedApp] },
+        sparkle: { lookupOutcome: async () => ({ type: "transientFailure" as const }) }
+      }
+    });
+    expect(restored.getSnapshot().updates).toEqual(fresh.getSnapshot().updates);
+    await restored.refresh(false);
+    expect(restored.getSnapshot().updates).toEqual(fresh.getSnapshot().updates);
+    const advanced = await makeStore({
+      persisted,
+      clients: {
+        scanner: {
+          scanApplications: async () => [{ ...installedApp, bundleVersion: version("201") }]
+        },
+        sparkle: { lookupOutcome: async () => ({ type: "transientFailure" as const }) }
+      }
+    });
+    await advanced.refresh(false);
+    expect(advanced.getSnapshot().updates).toEqual([]);
+  });
+
+  it.each([
+    ["build", true],
+    ["marketing", false],
+    [undefined, true]
+  ] as const)(
+    "uses explicit Sparkle domain %s without guessing from identical display/build values",
+    async (sparkleVersionComparison, expectedUpdate) => {
+      const installedApp = appRecord({
+        bundlePath: "/Applications/Version Domain.app",
+        displayName: "Version Domain",
+        localVersion: version("2026.1"),
+        bundleVersion: version("200"),
+        sparkleFeedURL: "https://updates.example.com/domain.xml"
+      });
+      const update: UpdateRecord = {
+        id: installedApp.id,
+        appID: installedApp.id,
+        source: "sparkle",
+        supportLevel: "limited",
+        localVersion: installedApp.localVersion,
+        localBuildVersion: installedApp.bundleVersion,
+        remoteVersion: version("201"),
+        remoteBuildVersion: version("201"),
+        sparkleVersionComparison,
+        updateURL: "https://example.com/update.zip",
+        checkedAt: "2026-05-20T12:00:00.000Z"
+      };
+      const persisted = { ...defaultPersistedSnapshot(), apps: [installedApp], updates: [update] };
+      const store = await makeStore({
+        persisted,
+        clients: {
+          scanner: { scanApplications: async () => [installedApp] },
+          sparkle: { lookupOutcome: async () => ({ type: "transientFailure" as const }) }
+        }
+      });
+      expect(store.getSnapshot().updates).toEqual(expectedUpdate ? [update] : []);
+      await store.refresh(false);
+      expect(store.getSnapshot().updates).toEqual(expectedUpdate ? [update] : []);
+      // A completed lookup resolves legacy ambiguity; it never invents a domain.
+      const resolved = await makeStore({
+        persisted,
+        clients: { scanner: { scanApplications: async () => [installedApp] } }
+      });
+      await resolved.refresh(false);
+      expect(resolved.getSnapshot().updates).toEqual([]);
+      expect(update.sparkleVersionComparison).toBe(sparkleVersionComparison);
+    }
+  );
 
   it.each([
     ["2.0 (200)", "200", false, "2.0"],

@@ -33,9 +33,12 @@ export type AppStoreLookupResult = {
   appStoreItemID?: number;
 };
 
+export type SparkleVersionComparison = "marketing" | "build";
+
 export type SparkleLookupResult = {
   remoteVersion: VersionValue;
   remoteBuildVersion?: VersionValue;
+  versionComparison?: SparkleVersionComparison;
   updateURL?: string;
   releaseNotesURL?: string;
   releaseDate?: string;
@@ -93,6 +96,8 @@ export type UpdateRecord = {
   remoteVersion: VersionValue;
   localBuildVersion?: VersionValue;
   remoteBuildVersion?: VersionValue;
+  // Older snapshots lack the original feed's comparison domain.
+  sparkleVersionComparison?: SparkleVersionComparison;
   updateURL?: string;
   appStoreItemID?: number;
   homebrewToken?: string;

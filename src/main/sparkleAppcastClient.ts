@@ -120,6 +120,7 @@ export class SparkleAppcastClient {
     return {
       remoteVersion: best.parsedVersion,
       remoteBuildVersion: isVersionEmpty(best.buildVersion) ? undefined : best.buildVersion,
+      versionComparison: best.hasMarketingVersion ? "marketing" : "build",
       updateURL,
       releaseNotesURL,
       releaseDate: best.item.publicationDate

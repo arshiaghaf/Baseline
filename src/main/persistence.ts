@@ -121,7 +121,12 @@ function normalizeSnapshot(
         : undefined,
       remoteBuildVersion: update.remoteBuildVersion
         ? version(update.remoteBuildVersion.raw)
-        : undefined
+        : undefined,
+      sparkleVersionComparison:
+        update.sparkleVersionComparison === "marketing" ||
+        update.sparkleVersionComparison === "build"
+          ? update.sparkleVersionComparison
+          : undefined
     })),
     recentlyUpdated: (input.recentlyUpdated ?? []).map((record) => ({
       ...record,
