@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { createPackage, extractAll, extractFile, getRawHeader } from "@electron/asar";
+import { signAsync } from "@electron/osx-sign";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
@@ -11,6 +12,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { build, loadConfigFromFile, mergeConfig } from "vite";
 import { assertIsolatedIntegrityBundle, assertProductionIntegrityBundle } from "./bundleIsolation";
+import { localAdHocSigningOptions, verifyMacBundle } from "../macSigning.config";
 
 // Never launch production startup during smoke tests: it can access the host Keychain.
 // Instrument only a disposable copy of the packaged build, leaving out/ untouched.
@@ -19,6 +21,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const productionApp = path.join(root, "out", `Baseline-darwin-${process.arch}`, "Baseline.app");
   const archivePath = (app: string) => path.join(app, "Contents", "Resources", "app.asar");
   const mainPath = ".vite/build/main.js";
+  // Verify the untouched production package before instrumenting the test copy.
+  verifyMacBundle(productionApp);
   assertProductionIntegrityBundle(
     extractFile(archivePath(productionApp), mainPath).toString("utf8")
   );
@@ -103,7 +107,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       path.join(testApp, "Contents", "Info.plist")
     ]);
     // Re-sign only this disposable copy after changing its archive.
-    await promisify(execFile)("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", testApp]);
+    await signAsync({ app: testApp, platform: "darwin", ...localAdHocSigningOptions() });
+    verifyMacBundle(testApp);
     process.env.BASELINE_E2E_APP_DIR = appDirectory;
     process.env.BASELINE_E2E_EXECUTABLE = path.join(testApp, "Contents", "MacOS", "Baseline");
     console.log("E2E preflight: test provider included; production Keychain provider excluded.");
