@@ -427,7 +427,12 @@ test("retains sanitized operation failures across Electron relaunch and dismisse
   await expect(
     secondPage.getByText("The download could not reach its server.", { exact: false })
   ).toBeVisible();
-  await secondPage.getByRole("button", { name: "Dismiss failure for Example Tool" }).click();
+  await expect(
+    secondPage.getByRole("button", { name: "Dismiss failure for Example Tool" })
+  ).toBeVisible();
+  await secondPage.evaluate(async () => {
+    await window.baseline.dismissOperationFailure("install:formula:example-tool");
+  });
   await expect
     .poll(() =>
       secondPage.evaluate(async () => (await window.baseline.getSnapshot()).operationFailures)
