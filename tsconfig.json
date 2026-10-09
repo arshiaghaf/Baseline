@@ -22,6 +22,7 @@
     "ElectronTests/**/*.ts",
     "ElectronTests/**/*.tsx",
     "*.config.ts",
+    "*.config.mts",
     "forge.config.ts"
   ]
 }
