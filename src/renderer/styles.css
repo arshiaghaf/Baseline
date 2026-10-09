@@ -1652,6 +1652,35 @@ button:disabled {
   color: #9f1f18;
 }
 
+.operation-failures {
+  flex-shrink: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  margin: 8px 14px;
+  font-size: 12px;
+}
+
+.operation-failure {
+  padding: 8px;
+  border: 1px solid rgba(255, 59, 48, 0.28);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.operation-failure summary {
+  cursor: pointer;
+}
+
+.operation-failure p {
+  margin: 8px 0;
+}
+
+.operation-failure button {
+  margin-left: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
 .inspector {
   display: grid;
   align-content: start;

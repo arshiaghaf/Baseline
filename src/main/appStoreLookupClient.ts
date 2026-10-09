@@ -4,6 +4,7 @@
 import type { AppStoreLookupResult } from "../shared/domain";
 import { byteLimits, sanitizeExternalURL } from "../shared/security";
 import { isVersionGreater, type VersionValue, version } from "../shared/version";
+import { LookupCache, type LookupRequestOptions } from "./lookupCache";
 
 type LookupEntry = {
   bundleId?: string;
@@ -16,14 +17,22 @@ type LookupEntry = {
   supportedDevices?: string[];
 };
 
-export type LookupOutcome<T> = { type: "completed"; value?: T } | { type: "transientFailure" };
+export type LookupOutcome<T> =
+  { type: "completed"; value?: T; checkedAt?: string } | { type: "transientFailure" };
 
-type LookupOptions = {
+type LookupOptions = LookupRequestOptions & {
   includeIOSAppStoreSoftware?: boolean;
   includeMacCapableAppStoreSoftware?: boolean;
 };
 
 export class AppStoreLookupClient {
+  // Negative catalogue matches are stable enough to reuse across hourly
+  // polling. Manual checks bypass freshness; existing products expire sooner.
+  private readonly cache = new LookupCache(3100, (data) => {
+    const response = JSON.parse(data.toString("utf8")) as { results?: LookupEntry[] };
+    return response.results?.length ? 10 * 60 * 1000 : 6 * 60 * 60 * 1000;
+  });
+
   async lookupOutcome(
     bundleIdentifier: string,
     localVersion: VersionValue,
@@ -36,13 +45,28 @@ export class AppStoreLookupClient {
     }
 
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!response.ok) {
-        return { type: "transientFailure" };
-      }
-      const buffer = Buffer.from(await response.arrayBuffer());
+      const buffer = await this.cache.get(
+        url.href,
+        async (signal) => {
+          const response = await fetch(url, {
+            signal: AbortSignal.any([signal, AbortSignal.timeout(8000)])
+          });
+          if (!response.ok) {
+            if (response.status === 429)
+              this.cache.backoff(url.href, response.headers.get("retry-after"));
+            throw new Error("Lookup unavailable");
+          }
+          const data = Buffer.from(await response.arrayBuffer());
+          if (data.byteLength > byteLimits.appStoreLookupMaxBytes)
+            throw new Error("Lookup too large");
+          this.parseLookupResponse(data, localVersion, { ...options, bundleIdentifier });
+          return data;
+        },
+        options
+      );
       return {
         type: "completed",
+        checkedAt: this.cache.checkedAt(url.href),
         value: this.parseLookupResponse(buffer, localVersion, {
           ...options,
           bundleIdentifier

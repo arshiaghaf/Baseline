@@ -11,20 +11,22 @@ import type {
 import { emptyHomebrewCaskIndex, homebrewDiscoverID } from "../shared/domain";
 import { byteLimits, isValidHomebrewToken, sanitizeExternalURL } from "../shared/security";
 import { compareVersions, isVersionGreater, type VersionValue, version } from "../shared/version";
+import { CatalogueCache, type CatalogueFetchOptions } from "./catalogueCache";
 
 export class HomebrewCaskClient {
-  async fetchIndex(): Promise<HomebrewCaskIndex> {
-    try {
-      const response = await fetch("https://formulae.brew.sh/api/cask.json", {
-        signal: AbortSignal.timeout(12000)
-      });
-      if (!response.ok) {
-        return emptyHomebrewCaskIndex;
-      }
-      return this.parseIndex(Buffer.from(await response.arrayBuffer()));
-    } catch {
-      return emptyHomebrewCaskIndex;
-    }
+  private readonly cache = new CatalogueCache(
+    "https://formulae.brew.sh/api/cask.json",
+    emptyHomebrewCaskIndex,
+    byteLimits.homebrewCaskIndexMaxBytes,
+    (data) => this.parseIndex(data)
+  );
+
+  get cacheStatus() {
+    return this.cache.status;
+  }
+
+  fetchIndex(options: CatalogueFetchOptions = {}): Promise<HomebrewCaskIndex> {
+    return this.cache.fetch(options);
   }
 
   lookupUpdate(
@@ -91,6 +93,7 @@ export class HomebrewCaskClient {
     }
 
     const raw = JSON.parse(data.toString("utf8")) as any[];
+    if (!Array.isArray(raw)) throw new Error("Invalid cask catalogue");
     const byToken: Record<string, HomebrewCaskEntry> = {};
     const byBundleIdentifier: Record<string, HomebrewCaskEntry> = {};
     const byAppBundleName: Record<string, HomebrewCaskEntry[]> = {};

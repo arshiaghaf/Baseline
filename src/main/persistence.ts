@@ -16,6 +16,7 @@ import {
   normalizeAppearancePreference
 } from "../shared/domain";
 import { version } from "../shared/version";
+import { normalizeOperationFailures } from "../shared/operationFailures";
 export { defaultPersistedSnapshot };
 
 export class SnapshotPersistence {
@@ -102,6 +103,7 @@ function normalizeSnapshot(
   return {
     ...defaults,
     ...input,
+    operationFailures: normalizeOperationFailures(input.operationFailures),
     selectedTab: "all",
     apps: (input.apps ?? []).map((app) => ({
       ...app,

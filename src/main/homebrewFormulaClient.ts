@@ -9,20 +9,22 @@ import type {
 import { emptyHomebrewFormulaIndex, homebrewDiscoverID } from "../shared/domain";
 import { byteLimits, isValidHomebrewToken, sanitizeExternalURL } from "../shared/security";
 import { version } from "../shared/version";
+import { CatalogueCache, type CatalogueFetchOptions } from "./catalogueCache";
 
 export class HomebrewFormulaClient {
-  async fetchIndex(): Promise<HomebrewFormulaIndex> {
-    try {
-      const response = await fetch("https://formulae.brew.sh/api/formula.json", {
-        signal: AbortSignal.timeout(12000)
-      });
-      if (!response.ok) {
-        return emptyHomebrewFormulaIndex;
-      }
-      return this.parseIndex(Buffer.from(await response.arrayBuffer()));
-    } catch {
-      return emptyHomebrewFormulaIndex;
-    }
+  private readonly cache = new CatalogueCache(
+    "https://formulae.brew.sh/api/formula.json",
+    emptyHomebrewFormulaIndex,
+    byteLimits.homebrewFormulaIndexMaxBytes,
+    (data) => this.parseIndex(data)
+  );
+
+  get cacheStatus() {
+    return this.cache.status;
+  }
+
+  fetchIndex(options: CatalogueFetchOptions = {}): Promise<HomebrewFormulaIndex> {
+    return this.cache.fetch(options);
   }
 
   parseIndex(data: Buffer): HomebrewFormulaIndex {
@@ -30,6 +32,7 @@ export class HomebrewFormulaClient {
       return emptyHomebrewFormulaIndex;
     }
     const raw = JSON.parse(data.toString("utf8")) as any[];
+    if (!Array.isArray(raw)) throw new Error("Invalid formula catalogue");
     const byToken: Record<string, HomebrewFormulaEntry> = {};
     for (const item of raw) {
       const token = item?.name;

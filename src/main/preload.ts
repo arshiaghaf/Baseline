@@ -7,6 +7,15 @@ import type { HomebrewCaskDiscoveryItem } from "../shared/domain";
 import type { HomebrewMaintenanceRunEvent } from "../shared/homebrewProgress";
 
 const api: BaselineAPI = {
+  dismissOperationFailure: (id) => ipcRenderer.invoke(ipcChannels.dismissOperationFailure, id),
+  onSnapshotProgress: (callback) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      progress: Parameters<typeof callback>[0]
+    ) => callback(progress);
+    ipcRenderer.on(ipcChannels.snapshotProgress, listener);
+    return () => ipcRenderer.off(ipcChannels.snapshotProgress, listener);
+  },
   getSnapshot: () => ipcRenderer.invoke(ipcChannels.getSnapshot),
   getAppMetadata: () => ipcRenderer.invoke(ipcChannels.getAppMetadata),
   getDiagnostics: () => ipcRenderer.invoke(ipcChannels.getDiagnostics),

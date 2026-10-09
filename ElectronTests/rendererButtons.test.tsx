@@ -123,6 +123,8 @@ function installBaselineMock() {
     showMainWindow: vi.fn(),
     showSettings: vi.fn(),
     onSnapshotChanged: vi.fn(() => () => undefined),
+    onSnapshotProgress: vi.fn(() => () => undefined),
+    dismissOperationFailure: vi.fn(async () => undefined),
     onHomebrewCommandEvent: vi.fn(() => () => undefined)
   };
 }
@@ -169,6 +171,91 @@ function domRect({
 }
 
 describe("renderer button parity", () => {
+  it.each([false, true])(
+    "keeps inspectable failure details on the dashboard (compact=%s)",
+    (compact) => {
+      const failure = {
+        id: `update:${cask.id}`,
+        entityID: cask.id,
+        operation: "update" as const,
+        reason: "network" as const,
+        status: 1,
+        occurredAt: "2026-10-09T12:00:00Z"
+      };
+      const { rerender } = render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            operationFailures: [failure],
+            homebrewBatchFailedItemIDs: [cask.id]
+          })}
+        />
+      );
+      rerender(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({ operationFailures: [failure], homebrewBatchFailedItemIDs: [] })}
+        />
+      );
+      const summary = screen.getByText("Example: update did not complete");
+      fireEvent.click(summary);
+      expect(screen.getByText(/The download could not reach its server/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss failure for Example" }));
+      expect(window.baseline.dismissOperationFailure).toHaveBeenCalledWith(failure.id);
+    }
+  );
+
+  it("resynchronizes progress missed during bootstrap and ignores an older full snapshot", async () => {
+    let respond!: (value: BaselineSnapshot) => void;
+    let progress!: Parameters<typeof window.baseline.onSnapshotProgress>[0];
+    let receive!: Parameters<typeof window.baseline.onSnapshotChanged>[0];
+    const itemID = "formula:example";
+    const base = snapshot({
+      apps: [],
+      updates: [],
+      homebrewItems: [{ ...cask, id: itemID, kind: "formula", appID: undefined }],
+      selectedTab: "homebrew",
+      snapshotRevision: 0,
+      homebrewUpdatingItemIDs: [itemID],
+      homebrewBatchProgressByItemID: { [itemID]: 0.1 }
+    });
+    const current = {
+      ...base,
+      snapshotRevision: 2,
+      homebrewBatchProgressByItemID: { [itemID]: 1 }
+    };
+    vi.mocked(window.baseline.getSnapshot)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            respond = resolve;
+          })
+      )
+      .mockResolvedValue(current);
+    vi.mocked(window.baseline.onSnapshotProgress).mockImplementation((callback) => {
+      progress = callback;
+      return () => undefined;
+    });
+    vi.mocked(window.baseline.onSnapshotChanged).mockImplementation((callback) => {
+      receive = callback;
+      return () => undefined;
+    });
+    const { container } = render(<App />);
+    await act(async () => {
+      progress({
+        fromRevision: 1,
+        revision: 2,
+        patch: { homebrewBatchProgressByItemID: { [itemID]: 1 } }
+      });
+      respond(base);
+    });
+    await waitFor(() => expect(window.baseline.getSnapshot).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(progressRingValue(container)).toBeCloseTo(1));
+    act(() => receive({ ...base, snapshotRevision: 1 }));
+    expect(progressRingValue(container)).toBeCloseTo(1);
+  });
   beforeEach(() => {
     installBaselineMock();
     window.location.hash = "";

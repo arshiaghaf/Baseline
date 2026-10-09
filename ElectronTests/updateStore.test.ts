@@ -1197,25 +1197,37 @@ describe("update store helpers", () => {
       1,
       iOSAppOnMac.bundleIdentifier,
       iOSAppOnMac.localVersion,
-      { includeIOSAppStoreSoftware: true, includeMacCapableAppStoreSoftware: false }
+      expect.objectContaining({
+        includeIOSAppStoreSoftware: true,
+        includeMacCapableAppStoreSoftware: false
+      })
     );
     expect(lookupOutcome).toHaveBeenNthCalledWith(
       2,
       sideloadedIOSAppOnMac.bundleIdentifier,
       sideloadedIOSAppOnMac.localVersion,
-      { includeIOSAppStoreSoftware: false, includeMacCapableAppStoreSoftware: false }
+      expect.objectContaining({
+        includeIOSAppStoreSoftware: false,
+        includeMacCapableAppStoreSoftware: false
+      })
     );
     expect(lookupOutcome).toHaveBeenNthCalledWith(
       3,
       nativeMacApp.bundleIdentifier,
       nativeMacApp.localVersion,
-      { includeIOSAppStoreSoftware: false, includeMacCapableAppStoreSoftware: false }
+      expect.objectContaining({
+        includeIOSAppStoreSoftware: false,
+        includeMacCapableAppStoreSoftware: false
+      })
     );
     expect(lookupOutcome).toHaveBeenNthCalledWith(
       4,
       safariExtensionApp.bundleIdentifier,
       safariExtensionApp.localVersion,
-      { includeIOSAppStoreSoftware: false, includeMacCapableAppStoreSoftware: true }
+      expect.objectContaining({
+        includeIOSAppStoreSoftware: false,
+        includeMacCapableAppStoreSoftware: true
+      })
     );
   });
 

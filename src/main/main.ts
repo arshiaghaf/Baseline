@@ -317,6 +317,11 @@ function showWindow(window?: BrowserWindow): void {
 }
 
 function wireStoreEvents(): void {
+  store.on("progress", (event) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      window.webContents.send(ipcChannels.snapshotProgress, event);
+    }
+  });
   store.on("snapshot", (snapshot) => {
     applyAppearancePreference(snapshot.appearancePreference);
     updateTrayStatus(snapshot);
@@ -405,6 +410,9 @@ function wireIpc(): void {
   );
   ipcMain.handle(ipcChannels.acknowledgeProfileStatsReset, () =>
     store.acknowledgeProfileStatsReset()
+  );
+  ipcMain.handle(ipcChannels.dismissOperationFailure, (_event, id: unknown) =>
+    typeof id === "string" ? store.dismissOperationFailure(id) : undefined
   );
   ipcMain.handle(ipcChannels.toggleIgnoredApp, (_event, appID: string) =>
     store.toggleIgnoredApp(String(appID))

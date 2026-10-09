@@ -28,6 +28,7 @@ const expectedBaselineAPI = [
   "acknowledgeProfileStatsReset",
   "chooseDirectory",
   "copyDiagnostics",
+  "dismissOperationFailure",
   "getAppMetadata",
   "getDiagnostics",
   "getSnapshot",
@@ -35,6 +36,7 @@ const expectedBaselineAPI = [
   "installHomebrewItem",
   "onHomebrewCommandEvent",
   "onSnapshotChanged",
+  "onSnapshotProgress",
   "openApp",
   "openExternal",
   "performAppUpdate",
@@ -363,4 +365,90 @@ test("launches the packaged Electron app after build", async () => {
     });
 
   await closeApp(app);
+});
+
+test("retains sanitized operation failures across Electron relaunch and dismisses them", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({
+      ...defaultPersistedSnapshot(),
+      autoRefreshEnabled: false,
+      showMenuBarIcon: false,
+      homebrewItems: [
+        {
+          id: "formula:example-tool",
+          token: "example-tool",
+          name: "Example Tool",
+          kind: "formula",
+          installedVersion: version("1"),
+          isOutdated: false
+        }
+      ],
+      operationFailures: [
+        {
+          id: "install:formula:example-tool",
+          entityID: "formula:example-tool",
+          operation: "install",
+          reason: "network",
+          status: 1,
+          occurredAt: "2026-04-30T12:00:00.000Z",
+          output: "PRIVATE_FIXTURE_OUTPUT"
+        }
+      ]
+    })
+  );
+  const firstApp = await launchBaseline({ userData });
+  const firstPage = await firstApp.firstWindow();
+  await firstPage.locator(".operation-failure summary").click();
+  await expect(
+    firstPage.getByText("The download could not reach its server.", { exact: false })
+  ).toBeVisible();
+  await expect(firstPage.locator("body")).not.toContainText("PRIVATE_FIXTURE_OUTPUT");
+  await expect
+    .poll(() =>
+      firstPage.evaluate(async () => (await window.baseline.getSnapshot()).operationFailures)
+    )
+    .toEqual([
+      {
+        id: "install:formula:example-tool",
+        entityID: "formula:example-tool",
+        operation: "install",
+        reason: "network",
+        status: 1,
+        occurredAt: "2026-04-30T12:00:00.000Z"
+      }
+    ]);
+  await closeApp(firstApp);
+
+  const secondApp = await launchBaseline({ userData });
+  const secondPage = await secondApp.firstWindow();
+  await secondPage.locator(".operation-failure summary").click();
+  await expect(
+    secondPage.getByText("The download could not reach its server.", { exact: false })
+  ).toBeVisible();
+  await expect(
+    secondPage.getByRole("button", { name: "Dismiss failure for Example Tool" })
+  ).toBeVisible();
+  await secondPage.evaluate(async () => {
+    await window.baseline.dismissOperationFailure("install:formula:example-tool");
+  });
+  await expect
+    .poll(() =>
+      secondPage.evaluate(async () => (await window.baseline.getSnapshot()).operationFailures)
+    )
+    .toEqual([]);
+  await closeApp(secondApp);
+
+  const thirdApp = await launchBaseline({ userData });
+  const thirdPage = await thirdApp.firstWindow();
+  await expect(
+    thirdPage.getByText("The download could not reach its server.", { exact: false })
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      thirdPage.evaluate(async () => (await window.baseline.getSnapshot()).operationFailures)
+    )
+    .toEqual([]);
+  await closeApp(thirdApp);
 });
