@@ -4,15 +4,10 @@
 import { XMLParser } from "fast-xml-parser";
 import type { SparkleLookupResult } from "../shared/domain";
 import { byteLimits, isAllowedFeedURL, sanitizeExternalURL } from "../shared/security";
-import {
-  compareVersions,
-  isVersionEmpty,
-  isVersionGreater,
-  type VersionValue,
-  version
-} from "../shared/version";
+import { compareVersions, isVersionEmpty, type VersionValue, version } from "../shared/version";
 import type { LookupOutcome } from "./appStoreLookupClient";
 import { LookupCache, type LookupRequestOptions } from "./lookupCache";
+import { isSparkleVersionNewer, sparkleMarketingVersion } from "../shared/sparkleVersion";
 
 type AppcastItem = {
   shortVersionString?: string;
@@ -28,21 +23,6 @@ const parser = new XMLParser({
   textNodeName: "#text",
   parseTagValue: false
 });
-
-const prereleaseLabels = new Set([
-  "dev",
-  "snapshot",
-  "nightly",
-  "canary",
-  "alpha",
-  "a",
-  "beta",
-  "b",
-  "pre",
-  "preview",
-  "rc",
-  "candidate"
-]);
 
 export class SparkleAppcastClient {
   private readonly cache = new LookupCache(1000);
@@ -109,10 +89,19 @@ export class SparkleAppcastClient {
         item,
         hasMarketingVersion: Boolean(item.shortVersionString?.trim()),
         buildVersion: version(item.buildVersion),
-        parsedVersion: version(item.shortVersionString ?? item.buildVersion)
+        parsedVersion: sparkleMarketingVersion(
+          version(item.shortVersionString ?? item.buildVersion),
+          version(item.buildVersion)
+        )
       }))
       .filter(({ parsedVersion }) => !isVersionEmpty(parsedVersion))
-      .filter((candidate) => isAppcastItemNewer(candidate, localVersion, localBuildVersion));
+      .filter((candidate) =>
+        isSparkleVersionNewer(
+          candidate,
+          sparkleMarketingVersion(localVersion, localBuildVersion),
+          localBuildVersion
+        )
+      );
     // Use one comparison domain for the entire pool: switching between
     // marketing and machine versions per pair can produce a cyclic sort.
     const useBuildOrder = candidates.some((candidate) => !candidate.hasMarketingVersion);
@@ -131,6 +120,7 @@ export class SparkleAppcastClient {
     return {
       remoteVersion: best.parsedVersion,
       remoteBuildVersion: isVersionEmpty(best.buildVersion) ? undefined : best.buildVersion,
+      versionComparison: best.hasMarketingVersion ? "marketing" : "build",
       updateURL,
       releaseNotesURL,
       releaseDate: best.item.publicationDate
@@ -164,89 +154,6 @@ function compareAppcastItems(
     return versionComparison;
   }
   return compareVersions(lhs.buildVersion, rhs.buildVersion);
-}
-
-function isAppcastItemNewer(
-  item: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
-  localVersion: VersionValue,
-  localBuildVersion?: VersionValue
-): boolean {
-  if (!item.hasMarketingVersion && localBuildVersion && !isVersionEmpty(localBuildVersion)) {
-    return (
-      !isVersionEmpty(item.buildVersion) && isVersionGreater(item.buildVersion, localBuildVersion)
-    );
-  }
-  const marketingVersionComparison = compareVersions(item.parsedVersion, localVersion);
-  if (marketingVersionComparison > 0) {
-    if (
-      isSameCorePrereleasePromotion(item.parsedVersion, localVersion) &&
-      localBuildVersion &&
-      !isVersionEmpty(localBuildVersion)
-    ) {
-      return (
-        !isVersionEmpty(item.buildVersion) && isVersionGreater(item.buildVersion, localBuildVersion)
-      );
-    }
-    return true;
-  }
-  if (
-    marketingVersionComparison < 0 ||
-    !localBuildVersion ||
-    isVersionEmpty(localBuildVersion) ||
-    isVersionEmpty(item.buildVersion)
-  ) {
-    return false;
-  }
-  return isVersionGreater(item.buildVersion, localBuildVersion);
-}
-
-function isSameCorePrereleasePromotion(
-  remoteVersion: VersionValue,
-  localVersion: VersionValue
-): boolean {
-  const remoteTokens = versionTokens(remoteVersion);
-  const localTokens = versionTokens(localVersion);
-
-  return (
-    (prereleaseToken(remoteTokens) !== undefined || prereleaseToken(localTokens) !== undefined) &&
-    compareVersions(
-      releaseCoreVersion(remoteVersion, remoteTokens),
-      releaseCoreVersion(localVersion, localTokens)
-    ) === 0
-  );
-}
-
-type VersionToken = {
-  text: string;
-  index: number;
-  isNumeric: boolean;
-};
-
-function versionTokens(value: VersionValue): VersionToken[] {
-  return [
-    ...value.raw
-      .trim()
-      .toLowerCase()
-      .matchAll(/[a-z]+|\d+/giu)
-  ].map((match) => ({
-    text: match[0],
-    index: match.index ?? 0,
-    isNumeric: /^\d+$/u.test(match[0])
-  }));
-}
-
-function prereleaseToken(tokens: VersionToken[]): VersionToken | undefined {
-  return tokens.find((token, index) => {
-    if (token.isNumeric || !prereleaseLabels.has(token.text)) {
-      return false;
-    }
-    return tokens.slice(0, index).some((candidate) => candidate.isNumeric);
-  });
-}
-
-function releaseCoreVersion(value: VersionValue, tokens: VersionToken[]): VersionValue {
-  const marker = prereleaseToken(tokens);
-  return marker ? version(value.raw.slice(0, marker.index)) : value;
 }
 
 function normalizeItem(item: any): AppcastItem {

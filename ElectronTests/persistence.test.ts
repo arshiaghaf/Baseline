@@ -17,6 +17,34 @@ afterEach(async () => {
 });
 
 describe("snapshot persistence", () => {
+  it.each([
+    ["marketing", "marketing"],
+    ["build", "build"],
+    [undefined, undefined],
+    ["unexpected", undefined]
+  ])("loads Sparkle comparison domain %s compatibly", async (savedDomain, expectedDomain) => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    await writeFile(
+      path.join(userData, "baseline-snapshot.json"),
+      JSON.stringify({
+        updates: [
+          {
+            id: "/Applications/Example.app",
+            appID: "/Applications/Example.app",
+            source: "sparkle",
+            localVersion: version("2026.1"),
+            remoteVersion: version("201"),
+            sparkleVersionComparison: savedDomain
+          }
+        ]
+      })
+    );
+    const loaded = await new SnapshotPersistence(userData).load();
+    expect(loaded.updates[0]?.sparkleVersionComparison).toBe(expectedDomain);
+    expect(loaded.updates[0]?.remoteVersion).toEqual(version("201"));
+  });
+
   it("defaults the appearance preference on older snapshots", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);

@@ -65,6 +65,7 @@ import {
   type OperationFailure
 } from "../shared/operationFailures";
 import type { CatalogueStatus } from "./catalogueCache";
+import { isSparkleVersionNewer, sparkleMarketingVersion } from "../shared/sparkleVersion";
 
 type StoreEvents = {
   snapshot: [BaselineSnapshot];
@@ -1330,6 +1331,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
               remoteVersion: outcome.value.remoteVersion,
               localBuildVersion: appRecord.bundleVersion,
               remoteBuildVersion: outcome.value.remoteBuildVersion,
+              sparkleVersionComparison: outcome.value.versionComparison,
               updateURL: outcome.value.updateURL,
               releaseNotesURL: outcome.value.releaseNotesURL,
               releaseDate: outcome.value.releaseDate,
@@ -2015,6 +2017,10 @@ function persistedUpdateHasValidRuntimeRoute(
   update: UpdateRecord,
   snapshot: PersistedSnapshot
 ): boolean {
+  if (update.source === "sparkle") {
+    const appRecord = snapshot.apps.find((app) => app.id === update.appID);
+    return Boolean(appRecord && isAppUpdateNewerThanInstalledApp(update, appRecord));
+  }
   if (update.source !== "homebrew") {
     return true;
   }
@@ -2170,6 +2176,30 @@ function canPreservePreviousAppUpdate(appRecord: AppRecord, previousUpdate: Upda
 }
 
 function isAppUpdateNewerThanInstalledApp(update: UpdateRecord, appRecord: AppRecord): boolean {
+  if (update.source === "sparkle") {
+    const candidate = {
+      parsedVersion: sparkleMarketingVersion(update.remoteVersion, update.remoteBuildVersion),
+      buildVersion: update.remoteBuildVersion ?? version(),
+      hasMarketingVersion: update.sparkleVersionComparison !== "build"
+    };
+    const localVersion = sparkleMarketingVersion(appRecord.localVersion, appRecord.bundleVersion);
+    if (isSparkleVersionNewer(candidate, localVersion, appRecord.bundleVersion)) {
+      return true;
+    }
+    // Legacy records did not preserve the feed's comparison domain. Equal
+    // display/build values are ambiguous: retain an eligible machine-version
+    // interpretation until a successful lookup supplies explicit metadata.
+    return (
+      update.sparkleVersionComparison === undefined &&
+      update.remoteBuildVersion !== undefined &&
+      compareVersions(update.remoteVersion, update.remoteBuildVersion) === 0 &&
+      isSparkleVersionNewer(
+        { ...candidate, hasMarketingVersion: false },
+        localVersion,
+        appRecord.bundleVersion
+      )
+    );
+  }
   const versionComparison = compareVersions(update.remoteVersion, appRecord.localVersion);
   if (versionComparison > 0) {
     return true;
