@@ -88,7 +88,7 @@ export class SparkleAppcastClient {
         ? [channel.item]
         : [];
     const items = rawItems.map(normalizeItem).filter(Boolean) as AppcastItem[];
-    const best = items
+    const candidates = items
       .map((item) => ({
         item,
         hasMarketingVersion: Boolean(item.shortVersionString?.trim()),
@@ -96,8 +96,11 @@ export class SparkleAppcastClient {
         parsedVersion: version(item.shortVersionString ?? item.buildVersion)
       }))
       .filter(({ parsedVersion }) => !isVersionEmpty(parsedVersion))
-      .filter((candidate) => isAppcastItemNewer(candidate, localVersion, localBuildVersion))
-      .sort((lhs, rhs) => -1 * compareAppcastItems(lhs, rhs))[0];
+      .filter((candidate) => isAppcastItemNewer(candidate, localVersion, localBuildVersion));
+    // Use one comparison domain for the entire pool: switching between
+    // marketing and machine versions per pair can produce a cyclic sort.
+    const useBuildOrder = candidates.some((candidate) => !candidate.hasMarketingVersion);
+    const best = candidates.sort((lhs, rhs) => -compareAppcastItems(lhs, rhs, useBuildOrder))[0];
 
     if (!best) {
       return undefined;
@@ -121,13 +124,17 @@ export class SparkleAppcastClient {
 
 function compareAppcastItems(
   lhs: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
-  rhs: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean }
+  rhs: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
+  useBuildOrder: boolean
 ): number {
-  if (
-    (!lhs.hasMarketingVersion || !rhs.hasMarketingVersion) &&
-    !isVersionEmpty(lhs.buildVersion) &&
-    !isVersionEmpty(rhs.buildVersion)
-  ) {
+  if (useBuildOrder) {
+    const lhsHasBuild = !isVersionEmpty(lhs.buildVersion);
+    const rhsHasBuild = !isVersionEmpty(rhs.buildVersion);
+    // Marketing-only entries cannot be ranked against machine numbers.
+    // Prefer comparable machine versions, retaining a marketing-only fallback.
+    if (lhsHasBuild !== rhsHasBuild) {
+      return lhsHasBuild ? 1 : -1;
+    }
     const buildComparison = compareVersions(lhs.buildVersion, rhs.buildVersion);
     if (buildComparison !== 0) {
       return buildComparison;
@@ -228,17 +235,29 @@ function releaseCoreVersion(value: VersionValue, tokens: VersionToken[]): Versio
 
 function normalizeItem(item: any): AppcastItem {
   return {
-    shortVersionString:
-      stringText(item?.["sparkle:shortVersionString"])?.trim() ||
-      (item?.["@_sparkle:shortVersionString"] ?? item?.enclosure?.["@_sparkle:shortVersionString"]),
-    buildVersion:
-      stringText(item?.["sparkle:version"])?.trim() ||
-      (item?.["@_sparkle:version"] ?? item?.enclosure?.["@_sparkle:version"]),
+    shortVersionString: firstVersionText(
+      item?.["sparkle:shortVersionString"],
+      item?.["@_sparkle:shortVersionString"],
+      item?.enclosure?.["@_sparkle:shortVersionString"]
+    ),
+    buildVersion: firstVersionText(
+      item?.["sparkle:version"],
+      item?.["@_sparkle:version"],
+      item?.enclosure?.["@_sparkle:version"]
+    ),
     enclosureURL: item?.enclosure?.["@_url"],
     releaseNotesURL:
       stringText(item?.["sparkle:releaseNotesLink"]) ?? stringText(item?.releaseNotesLink),
     publicationDate: stringText(item?.pubDate)
   };
+}
+
+function firstVersionText(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const text = stringText(value)?.trim();
+    if (text) return text;
+  }
+  return undefined;
 }
 
 function stringText(value: unknown): string | undefined {
