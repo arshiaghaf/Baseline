@@ -4167,6 +4167,8 @@ describe("update store helpers", () => {
         ["upgrade", "--cask", "--greedy", "raycast"],
         ["cleanup"]
       ]);
+      expect(store.getSnapshot().homebrewUpdatingItemIDs).toEqual([]);
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
     });
     expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
   });
