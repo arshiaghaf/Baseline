@@ -19,6 +19,8 @@ import type {
   ProfileStats,
   ProfileStatsEvent,
   SelfUpdateRecord,
+  SnapshotProgress,
+  SnapshotProgressEvent,
   UpdateRecord
 } from "../shared/domain";
 import {
@@ -56,17 +58,30 @@ import { SnapshotPersistence } from "./persistence";
 import { KeychainProfileStatsIntegrity, type ProfileStatsIntegrity } from "./profileStatsIntegrity";
 import { SelfUpdateClient } from "./selfUpdateClient";
 import { SparkleAppcastClient } from "./sparkleAppcastClient";
+import { ProgressPublisher } from "./progressPublisher";
+import {
+  failureReason,
+  normalizeOperationFailures,
+  type OperationFailure
+} from "../shared/operationFailures";
+import type { CatalogueStatus } from "./catalogueCache";
 
 type StoreEvents = {
   snapshot: [BaselineSnapshot];
+  progress: [SnapshotProgressEvent];
   homebrewCommand: [HomebrewMaintenanceRunEvent];
 };
 
 type RefreshOptions = {
   allowHomebrewInventoryDuringActiveCommand?: boolean;
+  forceMetadata?: boolean;
 };
 
 type AppLookupSource = Extract<UpdateRecord["source"], "appStore" | "sparkle">;
+type HomebrewCaskSource = Pick<HomebrewCaskClient, "fetchIndex" | "lookupUpdate" | "searchCasks"> &
+  Partial<Pick<HomebrewCaskClient, "cacheStatus">>;
+type HomebrewFormulaSource = Pick<HomebrewFormulaClient, "fetchIndex" | "searchFormulae"> &
+  Partial<Pick<HomebrewFormulaClient, "cacheStatus">>;
 
 type HomebrewUpdateQueueEntry = {
   item: HomebrewManagedItem;
@@ -86,11 +101,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly scanner: Pick<BundleScannerClient, "scanApplications">;
   private readonly appStore: Pick<AppStoreLookupClient, "lookupOutcome">;
   private readonly sparkle: Pick<SparkleAppcastClient, "lookupOutcome">;
-  private readonly homebrew: Pick<
-    HomebrewCaskClient,
-    "fetchIndex" | "lookupUpdate" | "searchCasks"
-  >;
-  private readonly homebrewFormula: Pick<HomebrewFormulaClient, "fetchIndex" | "searchFormulae">;
+  private readonly homebrew: HomebrewCaskSource;
+  private readonly homebrewFormula: HomebrewFormulaSource;
   private readonly homebrewInventory: Pick<HomebrewInventoryClient, "fetchInventory">;
   private readonly selfUpdate: Pick<SelfUpdateClient, "lookup">;
   private readonly currentAppVersion: VersionValue;
@@ -102,6 +114,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly successRefreshDelayMS: number;
   private refreshTask?: Promise<void>;
   private refreshSequence = 0;
+  private refreshController?: AbortController;
   private autoRefreshTimer?: NodeJS.Timeout;
   private readonly homebrewBatchFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private readonly homebrewDiscoverFailureClearTimers = new Map<string, NodeJS.Timeout>();
@@ -119,6 +132,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private isProcessingHomebrewUpdateQueue = false;
 
   private state: BaselineSnapshot;
+  private snapshotRevision = 0;
+  private readonly progressPublisher = new ProgressPublisher((event) =>
+    this.emit("progress", event)
+  );
 
   constructor(options: {
     persistence: SnapshotPersistence;
@@ -129,8 +146,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       scanner: Pick<BundleScannerClient, "scanApplications">;
       appStore: Pick<AppStoreLookupClient, "lookupOutcome">;
       sparkle: Pick<SparkleAppcastClient, "lookupOutcome">;
-      homebrew: Pick<HomebrewCaskClient, "fetchIndex" | "lookupUpdate" | "searchCasks">;
-      homebrewFormula: Pick<HomebrewFormulaClient, "fetchIndex" | "searchFormulae">;
+      homebrew: HomebrewCaskSource;
+      homebrewFormula: HomebrewFormulaSource;
       homebrewInventory: Pick<HomebrewInventoryClient, "fetchInventory">;
       selfUpdate: Pick<SelfUpdateClient, "lookup">;
     }>;
@@ -160,6 +177,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const persisted = sanitizePersistedSnapshotForRuntime(options.persisted);
     this.state = {
       ...persisted,
+      operationFailures: normalizeOperationFailures(persisted.operationFailures),
       isMasInstalled: false,
       isHomebrewInstalled: false,
       isChecking: false,
@@ -194,7 +212,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   getSnapshot(): BaselineSnapshot {
-    return structuredClone(this.state);
+    return structuredClone({ ...this.state, snapshotRevision: this.snapshotRevision });
   }
 
   async verifyProfileStatsIntegrity(): Promise<void> {
@@ -217,11 +235,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return this.refreshTask;
     }
     const sequence = ++this.refreshSequence;
-    const task = this.computeRefresh(lightweight, sequence, options);
+    this.refreshController?.abort();
+    const controller = new AbortController();
+    this.refreshController = controller;
+    const task = this.computeRefresh(lightweight, sequence, options, controller.signal);
     this.refreshTask = task;
     return task.finally(() => {
       if (this.refreshTask === task) {
         this.refreshTask = undefined;
+        this.refreshController = undefined;
       }
     });
   }
@@ -292,6 +314,72 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.persist();
   }
 
+  async dismissOperationFailure(id: string): Promise<void> {
+    const failures = this.state.operationFailures ?? [];
+    const remaining = failures.filter((failure) => failure.id !== id);
+    if (remaining.length === failures.length) return;
+    this.patch({ operationFailures: remaining });
+    await this.persistFailureDetails();
+  }
+
+  private clearOperationFailure(entityID: string, operation: OperationFailure["operation"]): void {
+    const failures = this.state.operationFailures ?? [];
+    const remaining = failures.filter(
+      (failure) => failure.entityID !== entityID || failure.operation !== operation
+    );
+    if (remaining.length === failures.length) return;
+    this.patch({ operationFailures: remaining });
+    void this.persistFailureDetails();
+  }
+
+  private async recordOperationFailure(
+    entityID: string,
+    operation: OperationFailure["operation"],
+    result: CommandResult,
+    reason?: OperationFailure["reason"]
+  ): Promise<void> {
+    await this.recordOperationFailures([{ entityID, operation, result, reason }]);
+  }
+
+  private async recordOperationFailures(
+    failures: Array<{
+      entityID: string;
+      operation: OperationFailure["operation"];
+      result: CommandResult;
+      reason?: OperationFailure["reason"];
+    }>
+  ): Promise<void> {
+    if (failures.length === 0) return;
+    const occurredAt = new Date().toISOString();
+    const records = failures.map(({ entityID, operation, result, reason }): OperationFailure => ({
+      id: `${operation}:${entityID}`,
+      entityID,
+      operation,
+      reason: reason ?? failureReason(result.stderr || result.output),
+      status: result.status,
+      occurredAt
+    }));
+    const ids = new Set(records.map((record) => record.id));
+    this.patch({
+      operationFailures: normalizeOperationFailures([
+        ...records,
+        ...(this.state.operationFailures ?? []).filter((previous) => !ids.has(previous.id))
+      ])
+    });
+    await this.persistFailureDetails();
+  }
+
+  private async persistFailureDetails(): Promise<void> {
+    try {
+      await this.persist();
+    } catch {
+      this.patch({
+        lastRefreshNoticeMessage:
+          "Failure details could not be saved. They remain available until Baseline quits."
+      });
+    }
+  }
+
   async addDirectory(directory: string): Promise<void> {
     const resolved = path.resolve(directory);
     if (
@@ -302,7 +390,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const directories = [...this.state.additionalDirectories, resolved];
     this.patch({ additionalDirectories: directories });
     await this.persist();
-    await this.refresh(false);
+    await this.refresh(false, { forceMetadata: false });
   }
 
   async removeDirectory(directory: string): Promise<void> {
@@ -317,7 +405,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       additionalDirectories: directories
     });
     await this.persist();
-    await this.refresh(false);
+    await this.refresh(false, { forceMetadata: false });
   }
 
   async openApp(appID: string): Promise<void> {
@@ -352,6 +440,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       update.appStoreItemID
     ) {
       await this.withAppUpdating(appID, async () => {
+        this.clearOperationFailure(appID, "update");
         const result = await this.runMasCommand(["upgrade", String(update.appStoreItemID)]);
         if (result.success) {
           this.patch({
@@ -365,8 +454,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             })
           ]);
           await this.holdSuccessfulUpdate();
-          await this.refresh();
+          await this.refresh(false, { forceMetadata: false });
         } else {
+          await this.recordOperationFailure(appID, "update", result);
           await this.routeExternalUpdate(appRecord, update);
         }
       });
@@ -442,6 +532,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return undefined;
     }
     this.clearHomebrewBatchFailureTimer(item.id);
+    this.clearOperationFailure(item.id, "update");
     this.patch({
       homebrewUpdatingItemIDs: addToArray(this.state.homebrewUpdatingItemIDs, item.id),
       homebrewQueuedItemIDs: addToArray(this.state.homebrewQueuedItemIDs, item.id),
@@ -475,14 +566,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ? ["upgrade", "--cask", "--greedy", item.token]
         : ["upgrade", item.token];
     const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
-    const result = await this.runBrewWithEvents(command, (event) => {
+    const commandResult = await this.runBrewWithResultEvents(command, (event) => {
       this.applyHomebrewProgressEvent(
         event,
         parser,
         new Map([[item.token.toLowerCase(), [itemID]]])
       );
     });
-    if (result) {
+    if (commandResult.success) {
       this.patch({
         refreshErrorMessage: undefined,
         homebrewBatchFailedItemIDs: removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID),
@@ -510,6 +601,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
       this.applyHomebrewCleanupNotice(cleanupNotice);
     } else {
+      await this.recordOperationFailure(itemID, "update", commandResult);
       this.patch({
         refreshErrorMessage: `Homebrew update failed for ${item.name}.`,
         homebrewBatchFailedItemIDs: addToArray(this.state.homebrewBatchFailedItemIDs, itemID),
@@ -574,8 +666,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     ];
     const completedItemIDs = new Set<string>();
     let success = true;
+    let failedResult: CommandResult | undefined;
+    let failedCommand: string[] = [];
     for (const command of sequence) {
-      const result = await this.runBrewWithEvents(command, (event) => {
+      const commandResult = await this.runBrewWithResultEvents(command, (event) => {
         this.applyHomebrewProgressEvent(
           event,
           parser,
@@ -584,6 +678,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           completedItemIDs
         );
       });
+      const result = commandResult.success;
       if (result) {
         const upgradedKind = homebrewUpgradeKindForCommand(command);
         if (upgradedKind) {
@@ -593,6 +688,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         }
       }
       if (!result) {
+        failedResult = commandResult;
+        failedCommand = command;
         success = false;
         break;
       }
@@ -602,6 +699,24 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       ? affectedIDs
       : affectedIDs.filter((id) => completedItemIDs.has(id));
     const failedIDs = success ? [] : affectedIDs.filter((id) => !completedItemIDs.has(id));
+    if (failedResult) {
+      const result = failedResult;
+      await this.recordOperationFailures(
+        failedIDs.map((id) => {
+          const item = affected.find((candidate) => candidate.id === id)!;
+          const attempted =
+            failedCommand.includes(item.token) &&
+            homebrewUpgradeKindForCommand(failedCommand) === item.kind;
+          return {
+            entityID: id,
+            operation: "update" as const,
+            result: attempted ? result : { success: false, status: null, output: "" },
+            reason: attempted ? undefined : ("interrupted" as const)
+          };
+        })
+      );
+    }
+
     this.patch({
       refreshErrorMessage: success ? undefined : "Homebrew update failed.",
       homebrewBatchFailedItemIDs: success
@@ -702,7 +817,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       });
       for (const id of affectedIDs) {
         this.clearHomebrewBatchFailureTimer(id);
+        this.clearOperationFailure(id, "update");
       }
+      this.clearOperationFailure("homebrew:maintenance", "update");
 
       const parser = new HomebrewMaintenanceOutputParser(
         affected.map((item) => item.token.toLowerCase())
@@ -715,8 +832,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       ];
       const completedItemIDs = new Set<string>();
       let success = true;
+      let failedResult: CommandResult | undefined;
+      let failedCommand: string[] = [];
       for (const command of sequence) {
-        const result = await this.runBrewWithEvents(command, (event) => {
+        const commandResult = await this.runBrewWithResultEvents(command, (event) => {
           this.applyHomebrewProgressEvent(
             event,
             parser,
@@ -725,6 +844,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             completedItemIDs
           );
         });
+        const result = commandResult.success;
         if (result) {
           const upgradedKind = homebrewUpgradeKindForCommand(command);
           if (upgradedKind) {
@@ -734,6 +854,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           }
         }
         if (!result) {
+          failedResult = commandResult;
+          failedCommand = command;
           success = false;
           break;
         }
@@ -742,6 +864,25 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ? affectedIDs
         : affectedIDs.filter((id) => completedItemIDs.has(id));
       const failedIDs = affectedIDs.filter((id) => !completedItemIDs.has(id));
+      if (failedResult) {
+        const result = failedResult;
+        await this.recordOperationFailures([
+          { entityID: "homebrew:maintenance", operation: "update", result },
+          ...failedIDs.map((id) => {
+            const item = affected.find((candidate) => candidate.id === id)!;
+            const attempted =
+              failedCommand.includes(item.token) &&
+              homebrewUpgradeKindForCommand(failedCommand) === item.kind;
+            return {
+              entityID: id,
+              operation: "update" as const,
+              result: attempted ? result : { success: false, status: null, output: "" },
+              reason: attempted ? undefined : ("interrupted" as const)
+            };
+          })
+        ]);
+      }
+
       let cleanupNotice: string | undefined;
 
       if (success) {
@@ -836,6 +977,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.withHomebrewCommandLock(async () => {
       const itemID = item.id;
       try {
+        this.clearOperationFailure(itemID, "install");
         this.clearHomebrewDiscoverFailureTimer(itemID);
         this.patch({
           homebrewDiscoverInstallingItemIDs: addToArray(
@@ -874,9 +1016,11 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         const command =
           item.kind === "cask" ? ["install", "--cask", item.token] : ["install", item.token];
         const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
-        const success = await this.runBrewWithEvents(command, (event) => {
+        const commandResult = await this.runBrewWithResultEvents(command, (event) => {
           this.applyDiscoverInstallEvent(event, parser, itemID, item.token.toLowerCase());
         });
+        const success = commandResult.success;
+        if (!success) await this.recordOperationFailure(itemID, "install", commandResult);
         this.patch({
           homebrewDiscoverInstallingItemIDs: success
             ? this.state.homebrewDiscoverInstallingItemIDs
@@ -959,6 +1103,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!releaseHomebrewCommandLock) {
       return;
     }
+    this.clearOperationFailure(itemID, "uninstall");
     this.patch({
       homebrewUninstallingItemIDs: addToArray(this.state.homebrewUninstallingItemIDs, itemID)
     });
@@ -977,6 +1122,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       });
       await this.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
       if (!result.success) {
+        await this.recordOperationFailure(itemID, "uninstall", result);
         const output = (outputLines.join("\n") || result.output).trim();
         this.patch({
           refreshErrorMessage: homebrewUninstallFailureMessage(item, output)
@@ -1086,7 +1232,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private async computeRefresh(
     lightweight: boolean,
     sequence: number,
-    options: RefreshOptions
+    options: RefreshOptions,
+    signal: AbortSignal
   ): Promise<void> {
     this.patch({
       isRefreshing: true,
@@ -1094,13 +1241,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       lastRefreshNoticeMessage: undefined
     });
     const now = new Date().toISOString();
+    const force =
+      options.forceMetadata ?? (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand);
     let completedHomebrewInventory: HomebrewInventoryResult | undefined;
     try {
       const [apps, homebrewIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
         await Promise.all([
           this.scanner.scanApplications(this.scanDirectories()),
-          this.homebrew.fetchIndex(),
-          this.homebrewFormula.fetchIndex(),
+          this.homebrew.fetchIndex({ force }),
+          this.homebrewFormula.fetchIndex({ force }),
           this.fetchHomebrewInventory(lightweight, options),
           this.lookupSelfUpdate(now)
         ]);
@@ -1119,17 +1268,21 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       const updates: UpdateRecord[] = [];
 
       for (const appRecord of apps) {
+        if (signal.aborted || sequence !== this.refreshSequence) return;
         if (appRecord.bundleIdentifier) {
           const outcome = await this.appStore.lookupOutcome(
             appRecord.bundleIdentifier,
             appRecord.localVersion,
             {
+              signal,
+              force,
               includeIOSAppStoreSoftware:
                 appRecord.isIOSAppOnMac === true && appRecord.hasAppStoreEvidence === true,
               includeMacCapableAppStoreSoftware:
                 appRecord.isIOSAppOnMac !== true && appRecord.hasSafariWebExtension === true
             }
           );
+          if (signal.aborted || sequence !== this.refreshSequence) return;
           if (outcome.type === "completed" && outcome.value) {
             updates.push({
               id: appRecord.id,
@@ -1142,7 +1295,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
               appStoreItemID: outcome.value.appStoreItemID,
               releaseNotesSummary: outcome.value.releaseNotesSummary,
               releaseDate: outcome.value.releaseDate,
-              checkedAt: now
+              checkedAt: outcome.checkedAt ?? now
             });
             continue;
           }
@@ -1163,8 +1316,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           const outcome = await this.sparkle.lookupOutcome(
             appRecord.sparkleFeedURL,
             appRecord.localVersion,
-            appRecord.bundleVersion
+            appRecord.bundleVersion,
+            { signal, force }
           );
+          if (signal.aborted || sequence !== this.refreshSequence) return;
           if (outcome.type === "completed" && outcome.value) {
             updates.push({
               id: appRecord.id,
@@ -1178,7 +1333,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
               updateURL: outcome.value.updateURL,
               releaseNotesURL: outcome.value.releaseNotesURL,
               releaseDate: outcome.value.releaseDate,
-              checkedAt: now
+              checkedAt: outcome.checkedAt ?? now
             });
             continue;
           }
@@ -1254,7 +1409,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         homebrewRecentlyUpdated,
         lastRefreshDate: now,
         isRefreshing: false,
-        lastRefreshNoticeMessage: homebrewInventory.warning,
+        lastRefreshNoticeMessage:
+          [
+            homebrewInventory.warning,
+            catalogueCacheNotice(this.homebrew.cacheStatus, this.homebrewFormula.cacheStatus)
+          ]
+            .filter(Boolean)
+            .join(" ") || undefined,
         appUpdatedPendingRefreshIDs: [],
         homebrewUpdatedPendingRefreshItemIDs: preserveHomebrewCommandState
           ? this.state.homebrewUpdatedPendingRefreshItemIDs
@@ -1403,13 +1564,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return;
     }
     await this.openAppBundle(appRecord.bundlePath);
-  }
-
-  private async runBrewWithEvents(
-    command: string[],
-    onEvent: (event: HomebrewMaintenanceRunEvent) => void
-  ): Promise<boolean> {
-    return (await this.runBrewWithResultEvents(command, onEvent)).success;
   }
 
   private async runBrewWithResultEvents(
@@ -1782,7 +1936,28 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private patch(patch: Partial<BaselineSnapshot>): void {
+    const progressKeys = [
+      "homebrewBatchProgressByItemID",
+      "homebrewFallbackProgressByAppID",
+      "homebrewDiscoverProgressByItemID"
+    ] as const;
+    const keys = Object.keys(patch);
+    const progressOnly =
+      keys.length > 0 && keys.every((key) => progressKeys.some((candidate) => candidate === key));
+    const terminal =
+      progressOnly &&
+      progressKeys.some((key) =>
+        Object.entries(patch[key] ?? {}).some(
+          ([id, progress]) => progress >= 1 && this.state[key][id] !== progress
+        )
+      );
     this.state = { ...this.state, ...patch };
+    const revision = ++this.snapshotRevision;
+    if (progressOnly) {
+      this.progressPublisher.publish(patch as Partial<SnapshotProgress>, revision, terminal);
+      return;
+    }
+    this.progressPublisher.reset(revision);
     this.emit("snapshot", this.getSnapshot());
   }
 
@@ -1816,6 +1991,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     showMenuBarIcon: snapshot.showMenuBarIcon,
     profileStats: snapshot.profileStats,
     profileStatsResetAcknowledgedID: snapshot.profileStatsResetAcknowledgedID,
+    operationFailures: normalizeOperationFailures(snapshot.operationFailures),
     lastRefreshDate: snapshot.lastRefreshDate
   };
 }
@@ -2394,4 +2570,17 @@ function detectLaggingHomebrewCaskTokens(
 function homebrewUninstallFailureMessage(item: HomebrewManagedItem, output: string): string {
   const prefix = `Homebrew uninstall failed for ${item.name}.`;
   return output ? `${prefix}\n\n${output.slice(0, 600)}` : prefix;
+}
+
+function catalogueCacheNotice(...statuses: Array<CatalogueStatus | undefined>): string | undefined {
+  if (statuses.some((status) => status?.unavailable)) {
+    return "Homebrew catalogue metadata is unavailable. Refresh to retry.";
+  }
+  const stale = statuses.filter((status): status is CatalogueStatus => Boolean(status?.stale));
+  if (stale.length === 0) return undefined;
+  const checkedAt = stale
+    .map((status) => status.checkedAt)
+    .filter(Boolean)
+    .sort()[0];
+  return `Using cached Homebrew catalogue metadata${checkedAt ? ` (last checked ${checkedAt})` : ""}. Refresh to retry.`;
 }

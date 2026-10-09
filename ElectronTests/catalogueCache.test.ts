@@ -91,6 +91,7 @@ describe("catalogue freshness and last-good indexes", () => {
         })
       );
       expect(await cache.fetch({ force: true })).toBe(first);
+      expect(cache.status).toMatchObject({ stale: true, unavailable: false });
       fetchMock.mockResolvedValueOnce(new Response('["second"]', { headers: { etag: '"two"' } }));
       expect(await cache.fetch({ force: true })).toEqual(["second"]);
     }

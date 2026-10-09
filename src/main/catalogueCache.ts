@@ -24,6 +24,8 @@ export class CatalogueCache<T> {
   };
   private task?: Promise<T>;
   private retryAfter = 0;
+  private lastRequestFailed = false;
+  private uncachedResponse?: { checkedAt: number; freshUntil: number };
 
   constructor(
     private readonly url: string,
@@ -34,10 +36,11 @@ export class CatalogueCache<T> {
 
   get status(): CatalogueStatus {
     const now = Date.now();
-    const usable = this.entry && now - this.entry.checkedAt <= maxStaleMS;
+    const metadata = this.entry ?? this.uncachedResponse;
+    const usable = metadata && now - metadata.checkedAt <= maxStaleMS;
     return {
-      checkedAt: this.entry ? new Date(this.entry.checkedAt).toISOString() : undefined,
-      stale: Boolean(usable && now >= this.entry!.freshUntil),
+      checkedAt: metadata ? new Date(metadata.checkedAt).toISOString() : undefined,
+      stale: Boolean(usable && (this.lastRequestFailed || now >= metadata!.freshUntil)),
       unavailable: !usable
     };
   }
@@ -77,11 +80,14 @@ export class CatalogueCache<T> {
             Math.min(freshnessMS, maxAge === undefined ? freshnessMS : Number(maxAge) * 1000) -
               Math.max(0, Number(response.headers.get("age")) || 0) * 1000
           );
+      this.lastRequestFailed = false;
+      this.uncachedResponse = undefined;
       if (response.status === 304 && this.entry) {
         const value = this.entry.value;
         this.entry = /(?:^|,)\s*no-store\b/i.test(cacheControl)
           ? undefined
           : { ...this.entry, checkedAt, freshUntil: checkedAt + ttl };
+        if (!this.entry) this.uncachedResponse = { checkedAt, freshUntil: checkedAt + ttl };
         this.retryAfter = 0;
         return value;
       }
@@ -99,9 +105,12 @@ export class CatalogueCache<T> {
             etag: response.headers.get("etag") ?? undefined,
             modified: response.headers.get("last-modified") ?? undefined
           };
+      if (!this.entry) this.uncachedResponse = { checkedAt, freshUntil: checkedAt + ttl };
       this.retryAfter = 0;
       return value;
     } catch {
+      this.lastRequestFailed = true;
+      this.uncachedResponse = undefined;
       this.retryAfter = Date.now() + retryDelayMS;
       return this.lastGood();
     }

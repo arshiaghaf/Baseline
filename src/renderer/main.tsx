@@ -51,6 +51,7 @@ import type {
 } from "../shared/domain";
 import {
   defaultPersistedSnapshot,
+  applySnapshotProgress,
   homebrewPresentationLabel,
   sourceDisplayName
 } from "../shared/domain";
@@ -61,6 +62,7 @@ import {
 } from "../shared/homebrewAppLinking";
 import { HomebrewMaintenanceProgressStage } from "../shared/homebrewProgress";
 import { compareVersions } from "../shared/version";
+import { operationFailureDescription } from "../shared/operationFailures";
 import "./styles.css";
 
 type Route = "main" | "menubar" | "settings";
@@ -140,8 +142,54 @@ export function App() {
   const previousSearchTextRef = useRef(initialSnapshot.searchText);
 
   useEffect(() => {
-    void window.baseline.getSnapshot().then(setSnapshot);
-    return window.baseline.onSnapshotChanged(setSnapshot);
+    let current = initialSnapshot;
+    let disposed = false;
+    let resyncing = false;
+    let resyncNeeded = false;
+    const receiveSnapshot = (next: BaselineSnapshot) => {
+      if (
+        disposed ||
+        (next.snapshotRevision !== undefined &&
+          current.snapshotRevision !== undefined &&
+          next.snapshotRevision < current.snapshotRevision)
+      )
+        return;
+      current = next;
+      setSnapshot(next);
+    };
+    const resync = () => {
+      if (resyncing) {
+        resyncNeeded = true;
+        return;
+      }
+      resyncing = true;
+      void window.baseline
+        .getSnapshot()
+        .then(receiveSnapshot)
+        .catch(() => undefined)
+        .finally(() => {
+          resyncing = false;
+          if (resyncNeeded && !disposed) {
+            resyncNeeded = false;
+            resync();
+          }
+        });
+    };
+    const unsubscribeSnapshot = window.baseline.onSnapshotChanged(receiveSnapshot);
+    const unsubscribeProgress = window.baseline.onSnapshotProgress((event) => {
+      const result = applySnapshotProgress(current, event);
+      if (result.needsResync) {
+        resync();
+        return;
+      }
+      receiveSnapshot(result.snapshot);
+    });
+    resync();
+    return () => {
+      disposed = true;
+      unsubscribeSnapshot();
+      unsubscribeProgress();
+    };
   }, []);
 
   useEffect(() => {
@@ -202,15 +250,38 @@ export function Dashboard({
     setUncontrolledSearchActive(active);
   };
   const previousSearchTextRef = useRef(snapshot.searchText);
-  const derived = useMemo(
-    () => deriveSections(compact && searchActive ? snapshot : { ...snapshot, searchText: "" }),
-    [snapshot, compact, searchActive]
+  const sectionInputs = useMemo(
+    () => ({
+      apps: snapshot.apps,
+      updates: snapshot.updates,
+      ignoredIDs: snapshot.ignoredIDs,
+      recentlyUpdated: snapshot.recentlyUpdated,
+      homebrewItems: snapshot.homebrewItems,
+      ignoredHomebrewItemIDs: snapshot.ignoredHomebrewItemIDs,
+      homebrewRecentlyUpdated: snapshot.homebrewRecentlyUpdated
+    }),
+    [
+      snapshot.apps,
+      snapshot.updates,
+      snapshot.ignoredIDs,
+      snapshot.recentlyUpdated,
+      snapshot.homebrewItems,
+      snapshot.ignoredHomebrewItemIDs,
+      snapshot.homebrewRecentlyUpdated
+    ]
+  );
+  const sidebarDerived = useMemo(
+    () => deriveSections({ ...sectionInputs, searchText: "" }),
+    [sectionInputs]
   );
   const searchDerived = useMemo(
-    () => deriveSections(searchActive ? snapshot : { ...snapshot, searchText: "" }),
-    [snapshot, searchActive]
+    () =>
+      searchActive && snapshot.searchText.trim()
+        ? deriveSections({ ...sectionInputs, searchText: snapshot.searchText })
+        : sidebarDerived,
+    [sectionInputs, snapshot.searchText, searchActive, sidebarDerived]
   );
-  const sidebarDerived = useMemo(() => deriveSections({ ...snapshot, searchText: "" }), [snapshot]);
+  const derived = compact && searchActive ? searchDerived : sidebarDerived;
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
   const compactShellRef = useRef<HTMLElement>(null);
   const appContentRef = useRef<HTMLDivElement>(null);
@@ -368,6 +439,7 @@ export function Dashboard({
             </button>
           </div>
         </header>
+        <OperationFailures snapshot={snapshot} />
         <section className="content single">
           <SelectedTabContent
             snapshot={snapshot}
@@ -431,6 +503,7 @@ export function Dashboard({
           )}
 
           <section className="content">
+            <OperationFailures snapshot={snapshot} />
             <SelectedTabContent
               snapshot={snapshot}
               derived={derived}
@@ -1742,6 +1815,40 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
         </p>
       </div>
     </article>
+  );
+}
+
+export function OperationFailures({ snapshot }: { snapshot: BaselineSnapshot }) {
+  if (!snapshot.operationFailures?.length) return null;
+  return (
+    <section className="operation-failures" aria-label="Operation failures">
+      {snapshot.operationFailures.map((failure) => {
+        const name =
+          snapshot.apps.find((app) => app.id === failure.entityID)?.displayName ??
+          snapshot.homebrewItems.find((item) => item.id === failure.entityID)?.name ??
+          snapshot.homebrewDiscoverItems.find((item) => item.id === failure.entityID)
+            ?.displayName ??
+          (failure.entityID === "homebrew:maintenance" ? "Homebrew maintenance" : "This item");
+        return (
+          <details key={failure.id} className="operation-failure">
+            <summary>
+              {name}: {failure.operation} did not complete
+            </summary>
+            <p>{operationFailureDescription(failure)}</p>
+            <time dateTime={failure.occurredAt}>
+              {new Date(failure.occurredAt).toLocaleString()}
+            </time>
+            <button
+              type="button"
+              onClick={() => void window.baseline.dismissOperationFailure(failure.id)}
+              aria-label={`Dismiss failure for ${name}`}
+            >
+              Dismiss
+            </button>
+          </details>
+        );
+      })}
+    </section>
   );
 }
 
@@ -4214,10 +4321,27 @@ function toggleCollapsedSection(
 
 type DerivedSections = ReturnType<typeof deriveSections>;
 
-function deriveSections(snapshot: BaselineSnapshot) {
+function deriveSections(
+  snapshot: Pick<
+    BaselineSnapshot,
+    | "apps"
+    | "updates"
+    | "ignoredIDs"
+    | "recentlyUpdated"
+    | "homebrewItems"
+    | "ignoredHomebrewItemIDs"
+    | "homebrewRecentlyUpdated"
+    | "searchText"
+  >
+) {
   const term = snapshot.searchText.trim().toLowerCase();
   const updatesByAppID = new Map(snapshot.updates.map((update) => [update.appID, update]));
   const appByID = new Map(snapshot.apps.map((app) => [app.id, app]));
+  const uninstallableAppIDs = new Set(
+    snapshot.homebrewItems
+      .filter((item) => item.kind === "cask" && item.appID)
+      .map((item) => item.appID)
+  );
   const appFilter = (app: AppRecord) =>
     !term ||
     app.displayName.toLowerCase().includes(term) ||
@@ -4235,7 +4359,7 @@ function deriveSections(snapshot: BaselineSnapshot) {
     .sort((lhs, rhs) => sortByUpdateDate(lhs, rhs, updatesByAppID));
   const installedApps = snapshot.apps
     .filter((app) => !updatesByAppID.has(app.id) && !snapshot.ignoredIDs.includes(app.id))
-    .filter((app) => !uninstallableHomebrewItemForApp(app, snapshot))
+    .filter((app) => !uninstallableAppIDs.has(app.id))
     .filter(appFilter)
     .sort(sortByName);
   const ignoredApps = snapshot.apps
@@ -4262,8 +4386,9 @@ function deriveSections(snapshot: BaselineSnapshot) {
     : snapshot.apps.filter(
         (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
       );
+  const representedAppIDs = new Set(appsRepresentedOutsideHomebrew.map((app) => app.id));
   const allHomebrewOutdated = homebrewOutdated.filter(
-    (item) => !homebrewItemHasAppRepresentation(item, appsRepresentedOutsideHomebrew)
+    (item) => !(isCask(item.kind) && item.appID && representedAppIDs.has(item.appID))
   );
   const homebrewInstalled = snapshot.homebrewItems
     .filter((item) => !item.isOutdated && !snapshot.ignoredHomebrewItemIDs.includes(item.id))

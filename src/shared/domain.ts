@@ -182,6 +182,7 @@ export type SelfUpdateRecord = {
 };
 
 export type PersistedSnapshot = {
+  operationFailures?: import("./operationFailures").OperationFailure[];
   apps: AppRecord[];
   updates: UpdateRecord[];
   recentlyUpdated: RecentlyUpdatedRecord[];
@@ -219,6 +220,7 @@ export type RefreshState = {
 export type BaselineSnapshot = PersistedSnapshot &
   ToolStatus &
   RefreshState & {
+    snapshotRevision?: number;
     searchText: string;
     isRunningHomebrewMaintenance: boolean;
     isHomebrewCommandLocked: boolean;
@@ -242,6 +244,35 @@ export type BaselineSnapshot = PersistedSnapshot &
     selfUpdate?: SelfUpdateRecord;
   };
 
+export type SnapshotProgress = Pick<
+  BaselineSnapshot,
+  | "homebrewBatchProgressByItemID"
+  | "homebrewFallbackProgressByAppID"
+  | "homebrewDiscoverProgressByItemID"
+>;
+export type SnapshotProgressEvent = {
+  fromRevision: number;
+  revision: number;
+  patch: Partial<SnapshotProgress>;
+};
+
+export function applySnapshotProgress(
+  snapshot: BaselineSnapshot,
+  event: SnapshotProgressEvent
+): {
+  snapshot: BaselineSnapshot;
+  needsResync: boolean;
+} {
+  if (snapshot.snapshotRevision !== undefined && event.revision <= snapshot.snapshotRevision) {
+    return { snapshot, needsResync: false };
+  }
+  if (snapshot.snapshotRevision !== event.fromRevision) return { snapshot, needsResync: true };
+  return {
+    snapshot: { ...snapshot, ...event.patch, snapshotRevision: event.revision },
+    needsResync: false
+  };
+}
+
 export const emptyHomebrewCaskIndex: HomebrewCaskIndex = {
   byToken: {},
   byBundleIdentifier: {},
@@ -254,6 +285,7 @@ export const emptyHomebrewFormulaIndex: HomebrewFormulaIndex = {
 
 export function defaultPersistedSnapshot(now = new Date().toISOString()): PersistedSnapshot {
   return {
+    operationFailures: [],
     apps: [],
     updates: [],
     recentlyUpdated: [],

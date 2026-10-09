@@ -12,6 +12,7 @@ import {
   version
 } from "../shared/version";
 import type { LookupOutcome } from "./appStoreLookupClient";
+import { LookupCache, type LookupRequestOptions } from "./lookupCache";
 
 type AppcastItem = {
   shortVersionString?: string;
@@ -44,26 +45,41 @@ const prereleaseLabels = new Set([
 ]);
 
 export class SparkleAppcastClient {
+  private readonly cache = new LookupCache(1000);
+
   async lookupOutcome(
     feedURL: string,
     localVersion: VersionValue,
-    localBuildVersion?: VersionValue
+    localBuildVersion?: VersionValue,
+    options: LookupRequestOptions = {}
   ): Promise<LookupOutcome<SparkleLookupResult>> {
     if (!isAllowedFeedURL(feedURL)) {
       return { type: "completed" };
     }
 
     try {
-      const response = await fetch(feedURL, { signal: AbortSignal.timeout(8000) });
-      if (!response.ok) {
-        return { type: "transientFailure" };
-      }
-      const buffer = Buffer.from(await response.arrayBuffer());
-      if (buffer.byteLength > byteLimits.sparkleAppcastMaxBytes) {
-        return { type: "completed" };
-      }
+      const buffer = await this.cache.get(
+        feedURL,
+        async (signal) => {
+          const response = await fetch(feedURL, {
+            signal: AbortSignal.any([signal, AbortSignal.timeout(8000)])
+          });
+          if (!response.ok) {
+            if (response.status === 429)
+              this.cache.backoff(feedURL, response.headers.get("retry-after"));
+            throw new Error("Appcast unavailable");
+          }
+          const data = Buffer.from(await response.arrayBuffer());
+          if (data.byteLength > byteLimits.sparkleAppcastMaxBytes)
+            throw new Error("Appcast too large");
+          this.parseAppcast(data, localVersion, localBuildVersion);
+          return data;
+        },
+        options
+      );
       return {
         type: "completed",
+        checkedAt: this.cache.checkedAt(feedURL),
         value: this.parseAppcast(buffer, localVersion, localBuildVersion)
       };
     } catch {

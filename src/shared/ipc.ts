@@ -9,6 +9,7 @@ import type {
   MenuTab,
   ToolStatus
 } from "./domain";
+import type { SnapshotProgressEvent } from "./domain";
 import type { HomebrewMaintenanceRunEvent } from "./homebrewProgress";
 import type { AppMetadata } from "./appMetadata";
 
@@ -23,6 +24,7 @@ export const ipcChannels = {
   setSelectedTab: "baseline:setSelectedTab",
   updatePreferences: "baseline:updatePreferences",
   acknowledgeProfileStatsReset: "baseline:acknowledgeProfileStatsReset",
+  dismissOperationFailure: "baseline:dismissOperationFailure",
   toggleIgnoredApp: "baseline:toggleIgnoredApp",
   toggleIgnoredHomebrew: "baseline:toggleIgnoredHomebrew",
   performAppUpdate: "baseline:performAppUpdate",
@@ -38,6 +40,7 @@ export const ipcChannels = {
   showMainWindow: "baseline:showMainWindow",
   showSettings: "baseline:showSettings",
   snapshotChanged: "baseline:snapshotChanged",
+  snapshotProgress: "baseline:snapshotProgress",
   homebrewCommandEvent: "baseline:homebrewCommandEvent"
 } as const;
 
@@ -62,6 +65,7 @@ export type BaselineAPI = {
   setSelectedTab(tab: MenuTab): Promise<void>;
   updatePreferences(patch: PreferencePatch): Promise<void>;
   acknowledgeProfileStatsReset(): Promise<void>;
+  dismissOperationFailure(id: string): Promise<void>;
   toggleIgnoredApp(appID: string): Promise<void>;
   toggleIgnoredHomebrew(itemID: string): Promise<void>;
   performAppUpdate(appID: string): Promise<void>;
@@ -77,6 +81,7 @@ export type BaselineAPI = {
   showMainWindow(): Promise<void>;
   showSettings(): Promise<void>;
   onSnapshotChanged(callback: (snapshot: BaselineSnapshot) => void): () => void;
+  onSnapshotProgress(callback: (event: SnapshotProgressEvent) => void): () => void;
   onHomebrewCommandEvent(callback: (event: HomebrewMaintenanceRunEvent) => void): () => void;
 };
 
