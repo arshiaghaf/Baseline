@@ -117,20 +117,34 @@ describe("catalogue freshness and last-good indexes", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it.each(["no-store", "no-cache", "max-age=0"])(
-    "reports a live %s response as current while still revalidating the next request",
-    async (directive) => {
-      const { cache, fetchMock } = fixture();
+  it.each(
+    [200, 304].flatMap((status) =>
+      ["no-store", "no-cache", "max-age=0"].map((directive) => ({ status, directive }))
+    )
+  )(
+    "reports live $status/$directive separately from stale fallback",
+    async ({ status, directive }) => {
+      const { cache, fetchMock, response } = fixture();
+      let delivered = ["fresh"];
+      if (status === 304) {
+        fetchMock.mockResolvedValueOnce(response());
+        delivered = await cache.fetch();
+      }
       fetchMock.mockResolvedValueOnce(
-        new Response('["fresh"]', {
+        new Response(status === 304 ? null : '["fresh"]', {
+          status,
           headers: { "cache-control": directive, etag: '"fresh"' }
         })
       );
-      expect(await cache.fetch()).toEqual(["fresh"]);
-      expect(cache.status).toMatchObject({ stale: false, unavailable: false });
+      expect(await cache.fetch({ force: true })).toEqual(delivered);
+      expect(cache.status).toEqual({
+        checkedAt: "2026-10-09T12:00:00.000Z",
+        stale: false,
+        unavailable: false
+      });
       fetchMock.mockRejectedValueOnce(new Error("offline"));
-      expect(await cache.fetch()).toEqual(directive === "no-store" ? [] : ["fresh"]);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(await cache.fetch()).toEqual(directive === "no-store" ? [] : delivered);
+      expect(fetchMock).toHaveBeenCalledTimes(status === 304 ? 3 : 2);
       expect(cache.status).toMatchObject(
         directive === "no-store"
           ? { stale: false, unavailable: true }
