@@ -977,6 +977,61 @@ describe("update store helpers", () => {
     expect(sparkleLookup).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["2.0 (200)", "200", false, "2.0"],
+    ["2.0 (201)", "201", true, "2.0"],
+    ["2.1 (200)", "200", true, "2.0"],
+    ["2.0 (201)", "200", true, "2.0"],
+    ["2.0 (200)", "200", false, "2.0-beta"],
+    ["2.0 (201)", "201", true, "2.0-beta"]
+  ])(
+    "checks persisted and retained Sparkle display %s with build %s",
+    async (remoteMarketing, remoteBuild, expectedUpdate, localMarketing) => {
+      const installedApp = appRecord({
+        bundlePath: "/Applications/Example.app",
+        displayName: "Example",
+        bundleIdentifier: "com.example.decorated",
+        sparkleFeedURL: "https://updates.example.com/appcast.xml",
+        localVersion: version(localMarketing),
+        bundleVersion: version("200")
+      });
+      const previousUpdate: UpdateRecord = {
+        id: installedApp.id,
+        appID: installedApp.id,
+        source: "sparkle",
+        supportLevel: "limited",
+        localVersion: version(localMarketing),
+        localBuildVersion: version("200"),
+        remoteVersion: version(remoteMarketing),
+        remoteBuildVersion: version(remoteBuild),
+        updateURL: "https://updates.example.com/download",
+        checkedAt: "2026-05-20T12:00:00.000Z"
+      };
+      const persisted = {
+        ...defaultPersistedSnapshot(),
+        apps: [installedApp],
+        updates: [previousUpdate],
+        ignoredIDs: ["/Applications/Ignored.app"],
+        additionalDirectories: ["/Applications/Extra"]
+      };
+      const store = await makeStore({
+        persisted,
+        clients: {
+          scanner: { scanApplications: async () => [installedApp] },
+          sparkle: { lookupOutcome: async () => ({ type: "transientFailure" as const }) }
+        }
+      });
+      const expected = expectedUpdate ? [previousUpdate] : [];
+      expect(store.getSnapshot().updates).toEqual(expected);
+      expect(persisted.updates).toEqual([previousUpdate]);
+      await store.refresh(false);
+      expect(store.getSnapshot().updates).toEqual(expected);
+      expect(store.getSnapshot().recentlyUpdated).toEqual([]);
+      expect(store.getSnapshot().ignoredIDs).toEqual(persisted.ignoredIDs);
+      expect(store.getSnapshot().additionalDirectories).toEqual(persisted.additionalDirectories);
+    }
+  );
+
   it("preserves previous Sparkle build-only updates when Sparkle lookup transiently fails", async () => {
     const installedApp = appRecord({
       bundlePath: "/Applications/Sparkle Transient.app",

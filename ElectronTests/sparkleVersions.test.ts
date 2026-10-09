@@ -25,6 +25,60 @@ function release(label: string, build?: string, marketing?: string): string {
 }
 
 describe("Sparkle version representations", () => {
+  it.each([
+    ["2.0 (200)", "200", undefined],
+    ["2.0 (00200)", "200", undefined],
+    ["2.0 (201)", "201", "2.0"],
+    ["2.1 (200)", "200", "2.1"],
+    ["2.0 (201)", "200", "2.0 (201)"],
+    ["2.0 (200) extra", "200", "2.0 (200) extra"],
+    ["2.0(200)", "200", "2.0(200)"],
+    ["2.0 (200)", "200x", "2.0 (200)"],
+    ["2.0 (build 200)", "200", "2.0 (build 200)"],
+    ["2.1", "200", "2.1"]
+  ])(
+    "compares display %s with independently supplied build %s",
+    (marketing, build, expectedMarketing) => {
+      const result = client.parseAppcast(
+        feed(release("app", build, marketing)),
+        version("2.0"),
+        version("200")
+      );
+      if (expectedMarketing === undefined) {
+        expect(result).toBeUndefined();
+      } else {
+        expect(result?.remoteVersion).toEqual(version(expectedMarketing));
+        expect(result?.remoteBuildVersion).toEqual(version(build));
+      }
+    }
+  );
+
+  it("keeps annotation text when separate build metadata is absent", () => {
+    expect(
+      client.parseAppcast(feed(release("app", undefined, "2.0 (200)")), version("2.0"))
+        ?.remoteVersion
+    ).toEqual(version("2.0 (200)"));
+  });
+
+  it.each(["200", "201"])(
+    "preserves prerelease promotion build requirements with decorated build %s",
+    (build) => {
+      const result = client.parseAppcast(
+        feed(release("app", build, `2.0 (${build})`)),
+        version("2.0-beta (200)"),
+        version("200")
+      );
+      expect(Boolean(result)).toBe(build === "201");
+    }
+  );
+
+  it("orders normalized marketing releases without ranking their build annotations", () => {
+    const xml = feed(release("older", "900", "2.0 (900)") + release("newer", "200", "2.1 (200)"));
+    expect(client.parseAppcast(xml, version("1.0"), version("100"))?.updateURL).toBe(
+      "https://example.com/newer.zip"
+    );
+  });
+
   it("reads recommended child elements without losing version formatting", () => {
     const xml = feed(
       `<item><sparkle:version>00200</sparkle:version><sparkle:shortVersionString>2.0</sparkle:shortVersionString><enclosure url="https://example.com/app.zip" /></item>`

@@ -65,6 +65,7 @@ import {
   type OperationFailure
 } from "../shared/operationFailures";
 import type { CatalogueStatus } from "./catalogueCache";
+import { isSparkleVersionNewer, sparkleMarketingVersion } from "../shared/sparkleVersion";
 
 type StoreEvents = {
   snapshot: [BaselineSnapshot];
@@ -2015,6 +2016,10 @@ function persistedUpdateHasValidRuntimeRoute(
   update: UpdateRecord,
   snapshot: PersistedSnapshot
 ): boolean {
+  if (update.source === "sparkle") {
+    const appRecord = snapshot.apps.find((app) => app.id === update.appID);
+    return Boolean(appRecord && isAppUpdateNewerThanInstalledApp(update, appRecord));
+  }
   if (update.source !== "homebrew") {
     return true;
   }
@@ -2170,6 +2175,17 @@ function canPreservePreviousAppUpdate(appRecord: AppRecord, previousUpdate: Upda
 }
 
 function isAppUpdateNewerThanInstalledApp(update: UpdateRecord, appRecord: AppRecord): boolean {
+  if (update.source === "sparkle") {
+    return isSparkleVersionNewer(
+      {
+        parsedVersion: sparkleMarketingVersion(update.remoteVersion, update.remoteBuildVersion),
+        buildVersion: update.remoteBuildVersion ?? version(),
+        hasMarketingVersion: true
+      },
+      sparkleMarketingVersion(appRecord.localVersion, appRecord.bundleVersion),
+      appRecord.bundleVersion
+    );
+  }
   const versionComparison = compareVersions(update.remoteVersion, appRecord.localVersion);
   if (versionComparison > 0) {
     return true;
