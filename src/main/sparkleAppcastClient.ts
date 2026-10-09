@@ -24,7 +24,8 @@ type AppcastItem = {
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
-  textNodeName: "#text"
+  textNodeName: "#text",
+  parseTagValue: false
 });
 
 const prereleaseLabels = new Set([
@@ -87,15 +88,19 @@ export class SparkleAppcastClient {
         ? [channel.item]
         : [];
     const items = rawItems.map(normalizeItem).filter(Boolean) as AppcastItem[];
-    const best = items
+    const candidates = items
       .map((item) => ({
         item,
+        hasMarketingVersion: Boolean(item.shortVersionString?.trim()),
         buildVersion: version(item.buildVersion),
         parsedVersion: version(item.shortVersionString ?? item.buildVersion)
       }))
       .filter(({ parsedVersion }) => !isVersionEmpty(parsedVersion))
-      .filter((candidate) => isAppcastItemNewer(candidate, localVersion, localBuildVersion))
-      .sort((lhs, rhs) => -1 * compareAppcastItems(lhs, rhs))[0];
+      .filter((candidate) => isAppcastItemNewer(candidate, localVersion, localBuildVersion));
+    // Use one comparison domain for the entire pool: switching between
+    // marketing and machine versions per pair can produce a cyclic sort.
+    const useBuildOrder = candidates.some((candidate) => !candidate.hasMarketingVersion);
+    const best = candidates.sort((lhs, rhs) => -compareAppcastItems(lhs, rhs, useBuildOrder))[0];
 
     if (!best) {
       return undefined;
@@ -118,9 +123,26 @@ export class SparkleAppcastClient {
 }
 
 function compareAppcastItems(
-  lhs: { parsedVersion: VersionValue; buildVersion: VersionValue },
-  rhs: { parsedVersion: VersionValue; buildVersion: VersionValue }
+  lhs: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
+  rhs: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
+  useBuildOrder: boolean
 ): number {
+  if (useBuildOrder) {
+    const lhsHasBuild = !isVersionEmpty(lhs.buildVersion);
+    const rhsHasBuild = !isVersionEmpty(rhs.buildVersion);
+    // Marketing-only entries cannot be ranked against machine numbers.
+    // Prefer comparable machine versions, retaining a marketing-only fallback.
+    if (lhsHasBuild !== rhsHasBuild) {
+      return lhsHasBuild ? 1 : -1;
+    }
+    const buildComparison = compareVersions(lhs.buildVersion, rhs.buildVersion);
+    if (buildComparison !== 0) {
+      return buildComparison;
+    }
+    if (lhs.hasMarketingVersion !== rhs.hasMarketingVersion) {
+      return lhs.hasMarketingVersion ? 1 : -1;
+    }
+  }
   const versionComparison = compareVersions(lhs.parsedVersion, rhs.parsedVersion);
   if (versionComparison !== 0) {
     return versionComparison;
@@ -129,10 +151,15 @@ function compareAppcastItems(
 }
 
 function isAppcastItemNewer(
-  item: { parsedVersion: VersionValue; buildVersion: VersionValue },
+  item: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
   localVersion: VersionValue,
   localBuildVersion?: VersionValue
 ): boolean {
+  if (!item.hasMarketingVersion && localBuildVersion && !isVersionEmpty(localBuildVersion)) {
+    return (
+      !isVersionEmpty(item.buildVersion) && isVersionGreater(item.buildVersion, localBuildVersion)
+    );
+  }
   const marketingVersionComparison = compareVersions(item.parsedVersion, localVersion);
   if (marketingVersionComparison > 0) {
     if (
@@ -208,14 +235,29 @@ function releaseCoreVersion(value: VersionValue, tokens: VersionToken[]): Versio
 
 function normalizeItem(item: any): AppcastItem {
   return {
-    shortVersionString:
-      item?.["@_sparkle:shortVersionString"] ?? item?.enclosure?.["@_sparkle:shortVersionString"],
-    buildVersion: item?.["@_sparkle:version"] ?? item?.enclosure?.["@_sparkle:version"],
+    shortVersionString: firstVersionText(
+      item?.["sparkle:shortVersionString"],
+      item?.["@_sparkle:shortVersionString"],
+      item?.enclosure?.["@_sparkle:shortVersionString"]
+    ),
+    buildVersion: firstVersionText(
+      item?.["sparkle:version"],
+      item?.["@_sparkle:version"],
+      item?.enclosure?.["@_sparkle:version"]
+    ),
     enclosureURL: item?.enclosure?.["@_url"],
     releaseNotesURL:
       stringText(item?.["sparkle:releaseNotesLink"]) ?? stringText(item?.releaseNotesLink),
     publicationDate: stringText(item?.pubDate)
   };
+}
+
+function firstVersionText(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const text = stringText(value)?.trim();
+    if (text) return text;
+  }
+  return undefined;
 }
 
 function stringText(value: unknown): string | undefined {
