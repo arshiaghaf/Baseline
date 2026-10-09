@@ -19,6 +19,7 @@ export type HomebrewInventoryResult = {
   items: HomebrewManagedItem[];
   outdatedDetectionSucceeded: boolean;
   outdatedDetectionSucceededByKind: Record<HomebrewManagedItemKind, boolean>;
+  inventoryReadSucceededByKind?: Record<HomebrewManagedItemKind, boolean>;
   warning?: string;
 };
 
@@ -52,6 +53,10 @@ export class HomebrewInventoryClient {
 
     return {
       items: parsed.items,
+      inventoryReadSucceededByKind: {
+        formula: formulaVersions.success,
+        cask: caskVersions.success
+      },
       outdatedDetectionSucceeded: commandSucceeded && parsed.outdatedDetectionSucceeded,
       outdatedDetectionSucceededByKind: {
         formula:
