@@ -22,10 +22,13 @@ export function localAdHocSigningOptions(): MacSigningOptions {
     preAutoEntitlements: false,
     preEmbedProvisioningProfile: false,
     optionsForFile: () => ({
-      hardenedRuntime: true,
+      // Preserve the existing local runtime policy. Ad-hoc signatures have no
+      // Team ID, so hardened library validation cannot load Electron Framework.
+      // Certificate-based distribution signing needs its own runtime policy.
+      hardenedRuntime: false,
       timestamp: "none",
       // V8 needs JIT in the main and renderer processes. No device permissions
-      // or library-validation exceptions are needed by this app.
+      // or disable-library-validation entitlement is added.
       entitlements: ["com.apple.security.cs.allow-jit"]
     })
   };

@@ -29,7 +29,7 @@ describe("macOS package signing policy", () => {
     expect(config.hooks?.postPackage).toBe(verifyPackagedMacSignatures);
     const options = localAdHocSigningOptions().optionsForFile?.("Fixture Helper (Renderer).app");
     expect(options).toEqual({
-      hardenedRuntime: true,
+      hardenedRuntime: false,
       timestamp: "none",
       entitlements: ["com.apple.security.cs.allow-jit"]
     });
