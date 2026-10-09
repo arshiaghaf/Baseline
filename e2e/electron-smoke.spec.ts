@@ -2,11 +2,27 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { _electron as electron, expect, test } from "@playwright/test";
-import { access, mkdtemp, writeFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { defaultPersistedSnapshot } from "../src/shared/domain";
 import { version } from "../src/shared/version";
+
+const profileTestSecret = randomBytes(32).toString("base64url");
+const launchedApps = new Set<Awaited<ReturnType<typeof electron.launch>>>();
+const userDataDirectories = new Set<string>();
+
+test.afterEach(async () => {
+  for (const app of launchedApps) {
+    await app.close();
+  }
+  launchedApps.clear();
+  await Promise.all(
+    [...userDataDirectories].map((directory) => rm(directory, { recursive: true, force: true }))
+  );
+  userDataDirectories.clear();
+});
 
 const expectedBaselineAPI = [
   "acknowledgeProfileStatsReset",
@@ -38,30 +54,37 @@ const expectedBaselineAPI = [
 ];
 
 async function launchBaseline(options: { packaged?: boolean; userData?: string } = {}) {
+  const appDirectory = process.env.BASELINE_E2E_APP_DIR;
+  const executablePath = process.env.BASELINE_E2E_EXECUTABLE;
+  if (!appDirectory || !executablePath) {
+    throw new Error("Run smoke tests through the isolated E2E global setup.");
+  }
   const userData = options.userData ?? (await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-")));
+  if (
+    path.dirname(await realpath(userData)) !== (await realpath(os.tmpdir())) ||
+    !path.basename(userData).startsWith("baseline-e2e-")
+  ) {
+    throw new Error("Electron smoke tests require a disposable temporary user-data directory.");
+  }
+  userDataDirectories.add(userData);
   const common = {
     env: {
       ...process.env,
+      BASELINE_E2E_PROFILE_SECRET: profileTestSecret,
       BASELINE_SKIP_INITIAL_REFRESH: "1",
       BASELINE_USER_DATA_DIR: userData
     }
   };
 
-  if (!options.packaged) {
-    return electron.launch({ ...common, args: ["."] });
+  let app;
+  if (options.packaged) {
+    await access(executablePath);
+    app = await electron.launch({ ...common, executablePath });
+  } else {
+    app = await electron.launch({ ...common, args: [appDirectory] });
   }
-
-  const executablePath = path.join(
-    process.cwd(),
-    "out",
-    `Baseline-darwin-${process.arch}`,
-    "Baseline.app",
-    "Contents",
-    "MacOS",
-    "Baseline"
-  );
-  await access(executablePath);
-  return electron.launch({ ...common, executablePath });
+  launchedApps.add(app);
+  return app;
 }
 
 async function closeApp(app: Awaited<ReturnType<typeof electron.launch>>) {
@@ -82,11 +105,19 @@ async function closeApp(app: Awaited<ReturnType<typeof electron.launch>>) {
       throw error;
     });
   await closePromise;
+  launchedApps.delete(app);
 }
 
 test("launches the Electron shell and renders the dashboard", async () => {
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
   const app = await launchBaseline({ userData });
+  const runtime = await app.evaluate(() => ({
+    electron: process.versions.electron,
+    node: process.versions.node
+  }));
+  expect(runtime.electron?.split(".")[0]).toBe("44");
+  expect(runtime.node.split(".")[0]).toBe("24");
+  console.log(`Smoke runtime: Electron ${runtime.electron}; Node ${runtime.node}`);
 
   const page = await app.firstWindow();
   await expect(page).toHaveTitle("Baseline");
@@ -124,6 +155,9 @@ test("launches the Electron shell and renders the dashboard", async () => {
     )
     .toBe(true);
   await expect(page.evaluate(() => typeof window.baseline.getSnapshot())).resolves.toBe("object");
+  await expect
+    .poll(() => page.evaluate(async () => (await window.baseline.getSnapshot()).profileStats))
+    .toMatchObject({ integrityStatus: "verified", events: [], signature: expect.any(String) });
 
   await closeApp(app);
 });
@@ -132,6 +166,12 @@ test("persists preferences across Electron relaunches", async () => {
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
   const firstApp = await launchBaseline({ userData });
   const firstPage = await firstApp.firstWindow();
+  await expect
+    .poll(() => firstPage.evaluate(async () => (await window.baseline.getSnapshot()).profileStats))
+    .toMatchObject({ integrityStatus: "verified" });
+  const firstSignature = await firstPage.evaluate(
+    async () => (await window.baseline.getSnapshot()).profileStats.signature
+  );
 
   await firstPage.evaluate(async () => {
     await window.baseline.updatePreferences({
@@ -145,6 +185,9 @@ test("persists preferences across Electron relaunches", async () => {
 
   const secondApp = await launchBaseline({ userData });
   const secondPage = await secondApp.firstWindow();
+  await expect
+    .poll(() => secondPage.evaluate(async () => (await window.baseline.getSnapshot()).profileStats))
+    .toMatchObject({ integrityStatus: "verified", signature: firstSignature });
   await expect
     .poll(() => secondPage.evaluate(async () => window.baseline.getSnapshot()))
     .toMatchObject({
