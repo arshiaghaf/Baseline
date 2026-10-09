@@ -117,7 +117,7 @@ describe("catalogue freshness and last-good indexes", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it.each(["no-store", "no-cache"])(
+  it.each(["no-store", "no-cache", "max-age=0"])(
     "reports a live %s response as current while still revalidating the next request",
     async (directive) => {
       const { cache, fetchMock } = fixture();
@@ -138,6 +138,31 @@ describe("catalogue freshness and last-good indexes", () => {
       );
     }
   );
+
+  it("retains revalidation policy and updated validators when a 304 omits cache-control", async () => {
+    const { cache, fetchMock, parse } = fixture();
+    fetchMock.mockResolvedValueOnce(
+      new Response('["fresh"]', {
+        headers: { "cache-control": "no-cache", etag: '"first"' }
+      })
+    );
+    const first = await cache.fetch();
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 304, headers: { etag: '"second"' } })
+    );
+    expect(await cache.fetch()).toBe(first);
+    expect(cache.status).toMatchObject({ stale: false, unavailable: false });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 304 }));
+    expect(await cache.fetch()).toBe(first);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        headers: { "If-None-Match": '"second"' }
+      })
+    );
+    expect(parse).toHaveBeenCalledTimes(1);
+  });
 
   it("reports a no-store 304 as a live success and discards its validators", async () => {
     const { cache, fetchMock, response } = fixture();
