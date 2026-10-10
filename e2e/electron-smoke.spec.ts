@@ -217,7 +217,7 @@ test("shows explanatory Homebrew cleanup row at narrow and wide Settings sizes",
     expect(await cleanUp.evaluate((button) => getComputedStyle(button).backgroundColor)).toBe(
       "rgb(255, 59, 48)"
     );
-    await page.screenshot({ path: `/tmp/baseline-maintenance-row-${width}.png` });
+    await page.screenshot({ path: test.info().outputPath(`maintenance-row-${width}.png`) });
   }
   expect(errors).toEqual([]);
   await closeApp(app);
@@ -267,36 +267,39 @@ test("reuses the main window without duplicate setup", async () => {
   const page = await app.firstWindow();
   await expect(page.locator("h1")).toContainText("All");
 
-  const ownMainCloseListenerCount = () =>
-    app.evaluate(
-      ({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()[0]
-          ?.rawListeners("close")
-          .filter((listener) => listener.name === "handleMainWindowClose").length
-    );
-
-  const initialCloseListeners = await app.evaluate(({ BrowserWindow }) => {
+  const initialWindow = await app.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
-    if (!window) {
-      throw new Error("Expected a main window.");
-    }
+    if (!window) throw new Error("Expected a main window.");
     (globalThis as typeof globalThis & { __baselineLoadCount?: number }).__baselineLoadCount = 0;
     window.webContents.on("did-start-loading", () => {
       const globals = globalThis as typeof globalThis & { __baselineLoadCount?: number };
       globals.__baselineLoadCount = (globals.__baselineLoadCount ?? 0) + 1;
     });
-    return window
-      .rawListeners("close")
-      .filter((listener) => listener.name === "handleMainWindowClose").length;
+    window.hide();
+    return {
+      id: window.id,
+      webContentsID: window.webContents.id,
+      closeListeners: window.listenerCount("close")
+    };
   });
+  expect(initialWindow.closeListeners).toBeGreaterThan(0);
 
   await page.evaluate(async () => {
     await window.baseline.showMainWindow();
     await window.baseline.showMainWindow();
   });
-  await page.waitForTimeout(250);
-
-  await expect(ownMainCloseListenerCount()).resolves.toBe(initialCloseListeners);
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().map((window) => ({
+          id: window.id,
+          webContentsID: window.webContents.id,
+          closeListeners: window.listenerCount("close"),
+          visible: window.isVisible()
+        }))
+      )
+    )
+    .toEqual([{ ...initialWindow, visible: true }]);
   await expect(
     app.evaluate(
       () => (globalThis as typeof globalThis & { __baselineLoadCount?: number }).__baselineLoadCount

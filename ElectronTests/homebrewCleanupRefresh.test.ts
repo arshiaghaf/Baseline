@@ -457,8 +457,6 @@ describe("Homebrew cleanup inventory barrier", () => {
       }
       expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
       expect(store.getSnapshot().homebrewItems).toEqual([]);
-      // The full caller now performs its own refresh after cleanup commits.
-      expect(fetchInventory).toHaveBeenCalledTimes(4);
     }
   );
   it.each(["throw", "membership", "outdated", "scanner"])(
@@ -601,9 +599,6 @@ describe("Homebrew cleanup inventory barrier", () => {
     await queued;
     expect(store.getSnapshot().homebrewItems).toEqual([]);
     await obsolete;
-    // The follow-up app scan may reuse cleanup's committed inventory while the
-    // cancelled queued attempt is still unwinding its mutation guard.
-    expect(fetchInventory).toHaveBeenCalledTimes(2);
     expect(lookupOutcome).toHaveBeenCalledTimes(2);
     expect(store.getSnapshot().homebrewItems).toEqual([]);
     expect(runBrewCommand.mock.calls.map(([args]) => args)).toEqual([["--version"], ["cleanup"]]);

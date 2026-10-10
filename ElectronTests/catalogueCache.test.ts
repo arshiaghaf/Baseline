@@ -145,6 +145,12 @@ describe("catalogue freshness and last-good indexes", () => {
       fetchMock.mockRejectedValueOnce(new Error("offline"));
       expect(await cache.fetch()).toEqual(directive === "no-store" ? [] : delivered);
       expect(fetchMock).toHaveBeenCalledTimes(status === 304 ? 3 : 2);
+      if (directive === "no-store") {
+        expect(fetchMock).toHaveBeenLastCalledWith(
+          expect.anything(),
+          expect.objectContaining({ headers: {} })
+        );
+      }
       expect(cache.status).toMatchObject(
         directive === "no-store"
           ? { stale: false, unavailable: true }
@@ -176,26 +182,6 @@ describe("catalogue freshness and last-good indexes", () => {
       })
     );
     expect(parse).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports a no-store 304 as a live success and discards its validators", async () => {
-    const { cache, fetchMock, response } = fixture();
-    fetchMock.mockResolvedValueOnce(response());
-    const first = await cache.fetch();
-    fetchMock.mockResolvedValueOnce(
-      new Response(null, {
-        status: 304,
-        headers: { "cache-control": "no-store" }
-      })
-    );
-    expect(await cache.fetch({ force: true })).toBe(first);
-    expect(cache.status).toMatchObject({ stale: false, unavailable: false });
-    fetchMock.mockResolvedValueOnce(new Response('["next"]'));
-    await cache.fetch();
-    expect(fetchMock).toHaveBeenLastCalledWith(
-      expect.anything(),
-      expect.objectContaining({ headers: {} })
-    );
   });
 
   it.each([HomebrewCaskClient, HomebrewFormulaClient])(

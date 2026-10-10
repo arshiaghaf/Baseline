@@ -20,7 +20,7 @@ module.exports = [
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "ElectronTests/**/*.{ts,tsx}", "e2e/**/*.ts"],
     languageOptions: {
       parserOptions: {
         projectService: true,

@@ -8,7 +8,7 @@ with Vite, React, TypeScript, and Tailwind.
 Requirements:
 
 - macOS
-- Node.js 25 or newer
+- Node.js 24 (the version used by CI)
 - npm
 
 Install dependencies:

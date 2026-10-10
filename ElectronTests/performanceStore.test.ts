@@ -175,23 +175,67 @@ describe("performance store integration", () => {
 
   it("progress avoids full inventory snapshots and preserves terminal delivery", async () => {
     vi.useFakeTimers();
-    const { store } = await fixture();
+    const item = {
+      id: "formula:example",
+      token: "example",
+      name: "Example",
+      kind: "formula" as const,
+      formulaIdentity: { name: "example", fullName: "example", tap: "homebrew/core", oldNames: [] },
+      installedVersion: version("1"),
+      latestVersion: version("2"),
+      isOutdated: true
+    };
+    let output!: (line: string) => void;
+    let started!: () => void;
+    let finish!: () => void;
+    const commandStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const commandFinished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const { store } = await fixture({
+      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+      runBrewCommand: async (_args, onOutputLine) => {
+        output = onOutputLine!;
+        started();
+        await commandFinished;
+        return { success: false, status: 1, output: "Synthetic command failure" };
+      }
+    });
+    await store.refresh(true);
     const full = vi.fn();
     const progress = vi.fn();
     store.on("snapshot", full);
     store.on("progress", progress);
-    const patch = (store as unknown as { patch: (value: object) => void }).patch.bind(store);
-    patch({ homebrewBatchProgressByItemID: { "formula:example": 0.2 } });
-    patch({ homebrewBatchProgressByItemID: { "formula:example": 0.3 } });
-    expect(full).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(100);
-    expect(progress).toHaveBeenCalledTimes(1);
-    patch({ homebrewBatchProgressByItemID: { "formula:example": 1 } });
-    expect(progress).toHaveBeenCalledTimes(2);
-    patch({ homebrewBatchFailedItemIDs: ["formula:example"] });
-    expect(full).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(100);
-    expect(progress).toHaveBeenCalledTimes(2);
+    const update = store.performHomebrewUpdate(item.id);
+    await commandStarted;
+    try {
+      full.mockClear();
+      progress.mockClear();
+      output("Downloading example");
+      output("Installing example");
+      expect(full).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(progress).toHaveBeenCalledTimes(1);
+      expect(
+        progress.mock.calls[0]![0].patch.homebrewBatchProgressByItemID[item.id]
+      ).toBeGreaterThan(0);
+      expect(progress.mock.calls[0]![0].patch.homebrewBatchProgressByItemID[item.id]).toBeLessThan(
+        1
+      );
+      output("🍺 example was successfully installed");
+      expect(progress).toHaveBeenCalledTimes(2);
+      expect(progress.mock.calls[1]![0].patch.homebrewBatchProgressByItemID[item.id]).toBe(1);
+      output("Error: failed to finalize example");
+      expect(full).toHaveBeenCalledTimes(1);
+      expect(store.getSnapshot().homebrewBatchFailedItemIDs).toContain(item.id);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(progress).toHaveBeenCalledTimes(2);
+    } finally {
+      finish();
+      await update;
+    }
   });
 });
 

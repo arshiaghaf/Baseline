@@ -91,24 +91,6 @@ describe("ported clients", () => {
     expect(client.parseLookupResponse(betaRelease, version("1.0.0"))).toBeUndefined();
   });
 
-  it("rejects iOS App Store records when installed app evidence is not enabled", () => {
-    const data = Buffer.from(
-      JSON.stringify({
-        resultCount: 1,
-        results: [
-          {
-            kind: "software",
-            bundleId: "com.example.ios-only",
-            trackId: 123,
-            version: "2.0"
-          }
-        ]
-      })
-    );
-
-    expect(new AppStoreLookupClient().parseLookupResponse(data, version("1.0"))).toBeUndefined();
-  });
-
   it("accepts Mac-capable App Store software records only when fallback is enabled", () => {
     const data = Buffer.from(
       JSON.stringify({
@@ -159,7 +141,8 @@ describe("ported clients", () => {
 
     expect(
       new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
-        bundleIdentifier: "com.example.ios-only"
+        bundleIdentifier: "com.example.ios-only",
+        includeMacCapableAppStoreSoftware: true
       })
     ).toBeUndefined();
   });
@@ -697,67 +680,30 @@ describe("ported clients", () => {
     expect(index.byBundleIdentifier["com.example.schema-drift"]?.token).toBe("schema-drift-app");
   });
 
-  it("keeps explicit bundle identifiers when newer casks only infer the same identifier", () => {
-    const client = new HomebrewCaskClient();
-    const index = client.parseIndex(
-      Buffer.from(
-        JSON.stringify([
-          {
-            token: "explicit-owner",
-            version: "1.0.0",
-            bundleIdentifier: "com.example.shared"
-          },
-          {
-            token: "inferred-owner",
-            version: "2.0.0",
-            artifacts: [
-              {
-                uninstall: [
-                  {
-                    quit: "com.example.shared"
-                  }
-                ]
-              },
-              { pkg: ["InferredOwner.pkg"] }
-            ]
-          }
-        ])
-      )
-    );
-
-    expect(index.byBundleIdentifier["com.example.shared"]?.token).toBe("explicit-owner");
-  });
-
-  it("indexes explicit bundle identifiers even when older casks only infer the same identifier", () => {
-    const client = new HomebrewCaskClient();
-    const index = client.parseIndex(
-      Buffer.from(
-        JSON.stringify([
-          {
-            token: "inferred-owner",
-            version: "2.0.0",
-            artifacts: [
-              {
-                uninstall: [
-                  {
-                    quit: "com.example.shared"
-                  }
-                ]
-              },
-              { pkg: ["InferredOwner.pkg"] }
-            ]
-          },
-          {
-            token: "explicit-owner",
-            version: "1.0.0",
-            bundleIdentifier: "com.example.shared"
-          }
-        ])
-      )
-    );
-
-    expect(index.byBundleIdentifier["com.example.shared"]?.token).toBe("explicit-owner");
-  });
+  it.each([false, true])(
+    "prefers explicit bundle identifiers over newer inferred identifiers (explicit first=%s)",
+    (explicitFirst) => {
+      const entries = [
+        {
+          token: "explicit-owner",
+          version: "1.0.0",
+          bundleIdentifier: "com.example.shared"
+        },
+        {
+          token: "inferred-owner",
+          version: "2.0.0",
+          artifacts: [
+            { uninstall: [{ quit: "com.example.shared" }] },
+            { pkg: ["InferredOwner.pkg"] }
+          ]
+        }
+      ];
+      const index = new HomebrewCaskClient().parseIndex(
+        Buffer.from(JSON.stringify(explicitFirst ? entries : entries.reverse()))
+      );
+      expect(index.byBundleIdentifier["com.example.shared"]?.token).toBe("explicit-owner");
+    }
+  );
 
   it("does not treat non-app artifact targets as app bundle names", () => {
     const client = new HomebrewCaskClient();
@@ -869,6 +815,7 @@ describe("ported clients", () => {
   it("keeps formula indexes bounded by the formula byte limit", () => {
     const client = new HomebrewFormulaClient();
     const payload = Buffer.alloc(byteLimits.homebrewFormulaIndexMaxBytes + 1, " ");
+    payload.write(JSON.stringify([{ name: "oversized-formula", versions: { stable: "1" } }]));
 
     expect(client.parseIndex(payload)).toEqual({ byToken: {} });
   });
@@ -876,6 +823,7 @@ describe("ported clients", () => {
   it("keeps cask indexes bounded by the cask byte limit", () => {
     const client = new HomebrewCaskClient();
     const payload = Buffer.alloc(byteLimits.homebrewCaskIndexMaxBytes + 1, " ");
+    payload.write(JSON.stringify([{ token: "oversized-cask", version: "1" }]));
 
     const index = client.parseIndex(payload);
 
@@ -973,77 +921,36 @@ describe("ported clients", () => {
     expect(cursor?.latestVersion?.raw).toBe("3.2.16");
   });
 
-  it("compares GitHub latest release metadata for Baseline self-updates", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          tag_name: "v0.2.0",
-          html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
-        }),
-        { status: 200 }
-      )
-    );
+  it.each([
+    ["0.1.0", true],
+    ["0.2.0", false],
+    ["0.3.0", false]
+  ] as const)(
+    "compares the latest self-update release against current version %s (available=%s)",
+    async (currentVersion, available) => {
+      const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            tag_name: "v0.2.0",
+            html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
+          }),
+          { status: 200 }
+        )
+      );
 
-    try {
-      await expect(
-        new SelfUpdateClient().lookup(version("0.1.0"), "2026-05-31T12:00:00.000Z")
-      ).resolves.toMatchObject({
-        available: true,
-        currentVersion: version("0.1.0"),
-        latestVersion: version("v0.2.0"),
-        releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0",
-        checkedAt: "2026-05-31T12:00:00.000Z"
-      });
-    } finally {
-      fetchMock.mockRestore();
+      try {
+        await expect(
+          new SelfUpdateClient().lookup(version(currentVersion), "2026-05-31T12:00:00.000Z")
+        ).resolves.toMatchObject({
+          available,
+          currentVersion: version(currentVersion),
+          latestVersion: version("v0.2.0"),
+          releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0",
+          checkedAt: "2026-05-31T12:00:00.000Z"
+        });
+      } finally {
+        fetchMock.mockRestore();
+      }
     }
-  });
-
-  it("does not offer self-updates when the local build is already at the release version", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          tag_name: "v0.2.0",
-          html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
-        }),
-        { status: 200 }
-      )
-    );
-
-    try {
-      await expect(
-        new SelfUpdateClient().lookup(version("0.2.0"), "2026-05-31T12:00:00.000Z")
-      ).resolves.toMatchObject({
-        available: false,
-        currentVersion: version("0.2.0"),
-        latestVersion: version("v0.2.0")
-      });
-    } finally {
-      fetchMock.mockRestore();
-    }
-  });
-
-  it("does not offer self-updates when the local build is ahead of the latest release", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          tag_name: "v0.2.0",
-          html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
-        }),
-        { status: 200 }
-      )
-    );
-
-    try {
-      await expect(
-        new SelfUpdateClient().lookup(version("0.3.0"), "2026-05-31T12:00:00.000Z")
-      ).resolves.toMatchObject({
-        available: false,
-        currentVersion: version("0.3.0"),
-        latestVersion: version("v0.2.0")
-      });
-    } finally {
-      fetchMock.mockRestore();
-    }
-  });
+  );
 });

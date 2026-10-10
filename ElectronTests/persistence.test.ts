@@ -114,31 +114,38 @@ describe("snapshot persistence", () => {
     ]);
   });
 
-  it("defaults the appearance preference on older snapshots", async () => {
+  it("defaults preferences and profile history on older snapshots", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);
-    await mkdir(userData, { recursive: true });
     await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
 
-    const persistence = new SnapshotPersistence(userData);
-
-    await expect(persistence.load()).resolves.toMatchObject({
-      appearancePreference: "system"
+    const loaded = await new SnapshotPersistence(userData).load();
+    expect(loaded).toMatchObject({
+      appearancePreference: "system",
+      showMenuBarIcon: true,
+      profileStats: { events: [], integrityStatus: "pending" }
     });
+    expect(Number.isFinite(new Date(loaded.profileStats.startedUsingAt).getTime())).toBe(true);
   });
 
-  it("preserves the appearance preference across save and load", async () => {
+  it("round-trips appearance, menu bar visibility and collapsed section preferences", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);
     const persistence = new SnapshotPersistence(userData);
 
     await persistence.save({
       ...defaultPersistedSnapshot(),
-      appearancePreference: "dark"
+      appearancePreference: "dark",
+      showMenuBarIcon: false,
+      collapsedAppSectionIDs: ["ignored", "installed"],
+      collapsedHomebrewSectionIDs: ["discover", "recentlyUpdated"]
     });
 
     await expect(persistence.load()).resolves.toMatchObject({
-      appearancePreference: "dark"
+      appearancePreference: "dark",
+      showMenuBarIcon: false,
+      collapsedAppSectionIDs: ["ignored", "installed"],
+      collapsedHomebrewSectionIDs: ["discover", "recentlyUpdated"]
     });
   });
 
@@ -171,96 +178,6 @@ describe("snapshot persistence", () => {
 
     await expect(persistence.load()).resolves.toMatchObject({
       appearancePreference: "system"
-    });
-  });
-
-  it("defaults the menu bar icon preference on older snapshots", async () => {
-    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
-    tempDirs.push(userData);
-    await mkdir(userData, { recursive: true });
-    await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
-
-    const persistence = new SnapshotPersistence(userData);
-
-    await expect(persistence.load()).resolves.toMatchObject({
-      showMenuBarIcon: true
-    });
-  });
-
-  it("preserves the menu bar icon preference across save and load", async () => {
-    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
-    tempDirs.push(userData);
-    const persistence = new SnapshotPersistence(userData);
-
-    await persistence.save({
-      ...defaultPersistedSnapshot(),
-      showMenuBarIcon: false
-    });
-
-    await expect(persistence.load()).resolves.toMatchObject({
-      showMenuBarIcon: false
-    });
-  });
-
-  it("preserves collapsed section preferences across save and load", async () => {
-    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
-    tempDirs.push(userData);
-    const persistence = new SnapshotPersistence(userData);
-
-    await persistence.save({
-      ...defaultPersistedSnapshot(),
-      collapsedAppSectionIDs: ["ignored", "installed"],
-      collapsedHomebrewSectionIDs: ["discover", "recentlyUpdated"]
-    });
-
-    await expect(persistence.load()).resolves.toMatchObject({
-      collapsedAppSectionIDs: ["ignored", "installed"],
-      collapsedHomebrewSectionIDs: ["discover", "recentlyUpdated"]
-    });
-  });
-
-  it("defaults profile stats on older snapshots", async () => {
-    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
-    tempDirs.push(userData);
-    await mkdir(userData, { recursive: true });
-    await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
-
-    const persistence = new SnapshotPersistence(userData);
-
-    const loaded = await persistence.load();
-    expect(loaded.profileStats.events).toEqual([]);
-    expect(loaded.profileStats.integrityStatus).toBe("pending");
-  });
-
-  it("defaults the started using date on older snapshots", async () => {
-    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
-    tempDirs.push(userData);
-    await mkdir(userData, { recursive: true });
-    await writeFile(path.join(userData, "baseline-snapshot.json"), "{}\n", "utf8");
-
-    const persistence = new SnapshotPersistence(userData);
-
-    const loaded = await persistence.load();
-    expect(Number.isFinite(new Date(loaded.profileStats.startedUsingAt).getTime())).toBe(true);
-  });
-
-  it("preserves the started using date across save and load", async () => {
-    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
-    tempDirs.push(userData);
-    const persistence = new SnapshotPersistence(userData);
-
-    await persistence.save({
-      ...defaultPersistedSnapshot(),
-      profileStats: {
-        ...defaultPersistedSnapshot().profileStats,
-        startedUsingAt: "2026-06-01T12:00:00.000Z"
-      }
-    });
-
-    await expect(persistence.load()).resolves.toMatchObject({
-      profileStats: {
-        startedUsingAt: "2026-06-01T12:00:00.000Z"
-      }
     });
   });
 
