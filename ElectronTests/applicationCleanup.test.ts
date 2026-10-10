@@ -5,7 +5,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { cleanupApplications } from "../e2e/applicationCleanup";
 
 const children = new Set<ChildProcess>();
@@ -55,18 +55,25 @@ afterEach(async () => {
   children.clear();
 });
 
-test("bounds a stalled close, drains other owned processes, and leaves unrelated processes alive", async () => {
+test("reports a stalled close after draining owned processes and leaves unrelated processes alive", async () => {
   const stalled = await startChild();
   const healthy = await startChild();
   const unrelated = await startChild();
-  await cleanupApplications(
-    [
-      { process: () => stalled, close: () => new Promise<void>(() => undefined) },
-      gracefulApplication(healthy)
-    ],
-    undefined,
-    100
-  );
+  await expect(
+    cleanupApplications(
+      [
+        { process: () => stalled, close: () => new Promise<void>(() => undefined) },
+        gracefulApplication(healthy)
+      ],
+      undefined,
+      100
+    )
+  ).rejects.toMatchObject({
+    message: expect.stringContaining("graceful close exceeded"),
+    errors: [
+      expect.objectContaining({ message: expect.stringContaining("graceful close exceeded") })
+    ]
+  });
   expect(stalled.signalCode).toBe("SIGKILL");
   expect(healthy.exitCode).toBe(0);
   expect(unrelated.exitCode).toBeNull();
@@ -107,11 +114,17 @@ test("a stalled detached application also releases its child processes", async (
   children.add(parent);
   const [descendantPID] = await once(parent, "message");
   try {
-    await cleanupApplications(
-      [{ process: () => parent, close: () => new Promise<void>(() => undefined) }],
-      undefined,
-      100
-    );
+    await expect(
+      cleanupApplications(
+        [{ process: () => parent, close: () => new Promise<void>(() => undefined) }],
+        undefined,
+        100
+      )
+    ).rejects.toMatchObject({
+      errors: [
+        expect.objectContaining({ message: expect.stringContaining("graceful close exceeded") })
+      ]
+    });
     await expect
       .poll(() => {
         try {
@@ -126,5 +139,38 @@ test("a stalled detached application also releases its child processes", async (
   } finally {
     // Retain cleanup even if a regression kills only the parent.
     killDetachedGroup(parent);
+  }
+});
+
+test("an exit during fallback termination preserves the original graceful-close failure", async () => {
+  const child = await startChild();
+  const healthy = await startChild();
+  const originalKill = process.kill.bind(process);
+  const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
+    if (pid === -child.pid! && signal === "SIGKILL") {
+      child.kill("SIGKILL");
+      throw Object.assign(new Error("Process group already exited"), { code: "ESRCH" });
+    }
+    return originalKill(pid, signal);
+  });
+  try {
+    await expect(
+      cleanupApplications(
+        [
+          { process: () => child, close: () => new Promise<void>(() => undefined) },
+          gracefulApplication(healthy)
+        ],
+        undefined,
+        100
+      )
+    ).rejects.toMatchObject({
+      errors: [
+        expect.objectContaining({ message: expect.stringContaining("graceful close exceeded") })
+      ]
+    });
+    expect(child.signalCode).toBe("SIGKILL");
+    expect(healthy.exitCode).toBe(0);
+  } finally {
+    kill.mockRestore();
   }
 });

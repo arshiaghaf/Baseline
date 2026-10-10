@@ -52,13 +52,23 @@ export async function cleanupApplications<Application extends OwnedApplication>(
         })();
         const result = await settledWithin(closing, timeoutMilliseconds);
         if (result.status !== "fulfilled" && !hasExited()) {
-          if (process.platform === "win32") child.kill("SIGKILL");
-          else if (child.pid) process.kill(-child.pid, "SIGKILL");
+          try {
+            if (process.platform === "win32") child.kill("SIGKILL");
+            else if (child.pid) process.kill(-child.pid, "SIGKILL");
+          } catch (error) {
+            // The process group can finish between the exit check and kill.
+            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+          }
         }
         if ((await settledWithin(exited, timeoutMilliseconds)).status === "timeout") {
           throw new Error(`Test-owned application ${child.pid} did not exit; retain its fixtures.`);
         }
         if (result.status === "rejected") throw result.reason;
+        if (result.status === "timeout") {
+          throw new Error(
+            `Test-owned application ${child.pid} graceful close exceeded ${timeoutMilliseconds}ms.`
+          );
+        }
       } finally {
         if (onClose) child.removeListener("close", onClose);
       }
@@ -67,5 +77,10 @@ export async function cleanupApplications<Application extends OwnedApplication>(
   const failures = results.flatMap((result) =>
     result.status === "rejected" ? [result.reason] : []
   );
-  if (failures.length) throw new AggregateError(failures, "Test application cleanup failed.");
+  if (failures.length) {
+    const detail = failures.map((reason) =>
+      reason instanceof Error ? reason.message : String(reason)
+    );
+    throw new AggregateError(failures, `Test application cleanup failed. ${detail.join("; ")}`);
+  }
 }
