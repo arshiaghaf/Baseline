@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { build, loadConfigFromFile, mergeConfig } from "vite";
 import { assertIsolatedIntegrityBundle, assertProductionIntegrityBundle } from "./bundleIsolation";
 import { localAdHocSigningOptions, verifyMacBundle } from "../macSigning.config";
+import { isAffectedFullScreenImage, nativeFullScreenSkipReason } from "./fullScreenCapability";
 
 // Never launch production startup during smoke tests: it can access the host Keychain.
 // Instrument only a disposable copy of the packaged build, leaving out/ untouched.
@@ -60,39 +61,24 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       { timeout: 120_000 }
     );
     process.env.BASELINE_E2E_FULLSCREEN_FIXTURE = fullScreenFixture;
-    if (process.arch === "x64" && process.env.GITHUB_ACTIONS === "true") {
-      // Targeted standalone control: no Baseline/Electron process is running.
-      // Record native events without changing OS preferences or permissions.
-      const probe = await promisify(execFile)(fullScreenFixture, ["--diagnose"], {
-        timeout: 20_000
-      });
-      console.log("Standalone native full-screen probe:", probe.stderr.trim());
-      const agent = await promisify(execFile)(
-        "/bin/launchctl",
-        ["print", `gui/${process.getuid?.()}/com.apple.iconservices.iconservicesagent`],
-        { timeout: 5000 }
-      ).catch(() => undefined);
-      console.log(
-        "Runner icon-agent state:",
-        agent?.stdout
-          .split("\n")
-          .filter((line) =>
-            /state =|runs =|successive crashes =|last terminating signal =/.test(line)
-          )
-          .join("\n") ?? "unavailable"
-      );
-      const windowServices = await promisify(execFile)(
-        "/usr/bin/pgrep",
-        ["-l", "Dock|WindowServer"],
-        { timeout: 5000 }
-      ).catch(() => undefined);
-      console.log("Runner window services:", windowServices?.stdout.trim() ?? "unavailable");
-      const displays = await promisify(execFile)(
-        "/usr/sbin/system_profiler",
-        ["SPDisplaysDataType"],
-        { timeout: 10_000 }
-      ).catch(() => undefined);
-      console.log("Runner display capability:", displays?.stdout.trim() ?? "unavailable");
+    delete process.env.BASELINE_E2E_FULLSCREEN_SKIP_REASON;
+    if (
+      process.platform === "darwin" &&
+      process.arch === "x64" &&
+      process.env.GITHUB_ACTIONS === "true"
+    ) {
+      const image = await readFile(path.join(os.homedir(), "imagedata.json"), "utf8");
+      if (isAffectedFullScreenImage(image)) {
+        const probe = await promisify(execFile)(fullScreenFixture, ["--probe"], {
+          timeout: 20_000
+        });
+        const reason = nativeFullScreenSkipReason(probe.stdout);
+        console.log("Native full-screen capability on image 20260824.0517.1:", probe.stdout.trim());
+        if (reason) {
+          process.env.BASELINE_E2E_FULLSCREEN_SKIP_REASON = reason;
+          console.log(reason);
+        }
+      }
     }
     const appDirectory = path.join(temporaryDirectory, "app");
     extractAll(archivePath(productionApp), appDirectory);

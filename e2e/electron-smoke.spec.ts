@@ -617,6 +617,8 @@ test("routes native tray events with the Dock hidden and protects a running upda
 
 test("opens a keyboard-usable popover over another app's full-screen Space", async () => {
   test.skip(process.platform !== "darwin", "macOS full-screen Spaces behavior");
+  const unavailable = process.env.BASELINE_E2E_FULLSCREEN_SKIP_REASON;
+  test.skip(Boolean(unavailable), unavailable);
   const application = await launchBaseline({ packaged: true });
   const page = await application.firstWindow();
   await expect(page.locator("h1")).toContainText("All");

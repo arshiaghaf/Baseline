@@ -11,31 +11,38 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var window: NSWindow?
     private var transitionRequested = false
     private var termination: DispatchSourceSignal?
-    private let diagnostic = CommandLine.arguments.contains("--diagnose")
+    private let probeMode = CommandLine.arguments.contains("--probe")
+    private var transitionStarted = false
+    private var probeReported = false
 
-    private func report(_ phase: String) {
-        guard diagnostic else { return }
+    private func finishProbe(_ status: String) {
+        guard probeMode, !probeReported, let window else { return }
+        probeReported = true
         let session = CGSessionCopyCurrentDictionary() as? [String: Any]
-        let state: [String: Any] = [
-            "phase": phase,
-            "active": NSApp.isActive,
-            "frontmostPID": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? -1,
-            "onConsole": session?["kCGSSessionOnConsoleKey"] as? Bool ?? false,
-            "loginDone": session?["kCGSessionLoginDoneKey"] as? Bool ?? false,
-            "visible": window?.isVisible ?? false,
-            "key": window?.isKeyWindow ?? false,
-            "onActiveSpace": window?.isOnActiveSpace ?? false,
-            "styleMask": window?.styleMask.rawValue ?? 0,
-            "collectionBehavior": window?.collectionBehavior.rawValue ?? 0,
-            "fullScreen": window?.styleMask.contains(.fullScreen) ?? false,
-            "screenSize": [window?.screen?.frame.width ?? 0, window?.screen?.frame.height ?? 0],
-            "displayActive": CGDisplayIsActive(CGMainDisplayID()),
-            "displayAsleep": CGDisplayIsAsleep(CGMainDisplayID()),
-            "reduceMotion": NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let healthyWindow = NSApp.isActive
+            && NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid()
+            && window.isVisible && window.isKeyWindow && window.isOnActiveSpace
+            && window.screen != nil
+            && window.collectionBehavior.contains(.fullScreenPrimary)
+            && window.styleMask.contains(.resizable)
+            && session?["kCGSSessionOnConsoleKey"] as? Bool == true
+            && session?["kCGSessionLoginDoneKey"] as? Bool == true
+            && CGDisplayIsActive(CGMainDisplayID()) != 0
+            && CGDisplayIsAsleep(CGMainDisplayID()) == 0
+        let result: [String: Any] = [
+            "status": status, "healthyWindow": healthyWindow,
+            "transitionStarted": transitionStarted,
+            "fullScreen": window.styleMask.contains(.fullScreen)
         ]
-        if let data = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]) {
-            FileHandle.standardError.write(data + Data("\n".utf8))
+        do {
+            let data = try JSONSerialization.data(withJSONObject: result)
+            print(String(decoding: data, as: UTF8.self))
+            fflush(stdout)
+        } catch {
+            fputs("Native full-screen probe could not encode its result.\n", stderr)
+            exit(EXIT_FAILURE)
         }
+        NSApp.terminate(nil)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -55,11 +62,9 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.collectionBehavior = [.fullScreenPrimary]
         window.delegate = self
         window.makeKeyAndOrderFront(nil)
-        report("launched")
-        if diagnostic {
+        if probeMode {
             DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
-                self.report("deadline")
-                NSApp.terminate(nil)
+                self.finishProbe("stalled")
             }
         }
         NSApp.activate(ignoringOtherApps: true)
@@ -67,30 +72,27 @@ final class FixtureDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        report("became-active")
         enterFullScreen()
     }
 
     private func enterFullScreen() {
         guard let window, !transitionRequested else { return }
         transitionRequested = true
-        report("requested")
         window.toggleFullScreen(nil)
     }
 
     func windowWillEnterFullScreen(_ notification: Notification) {
-        report("will-enter")
+        transitionStarted = true
     }
 
     func windowDidFailToEnterFullScreen(_ window: NSWindow) {
-        report("failed-to-enter")
+        finishProbe("failed")
     }
 
     func windowDidEnterFullScreen(_ notification: Notification) {
         guard let window else { return }
-        report("did-enter")
-        if diagnostic {
-            DispatchQueue.main.async { NSApp.terminate(nil) }
+        if probeMode {
+            finishProbe("completed")
             return
         }
         print(window.windowNumber)
