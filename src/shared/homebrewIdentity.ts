@@ -11,10 +11,24 @@ export function homebrewCommandToken(item: HomebrewManagedItem): string | undefi
   const full = item.fullToken;
   const tap = item.tap;
   if (!full || !tap || !isValidHomebrewToken(full)) return undefined;
-  if (tap === "homebrew/cask") {
-    return full === item.token || full === `${tap}/${item.token}` ? full : undefined;
+  const prefix = `${tap}/`;
+  const fullShortToken = full.startsWith(prefix) ? full.slice(prefix.length) : full;
+  if (
+    !/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(tap) ||
+    fullShortToken.includes("/") ||
+    (tap !== "homebrew/cask" && !full.startsWith(prefix))
+  )
+    return undefined;
+  if (fullShortToken !== item.token) {
+    // Homebrew localizes historical API metadata's token without rewriting its
+    // full_token after a rename. Only installed metadata can prove that alias.
+    const entry = item.caskMetadata;
+    if (entry?.token !== item.token || entry.fullToken !== full || entry.tap !== tap) {
+      return undefined;
+    }
+    return `${tap}/${item.token}`;
   }
-  return full === `${tap}/${item.token}` ? full : undefined;
+  return full;
 }
 
 export function homebrewItemIdentity(item: HomebrewManagedItem): string | undefined {

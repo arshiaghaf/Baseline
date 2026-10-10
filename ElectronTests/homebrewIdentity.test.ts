@@ -88,6 +88,24 @@ describe("installed cask identity", () => {
     }
   );
 
+  it.each(["homebrew/cask", "example/tools"])(
+    "accepts historical full tokens only with installed rename evidence in %s",
+    (tap) => {
+      const fullToken = tap === "homebrew/cask" ? "old-name" : `${tap}/old-name`;
+      const entry = { ...custom, token: "shared-name", fullToken, tap };
+      const item = { ...installed, fullToken, tap, caskMetadata: entry };
+      expect(homebrewCommandToken(item)).toBe(`${tap}/shared-name`);
+      expect(homebrewItemIdentity(item)).toBe(`${tap}/shared-name`);
+      expect(installedCaskEntry(item, catalogue)).toBe(entry);
+      expect(caskIndexForInstalledItems(catalogue, [item]).byToken["shared-name"]).toBe(entry);
+      expect(homebrewCommandToken({ ...item, caskMetadata: undefined })).toBeUndefined();
+      expect(homebrewCommandToken({ ...item, fullToken: "other/tools/old-name" })).toBeUndefined();
+      expect(
+        homebrewCommandToken({ ...item, caskMetadata: { ...entry, token: "other-name" } })
+      ).toBeUndefined();
+    }
+  );
+
   it("preserves verified public casks and rejects mismatched or unsafe full tokens", () => {
     const item = {
       ...installed,

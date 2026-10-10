@@ -129,6 +129,55 @@ describe("HomebrewInventoryClient", () => {
     });
   });
 
+  it.each(["homebrew/cask", "example/tools"])(
+    "retains installed renamed casks with historical full tokens in %s",
+    async (tap) => {
+      commandMock.results.set("list --cask --versions", {
+        success: true,
+        status: 0,
+        output: "renamed-utility 1.0\n"
+      });
+      commandMock.results.set("outdated --cask --greedy --json=v2", {
+        success: true,
+        status: 0,
+        output: JSON.stringify({ casks: [{ name: "renamed-utility", current_version: "2.0" }] })
+      });
+      const fullToken = tap === "homebrew/cask" ? "old-utility" : `${tap}/old-utility`;
+      commandMock.results.set("info --cask --installed --json=v2", {
+        success: true,
+        status: 0,
+        output: JSON.stringify({
+          casks: [
+            {
+              token: "renamed-utility",
+              full_token: fullToken,
+              tap,
+              old_tokens: [],
+              installed: "1.0",
+              version: "2.0",
+              artifacts: [{ app: ["Utility.app"] }]
+            }
+          ]
+        })
+      });
+      const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+      const { homebrewCommandToken } = await import("../src/shared/homebrewIdentity");
+      const result = await new HomebrewInventoryClient().fetchInventory();
+      const item = result.items.find((item) => item.kind === "cask")!;
+      expect(item).toMatchObject({
+        id: "cask:renamed-utility",
+        token: "renamed-utility",
+        fullToken,
+        tap,
+        isOutdated: true,
+        latestVersion: { raw: "2.0" },
+        caskMetadata: { token: "renamed-utility", fullToken, tap, presentation: "app" }
+      });
+      expect(homebrewCommandToken(item)).toBe(`${tap}/renamed-utility`);
+      expect(result.warning).toBeUndefined();
+    }
+  );
+
   it.each([
     "{}",
     "invalid",

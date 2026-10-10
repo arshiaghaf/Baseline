@@ -335,7 +335,10 @@ async function applyInstalledCaskMetadata(
     if (item.kind !== "cask") continue;
     const matches = casks.filter((cask) => cask?.token === item.token && cask.installed != null);
     const raw = matches.length === 1 ? matches[0] : undefined;
-    const candidate = { ...item, fullToken: raw?.full_token, tap: raw?.tap };
+    const entry = raw
+      ? client.parseIndex(Buffer.from(JSON.stringify([raw]))).byToken[item.token.toLowerCase()]
+      : undefined;
+    const candidate = { ...item, fullToken: raw?.full_token, tap: raw?.tap, caskMetadata: entry };
     if (
       typeof candidate.fullToken !== "string" ||
       typeof candidate.tap !== "string" ||
@@ -346,9 +349,6 @@ async function applyInstalledCaskMetadata(
       verified = false;
       continue;
     }
-    const entry = client.parseIndex(Buffer.from(JSON.stringify([raw]))).byToken[
-      item.token.toLowerCase()
-    ];
     if (!entry) {
       item.isOutdated = false;
       item.latestVersion = undefined;
