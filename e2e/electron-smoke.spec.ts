@@ -562,7 +562,14 @@ test("routes native tray events with the Dock hidden and protects a running upda
     settings.click(settings, undefined, {} as Electron.KeyboardEvent);
     probe.restoreDockShow!();
   });
-  await expect(page.locator("h1")).toContainText("General");
+  await expect(page.locator("h1")).toContainText("Appearance");
+  expect(
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/settings"))
+        ?.isVisible()
+    )
+  ).toBe(true);
   await page.evaluate(() => window.baseline.updatePreferences({ appearancePreference: "light" }));
   await expect.poll(() => application.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
   expect((await page.evaluate(() => window.baseline.getSnapshot())).showMenuBarIcon).toBe(false);
