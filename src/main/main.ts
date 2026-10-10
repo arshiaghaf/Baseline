@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { confirmHomebrewCleanup } from "./homebrewCleanupConfirmation";
 import {
   app,
   BrowserWindow,
@@ -417,6 +418,9 @@ function wireIpc(): void {
       isChecking: snapshot.isChecking
     };
   });
+  ipcMain.handle(ipcChannels.cleanUpHomebrew, (event) =>
+    store.cleanUpHomebrew(() => confirmHomebrewCleanup(BrowserWindow.fromWebContents(event.sender)))
+  );
   ipcMain.handle(ipcChannels.refreshToolStatus, () => store.refreshToolStatus());
   ipcMain.handle(ipcChannels.refresh, (_event, lightweight?: boolean) =>
     store.refresh(Boolean(lightweight))

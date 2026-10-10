@@ -19,6 +19,7 @@ export const ipcChannels = {
   getDiagnostics: "baseline:getDiagnostics",
   getToolStatus: "baseline:getToolStatus",
   refreshToolStatus: "baseline:refreshToolStatus",
+  cleanUpHomebrew: "baseline:cleanUpHomebrew",
   refresh: "baseline:refresh",
   setSearchText: "baseline:setSearchText",
   setSelectedTab: "baseline:setSelectedTab",
@@ -60,6 +61,7 @@ export type BaselineAPI = {
   getDiagnostics(): Promise<string>;
   getToolStatus(): Promise<ToolStatus>;
   refreshToolStatus(): Promise<void>;
+  cleanUpHomebrew(): Promise<string>;
   refresh(lightweight?: boolean): Promise<void>;
   setSearchText(searchText: string): Promise<void>;
   setSelectedTab(tab: MenuTab): Promise<void>;
