@@ -32,6 +32,25 @@ describe("HomebrewInventoryClient", () => {
       ["list --formula --versions", { success: true, status: 0, output: "ripgrep 14.0.0\n" }],
       ["list --cask --versions", { success: true, status: 0, output: "notion 4.0.0\n" }],
       [
+        "info --cask --installed --json=v2",
+        {
+          success: true,
+          status: 0,
+          output: JSON.stringify({
+            casks: [
+              {
+                token: "notion",
+                full_token: "notion",
+                tap: "homebrew/cask",
+                installed: "4.0.0",
+                version: "4.1.0",
+                artifacts: [{ app: ["Notion.app"] }]
+              }
+            ]
+          })
+        }
+      ],
+      [
         "outdated --formula --json=v2",
         {
           success: true,
@@ -63,8 +82,74 @@ describe("HomebrewInventoryClient", () => {
       "list --formula --versions",
       "list --cask --versions",
       "outdated --formula --json=v2",
-      "outdated --cask --greedy --json=v2"
+      "outdated --cask --greedy --json=v2",
+      "info --cask --installed --json=v2"
     ]);
+  });
+
+  it("retains installed tap identity and its own artifacts", async () => {
+    commandMock.results.set("list --cask --versions", {
+      success: true,
+      status: 0,
+      output: "shared-name 0.6.2\n"
+    });
+    commandMock.results.set("outdated --cask --greedy --json=v2", {
+      success: true,
+      status: 0,
+      output: JSON.stringify({ casks: [{ name: "shared-name", current_version: "0.6.3" }] })
+    });
+    commandMock.results.set("info --cask --installed --json=v2", {
+      success: true,
+      status: 0,
+      output: JSON.stringify({
+        casks: [
+          {
+            token: "shared-name",
+            full_token: "example/tools/shared-name",
+            tap: "example/tools",
+            installed: "0.6.2",
+            version: "0.6.3",
+            artifacts: [{ app: ["Update Utility.app"] }]
+          }
+        ]
+      })
+    });
+    const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+    const result = await new HomebrewInventoryClient().fetchInventory();
+    expect(result.items.find((item) => item.kind === "cask")).toMatchObject({
+      id: "cask:shared-name",
+      token: "shared-name",
+      fullToken: "example/tools/shared-name",
+      tap: "example/tools",
+      latestVersion: { raw: "0.6.3" },
+      caskMetadata: { presentation: "app", appBundleNames: ["update utility.app"] }
+    });
+  });
+
+  it.each([
+    "{}",
+    "invalid",
+    JSON.stringify({
+      casks: [
+        {
+          token: "notion",
+          full_token: "other/tap/notion",
+          tap: "example/tools",
+          installed: "4.0.0"
+        }
+      ]
+    })
+  ])("blocks unverified casks when installed metadata is unavailable: %s", async (output) => {
+    commandMock.results.set("info --cask --installed --json=v2", {
+      success: true,
+      status: 0,
+      output
+    });
+    const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+    const result = await new HomebrewInventoryClient().fetchInventory();
+    expect(result.items.find((item) => item.kind === "cask")).toMatchObject({ isOutdated: false });
+    expect(result.items.find((item) => item.kind === "cask")?.fullToken).toBeUndefined();
+    expect(result.warning).toContain("identity could not be verified");
   });
 
   it("skips brew update when metadata updates are not requested", async () => {

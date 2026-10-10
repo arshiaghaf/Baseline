@@ -89,7 +89,13 @@ if (hasSingleInstanceLock) {
       openAppBundle: async (bundlePath) => {
         await shell.openPath(bundlePath);
       },
-      currentAppVersion: metadata.version
+      currentAppVersion: metadata.version,
+      currentAppIdentity: {
+        bundleIdentifier: "com.arshiaghaf.baseline",
+        bundlePath: app.isPackaged
+          ? path.resolve(path.dirname(app.getPath("exe")), "../..")
+          : undefined
+      }
     });
 
     createMainWindow("main");

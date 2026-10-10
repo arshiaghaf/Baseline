@@ -106,6 +106,8 @@ export class HomebrewCaskClient {
 
       const entry: HomebrewCaskEntry = {
         token,
+        fullToken: typeof item.full_token === "string" ? item.full_token : token,
+        tap: typeof item.tap === "string" ? item.tap : "homebrew/cask",
         version: version(comparableVersion(item?.version)),
         homepageURL: sanitizeExternalURL(item?.homepage),
         presentation: classifyCaskPresentation(item),
@@ -139,7 +141,10 @@ export class HomebrewCaskClient {
       remoteVersion: entry.version,
       token: entry.token,
       homepageURL:
-        sanitizeExternalURL(`https://formulae.brew.sh/cask/${entry.token}`) ?? entry.homepageURL
+        entry.tap && entry.tap !== "homebrew/cask"
+          ? entry.homepageURL
+          : (sanitizeExternalURL(`https://formulae.brew.sh/cask/${entry.token}`) ??
+            entry.homepageURL)
     };
   }
 }

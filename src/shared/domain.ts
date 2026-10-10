@@ -52,6 +52,8 @@ export type HomebrewLookupResult = {
 
 export type HomebrewCaskEntry = {
   token: string;
+  fullToken?: string;
+  tap?: string;
   version: VersionValue;
   homepageURL?: string;
   presentation: HomebrewPresentation;
@@ -167,6 +169,11 @@ export const profileStatsSignatureVersion = 2;
 export type HomebrewManagedItem = {
   id: string;
   token: string;
+  // Keep the stable short-token ID for saved preferences; route using verified identity.
+  fullToken?: string;
+  tap?: string;
+  caskMetadata?: HomebrewCaskEntry;
+  isSelf?: boolean;
   name: string;
   kind: HomebrewManagedItemKind;
   presentation?: HomebrewPresentation;

@@ -45,6 +45,44 @@ describe("snapshot persistence", () => {
     expect(loaded.updates[0]?.remoteVersion).toEqual(version("201"));
   });
 
+  it("round-trips installed cask identity and metadata with existing preferences", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+    const saved = {
+      ...defaultPersistedSnapshot(),
+      ignoredHomebrewItemIDs: ["cask:shared-name"],
+      additionalDirectories: ["/Custom Apps"],
+      homebrewItems: [
+        {
+          id: "cask:shared-name",
+          token: "shared-name",
+          name: "Utility",
+          kind: "cask" as const,
+          fullToken: "example/tools/shared-name",
+          tap: "example/tools",
+          installedVersion: version("1.0"),
+          isOutdated: false,
+          caskMetadata: {
+            token: "shared-name",
+            fullToken: "example/tools/shared-name",
+            tap: "example/tools",
+            version: version("1.0"),
+            presentation: "app" as const,
+            bundleIdentifiers: [],
+            appBundleNames: ["utility.app"]
+          }
+        }
+      ]
+    };
+    await persistence.save(saved);
+    expect(await persistence.load()).toMatchObject({
+      homebrewItems: saved.homebrewItems,
+      ignoredHomebrewItemIDs: saved.ignoredHomebrewItemIDs,
+      additionalDirectories: saved.additionalDirectories
+    });
+  });
+
   it("defaults the appearance preference on older snapshots", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);

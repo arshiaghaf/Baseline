@@ -38,6 +38,8 @@ const formula: HomebrewManagedItem = {
 const cask: HomebrewManagedItem = {
   id: "cask:managed-app",
   token: "managed-app",
+  fullToken: "managed-app",
+  tap: "homebrew/cask",
   name: "Managed",
   kind: "cask",
   appID: app.id,
@@ -117,6 +119,21 @@ function mockInventory(
       success = !(isFormula ? options.failFormulaList : options.failCaskList);
       stdout = options.empty ? "" : isFormula ? "managed-tool 1" : "managed-app 1";
       if (!success) stdout = "";
+    } else if (args[0] === "info") {
+      stdout = JSON.stringify({
+        casks: options.empty
+          ? []
+          : [
+              {
+                token: "managed-app",
+                full_token: "managed-app",
+                tap: "homebrew/cask",
+                version: "2",
+                installed: "1",
+                artifacts: [{ app: ["Managed.app"] }]
+              }
+            ]
+      });
     } else if (args[0] === "outdated") {
       success = !(isFormula && options.failFormulaOutdated);
       stdout = JSON.stringify(

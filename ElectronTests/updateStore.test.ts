@@ -13,6 +13,7 @@ import {
   profileStatsSignatureVersion
 } from "../src/shared/domain";
 import { SnapshotPersistence } from "../src/main/persistence";
+import { HomebrewCaskClient } from "../src/main/homebrewCaskClient";
 import { SparkleAppcastClient } from "../src/main/sparkleAppcastClient";
 import {
   mergeHomebrewRecentlyUpdatedRecords,
@@ -44,6 +45,7 @@ function homebrewItem(
     kind: "formula",
     installedVersion: version("1.0.0"),
     isOutdated: false,
+    ...(patch.kind === "cask" ? { fullToken: patch.token, tap: "homebrew/cask" } : {}),
     ...patch
   };
 }
@@ -789,6 +791,370 @@ describe("update store helpers", () => {
 
     expect(store.getSnapshot().apps).toEqual([newerApp]);
   });
+
+  it("reconciles a third-party app cask without borrowing a colliding package version", async () => {
+    const client = new HomebrewCaskClient();
+    const catalogue = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "shared-name",
+            full_token: "shared-name",
+            tap: "homebrew/cask",
+            version: "3.0",
+            artifacts: [{ pkg: ["Onboarding.pkg"] }]
+          }
+        ])
+      )
+    );
+    const metadata = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "shared-name",
+            full_token: "example/tools/shared-name",
+            tap: "example/tools",
+            version: "0.6.3",
+            artifacts: [{ app: ["Update Utility.app"] }]
+          }
+        ])
+      )
+    ).byToken["shared-name"]!;
+    const installedApp = appRecord({
+      bundlePath: "/Applications/Update Utility.app",
+      displayName: "Update Utility",
+      bundleIdentifier: "com.example.utility",
+      localVersion: version("0.6.3")
+    });
+    const store = await makeStore({
+      clients: {
+        scanner: { scanApplications: async () => [installedApp] },
+        homebrew: {
+          fetchIndex: async () => catalogue,
+          lookupUpdate: client.lookupUpdate.bind(client),
+          searchCasks: () => []
+        },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [
+              homebrewItem({
+                id: "cask:shared-name",
+                token: "shared-name",
+                name: "shared-name",
+                kind: "cask",
+                fullToken: "example/tools/shared-name",
+                tap: "example/tools",
+                caskMetadata: metadata,
+                installedVersion: version("0.6.2"),
+                latestVersion: version("0.6.3"),
+                isOutdated: true
+              })
+            ],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+    await store.refresh(false);
+    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+      id: "cask:shared-name",
+      appID: installedApp.id,
+      presentation: "app",
+      installedVersion: { raw: "0.6.3" },
+      isOutdated: false
+    });
+    expect(store.getSnapshot().updates).toEqual([]);
+    expect(store.getSnapshot().homebrewItems[0]?.latestVersion).toBeUndefined();
+  });
+
+  it("keeps a legitimate unrelated package update visible even when it shares the own-app name", async () => {
+    const own = appRecord({
+      bundlePath: "/Applications/Update Utility.app",
+      displayName: "Update Utility",
+      bundleIdentifier: "com.example.utility",
+      localVersion: version("1.0")
+    });
+    const client = new HomebrewCaskClient();
+    const packageEntry = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "update-utility",
+            full_token: "update-utility",
+            tap: "homebrew/cask",
+            version: "3.0",
+            artifacts: [{ pkg: ["Onboarding.pkg"] }]
+          }
+        ])
+      )
+    ).byToken["update-utility"]!;
+    const item = homebrewItem({
+      id: "cask:update-utility",
+      token: "update-utility",
+      name: "Update Utility",
+      kind: "cask",
+      caskMetadata: packageEntry,
+      latestVersion: version("3.0"),
+      isOutdated: true
+    });
+    const store = await makeStore({
+      currentAppIdentity: { bundleIdentifier: own.bundleIdentifier },
+      persisted: { ...defaultPersistedSnapshot(), apps: [own], homebrewItems: [item] }
+    });
+    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+      isOutdated: true,
+      latestVersion: { raw: "3.0" }
+    });
+    expect(store.getSnapshot().homebrewItems[0]?.isSelf).not.toBe(true);
+  });
+
+  it("does not restore a cached cask target after installed identity becomes unavailable", () => {
+    const previous = homebrewItem({
+      id: "cask:shared-name",
+      token: "shared-name",
+      name: "Utility",
+      kind: "cask",
+      fullToken: "example/tools/shared-name",
+      tap: "example/tools",
+      latestVersion: version("3.0"),
+      isOutdated: true
+    });
+    const unverified = {
+      ...previous,
+      fullToken: undefined,
+      tap: undefined,
+      latestVersion: undefined,
+      isOutdated: false
+    };
+    expect(
+      preservePreviousHomebrewOutdatedState([unverified], [previous], {
+        formula: true,
+        cask: false
+      })[0]
+    ).toMatchObject({ isOutdated: false });
+    expect(
+      preservePreviousHomebrewOutdatedState([unverified], [previous], {
+        formula: true,
+        cask: false
+      })[0]?.latestVersion
+    ).toBeUndefined();
+  });
+
+  it("migrates unverified cached casks without resetting preferences or executing stale updates", async () => {
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const legacy = homebrewItem({
+      id: "cask:shared-name",
+      token: "shared-name",
+      name: "shared-name",
+      kind: "cask",
+      fullToken: undefined,
+      tap: undefined,
+      presentation: "package",
+      installedVersion: version("0.6.2"),
+      latestVersion: version("3.0"),
+      isOutdated: true
+    });
+    const persisted = {
+      ...defaultPersistedSnapshot(),
+      homebrewItems: [legacy],
+      ignoredHomebrewItemIDs: [legacy.id],
+      ignoredIDs: ["/Applications/Ignored.app"],
+      additionalDirectories: ["/Custom Apps"],
+      autoRefreshEnabled: false,
+      refreshIntervalMinutes: 120,
+      useMasForAppStoreUpdates: false
+    };
+    const store = await makeStore({ persisted, runBrewCommand });
+    expect(store.getSnapshot()).toMatchObject({
+      ignoredHomebrewItemIDs: persisted.ignoredHomebrewItemIDs,
+      ignoredIDs: persisted.ignoredIDs,
+      additionalDirectories: persisted.additionalDirectories,
+      autoRefreshEnabled: false,
+      refreshIntervalMinutes: 120,
+      useMasForAppStoreUpdates: false,
+      homebrewItems: [{ id: legacy.id, isOutdated: false, presentation: "cask" }]
+    });
+    await store.performHomebrewUpdate(legacy.id);
+    await store.performHomebrewUpdateAll([legacy.id]);
+    expect(runBrewCommand).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "routes third-party cask %s updates with full identity and short-name progress",
+    async (batch) => {
+      const item = homebrewItem({
+        id: "cask:shared-name",
+        token: "shared-name",
+        name: "Utility",
+        kind: "cask",
+        fullToken: "example/tools/shared-name",
+        tap: "example/tools",
+        latestVersion: version("2.0"),
+        isOutdated: true
+      });
+      const commands: string[][] = [];
+      const store = await makeStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+        runBrewCommand: async (args, onLine) => {
+          commands.push(args);
+          if (args[0] === "upgrade") onLine?.("Upgrading shared-name");
+          return { success: true, status: 0, output: "" };
+        }
+      });
+      if (batch) await store.performHomebrewUpdateAll([item.id]);
+      else await store.performHomebrewUpdate(item.id);
+      expect(commands).toContainEqual([
+        "upgrade",
+        "--cask",
+        "--greedy",
+        "example/tools/shared-name"
+      ]);
+      expect(commands).not.toContainEqual(["upgrade", "--cask", "--greedy", "shared-name"]);
+    }
+  );
+
+  it("excludes the running bundle's authoritative cask even when scanning temporarily misses it", async () => {
+    const client = new HomebrewCaskClient();
+    const metadata = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "utility",
+            full_token: "example/tools/utility",
+            tap: "example/tools",
+            version: "2.0",
+            artifacts: [{ app: ["Update Utility.app"] }]
+          }
+        ])
+      )
+    ).byToken.utility!;
+    const item = homebrewItem({
+      id: "cask:utility",
+      token: "utility",
+      name: "Utility",
+      kind: "cask",
+      fullToken: "example/tools/utility",
+      tap: "example/tools",
+      caskMetadata: metadata,
+      latestVersion: version("2.0"),
+      isOutdated: true
+    });
+    const store = await makeStore({
+      currentAppIdentity: {
+        bundlePath: "/Applications/Update Utility.app",
+        bundleIdentifier: "com.example.utility"
+      },
+      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] }
+    });
+    expect(store.getSnapshot().apps).toEqual([]);
+    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({ isSelf: true, isOutdated: false });
+  });
+
+  it.each(["1.0", "2.0", "3.0"])(
+    "keeps own updates on the download shortcut when installed at %s",
+    async (local) => {
+      const client = new HomebrewCaskClient();
+      const own = appRecord({
+        bundlePath: "/Applications/Update Utility.app",
+        displayName: "Update Utility",
+        bundleIdentifier: "com.example.utility",
+        localVersion: version(local)
+      });
+      const metadata = client.parseIndex(
+        Buffer.from(
+          JSON.stringify([
+            {
+              token: "utility",
+              full_token: "example/tools/utility",
+              tap: "example/tools",
+              version: "2.0",
+              artifacts: [{ app: ["Update Utility.app"] }]
+            }
+          ])
+        )
+      ).byToken.utility!;
+      const item = homebrewItem({
+        id: "cask:utility",
+        token: "utility",
+        name: "Utility",
+        kind: "cask",
+        fullToken: "example/tools/utility",
+        tap: "example/tools",
+        caskMetadata: metadata,
+        latestVersion: version("2.0"),
+        isOutdated: true
+      });
+      const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+      const ownLookup = vi.fn();
+      const store = await makeStore({
+        currentAppVersion: local,
+        currentAppIdentity: { bundleIdentifier: own.bundleIdentifier },
+        persisted: {
+          ...defaultPersistedSnapshot(),
+          apps: [own],
+          homebrewItems: [item],
+          updates: [
+            {
+              id: own.id,
+              appID: own.id,
+              source: "homebrew",
+              supportLevel: "limited",
+              localVersion: version(local),
+              remoteVersion: version("2.0"),
+              homebrewToken: item.token,
+              checkedAt: "2026-05-01T00:00:00Z"
+            }
+          ]
+        },
+        runBrewCommand,
+        clients: {
+          scanner: { scanApplications: async () => [own] },
+          homebrew: {
+            fetchIndex: async () => emptyHomebrewCaskIndex,
+            lookupUpdate: ownLookup,
+            searchCasks: () => []
+          },
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items: [item],
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true }
+            })
+          },
+          selfUpdate: {
+            lookup: async (currentVersion, checkedAt) => ({
+              available: local === "1.0",
+              currentVersion,
+              latestVersion: version("2.0"),
+              releaseURL: "https://example.com/releases/latest",
+              checkedAt
+            })
+          }
+        }
+      });
+      expect(store.getSnapshot().updates).toEqual([]);
+      expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+        isSelf: true,
+        isOutdated: false
+      });
+      await store.performHomebrewUpdate(item.id);
+      await store.performHomebrewUpdateAll([item.id]);
+      expect(runBrewCommand).not.toHaveBeenCalled();
+      await store.refresh(false);
+      expect(ownLookup).not.toHaveBeenCalled();
+      expect(store.getSnapshot().updates).toEqual([]);
+      expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+        isSelf: true,
+        isOutdated: false
+      });
+      expect(store.getSnapshot().selfUpdate).toMatchObject({
+        available: local === "1.0",
+        latestVersion: { raw: "2.0" },
+        releaseURL: "https://example.com/releases/latest"
+      });
+    }
+  );
 
   it("surfaces GitHub release self-update availability during refresh", async () => {
     const lookup = vi.fn(async (currentVersion: ReturnType<typeof version>, checkedAt: string) => ({
@@ -5363,6 +5729,7 @@ async function makeStore({
     seal: async (stats) => ({ ...stats, signature: "sealed" })
   },
   currentAppVersion,
+  currentAppIdentity,
   successRefreshDelayMS = 0,
   onUserData
 }: {
@@ -5374,6 +5741,7 @@ async function makeStore({
   openAppBundle?: ConstructorParameters<typeof UpdateStore>[0]["openAppBundle"];
   profileStatsIntegrity?: ConstructorParameters<typeof UpdateStore>[0]["profileStatsIntegrity"];
   currentAppVersion?: ConstructorParameters<typeof UpdateStore>[0]["currentAppVersion"];
+  currentAppIdentity?: ConstructorParameters<typeof UpdateStore>[0]["currentAppIdentity"];
   successRefreshDelayMS?: ConstructorParameters<typeof UpdateStore>[0]["successRefreshDelayMS"];
   onUserData?: (directory: string) => void;
 } = {}): Promise<UpdateStore> {
@@ -5387,6 +5755,7 @@ async function makeStore({
     openAppBundle,
     profileStatsIntegrity,
     currentAppVersion,
+    currentAppIdentity,
     runBrewCommand,
     runMasCommand,
     successRefreshDelayMS,
