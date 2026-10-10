@@ -509,3 +509,67 @@ test("keeps persisted pinned packages visible without update actions", async () 
   await expect(page.getByRole("button", { name: "Update Brews", exact: true })).toHaveCount(0);
   await closeApp(app);
 });
+
+test("keeps an unpinned app update visible beside a pinned cask sibling", async () => {
+  for (const reverse of [false, true]) {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+    const appID = "/Applications/Shared Utility.app";
+    const owner = {
+      id: "cask:shared-utility",
+      token: "shared-utility",
+      fullToken: "shared-utility",
+      tap: "homebrew/cask",
+      name: "Shared Utility",
+      kind: "cask",
+      appID,
+      installedVersion: version("1"),
+      latestVersion: version("2"),
+      isOutdated: true,
+      pinned: false
+    };
+    const sibling = {
+      ...owner,
+      id: "cask:sibling-utility",
+      token: "sibling-utility",
+      fullToken: "sibling-utility",
+      pinned: true
+    };
+    await writeFile(
+      path.join(userData, "baseline-snapshot.json"),
+      JSON.stringify({
+        ...defaultPersistedSnapshot(),
+        autoRefreshEnabled: false,
+        showMenuBarIcon: false,
+        apps: [
+          {
+            id: appID,
+            bundlePath: appID,
+            displayName: "Shared Utility",
+            bundleIdentifier: "com.example.shared",
+            localVersion: version("1"),
+            sourceHint: "homebrew"
+          }
+        ],
+        updates: [
+          {
+            id: appID,
+            appID,
+            source: "homebrew",
+            supportLevel: "supported",
+            localVersion: version("1"),
+            remoteVersion: version("2"),
+            homebrewToken: "shared-utility",
+            checkedAt: "2026-10-10T00:00:00.000Z"
+          }
+        ],
+        homebrewItems: reverse ? [owner, sibling] : [sibling, owner]
+      })
+    );
+    const application = await launchBaseline({ userData });
+    const page = await application.firstWindow();
+    await page.locator("button").filter({ hasText: /^Apps/ }).click();
+    await expect(page.getByRole("button", { name: "Update", exact: true })).toHaveCount(1);
+    await expect(page.getByText("Pinned in Homebrew", { exact: true })).toHaveCount(0);
+    await closeApp(application);
+  }
+});

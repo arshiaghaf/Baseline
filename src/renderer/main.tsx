@@ -56,6 +56,7 @@ import {
   sourceDisplayName
 } from "../shared/domain";
 import {
+  homebrewItemForAppUpdate,
   homebrewItemHasAppRepresentation,
   homebrewItemMatchesApp,
   isCask
@@ -1450,10 +1451,14 @@ type AppControlState = {
   actionState: ActionState;
   isUpdating: boolean;
   homebrewUninstallBlocked: boolean;
+  isHomebrewUpdatePinned: boolean;
 };
 
 function appControlState(app: AppRecord, snapshot: BaselineSnapshot): AppControlState {
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
+  const isHomebrewUpdatePinned = Boolean(
+    homebrewItemForAppUpdate(update, snapshot.homebrewItems)?.pinned
+  );
   const isIgnored = snapshot.ignoredIDs.includes(app.id);
   const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
   const isUninstalling = uninstallableItem
@@ -1471,7 +1476,8 @@ function appControlState(app: AppRecord, snapshot: BaselineSnapshot): AppControl
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUninstallBlocked
+    homebrewUninstallBlocked,
+    isHomebrewUpdatePinned
   };
 }
 
@@ -1505,7 +1511,8 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUninstallBlocked
+    homebrewUninstallBlocked,
+    isHomebrewUpdatePinned
   } = appControlState(app, snapshot);
   const label = appSourceLabel(app, snapshot);
 
@@ -1514,7 +1521,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
       <div className="item-card-top">
         <AppIconButton app={app} />
         <div className="item-card-actions">
-          {update && !(update.source === "homebrew" && uninstallableItem?.pinned) && (
+          {update && !isHomebrewUpdatePinned && (
             <UpdateActionButton
               state={actionState}
               disabled={isUninstalling}
@@ -1541,7 +1548,7 @@ function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
         <div className="row-title">
           <strong>{app.displayName}</strong>
           {label && <span>{label}</span>}
-          {update?.source === "homebrew" && uninstallableItem?.pinned && (
+          {isHomebrewUpdatePinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
         </div>
@@ -1709,7 +1716,8 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUninstallBlocked
+    homebrewUninstallBlocked,
+    isHomebrewUpdatePinned
   } = appControlState(app, snapshot);
   const recentlyUpdatedRecord = snapshot.recentlyUpdated.find((record) => record.appID === app.id);
   const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
@@ -1719,7 +1727,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
       <div className="item-card-top">
         <AppIconButton app={app} />
         <div className="item-card-actions">
-          {update && !(update.source === "homebrew" && uninstallableItem?.pinned) && (
+          {update && !isHomebrewUpdatePinned && (
             <UpdateActionButton
               state={actionState}
               disabled={isUninstalling}
@@ -1746,7 +1754,7 @@ function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSn
         <div className="row-title">
           <strong>{app.displayName}</strong>
           {label && <span>{label}</span>}
-          {update?.source === "homebrew" && uninstallableItem?.pinned && (
+          {isHomebrewUpdatePinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
         </div>
@@ -1769,7 +1777,8 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUninstallBlocked
+    homebrewUninstallBlocked,
+    isHomebrewUpdatePinned
   } = appControlState(app, snapshot);
   const label = appSourceLabel(app, snapshot);
 
@@ -1782,7 +1791,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
             isIgnored={isIgnored}
             disabled={isUninstalling}
             updateAction={
-              update && !(update.source === "homebrew" && uninstallableItem?.pinned)
+              update && !isHomebrewUpdatePinned
                 ? {
                     state: actionState,
                     disabled: isUninstalling,
@@ -1807,7 +1816,7 @@ function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineS
         <div className="row-title">
           <strong>{app.displayName}</strong>
           {label && <span>{label}</span>}
-          {update?.source === "homebrew" && uninstallableItem?.pinned && (
+          {isHomebrewUpdatePinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
         </div>
@@ -1878,7 +1887,8 @@ export function AppRow({
     isUninstalling,
     actionState,
     isUpdating,
-    homebrewUninstallBlocked
+    homebrewUninstallBlocked,
+    isHomebrewUpdatePinned
   } = appControlState(app, snapshot);
   const recentlyUpdatedRecord = recentlyUpdated
     ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)
@@ -1893,7 +1903,7 @@ export function AppRow({
         <div className="row-title">
           <strong>{app.displayName}</strong>
           {label && <span>{label}</span>}
-          {update?.source === "homebrew" && uninstallableItem?.pinned && (
+          {isHomebrewUpdatePinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
         </div>
@@ -1911,7 +1921,7 @@ export function AppRow({
         </p>
       </div>
       <div className="row-actions">
-        {update && !(update.source === "homebrew" && uninstallableItem?.pinned) && (
+        {update && !isHomebrewUpdatePinned && (
           <UpdateActionButton
             state={actionState}
             disabled={isUninstalling}
@@ -3117,8 +3127,7 @@ function appUpdateActionState(
   snapshot: BaselineSnapshot
 ): { state: ActionState; isUpdating: boolean } {
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const matchedHomebrewItem =
-    update?.source === "homebrew" ? uninstallableHomebrewItemForApp(app, snapshot) : undefined;
+  const matchedHomebrewItem = homebrewItemForAppUpdate(update, snapshot.homebrewItems);
   const isUpdating =
     snapshot.appUpdatingIDs.includes(app.id) ||
     Boolean(
@@ -4365,7 +4374,7 @@ function deriveSections(
         (update) =>
           !(
             update.source === "homebrew" &&
-            snapshot.homebrewItems.some((item) => item.appID === update.appID && item.pinned)
+            homebrewItemForAppUpdate(update, snapshot.homebrewItems)?.pinned
           )
       )
       .map((update) => [update.appID, update])

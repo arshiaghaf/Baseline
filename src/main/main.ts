@@ -23,7 +23,10 @@ import type {
   HomebrewCaskDiscoveryItem,
   MenuTab
 } from "../shared/domain";
-import { homebrewItemHasAppRepresentation } from "../shared/homebrewAppLinking";
+import {
+  homebrewItemForAppUpdate,
+  homebrewItemHasAppRepresentation
+} from "../shared/homebrewAppLinking";
 import { ipcChannels, type PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL } from "../shared/security";
 import { SnapshotPersistence } from "./persistence";
@@ -379,7 +382,7 @@ function trayUpdateTitle(snapshot: BaselineSnapshot): string {
       !ignored.has(update.appID) &&
       !(
         update.source === "homebrew" &&
-        snapshot.homebrewItems.some((item) => item.appID === update.appID && item.pinned)
+        homebrewItemForAppUpdate(update, snapshot.homebrewItems)?.pinned
       )
   );
   const visibleAppUpdateIDs = new Set(visibleAppUpdates.map((update) => update.appID));

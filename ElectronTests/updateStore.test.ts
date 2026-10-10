@@ -6069,6 +6069,85 @@ describe("verified formula identity and Homebrew pins", () => {
     expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
   });
 
+  it.each([false, true])(
+    "reconciles a shared app and upgrades only its selected unpinned cask (reverse %s)",
+    async (reverse) => {
+      const app = appRecord({
+        bundlePath: "/Applications/Managed.app",
+        displayName: "Managed",
+        bundleIdentifier: "com.example.managed",
+        localVersion: version("1")
+      });
+      const client = new HomebrewCaskClient();
+      const index = client.parseIndex(
+        Buffer.from(
+          JSON.stringify(
+            ["selected", "sibling"].map((token) => ({
+              token,
+              version: "2",
+              artifacts: [{ app: ["Managed.app"] }],
+              bundle_identifiers: [app.bundleIdentifier]
+            }))
+          )
+        )
+      );
+      const selected = homebrewItem({
+        id: "cask:selected",
+        token: "selected",
+        name: "Managed",
+        kind: "cask",
+        pinned: false,
+        caskMetadata: index.byToken.selected,
+        isOutdated: true,
+        latestVersion: version("2")
+      });
+      const sibling = {
+        ...selected,
+        id: "cask:sibling",
+        token: "sibling",
+        fullToken: "sibling",
+        pinned: true,
+        caskMetadata: index.byToken.sibling
+      };
+      const items = reverse ? [selected, sibling] : [sibling, selected];
+      const runBrewCommand = vi.fn<
+        (args: string[]) => Promise<{ success: boolean; status: number; output: string }>
+      >(async () => ({
+        success: true,
+        status: 0,
+        output: ""
+      }));
+      const store = await makeStore({
+        runBrewCommand,
+        clients: {
+          scanner: { scanApplications: async () => [app] },
+          homebrew: {
+            fetchIndex: async () => index,
+            lookupUpdate: (...args) => client.lookupUpdate(...args),
+            searchCasks: () => []
+          },
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items,
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true }
+            })
+          }
+        }
+      });
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems.map((item) => item.appID)).toEqual([app.id, app.id]);
+      expect(store.getSnapshot().updates[0]?.homebrewToken).toBe("selected");
+      await store.performAppUpdate(app.id);
+      expect(runBrewCommand.mock.calls[0]?.[0]).toEqual([
+        "upgrade",
+        "--cask",
+        "--greedy",
+        "selected"
+      ]);
+    }
+  );
+
   it("does not route a pinned Homebrew app to an external updater", async () => {
     const app = appRecord({
       bundlePath: "/fixture/Managed.app",

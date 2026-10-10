@@ -3384,6 +3384,118 @@ describe("Homebrew pin presentation", () => {
     }
   );
 
+  it.each([false, true])(
+    "uses the selected cask pin rather than its sibling (reverse %s)",
+    (reverse) => {
+      const sibling = { ...cask, id: "cask:sibling", token: "sibling", pinned: true };
+      const owner = { ...cask, pinned: false };
+      const items = reverse ? [owner, sibling] : [sibling, owner];
+      const { rerender } = render(
+        <AppRow app={app} snapshot={snapshot({ homebrewItems: items })} recentlyUpdated={false} />
+      );
+      expect(screen.queryByText("Pinned in Homebrew")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Update" }));
+      expect(window.baseline.performAppUpdate).toHaveBeenCalledWith(app.id);
+      rerender(
+        <Dashboard
+          compact={true}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({ homebrewItems: items })}
+        />
+      );
+      expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+    }
+  );
+
+  it.each(
+    [false, true].flatMap((reverse) =>
+      [false, true].flatMap((compact) =>
+        [false, true].map((pinned) => ({ reverse, compact, pinned }))
+      )
+    )
+  )(
+    "filters the actual owner in dashboard $reverse/$compact/$pinned",
+    ({ reverse, compact, pinned }) => {
+      const owner = { ...cask, pinned };
+      const sibling = {
+        ...cask,
+        id: "cask:sibling",
+        token: "sibling",
+        isOutdated: false,
+        pinned: !pinned
+      };
+      const items = reverse ? [owner, sibling] : [sibling, owner];
+      render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({ homebrewItems: items, selectedTab: "apps" })}
+        />
+      );
+      expect(screen.queryAllByRole("button", { name: "Update" }).length).toBe(pinned ? 0 : 1);
+    }
+  );
+
+  it.each([false, true])(
+    "shows the owner pin in row/card despite an unpinned sibling (card %s)",
+    (card) => {
+      const items = [
+        { ...cask, id: "cask:sibling", token: "sibling", pinned: false },
+        { ...cask, pinned: true }
+      ];
+      const state = snapshot({ homebrewItems: items, selectedTab: "installed" });
+      if (card)
+        render(<Dashboard compact={false} onOpenSettings={() => undefined} snapshot={state} />);
+      else render(<AppRow app={app} snapshot={state} recentlyUpdated={false} />);
+      expect(screen.getAllByText("Pinned in Homebrew").length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    }
+  );
+
+  it("uses selected cask progress without borrowing its sibling progress", () => {
+    const sibling = { ...cask, id: "cask:sibling", token: "sibling", pinned: true };
+    const { rerender } = render(
+      <AppRow
+        app={app}
+        snapshot={snapshot({
+          homebrewItems: [sibling, cask],
+          homebrewUpdatingItemIDs: [sibling.id]
+        })}
+        recentlyUpdated={false}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument();
+    rerender(
+      <AppRow
+        app={app}
+        snapshot={snapshot({ homebrewItems: [sibling, cask], homebrewQueuedItemIDs: [cask.id] })}
+        recentlyUpdated={false}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Queued" })).toBeInTheDocument();
+  });
+
+  it.each([false, true])(
+    "retains publisher actions beside pinned linked casks (reverse %s)",
+    (reverse) => {
+      const pinned = { ...cask, pinned: true };
+      const sibling = { ...cask, id: "cask:sibling", token: "sibling", pinned: false };
+      render(
+        <AppRow
+          app={app}
+          snapshot={snapshot({
+            homebrewItems: reverse ? [sibling, pinned] : [pinned, sibling],
+            updates: [{ ...update, source: "sparkle" }]
+          })}
+          recentlyUpdated={false}
+        />
+      );
+      expect(screen.queryByText("Pinned in Homebrew")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Open updater" }));
+      expect(window.baseline.performAppUpdate).toHaveBeenCalledWith(app.id);
+    }
+  );
+
   it("blocks a pinned Homebrew app action while retaining publisher provider actions", () => {
     const item = { ...cask, pinned: true };
     const { rerender } = render(
