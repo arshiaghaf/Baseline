@@ -1459,7 +1459,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       const reconciledHomebrewItems = reconcileHomebrewInventory(
         preservePreviousHomebrewOutdatedState(
           homebrewItems,
-          previousHomebrewItems,
+          homebrewIdentityReconciliationItems(this.state),
           homebrewInventory.outdatedDetectionSucceededByKind
         ),
         updates,
@@ -1477,7 +1477,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
         this.state.homebrewRecentlyUpdated,
         previousHomebrewItems,
-        [...reconciledHomebrewItems, ...(homebrewFormulaIdentityContinuity ?? [])],
+        homebrewIdentityReconciliationItems({
+          homebrewItems: reconciledHomebrewItems,
+          homebrewFormulaIdentityContinuity
+        }),
         now,
         { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
       );
@@ -1545,7 +1548,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             recoveredHomebrewInventory.inventoryReadSucceededByKind,
             this.state.homebrewFormulaIdentityContinuity
           ),
-          this.state.homebrewItems,
+          homebrewIdentityReconciliationItems(this.state),
           recoveredHomebrewInventory.outdatedDetectionSucceededByKind
         );
         patch.homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
@@ -2352,11 +2355,16 @@ function preserveFormulaIdentityContinuity(
     readSucceeded?.formula === false ||
     items.some((item) => item.kind === "formula" && !homebrewCommandToken(item));
   if (!incomplete) return undefined;
-  const installedIDs = new Set(items.map((item) => item.id));
-  // Freeze one prior inventory generation, rather than accumulating removed packages
+  const visibleByID = new Map(items.map((item) => [item.id, item]));
+  // Freeze one complete prior inventory generation, rather than accumulating removed packages
   // across failures. No aliases are guessed from the new rack names.
   return (snapshot.homebrewFormulaIdentityContinuity ?? snapshot.homebrewItems)
-    .filter((item) => formulaHasContinuityIdentity(item) && !installedIDs.has(item.id))
+    .filter(formulaHasContinuityIdentity)
+    .map((item) => {
+      const visible = visibleByID.get(item.id);
+      // Refresh members of the frozen generation only: later generations cannot grow it.
+      return visible && formulaHasContinuityIdentity(visible) ? visible : item;
+    })
     .map((item) => ({
       ...item,
       formulaIdentityVerified: false,
@@ -2427,6 +2435,53 @@ function preservePreviousHomebrewInventoryMembership(
   ].sort((lhs, rhs) => lhs.kind.localeCompare(rhs.kind) || lhs.name.localeCompare(rhs.name));
 }
 
+function knownPinIdentity(item: HomebrewManagedItem): string | undefined {
+  const identity =
+    homebrewItemIdentity(item) ??
+    (formulaHasContinuityIdentity(item)
+      ? homebrewItemIdentity({ ...item, formulaIdentityVerified: undefined })
+      : item.pinnedIdentity);
+  return identity && isValidHomebrewToken(identity) ? identity : undefined;
+}
+
+function pinIdentityCanContinue(
+  item: HomebrewManagedItem,
+  previous: HomebrewManagedItem,
+  previousIdentity: string,
+  candidates: HomebrewManagedItem[]
+): boolean {
+  if (item.kind !== previous.kind) return false;
+  const identity = homebrewItemIdentity(item);
+  if (identity) {
+    if (identity === previousIdentity) return true;
+    const currentFormula = item.formulaIdentity;
+    if (item.kind !== "formula" || !currentFormula) return false;
+    const matches = candidates.filter(
+      (candidate) =>
+        formulaHasContinuityIdentity(candidate) &&
+        candidate.formulaIdentity?.tap === currentFormula.tap &&
+        (candidate.formulaIdentity.fullName === currentFormula.fullName ||
+          currentFormula.oldNames.includes(candidate.formulaIdentity.name) ||
+          currentFormula.oldNames.includes(
+            `${currentFormula.tap}/${candidate.formulaIdentity.name}`
+          ))
+    );
+    return matches.length === 1 && matches[0]?.id === previous.id;
+  }
+  // Unknown identity may retain a pin only under the existing saved ID and rack.
+  // It supplies no execution capability, alias inference, or cross-tap transfer.
+  return (
+    item.id === previous.id &&
+    item.token === previous.token &&
+    (!item.tap ||
+      previousIdentity.startsWith(`${item.tap}/`) ||
+      (item.tap === "homebrew/core" && !previousIdentity.includes("/"))) &&
+    (!item.formulaIdentity ||
+      (formulaHasContinuityIdentity(item) &&
+        homebrewItemIdentity({ ...item, formulaIdentityVerified: undefined }) === previousIdentity))
+  );
+}
+
 export function preservePreviousHomebrewOutdatedState(
   currentItems: HomebrewManagedItem[],
   previousItems: HomebrewManagedItem[],
@@ -2435,14 +2490,20 @@ export function preservePreviousHomebrewOutdatedState(
   const previousByID = new Map(previousItems.map((item) => [item.id, item]));
   currentItems = currentItems.map((item) => {
     const previous = previousByID.get(item.id);
+    const identity = homebrewItemIdentity(item);
+    if (item.pinned !== undefined && identity) {
+      return { ...item, pinnedIdentity: item.pinned ? identity : undefined };
+    }
+    const previousIdentity = previous && knownPinIdentity(previous);
     if (
       item.pinned === undefined &&
       previous?.pinned &&
-      homebrewCommandToken(item) &&
-      homebrewItemIdentity(item) === homebrewItemIdentity(previous)
+      previousIdentity &&
+      pinIdentityCanContinue(item, previous, previousIdentity, previousItems)
     ) {
-      // Missing pin fields are unknown, not proof that Homebrew unpinned a package.
-      return { ...item, pinned: true };
+      // Retain pin evidence even when identity is not executable. Recovery still
+      // requires fresh same-package proof; explicit false is authoritative.
+      return { ...item, pinned: true, pinnedIdentity: identity ?? previousIdentity };
     }
     return item;
   });

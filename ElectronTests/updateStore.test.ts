@@ -6393,7 +6393,7 @@ describe("verified formula identity and Homebrew pins", () => {
       expect(store.getSnapshot().homebrewItems).toHaveLength(1);
       expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual([history]);
       const continuity = store.getSnapshot().homebrewFormulaIdentityContinuity ?? [];
-      expect(continuity.map((item) => item.id)).toEqual(firstRefreshFailure ? [previous.id] : []);
+      expect(continuity.map((item) => item.id)).toEqual([previous.id]);
       expect(continuity.every((item) => !homebrewCommandToken(item))).toBe(true);
       const unverified = store.getSnapshot().homebrewItems[0]!;
       if (!firstRefreshFailure) expect(unverified.formulaIdentityVerified).toBe(false);
@@ -6413,7 +6413,7 @@ describe("verified formula identity and Homebrew pins", () => {
       expect(store.getSnapshot().homebrewItems).toHaveLength(1);
       expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual([history]);
       expect(store.getSnapshot().homebrewFormulaIdentityContinuity?.map((item) => item.id)).toEqual(
-        firstRefreshFailure ? [previous.id] : []
+        [previous.id]
       );
       formulaReadFailed = false;
       items = [
