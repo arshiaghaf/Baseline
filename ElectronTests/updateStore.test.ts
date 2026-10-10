@@ -5493,6 +5493,61 @@ describe("manual Homebrew cleanup", () => {
     expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
   });
 
+  it("holds the lock during cleanup and resumes queued updates after maintenance refresh", async () => {
+    const item = homebrewItem({
+      id: "formula:managed",
+      token: "managed",
+      name: "Managed",
+      isOutdated: true,
+      latestVersion: version("2")
+    });
+    let finishCleanup!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finishCleanup = resolve;
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command) => {
+      if (command[0] === "cleanup") await gate;
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({
+      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+      runBrewCommand,
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [item],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+    await store.refreshToolStatus();
+    runBrewCommand.mockClear();
+    const cleanup = store.cleanUpHomebrew(async () => true);
+    await vi.waitFor(() =>
+      expect(runBrewCommand).toHaveBeenCalledWith(["cleanup"], expect.any(Function))
+    );
+    const queued = store.performHomebrewUpdate(item.id);
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(item.id);
+    const confirmAgain = vi.fn(async () => true);
+    expect(await store.cleanUpHomebrew(confirmAgain)).toContain("busy");
+    expect(confirmAgain).not.toHaveBeenCalled();
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["cleanup"]]);
+    finishCleanup();
+    expect(await cleanup).toBe("Homebrew cleanup completed.");
+    await queued;
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["cleanup"],
+      ["upgrade", "managed"]
+    ]);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+  });
+
   it("does not clean up or refresh when confirmation is cancelled", async () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
@@ -5528,6 +5583,45 @@ describe("manual Homebrew cleanup", () => {
     expect(fetchInventory).toHaveBeenCalledWith({ updateMetadata: false });
     expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
     expect(await store.cleanUpHomebrew(async () => true)).toBe("Homebrew cleanup completed.");
+  });
+
+  it("preserves the cleanup outcome when its follow-up refresh fails", async () => {
+    const store = await makeStore();
+    await store.refreshToolStatus();
+    vi.spyOn(store, "refresh").mockRejectedValueOnce(new Error("Synthetic refresh failure"));
+    expect(await store.cleanUpHomebrew(async () => true)).toBe(
+      "Homebrew cleanup completed. Installed packages could not be refreshed. Refresh again before updating."
+    );
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+  });
+
+  it("refreshes after a rejected cleanup command and releases the lock", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({ runBrewCommand });
+    await store.refreshToolStatus();
+    runBrewCommand.mockRejectedValueOnce(new Error("Synthetic spawn failure"));
+    const refresh = vi.spyOn(store, "refresh");
+    expect(await store.cleanUpHomebrew(async () => true)).toContain("could not run");
+    expect(refresh).toHaveBeenCalledWith(true, { allowHomebrewInventoryDuringActiveCommand: true });
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+  });
+
+  it("releases the lock without cleanup if confirmation rejects", async () => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({ runBrewCommand });
+    await store.refreshToolStatus();
+    runBrewCommand.mockClear();
+    await expect(
+      store.cleanUpHomebrew(async () => {
+        throw new Error("Synthetic dialog failure");
+      })
+    ).rejects.toThrow("Synthetic dialog failure");
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
   });
 
   it("does not request confirmation without Homebrew", async () => {

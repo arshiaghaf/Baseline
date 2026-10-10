@@ -1670,8 +1670,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         message = "Homebrew cleanup could not run. Try again or check Homebrew in Terminal.";
       }
       // Cleanup can remove installed dependencies, even when it partially fails.
-      await this.refreshTask;
-      await this.refresh(true, { allowHomebrewInventoryDuringActiveCommand: true });
+      await this.refreshTask?.catch(() => undefined);
+      try {
+        await this.refresh(true, { allowHomebrewInventoryDuringActiveCommand: true });
+      } catch {
+        return `${message} Installed packages could not be refreshed. Refresh again before updating.`;
+      }
       return message;
     } finally {
       release();
