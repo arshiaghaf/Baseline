@@ -1476,7 +1476,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       const recentlyUpdated = this.mergeRecentlyUpdated(apps, updates, previousUpdates, now);
       const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
         this.state.homebrewRecentlyUpdated,
-        previousHomebrewItems,
+        homebrewIdentityReconciliationItems(this.state),
         homebrewIdentityReconciliationItems({
           homebrewItems: reconciledHomebrewItems,
           homebrewFormulaIdentityContinuity

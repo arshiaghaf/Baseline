@@ -313,51 +313,55 @@ it.each([false, true])(
   }
 );
 
-it("keeps current versions and explicit unpin ahead of frozen records without accumulating or duplicating history", async () => {
-  const a = formula("old-alpha");
-  const b = formula("old-beta", [], true);
-  const newA = formula("new-alpha", [a.token]);
-  const newB = formula("new-beta", [b.token]);
-  const later = formula("later-tool");
-  let inventory: HomebrewManagedItem[] = [missing(newA), b];
-  const { store, options, persistence } = await setup(
-    { ...defaultPersistedSnapshot(), homebrewItems: [a, b] },
-    () => inventory
-  );
-  await store.refresh(true);
-  inventory = [
-    missing(newA),
-    { ...b, installedVersion: version("2"), isOutdated: false, pinned: false },
-    later
-  ];
-  await store.refresh(true);
-  expect(store.getSnapshot().homebrewRecentlyUpdated).toHaveLength(1);
-  expect(store.getSnapshot().homebrewRecentlyUpdated[0]).toMatchObject({
-    itemID: b.id,
-    toVersion: version("2")
-  });
-  expect(store.getSnapshot().homebrewFormulaIdentityContinuity?.map((item) => item.id)).toEqual([
-    a.id,
-    b.id
-  ]);
-  await store.refresh(true);
-  expect(store.getSnapshot().homebrewRecentlyUpdated).toHaveLength(1);
-  inventory = [missing(newA), { ...missing(newB), installedVersion: version("2") }];
-  await store.refresh(true);
-  const relaunched = new UpdateStore({ ...options, persisted: await persistence.load() });
-  inventory = [newA, { ...newB, installedVersion: version("2"), isOutdated: false }];
-  await relaunched.refresh(true);
-  expect(relaunched.getSnapshot().homebrewItems[1]).toMatchObject({
-    id: b.id,
-    installedVersion: version("2"),
-    pinned: undefined
-  });
-  expect(relaunched.getSnapshot().homebrewRecentlyUpdated).toHaveLength(1);
-  expect(relaunched.getSnapshot().homebrewRecentlyUpdated[0]).toMatchObject({
-    itemID: b.id,
-    toVersion: version("2")
-  });
-});
+it.each([false, true])(
+  "keeps current versions and explicit unpin ahead of frozen records without accumulating or duplicating history (recovery changes version %s)",
+  async (recoveryChangesVersion) => {
+    const a = formula("old-alpha");
+    const b = formula("old-beta", [], true);
+    const newA = formula("new-alpha", [a.token]);
+    const newB = formula("new-beta", [b.token]);
+    const later = formula("later-tool");
+    let inventory: HomebrewManagedItem[] = [missing(newA), b];
+    const { store, options, persistence } = await setup(
+      { ...defaultPersistedSnapshot(), homebrewItems: [a, b] },
+      () => inventory
+    );
+    await store.refresh(true);
+    inventory = [
+      missing(newA),
+      { ...b, installedVersion: version("2"), isOutdated: false, pinned: false },
+      later
+    ];
+    await store.refresh(true);
+    expect(store.getSnapshot().homebrewRecentlyUpdated).toHaveLength(1);
+    expect(store.getSnapshot().homebrewRecentlyUpdated[0]).toMatchObject({
+      itemID: b.id,
+      toVersion: version("2")
+    });
+    expect(store.getSnapshot().homebrewFormulaIdentityContinuity?.map((item) => item.id)).toEqual([
+      a.id,
+      b.id
+    ]);
+    await store.refresh(true);
+    expect(store.getSnapshot().homebrewRecentlyUpdated).toHaveLength(1);
+    inventory = [missing(newA), { ...missing(newB), installedVersion: version("2") }];
+    await store.refresh(true);
+    const relaunched = new UpdateStore({ ...options, persisted: await persistence.load() });
+    const recoveredVersion = version(recoveryChangesVersion ? "3" : "2");
+    inventory = [newA, { ...newB, installedVersion: recoveredVersion, isOutdated: false }];
+    await relaunched.refresh(true);
+    expect(relaunched.getSnapshot().homebrewItems[1]).toMatchObject({
+      id: b.id,
+      installedVersion: recoveredVersion,
+      pinned: undefined
+    });
+    expect(relaunched.getSnapshot().homebrewRecentlyUpdated).toHaveLength(1);
+    expect(relaunched.getSnapshot().homebrewRecentlyUpdated[0]).toMatchObject({
+      itemID: b.id,
+      toVersion: recoveredVersion
+    });
+  }
+);
 
 it("does not inherit an ambiguous alias pin when a historical saved ID collides with the fresh rack ID", async () => {
   const a = { ...formula("old-alpha", [], true), id: "formula:new-tool" };
