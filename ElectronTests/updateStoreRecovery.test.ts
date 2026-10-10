@@ -31,6 +31,12 @@ const formula: HomebrewManagedItem = {
   token: "managed-tool",
   name: "managed-tool",
   kind: "formula",
+  formulaIdentity: {
+    name: "managed-tool",
+    fullName: "managed-tool",
+    tap: "homebrew/core",
+    oldNames: []
+  },
   installedVersion: version("1"),
   latestVersion: version("2"),
   isOutdated: true
@@ -121,6 +127,16 @@ function mockInventory(
       if (!success) stdout = "";
     } else if (args[0] === "info") {
       stdout = JSON.stringify({
+        formulae: options.empty
+          ? []
+          : [
+              {
+                name: "managed-tool",
+                full_name: "managed-tool",
+                tap: "homebrew/core",
+                installed: [{ version: "1" }]
+              }
+            ],
         casks: options.empty
           ? []
           : [
@@ -183,10 +199,13 @@ describe("refresh inventory recovery", () => {
   });
 
   it("preserves outdated state when membership succeeds but outdated detection fails", async () => {
-    mockInventory({ failFormulaOutdated: true });
+    mockInventory({});
     const { store } = await fixture({
       clients: { homebrewInventory: new HomebrewInventoryClient() }
     });
+    await store.refresh(true);
+    vi.restoreAllMocks();
+    mockInventory({ failFormulaOutdated: true });
     await store.refresh(true);
     expect(store.getSnapshot().homebrewItems.find((item) => item.id === formula.id)).toMatchObject({
       isOutdated: true,
@@ -241,6 +260,7 @@ describe("Discover install recovery", () => {
         return { success: true, status: 0, output: "" };
       }
     });
+    await store.refresh(true);
     const install = store.installHomebrewItem(discover);
     const update = store.performHomebrewUpdate(formula.id);
     expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(formula.id);

@@ -7,7 +7,27 @@ import { isValidHomebrewToken } from "./security";
 
 export function homebrewCommandToken(item: HomebrewManagedItem): string | undefined {
   if (!isValidHomebrewToken(item.token)) return undefined;
-  if (item.kind !== "cask") return item.token;
+  if (item.kind === "formula") {
+    const identity = item.formulaIdentity;
+    if (!identity || item.formulaIdentityVerified === false) return undefined;
+    const { name, fullName, tap, oldNames } = identity;
+    if (
+      typeof name !== "string" ||
+      typeof fullName !== "string" ||
+      typeof tap !== "string" ||
+      !Array.isArray(oldNames) ||
+      !isValidHomebrewToken(name) ||
+      name.includes("/") ||
+      !isValidHomebrewToken(fullName) ||
+      !/^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(tap) ||
+      (fullName !== `${tap}/${name}` && !(tap === "homebrew/core" && fullName === name)) ||
+      (item.token !== name &&
+        !oldNames.includes(item.token) &&
+        !oldNames.includes(`${tap}/${item.token}`))
+    )
+      return undefined;
+    return fullName;
+  }
   const full = item.fullToken;
   const tap = item.tap;
   if (!full || !tap || !isValidHomebrewToken(full)) return undefined;

@@ -83,6 +83,37 @@ describe("snapshot persistence", () => {
     });
   });
 
+  it("persists hidden formula continuity without restoring action authority", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+    const item = {
+      id: "formula:old-tool",
+      token: "old-tool",
+      name: "Old Tool",
+      kind: "formula" as const,
+      installedVersion: version("1"),
+      latestVersion: version("2"),
+      isOutdated: true,
+      formulaIdentityVerified: true,
+      formulaIdentity: {
+        name: "old-tool",
+        fullName: "example/tools/old-tool",
+        tap: "example/tools",
+        oldNames: []
+      }
+    };
+    await persistence.save({
+      ...defaultPersistedSnapshot(),
+      homebrewFormulaIdentityContinuity: [item]
+    });
+    const loaded = await persistence.load();
+    expect(loaded.homebrewItems).toEqual([]);
+    expect(loaded.homebrewFormulaIdentityContinuity).toEqual([
+      { ...item, formulaIdentityVerified: false, isOutdated: false, latestVersion: undefined }
+    ]);
+  });
+
   it("defaults the appearance preference on older snapshots", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
     tempDirs.push(userData);

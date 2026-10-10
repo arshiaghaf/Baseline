@@ -30,6 +30,7 @@ import type {
   UpdateRecord
 } from "../src/shared/domain";
 import { version } from "../src/shared/version";
+import { homebrewCommandToken } from "../src/shared/homebrewIdentity";
 
 let tempDirs: string[] = [];
 
@@ -45,7 +46,16 @@ function homebrewItem(
     kind: "formula",
     installedVersion: version("1.0.0"),
     isOutdated: false,
-    ...(patch.kind === "cask" ? { fullToken: patch.token, tap: "homebrew/cask" } : {}),
+    ...(patch.kind === "cask"
+      ? { fullToken: patch.token, tap: "homebrew/cask" }
+      : {
+          formulaIdentity: {
+            name: patch.token,
+            fullName: patch.token,
+            tap: "homebrew/core",
+            oldNames: []
+          }
+        }),
     ...patch
   };
 }
@@ -2060,7 +2070,7 @@ describe("update store helpers", () => {
       latestVersion: version("14.1.0"),
       isOutdated: true
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [previousItem]
@@ -2676,7 +2686,7 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         ignoredHomebrewItemIDs: ["formula:ignored-formula", "cask:ignored-cask"],
@@ -2751,7 +2761,7 @@ describe("update store helpers", () => {
       status: command[0] === "cleanup" ? 1 : 0,
       output: command[0] === "cleanup" ? "Error: cleanup failed" : ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -2841,7 +2851,7 @@ describe("update store helpers", () => {
       latestVersion: version("1.100.0"),
       isOutdated: true
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [formula, cask]
@@ -2883,7 +2893,7 @@ describe("update store helpers", () => {
       status: command.includes("--cask") ? 1 : 0,
       output: command.includes("--cask") ? "Error: cask upgrade failed" : ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -2940,7 +2950,7 @@ describe("update store helpers", () => {
         output: command.includes("--cask") ? "Error: cask upgrade failed" : ""
       };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -2998,7 +3008,7 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         apps: [ignoredApp],
@@ -3052,7 +3062,7 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         apps: [app],
@@ -3126,7 +3136,7 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         apps: [ignoredApp],
@@ -3681,7 +3691,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -3846,7 +3856,7 @@ describe("update store helpers", () => {
         return { success: true, status: 0, output: "" };
       }
     );
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -3894,7 +3904,7 @@ describe("update store helpers", () => {
 
   it("returns failed Homebrew item updates to retryable state after a short delay", async () => {
     const itemID = "formula:retryable";
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -4633,7 +4643,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -4770,7 +4780,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [formula, cask]
@@ -4863,7 +4873,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         ignoredHomebrewItemIDs: [ignoredFormula.id],
@@ -4945,7 +4955,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [formula, secondFormula, cask]
@@ -5012,7 +5022,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -5249,7 +5259,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [item]
@@ -5321,7 +5331,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [item]
@@ -5395,7 +5405,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [outdatedItem]
@@ -5470,7 +5480,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [outdatedItem]
@@ -5547,7 +5557,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [outdatedItem]
@@ -5744,7 +5754,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -5805,7 +5815,7 @@ describe("update store helpers", () => {
       outdatedDetectionSucceeded: true,
       outdatedDetectionSucceededByKind: { formula: true, cask: true }
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [outdatedItem]
@@ -5926,7 +5936,8 @@ async function makeStore({
   currentAppVersion,
   currentAppIdentity,
   successRefreshDelayMS = 0,
-  onUserData
+  onUserData,
+  verifyInitialInventory = false
 }: {
   persisted?: PersistedSnapshot;
   clients?: Partial<ConstructorParameters<typeof UpdateStore>[0]["clients"]>;
@@ -5939,11 +5950,48 @@ async function makeStore({
   currentAppIdentity?: ConstructorParameters<typeof UpdateStore>[0]["currentAppIdentity"];
   successRefreshDelayMS?: ConstructorParameters<typeof UpdateStore>[0]["successRefreshDelayMS"];
   onUserData?: (directory: string) => void;
+  verifyInitialInventory?: boolean;
 } = {}): Promise<UpdateStore> {
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-update-store-"));
   tempDirs.push(userData);
   onUserData?.(userData);
-  return new UpdateStore({
+  const storeClients: NonNullable<ConstructorParameters<typeof UpdateStore>[0]["clients"]> = {
+    scanner: { scanApplications: async () => [] },
+    appStore: { lookupOutcome: async () => ({ type: "completed" }) },
+    sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
+    homebrew: {
+      fetchIndex: async () => emptyHomebrewCaskIndex,
+      lookupUpdate: () => undefined,
+      searchCasks: () => []
+    },
+    homebrewFormula: {
+      fetchIndex: async () => emptyHomebrewFormulaIndex,
+      searchFormulae: () => []
+    },
+    homebrewInventory: {
+      fetchInventory: async () => ({
+        items: [],
+        outdatedDetectionSucceeded: true,
+        outdatedDetectionSucceededByKind: { formula: true, cask: true }
+      })
+    },
+    selfUpdate: {
+      lookup: async (currentVersion, checkedAt) => ({
+        available: false,
+        currentVersion,
+        releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+        checkedAt
+      })
+    },
+    ...clients
+  };
+  // Clone injected test clients only when temporarily supplying the initial observed fixture.
+  if (verifyInitialInventory) {
+    for (const key of Object.keys(storeClients) as (keyof typeof storeClients)[]) {
+      storeClients[key] = { ...storeClients[key] } as never;
+    }
+  }
+  const store = new UpdateStore({
     persistence: new SnapshotPersistence(userData),
     persisted,
     openExternalURL,
@@ -5954,35 +6002,707 @@ async function makeStore({
     runBrewCommand,
     runMasCommand,
     successRefreshDelayMS,
-    clients: {
-      scanner: { scanApplications: async () => [] },
-      appStore: { lookupOutcome: async () => ({ type: "completed" }) },
-      sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
-      homebrew: {
-        fetchIndex: async () => emptyHomebrewCaskIndex,
-        lookupUpdate: () => undefined,
-        searchCasks: () => []
-      },
-      homebrewFormula: {
-        fetchIndex: async () => emptyHomebrewFormulaIndex,
-        searchFormulae: () => []
-      },
+    clients: storeClients
+  });
+  if (verifyInitialInventory) {
+    // These operation tests start after an observed inventory, not from cached execution authority.
+    const initialClients = {
+      scanner: { scanApplications: async () => persisted.apps },
+      appStore: { lookupOutcome: async () => ({ type: "completed" as const }) },
+      sparkle: { lookupOutcome: async () => ({ type: "completed" as const }) },
+      homebrew: { fetchIndex: async () => emptyHomebrewCaskIndex },
+      homebrewFormula: { fetchIndex: async () => emptyHomebrewFormulaIndex },
       homebrewInventory: {
         fetchInventory: async () => ({
-          items: [],
+          items: persisted.homebrewItems,
+          inventoryReadSucceededByKind: { formula: true, cask: true },
           outdatedDetectionSucceeded: true,
           outdatedDetectionSucceededByKind: { formula: true, cask: true }
         })
-      },
-      selfUpdate: {
-        lookup: async (currentVersion, checkedAt) => ({
-          available: false,
-          currentVersion,
-          releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
-          checkedAt
-        })
-      },
-      ...clients
+      }
+    };
+    const restore: (() => void)[] = [];
+    for (const key of Object.keys(initialClients) as (keyof typeof initialClients)[]) {
+      const client = storeClients[key];
+      if (!client) continue;
+      const original = { ...client };
+      Object.assign(client, initialClients[key]);
+      restore.push(() => Object.assign(client, original));
     }
-  });
+    try {
+      await store.refresh(true);
+    } finally {
+      restore.forEach((restoreClient) => restoreClient());
+    }
+  }
+  return store;
 }
+
+async function makeVerifiedStore(options: Parameters<typeof makeStore>[0] = {}) {
+  return makeStore({ ...options, verifyInitialInventory: true });
+}
+
+describe("verified formula identity and Homebrew pins", () => {
+  it.each(["formula", "cask"] as const)(
+    "excludes pinned %s packages from individual and batch upgrades",
+    async (kind) => {
+      const item = homebrewItem({
+        id: `${kind}:utility`,
+        token: "utility",
+        name: "Utility",
+        kind,
+        isOutdated: true,
+        pinned: true,
+        latestVersion: version("2")
+      });
+      const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+      const store = await makeStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+        runBrewCommand
+      });
+      await store.performHomebrewUpdate(item.id);
+      await store.performHomebrewUpdateAll();
+      expect(runBrewCommand).not.toHaveBeenCalled();
+      expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+      expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([]);
+    }
+  );
+
+  it("drops a queued upgrade when a refresh reports the package pinned", async () => {
+    const first = homebrewItem({
+      id: "formula:first-tool",
+      token: "first-tool",
+      name: "First",
+      isOutdated: true
+    });
+    const second = homebrewItem({
+      id: "formula:second-tool",
+      token: "second-tool",
+      name: "Second",
+      isOutdated: true
+    });
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runBrewCommand = vi.fn(async (command: string[]) => {
+      if (command[0] === "upgrade") await blocked;
+      return { success: false, status: 1, output: "Synthetic failure" };
+    });
+    const store = await makeVerifiedStore({
+      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [first, second] },
+      runBrewCommand,
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [first, { ...second, pinned: true }],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+    const firstUpdate = store.performHomebrewUpdate(first.id);
+    const secondUpdate = store.performHomebrewUpdate(second.id);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(second.id);
+    await store.refresh(true, { allowHomebrewInventoryDuringActiveCommand: true });
+    release();
+    await Promise.all([firstUpdate, secondUpdate]);
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["upgrade", "first-tool"]
+    ]);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+  });
+
+  it.each([false, true])(
+    "reconciles a shared app and upgrades only its selected unpinned cask (reverse %s)",
+    async (reverse) => {
+      const app = appRecord({
+        bundlePath: "/Applications/Managed.app",
+        displayName: "Managed",
+        bundleIdentifier: "com.example.managed",
+        localVersion: version("1")
+      });
+      const client = new HomebrewCaskClient();
+      const index = client.parseIndex(
+        Buffer.from(
+          JSON.stringify(
+            ["selected", "sibling"].map((token) => ({
+              token,
+              version: "2",
+              artifacts: [{ app: ["Managed.app"] }],
+              bundle_identifiers: [app.bundleIdentifier]
+            }))
+          )
+        )
+      );
+      const selected = homebrewItem({
+        id: "cask:selected",
+        token: "selected",
+        name: "Managed",
+        kind: "cask",
+        pinned: false,
+        caskMetadata: index.byToken.selected,
+        isOutdated: true,
+        latestVersion: version("2")
+      });
+      const sibling = {
+        ...selected,
+        id: "cask:sibling",
+        token: "sibling",
+        fullToken: "sibling",
+        pinned: true,
+        caskMetadata: index.byToken.sibling
+      };
+      const items = reverse ? [selected, sibling] : [sibling, selected];
+      const runBrewCommand = vi.fn<
+        (args: string[]) => Promise<{ success: boolean; status: number; output: string }>
+      >(async () => ({
+        success: true,
+        status: 0,
+        output: ""
+      }));
+      const store = await makeStore({
+        runBrewCommand,
+        clients: {
+          scanner: { scanApplications: async () => [app] },
+          homebrew: {
+            fetchIndex: async () => index,
+            lookupUpdate: (...args) => client.lookupUpdate(...args),
+            searchCasks: () => []
+          },
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items,
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true }
+            })
+          }
+        }
+      });
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems.map((item) => item.appID)).toEqual([app.id, app.id]);
+      expect(store.getSnapshot().updates[0]?.homebrewToken).toBe("selected");
+      await store.performAppUpdate(app.id);
+      expect(runBrewCommand.mock.calls[0]?.[0]).toEqual([
+        "upgrade",
+        "--cask",
+        "--greedy",
+        "selected"
+      ]);
+    }
+  );
+
+  it("does not route a pinned Homebrew app to an external updater", async () => {
+    const app = appRecord({
+      bundlePath: "/fixture/Managed.app",
+      displayName: "Managed",
+      localVersion: version("1")
+    });
+    const item = homebrewItem({
+      id: "cask:managed-app",
+      token: "managed-app",
+      name: "Managed",
+      kind: "cask",
+      appID: app.id,
+      pinned: true,
+      isOutdated: true
+    });
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const openExternalURL = vi.fn(async () => true);
+    const openAppBundle = vi.fn(async () => undefined);
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        homebrewItems: [item],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "homebrew",
+            supportLevel: "supported",
+            localVersion: version("1"),
+            remoteVersion: version("2"),
+            homebrewToken: item.token,
+            checkedAt: "2026-10-10T00:00:00.000Z"
+          }
+        ]
+      },
+      runBrewCommand,
+      openExternalURL,
+      openAppBundle
+    });
+    await store.performAppUpdate(app.id);
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(openExternalURL).not.toHaveBeenCalled();
+    expect(openAppBundle).not.toHaveBeenCalled();
+  });
+
+  it("records partial batch completion under a renamed formula's saved ID", async () => {
+    const renamed = homebrewItem({
+      id: "formula:old-tool",
+      token: "old-tool",
+      name: "Renamed",
+      isOutdated: true,
+      latestVersion: version("2"),
+      formulaIdentity: {
+        name: "new-tool",
+        fullName: "example/tools/new-tool",
+        tap: "example/tools",
+        oldNames: ["old-tool"]
+      }
+    });
+    const failed = homebrewItem({
+      id: "formula:failed-tool",
+      token: "failed-tool",
+      name: "Failed",
+      isOutdated: true
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command, onOutputLine) => {
+      if (command[0] === "upgrade") {
+        onOutputLine?.("🍺  /opt/homebrew/Cellar/new-tool/2: 10 files");
+        return { success: false, status: 1, output: "Synthetic failure" };
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeVerifiedStore({
+      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [renamed, failed] },
+      runBrewCommand
+    });
+    await store.performHomebrewUpdateAll();
+    expect(runBrewCommand).toHaveBeenCalledWith(
+      ["upgrade", "example/tools/new-tool", "failed-tool"],
+      expect.any(Function)
+    );
+    expect(store.getSnapshot().homebrewBatchFailedItemIDs).toContain(failed.id);
+    expect(store.getSnapshot().homebrewBatchFailedItemIDs).not.toContain(renamed.id);
+    expect(store.getSnapshot().profileStats.events).toContainEqual(
+      expect.objectContaining({ targetID: renamed.id })
+    );
+  });
+
+  it.each(["formula", "cask"] as const)(
+    "retains a known %s pin when older metadata omits the field, and accepts explicit unpinning",
+    (kind) => {
+      const previous = homebrewItem({
+        id: `${kind}:utility`,
+        token: "utility",
+        name: "Utility",
+        kind,
+        pinned: true
+      });
+      const current = { ...previous, pinned: undefined };
+      expect(
+        preservePreviousHomebrewOutdatedState([current], [previous], {
+          formula: true,
+          cask: true
+        })[0]?.pinned
+      ).toBe(true);
+      expect(
+        preservePreviousHomebrewOutdatedState([{ ...current, pinned: false }], [previous], {
+          formula: true,
+          cask: true
+        })[0]?.pinned
+      ).toBe(false);
+    }
+  );
+
+  it("qualifies custom formula upgrades and preserves their saved Ignore key", async () => {
+    const item = homebrewItem({
+      id: "formula:utility",
+      token: "utility",
+      name: "Utility",
+      isOutdated: true,
+      formulaIdentity: {
+        name: "utility",
+        fullName: "example/tools/utility",
+        tap: "example/tools",
+        oldNames: []
+      }
+    });
+    const runBrewCommand = vi.fn(async () => ({
+      success: false,
+      status: 1,
+      output: "Synthetic failure"
+    }));
+    const store = await makeVerifiedStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [item],
+        ignoredHomebrewItemIDs: [item.id]
+      },
+      runBrewCommand
+    });
+    await store.performHomebrewUpdate(item.id);
+    expect(runBrewCommand).toHaveBeenCalledWith(
+      ["upgrade", "example/tools/utility"],
+      expect.any(Function)
+    );
+    expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([item.id]);
+  });
+
+  it("clears legacy formula action targets while preserving preferences and history", async () => {
+    const item = homebrewItem({
+      id: "formula:utility",
+      token: "utility",
+      name: "Utility",
+      isOutdated: true,
+      formulaIdentity: undefined,
+      latestVersion: version("2")
+    });
+    const history = {
+      id: item.id,
+      itemID: item.id,
+      kind: item.kind,
+      token: item.token,
+      displayName: item.name,
+      fromVersion: version("1"),
+      toVersion: version("2"),
+      updatedAt: "2026-10-09T00:00:00.000Z"
+    };
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [item],
+        ignoredHomebrewItemIDs: [item.id],
+        homebrewRecentlyUpdated: [history],
+        additionalDirectories: ["/fixture/apps"],
+        refreshIntervalMinutes: 45
+      },
+      runBrewCommand
+    });
+    await store.performHomebrewUpdate(item.id);
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(store.getSnapshot()).toMatchObject({
+      ignoredHomebrewItemIDs: [item.id],
+      homebrewRecentlyUpdated: [history],
+      additionalDirectories: ["/fixture/apps"],
+      refreshIntervalMinutes: 45,
+      homebrewItems: [{ id: item.id, isOutdated: false, latestVersion: undefined }]
+    });
+  });
+
+  it("retains saved formula IDs across a proven same-tap rename on refresh", async () => {
+    const previous = homebrewItem({
+      id: "formula:old-tool",
+      token: "old-tool",
+      name: "Old Tool",
+      formulaIdentity: {
+        name: "old-tool",
+        fullName: "example/tools/old-tool",
+        tap: "example/tools",
+        oldNames: []
+      }
+    });
+    const current = homebrewItem({
+      id: "formula:new-tool",
+      token: "new-tool",
+      name: "New Tool",
+      formulaIdentity: {
+        name: "new-tool",
+        fullName: "example/tools/new-tool",
+        tap: "example/tools",
+        oldNames: ["old-tool"]
+      }
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [previous],
+        ignoredHomebrewItemIDs: [previous.id]
+      },
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [current],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+    await store.refresh(true);
+    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+      id: previous.id,
+      token: "new-tool"
+    });
+    expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([previous.id]);
+  });
+
+  it.each([
+    [false, false, false],
+    [true, false, false],
+    [false, true, false],
+    [true, true, false],
+    [false, true, true]
+  ])(
+    "preserves a renamed formula's saved ID through missing metadata and recovery (changed tap %s, first refresh failure %s, missing rename evidence %s)",
+    async (changedTap, firstRefreshFailure, missingRenameEvidence) => {
+      const previous = homebrewItem({
+        id: "formula:old-tool",
+        token: "old-tool",
+        name: "Old Tool",
+        formulaIdentity: {
+          name: "old-tool",
+          fullName: "example/tools/old-tool",
+          tap: "example/tools",
+          oldNames: []
+        }
+      });
+      const current = homebrewItem({
+        id: "formula:new-tool",
+        token: "new-tool",
+        name: "New Tool",
+        isOutdated: true,
+        latestVersion: version("2"),
+        formulaIdentity: {
+          name: "new-tool",
+          fullName: "example/tools/new-tool",
+          tap: "example/tools",
+          oldNames: ["old-tool"]
+        }
+      });
+      const missing = {
+        ...current,
+        formulaIdentity: undefined,
+        isOutdated: false,
+        latestVersion: undefined
+      };
+      const history = {
+        id: previous.id,
+        itemID: previous.id,
+        kind: previous.kind,
+        token: previous.token,
+        displayName: previous.name,
+        fromVersion: version("0"),
+        toVersion: version("1"),
+        updatedAt: "2026-10-09T00:00:00.000Z"
+      };
+      let items = [firstRefreshFailure ? missing : current];
+      let formulaReadFailed = false;
+      const clients = {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items,
+            inventoryReadSucceededByKind: { formula: !formulaReadFailed, cask: true },
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      };
+      const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+      let store = await makeStore({
+        persisted: {
+          ...defaultPersistedSnapshot(),
+          homebrewItems: [previous],
+          ignoredHomebrewItemIDs: [previous.id],
+          homebrewRecentlyUpdated: [history]
+        },
+        clients,
+        runBrewCommand
+      });
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(
+        firstRefreshFailure ? current.id : previous.id
+      );
+      items = [missing];
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(
+        firstRefreshFailure ? current.id : previous.id
+      );
+      expect(store.getSnapshot().homebrewItems).toHaveLength(1);
+      expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual([history]);
+      const continuity = store.getSnapshot().homebrewFormulaIdentityContinuity ?? [];
+      expect(continuity.map((item) => item.id)).toEqual([previous.id]);
+      expect(continuity.every((item) => !homebrewCommandToken(item))).toBe(true);
+      const unverified = store.getSnapshot().homebrewItems[0]!;
+      if (!firstRefreshFailure) expect(unverified.formulaIdentityVerified).toBe(false);
+      expect(homebrewCommandToken(unverified)).toBeUndefined();
+      await store.performHomebrewUpdate(previous.id);
+      await store.performHomebrewUpdate(current.id);
+      expect(runBrewCommand).not.toHaveBeenCalled();
+      // Repeat the failure through a simulated relaunch before metadata recovers.
+      store = await makeStore({ persisted: store.getSnapshot(), clients, runBrewCommand });
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(
+        firstRefreshFailure ? current.id : previous.id
+      );
+      formulaReadFailed = true;
+      items = [];
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems).toHaveLength(1);
+      expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual([history]);
+      expect(store.getSnapshot().homebrewFormulaIdentityContinuity?.map((item) => item.id)).toEqual(
+        [previous.id]
+      );
+      formulaReadFailed = false;
+      items = [
+        changedTap
+          ? {
+              ...current,
+              formulaIdentity: {
+                ...current.formulaIdentity!,
+                fullName: "other/tools/new-tool",
+                tap: "other/tools"
+              }
+            }
+          : missingRenameEvidence
+            ? { ...current, formulaIdentity: { ...current.formulaIdentity!, oldNames: [] } }
+            : current
+      ];
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(
+        changedTap || missingRenameEvidence ? current.id : previous.id
+      );
+      expect(store.getSnapshot().homebrewFormulaIdentityContinuity).toBeUndefined();
+      expect(store.getSnapshot().homebrewItems).toHaveLength(1);
+      expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([previous.id]);
+      expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual(
+        changedTap || missingRenameEvidence ? [] : [history]
+      );
+      expect(homebrewCommandToken(store.getSnapshot().homebrewItems[0]!)).toBe(
+        changedTap ? "other/tools/new-tool" : "example/tools/new-tool"
+      );
+    }
+  );
+
+  it("does not preserve a stale update target after a same-name formula tap changes", () => {
+    const previous = homebrewItem({
+      id: "formula:utility",
+      token: "utility",
+      name: "Utility",
+      isOutdated: true,
+      latestVersion: version("9"),
+      formulaIdentity: {
+        name: "utility",
+        fullName: "example/tools/utility",
+        tap: "example/tools",
+        oldNames: []
+      }
+    });
+    const current = homebrewItem({
+      id: previous.id,
+      token: previous.token,
+      name: previous.name,
+      formulaIdentity: {
+        name: "utility",
+        fullName: "other/tools/utility",
+        tap: "other/tools",
+        oldNames: []
+      }
+    });
+    expect(
+      preservePreviousHomebrewOutdatedState([current], [previous], {
+        formula: false,
+        cask: true
+      })[0]
+    ).toMatchObject({ isOutdated: false });
+  });
+});
+
+describe("multi-app installed cask pins", () => {
+  it.each([false, true])(
+    "uses one installed cask pin for each proven app (pinned %s)",
+    async (pinned) => {
+      const apps = ["Primary Utility", "Helper Utility"].map((name) =>
+        appRecord({
+          bundlePath: `/Applications/${name}.app`,
+          displayName: name,
+          bundleIdentifier: `com.example.${name.startsWith("Primary") ? "primary" : "helper"}`,
+          localVersion: version("1")
+        })
+      );
+      const client = new HomebrewCaskClient();
+      const index = client.parseIndex(
+        Buffer.from(
+          JSON.stringify([
+            {
+              token: "utility-suite",
+              version: "2",
+              artifacts: apps.map((app) => ({ app: [path.basename(app.bundlePath)] })),
+              bundle_identifiers: apps.map((app) => app.bundleIdentifier)
+            }
+          ])
+        )
+      );
+      const owner = homebrewItem({
+        id: "cask:utility-suite",
+        token: "utility-suite",
+        name: "Utility Suite",
+        kind: "cask",
+        pinned,
+        isOutdated: true,
+        latestVersion: version("2"),
+        caskMetadata: index.byToken["utility-suite"]
+      });
+      const runBrewCommand = vi.fn<
+        NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+      >(async () => ({
+        success: false,
+        status: 1,
+        output: "Synthetic failure"
+      }));
+      let userData = "";
+      const store = await makeStore({
+        onUserData: (directory) => {
+          userData = directory;
+        },
+        runBrewCommand,
+        clients: {
+          scanner: { scanApplications: async () => apps },
+          homebrew: {
+            fetchIndex: async () => index,
+            lookupUpdate: client.lookupUpdate.bind(client),
+            searchCasks: () => []
+          },
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items: [owner],
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true },
+              inventoryReadSucceededByKind: { formula: true, cask: true }
+            })
+          }
+        }
+      });
+      await store.refresh(true);
+      expect(store.getSnapshot().updates.map((update) => update.homebrewToken)).toEqual([
+        "utility-suite",
+        "utility-suite"
+      ]);
+      expect(store.getSnapshot().homebrewItems).toHaveLength(1);
+      const saved = await new SnapshotPersistence(userData).load();
+      const unowned = appRecord({
+        bundlePath: "/Applications/Unowned Utility.app",
+        displayName: "Unowned Utility",
+        bundleIdentifier: "com.example.unowned",
+        localVersion: version("1")
+      });
+      const relaunched = await makeStore({
+        persisted: {
+          ...saved,
+          apps: [...saved.apps, unowned],
+          updates: [...saved.updates, { ...saved.updates[0]!, id: unowned.id, appID: unowned.id }]
+        }
+      });
+      expect(relaunched.getSnapshot().updates.map((update) => update.appID)).toEqual(
+        apps.map((app) => app.id)
+      );
+      for (const app of apps) await store.performAppUpdate(app.id);
+      expect(
+        runBrewCommand.mock.calls.filter(([args]) => args[0] === "upgrade").map(([args]) => args)
+      ).toEqual(
+        pinned
+          ? []
+          : [
+              ["upgrade", "--cask", "--greedy", "utility-suite"],
+              ["upgrade", "--cask", "--greedy", "utility-suite"]
+            ]
+      );
+    }
+  );
+});

@@ -139,6 +139,7 @@ describe("performance store integration", () => {
       token: "example",
       name: "Example",
       kind: "formula" as const,
+      formulaIdentity: { name: "example", fullName: "example", tap: "homebrew/core", oldNames: [] },
       installedVersion: version("1"),
       isOutdated: true,
       latestVersion: version("2")
@@ -150,6 +151,7 @@ describe("performance store integration", () => {
       output: "Permission denied /Users/fixture/private SECRET=fixture"
     }));
     const { store, persistence } = await fixture({ persisted, runBrewCommand });
+    await store.refresh(true);
     await store.performHomebrewUpdate(item.id);
     expect(store.getSnapshot().operationFailures).toMatchObject([
       { entityID: item.id, reason: "permission", status: 1 }
