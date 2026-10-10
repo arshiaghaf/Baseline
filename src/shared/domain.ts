@@ -179,7 +179,9 @@ export type HomebrewManagedItem = {
   // False retains identity for saved-ID continuity only, never command authorization.
   formulaIdentityVerified?: boolean;
   pinned?: boolean;
-  /** Last proven identity for a known pin; never authorizes a command. */
+  /** Pin observation while installed identity is unavailable; requires fresh proof to associate. */
+  unverifiedPinObservation?: boolean;
+  /** Last proven identity for pin metadata; never authorizes a command. */
   pinnedIdentity?: string;
   isSelf?: boolean;
   name: string;

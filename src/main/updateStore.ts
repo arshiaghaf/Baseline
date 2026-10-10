@@ -2422,9 +2422,24 @@ function preservePreviousHomebrewInventoryMembership(
           identity.oldNames.includes(`${identity.tap}/${previous.formulaIdentity.name}`))
     );
     const previous = matches.length === 1 ? matches[0] : undefined;
-    if (!previous || previous.id === item.id || occupiedIDs.has(previous.id)) return item;
+    if (!previous || (previous.id !== item.id && occupiedIDs.has(previous.id))) return item;
     occupiedIDs.add(previous.id);
-    return { ...item, id: previous.id };
+    const observations = previousItems.filter(
+      (candidate) =>
+        candidate.kind === "formula" &&
+        candidate.token === item.token &&
+        typeof candidate.unverifiedPinObservation === "boolean" &&
+        (!candidate.tap || candidate.tap === identity.tap)
+    );
+    const observation = observations.length === 1 ? observations[0] : undefined;
+    // Apply a raw rack's observation only after fresh unique same-tap identity
+    // proves its relationship to the saved package. Fresh explicit fields win.
+    return {
+      ...item,
+      id: previous.id,
+      pinned: item.pinned ?? observation?.unverifiedPinObservation,
+      unverifiedPinObservation: undefined
+    };
   });
   if (!readSucceeded || (readSucceeded.formula && readSucceeded.cask)) {
     return currentItems;
@@ -2491,10 +2506,50 @@ export function preservePreviousHomebrewOutdatedState(
   currentItems = currentItems.map((item) => {
     const previous = previousByID.get(item.id);
     const identity = homebrewItemIdentity(item);
-    if (item.pinned !== undefined && identity) {
-      return { ...item, pinnedIdentity: item.pinned ? identity : undefined };
-    }
     const previousIdentity = previous && knownPinIdentity(previous);
+    if (!identity) {
+      const observation =
+        typeof item.pinned === "boolean"
+          ? item.pinned
+          : previous?.kind === item.kind && previous.token === item.token
+            ? previous.unverifiedPinObservation
+            : undefined;
+      if (typeof observation === "boolean") {
+        return {
+          ...item,
+          pinned: observation,
+          unverifiedPinObservation: observation,
+          pinnedIdentity:
+            previous &&
+            previousIdentity &&
+            pinIdentityCanContinue(item, previous, previousIdentity, previousItems)
+              ? previousIdentity
+              : undefined
+        };
+      }
+    }
+    if (
+      identity &&
+      item.pinned === undefined &&
+      previous &&
+      previousIdentity &&
+      typeof previous.unverifiedPinObservation === "boolean" &&
+      pinIdentityCanContinue(item, previous, previousIdentity, previousItems)
+    ) {
+      return {
+        ...item,
+        pinned: previous.unverifiedPinObservation,
+        pinnedIdentity: previous.unverifiedPinObservation ? identity : undefined,
+        unverifiedPinObservation: undefined
+      };
+    }
+    if (item.pinned !== undefined && identity) {
+      return {
+        ...item,
+        pinnedIdentity: item.pinned ? identity : undefined,
+        unverifiedPinObservation: undefined
+      };
+    }
     if (
       item.pinned !== false &&
       previous?.pinned &&
