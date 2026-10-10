@@ -5,7 +5,7 @@ import { createPackage, extractAll, extractFile, getRawHeader } from "@electron/
 import { signAsync } from "@electron/osx-sign";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -39,6 +39,27 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
       { timeout: 120_000 }
     );
     process.env.BASELINE_E2E_NATIVE_OBSERVER = observer;
+    const fixtureContents = path.join(temporaryDirectory, "FullScreenFixture.app", "Contents");
+    await mkdir(path.join(fixtureContents, "MacOS"), { recursive: true });
+    await writeFile(
+      path.join(fixtureContents, "Info.plist"),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>FullScreenFixture</string>
+<key>CFBundleIdentifier</key><string>org.example.baseline.fullscreen-fixture</string>
+<key>CFBundleName</key><string>Full-screen fixture</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>NSPrincipalClass</key><string>NSApplication</string>
+</dict></plist>\n`
+    );
+    const fullScreenFixture = path.join(fixtureContents, "MacOS", "FullScreenFixture");
+    await promisify(execFile)(
+      "/usr/bin/xcrun",
+      ["swiftc", path.join(root, "e2e/fullScreenFixture.swift"), "-o", fullScreenFixture],
+      { timeout: 120_000 }
+    );
+    process.env.BASELINE_E2E_FULLSCREEN_FIXTURE = fullScreenFixture;
     const appDirectory = path.join(temporaryDirectory, "app");
     extractAll(archivePath(productionApp), appDirectory);
     const productionProvider = path.join(root, "src/main/profileStatsIntegrity.ts");

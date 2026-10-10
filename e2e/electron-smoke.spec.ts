@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { _electron as electron, expect, test } from "@playwright/test";
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { once } from "node:events";
 import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -15,6 +16,7 @@ import { cleanupApplications } from "./applicationCleanup";
 
 const profileTestSecret = randomBytes(32).toString("base64url");
 const launchedApps = new Set<Awaited<ReturnType<typeof electron.launch>>>();
+const nativeFixtures = new Set<{ process(): ChildProcess; close(): Promise<void> }>();
 const userDataDirectories = new Set<string>();
 
 type NativeTrayProbe = {
@@ -27,8 +29,10 @@ type NativeTrayProbe = {
 };
 
 test.afterEach(async () => {
-  await cleanupApplications(launchedApps, async (app) => {
-    await app
+  await cleanupApplications([...launchedApps, ...nativeFixtures], async (app) => {
+    const electronApp = [...launchedApps].find((candidate) => candidate === app);
+    if (!electronApp) return;
+    await electronApp
       .evaluate(() =>
         (
           globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
@@ -37,6 +41,7 @@ test.afterEach(async () => {
       .catch(() => undefined);
   });
   launchedApps.clear();
+  nativeFixtures.clear();
   await Promise.all(
     [...userDataDirectories].map((directory) => rm(directory, { recursive: true, force: true }))
   );
@@ -628,85 +633,55 @@ test("opens a keyboard-usable popover over another app's full-screen Space", asy
   });
   await page.evaluate(() => window.baseline.updatePreferences({ autoRefreshEnabled: false }));
 
-  const fixtureData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
-  userDataDirectories.add(fixtureData);
-  const fixtureScript = path.join(fixtureData, "fullscreen-fixture.cjs");
-  await writeFile(
-    fixtureScript,
-    `const { app, BrowserWindow } = require("electron");
-app.setPath("userData", ${JSON.stringify(fixtureData)});
-// This fixture tests native Spaces, not hardware rendering on virtual CI Macs.
-app.disableHardwareAcceleration();
-app.whenReady().then(async () => {
-  const window = new BrowserWindow({ title: "Full-screen fixture", show: false,
-    webPreferences: { contextIsolation: true, nodeIntegration: false } });
-  await window.loadURL("data:text/html,<body style='background:steelblue'>Full-screen fixture</body>");
-  window.show();
-});
-app.on("window-all-closed", () => app.quit());
-`
-  );
   const observer = process.env.BASELINE_E2E_NATIVE_OBSERVER;
   if (!observer) throw new Error("Expected the native window observer from E2E preflight.");
   const nativeState = async () => {
     const { stdout } = await promisify(execFile)(observer, { timeout: 5000 });
     return JSON.parse(stdout) as { frontmostPID: number; onScreenWindowIDs: number[] };
   };
-  const fixture = await electron.launch({
-    executablePath: path.join(
-      process.cwd(),
-      "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
-    ),
-    args: [fixtureScript]
+  const executable = process.env.BASELINE_E2E_FULLSCREEN_FIXTURE;
+  if (!executable) throw new Error("Expected the native full-screen fixture from E2E preflight.");
+  const child = spawn(executable, [], { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  const fixture = {
+    process: () => child,
+    close: async () => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const closed = once(child, "close");
+      child.kill("SIGTERM");
+      await closed;
+    }
+  };
+  nativeFixtures.add(fixture);
+  let output = "";
+  let errorOutput = "";
+  let launchError: Error | undefined;
+  child.stdout.on("data", (data: Buffer) => {
+    output += data.toString();
   });
-  launchedApps.add(fixture);
-  await fixture.firstWindow();
-  // The global hook drains both tracked apps once, and reports teardown errors
-  // separately so a shutdown failure cannot replace the behavioral failure.
-  await expect
-    .poll(() =>
-      fixture.evaluate(({ BrowserWindow }) => {
-        const window = BrowserWindow.getAllWindows()[0];
-        return window?.isVisible();
-      })
-    )
-    .toBe(true);
-  // Visibility does not mean macOS has activated a newly launched app yet.
-  // Complete activation before asking it to transition to a full-screen Space.
-  await fixture.evaluate(({ app, BrowserWindow }) => {
-    app.focus({ steal: true });
-    BrowserWindow.getAllWindows()[0]!.focus();
+  child.stderr.on("data", (data: Buffer) => {
+    errorOutput += data.toString();
   });
-  await expect.poll(async () => (await nativeState()).frontmostPID).toBe(fixture.process().pid);
-  await expect
-    .poll(() =>
-      fixture.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFocused())
-    )
-    .toBe(true);
-  const fixtureWindowID = await fixture.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0]!;
-    window.once("enter-full-screen", () => {
-      (
-        globalThis as typeof globalThis & { fixtureEnteredFullScreen?: boolean }
-      ).fixtureEnteredFullScreen = true;
-    });
-    window.setFullScreen(true);
-    return Number(window.getMediaSourceId().split(":")[1]);
+  child.on("error", (error) => {
+    launchError = error;
   });
-  // Poll a completed native event instead of leaving an IPC promise waiting
-  // inside Electron after the test times out and teardown starts.
+  // The native delegate prints its window ID only after AppKit completes the
+  // real full-screen transition. A missing event remains a test failure.
   await expect
     .poll(
-      () =>
-        fixture.evaluate(
-          () =>
-            (globalThis as typeof globalThis & { fixtureEnteredFullScreen?: boolean })
-              .fixtureEnteredFullScreen
-        ),
+      () => {
+        if (launchError) throw launchError;
+        if (child.exitCode !== null || child.signalCode !== null) {
+          throw new Error(
+            `Native full-screen fixture exited before its transition: ${errorOutput}`
+          );
+        }
+        return output.trim();
+      },
       { timeout: 15_000 }
     )
-    .toBe(true);
-  await expect.poll(async () => (await nativeState()).frontmostPID).toBe(fixture.process().pid);
+    .toMatch(/^\d+$/);
+  const fixtureWindowID = Number(output.trim());
+  await expect.poll(async () => (await nativeState()).frontmostPID).toBe(child.pid);
   const popoverOpened = application.waitForEvent("window");
   await application.evaluate(() => {
     (
