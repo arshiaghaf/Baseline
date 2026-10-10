@@ -8,6 +8,20 @@
 &nbsp;
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-6e5aff?style=flat-square)](https://github.com/arshiaghaf/baseline/blob/main/LICENSE)
 
+## Install
+
+### GitHub Releases
+
+Download: <https://github.com/arshiaghaf/Baseline/releases>
+
+### Homebrew
+
+```bash
+brew install --cask arshiaghaf/tap/baseline
+```
+
+## Baseline
+
 Baseline is a macOS app for managing and updating installed Mac apps and Homebrew packages from one place.
 
 It supports App Store apps, direct downloads, Sparkle-enabled apps, and Homebrew casks and formulae.
@@ -38,22 +52,6 @@ When the required local tooling is available, Baseline can run update and instal
 ![Baseline main window Homebrew search showing installable casks](docs/images/baseline-homebrew-search.png)
 
 ![Baseline menu bar tray showing app and Homebrew updates](docs/images/baseline-menu-bar.png)
-
-## Install
-
-### Requirements
-
-- macOS 15+ (Sequoia)
-
-### GitHub Releases
-
-Download: <https://github.com/arshiaghaf/Baseline/releases>
-
-### Homebrew
-
-```bash
-brew install --cask arshiaghaf/tap/baseline
-```
 
 ## Limitations
 
