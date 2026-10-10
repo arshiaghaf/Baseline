@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { _electron as electron, expect, test } from "@playwright/test";
+import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { defaultPersistedSnapshot } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 import type { E2ECommandControl } from "./commandRunner";
@@ -592,6 +594,113 @@ test("routes native tray events with the Dock hidden and protects a running upda
     });
   await closed;
   launchedApps.delete(application);
+});
+
+test("opens a keyboard-usable popover over another app's full-screen Space", async () => {
+  test.skip(process.platform !== "darwin", "macOS full-screen Spaces behavior");
+  const application = await launchBaseline({ packaged: true });
+  const page = await application.firstWindow();
+  await expect(page.locator("h1")).toContainText("All");
+  await application.evaluate(({ Tray }) => {
+    const probe: NativeTrayProbe = { dialogs: [], selfUpdateChecks: 0, command: { commands: [] } };
+    (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }).nativeTrayProbe =
+      probe;
+    const setTitle = Tray.prototype.setTitle;
+    Tray.prototype.setTitle = function (title, options) {
+      probe.tray = this;
+      if (options) setTitle.call(this, title, options);
+      else setTitle.call(this, title);
+    };
+  });
+  await page.evaluate(() => window.baseline.updatePreferences({ autoRefreshEnabled: false }));
+
+  const fixtureData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  userDataDirectories.add(fixtureData);
+  const fixtureScript = path.join(fixtureData, "fullscreen-fixture.cjs");
+  await writeFile(
+    fixtureScript,
+    `const { app, BrowserWindow } = require("electron");
+app.setPath("userData", ${JSON.stringify(fixtureData)});
+app.whenReady().then(async () => {
+  const window = new BrowserWindow({ title: "Full-screen fixture", show: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false } });
+  await window.loadURL("data:text/html,<body style='background:steelblue'>Full-screen fixture</body>");
+  window.show();
+});
+app.on("window-all-closed", () => app.quit());
+`
+  );
+  const observer = path.join(fixtureData, "native-window-state");
+  await promisify(execFile)("/usr/bin/xcrun", [
+    "swiftc",
+    path.join(process.cwd(), "e2e/nativeWindowState.swift"),
+    "-o",
+    observer
+  ]);
+  const nativeState = async () => {
+    const { stdout } = await promisify(execFile)(observer);
+    return JSON.parse(stdout) as { frontmostPID: number; onScreenWindowIDs: number[] };
+  };
+  const fixture = await electron.launch({
+    executablePath: path.join(
+      process.cwd(),
+      "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+    ),
+    args: [fixtureScript]
+  });
+  launchedApps.add(fixture);
+  await fixture.firstWindow();
+  try {
+    const fixtureWindowID = await fixture.evaluate(async ({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      await new Promise<void>((resolve) => {
+        window.once("enter-full-screen", () => resolve());
+        window.setFullScreen(true);
+        window.focus();
+      });
+      return Number(window.getMediaSourceId().split(":")[1]);
+    });
+    await expect.poll(async () => (await nativeState()).frontmostPID).toBe(fixture.process().pid);
+    const popoverOpened = application.waitForEvent("window");
+    await application.evaluate(() => {
+      (
+        globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
+      ).nativeTrayProbe!.tray!.emit("click");
+    });
+    const popover = await popoverOpened;
+    await expect(popover.getByRole("button", { name: "Search", exact: true })).toBeVisible();
+    const popoverWindowID = await application.evaluate(({ BrowserWindow }) =>
+      Number(
+        BrowserWindow.getAllWindows()
+          .find((window) => window.webContents.getURL().endsWith("#/menubar"))!
+          .getMediaSourceId()
+          .split(":")[1]
+      )
+    );
+    await expect.poll(nativeState).toMatchObject({
+      frontmostPID: fixture.process().pid,
+      onScreenWindowIDs: expect.arrayContaining([fixtureWindowID, popoverWindowID])
+    });
+    expect(
+      await application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()
+          .find((window) => window.webContents.getURL().endsWith("#/menubar"))!
+          .isFocused()
+      )
+    ).toBe(true);
+    await popover.getByRole("button", { name: "Search", exact: true }).click();
+    await popover.getByRole("textbox").press("f");
+    await expect(popover.getByRole("textbox")).toHaveValue("f");
+    expect((await nativeState()).frontmostPID).toBe(fixture.process().pid);
+    await popover.evaluate(() => window.baseline.showSettings());
+    await expect(page.locator("h1")).toContainText("General");
+    await expect
+      .poll(async () => (await nativeState()).frontmostPID)
+      .toBe(application.process().pid);
+  } finally {
+    await closeApp(fixture);
+    await closeApp(application);
+  }
 });
 
 test("recovers a saved configuration with both app icons hidden", async () => {

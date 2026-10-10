@@ -244,6 +244,9 @@ function createMenuWindow(): BrowserWindow {
     backgroundColor: "#00000000",
     show: false,
     frame: false,
+    // A native panel takes keyboard focus without activating Baseline or
+    // leaving the user's current full-screen Space.
+    type: process.platform === "darwin" ? "panel" : undefined,
     fullscreenable: false,
     skipTaskbar: true,
     webPreferences: {
