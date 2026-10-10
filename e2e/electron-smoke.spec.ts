@@ -502,6 +502,7 @@ test("keeps persisted pinned packages visible without update actions", async () 
   );
   const app = await launchBaseline({ userData });
   const page = await app.firstWindow();
+  await page.getByRole("button", { name: "Installed", exact: true }).click();
   await expect(page.locator("h1")).toContainText("Installed");
   await expect(page.getByText("Pinned in Homebrew", { exact: true })).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
