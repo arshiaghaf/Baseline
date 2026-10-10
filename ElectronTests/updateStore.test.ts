@@ -5586,9 +5586,16 @@ describe("manual Homebrew cleanup", () => {
   });
 
   it("preserves the cleanup outcome when its follow-up refresh fails", async () => {
-    const store = await makeStore();
+    const store = await makeStore({
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => {
+            throw new Error("Synthetic refresh failure");
+          }
+        }
+      }
+    });
     await store.refreshToolStatus();
-    vi.spyOn(store, "refresh").mockRejectedValueOnce(new Error("Synthetic refresh failure"));
     expect(await store.cleanUpHomebrew(async () => true)).toBe(
       "Homebrew cleanup completed. Installed packages could not be refreshed. Refresh again before updating."
     );
@@ -5599,12 +5606,19 @@ describe("manual Homebrew cleanup", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({ runBrewCommand });
+    const fetchInventory = vi.fn(async () => ({
+      items: [],
+      outdatedDetectionSucceeded: true,
+      outdatedDetectionSucceededByKind: { formula: true, cask: true }
+    }));
+    const store = await makeStore({
+      runBrewCommand,
+      clients: { homebrewInventory: { fetchInventory } }
+    });
     await store.refreshToolStatus();
     runBrewCommand.mockRejectedValueOnce(new Error("Synthetic spawn failure"));
-    const refresh = vi.spyOn(store, "refresh");
     expect(await store.cleanUpHomebrew(async () => true)).toContain("could not run");
-    expect(refresh).toHaveBeenCalledWith(true, { allowHomebrewInventoryDuringActiveCommand: true });
+    expect(fetchInventory).toHaveBeenCalledTimes(1);
     expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
   });
 

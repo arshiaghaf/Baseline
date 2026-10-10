@@ -82,6 +82,7 @@ type StoreEvents = {
 type RefreshOptions = {
   allowHomebrewInventoryDuringActiveCommand?: boolean;
   forceMetadata?: boolean;
+  onHomebrewInventoryReconciled?: (inventory: HomebrewInventoryResult) => void;
 };
 
 type AppLookupSource = Extract<UpdateRecord["source"], "appStore" | "sparkle">;
@@ -121,6 +122,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly profileStatsIntegrity: ProfileStatsIntegrity;
   private readonly successRefreshDelayMS: number;
   private refreshTask?: Promise<void>;
+  private cleanupRefreshTask?: Promise<void>;
+  private homebrewCleanupRequiresInventory = false;
   private refreshSequence = 0;
   private refreshController?: AbortController;
   private autoRefreshTimer?: NodeJS.Timeout;
@@ -290,6 +293,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
+    if (this.cleanupRefreshTask) return this.cleanupRefreshTask;
     if (this.refreshTask && lightweight) {
       return this.refreshTask;
     }
@@ -581,7 +585,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       requireOutdated?: boolean;
     } = {}
   ): Promise<void> | undefined {
-    if (item.isSelf || !homebrewCommandToken(item)) {
+    if (this.homebrewCleanupRequiresInventory || item.isSelf || !homebrewCommandToken(item)) {
       return undefined;
     }
     if (
@@ -994,6 +998,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private homebrewBatchUpdateItems(itemIDs?: string[]): HomebrewManagedItem[] {
+    if (this.homebrewCleanupRequiresInventory) return [];
     const requestedItemIDs = itemIDs ? new Set(itemIDs) : undefined;
     const updatesByAppID = new Map(this.state.updates.map((update) => [update.appID, update]));
     const appsRepresentedOutsideHomebrew = this.state.apps.filter(
@@ -1500,7 +1505,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         )
       });
       await this.refreshHomebrewDiscoverItems();
+      if (this.homebrewInventoryIsComplete(homebrewInventory)) {
+        this.homebrewCleanupRequiresInventory = false;
+      } else if (this.homebrewCleanupRequiresInventory || options.onHomebrewInventoryReconciled) {
+        this.homebrewCleanupRequiresInventory = true;
+        this.invalidateHomebrewUpdateTargets();
+      }
       await this.persist();
+      if (sequence !== this.refreshSequence) return;
+      options.onHomebrewInventoryReconciled?.(homebrewInventory);
       void this.processHomebrewUpdateQueue();
     } catch (error) {
       if (sequence !== this.refreshSequence) {
@@ -1529,6 +1542,11 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         patch.lastRefreshNoticeMessage = recoveredHomebrewInventory.warning;
       }
       this.patch(patch);
+      if (this.homebrewCleanupRequiresInventory || options.onHomebrewInventoryReconciled) {
+        this.homebrewCleanupRequiresInventory = true;
+        this.invalidateHomebrewUpdateTargets();
+        await this.persist().catch(() => undefined);
+      }
       void this.processHomebrewUpdateQueue();
     }
   }
@@ -1669,17 +1687,93 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       } catch {
         message = "Homebrew cleanup could not run. Try again or check Homebrew in Terminal.";
       }
-      // Cleanup can remove installed dependencies, even when it partially fails.
-      await this.refreshTask?.catch(() => undefined);
+      // Own this refresh generation: other refresh callers join it, and obsolete
+      // provider lookups cannot delay or replace the post-cleanup inventory read.
+      let finish!: () => void;
+      const barrier = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      this.cleanupRefreshTask = barrier;
+      const sequence = ++this.refreshSequence;
+      this.refreshController?.abort();
+      const controller = new AbortController();
+      this.refreshController = controller;
+      let refreshed = false;
       try {
-        await this.refresh(true, { allowHomebrewInventoryDuringActiveCommand: true });
+        await this.computeRefresh(
+          true,
+          sequence,
+          {
+            allowHomebrewInventoryDuringActiveCommand: true,
+            onHomebrewInventoryReconciled: (inventory) => {
+              refreshed = this.homebrewInventoryIsComplete(inventory);
+            }
+          },
+          controller.signal
+        );
+        if (!refreshed) {
+          this.homebrewCleanupRequiresInventory = true;
+          this.cancelQueuedHomebrewUpdates();
+          this.invalidateHomebrewUpdateTargets();
+          await this.persist().catch(() => undefined);
+        }
       } catch {
+        refreshed = false;
+        this.homebrewCleanupRequiresInventory = true;
+        this.cancelQueuedHomebrewUpdates();
+        this.invalidateHomebrewUpdateTargets();
+        await this.persist().catch(() => undefined);
+      } finally {
+        this.cleanupRefreshTask = undefined;
+        if (this.refreshController === controller) {
+          this.refreshTask = undefined;
+          this.refreshController = undefined;
+        }
+        finish();
+      }
+      if (!refreshed) {
         return `${message} Installed packages could not be refreshed. Refresh again before updating.`;
       }
       return message;
     } finally {
       release();
     }
+  }
+
+  private homebrewInventoryIsComplete(inventory: HomebrewInventoryResult): boolean {
+    return (
+      inventory.inventoryReadSucceededByKind?.formula !== false &&
+      inventory.inventoryReadSucceededByKind?.cask !== false &&
+      inventory.outdatedDetectionSucceeded &&
+      inventory.outdatedDetectionSucceededByKind?.formula !== false &&
+      inventory.outdatedDetectionSucceededByKind?.cask !== false &&
+      !inventory.warning
+    );
+  }
+
+  private invalidateHomebrewUpdateTargets(): void {
+    this.patch({
+      homebrewItems: this.state.homebrewItems.map((item) => ({
+        ...item,
+        isOutdated: false,
+        latestVersion: undefined,
+        releaseDate: undefined
+      })),
+      updates: this.state.updates.filter((update) => update.source !== "homebrew")
+    });
+  }
+
+  private cancelQueuedHomebrewUpdates(): void {
+    const entries = this.homebrewUpdateQueue.splice(0);
+    const ids = new Set(entries.map((entry) => entry.item.id));
+    this.patch({
+      homebrewQueuedItemIDs: this.state.homebrewQueuedItemIDs.filter((id) => !ids.has(id)),
+      homebrewUpdatingItemIDs: this.state.homebrewUpdatingItemIDs.filter((id) => !ids.has(id)),
+      homebrewBatchProgressByItemID: Object.fromEntries(
+        Object.entries(this.state.homebrewBatchProgressByItemID).filter(([id]) => !ids.has(id))
+      )
+    });
+    for (const entry of entries) entry.resolve();
   }
 
   private applyOperationNotice(message: string | undefined): void {
@@ -1743,6 +1837,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     item: HomebrewManagedItem
   ): boolean {
     if (
+      this.homebrewCleanupRequiresInventory ||
       item.isSelf ||
       !homebrewCommandToken(item) ||
       homebrewItemIdentity(item) !== homebrewItemIdentity(entry.item)
