@@ -671,6 +671,18 @@ app.on("window-all-closed", () => app.quit());
       })
     )
     .toBe(true);
+  // Visibility does not mean macOS has activated a newly launched app yet.
+  // Complete activation before asking it to transition to a full-screen Space.
+  await fixture.evaluate(({ app, BrowserWindow }) => {
+    app.focus({ steal: true });
+    BrowserWindow.getAllWindows()[0]!.focus();
+  });
+  await expect.poll(async () => (await nativeState()).frontmostPID).toBe(fixture.process().pid);
+  await expect
+    .poll(() =>
+      fixture.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isFocused())
+    )
+    .toBe(true);
   const fixtureWindowID = await fixture.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0]!;
     window.once("enter-full-screen", () => {
@@ -679,7 +691,6 @@ app.on("window-all-closed", () => app.quit());
       ).fixtureEnteredFullScreen = true;
     });
     window.setFullScreen(true);
-    window.focus();
     return Number(window.getMediaSourceId().split(":")[1]);
   });
   // Poll a completed native event instead of leaving an IPC promise waiting
