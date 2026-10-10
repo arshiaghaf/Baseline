@@ -511,6 +511,10 @@ describe("update store helpers", () => {
 
   it("keeps a running app update alive when quitting or changing icon preferences", async () => {
     let finishCommand!: (result: { success: boolean; status: number; output: string }) => void;
+    const command = new Promise<{ success: boolean; status: number; output: string }>((resolve) => {
+      finishCommand = resolve;
+    });
+    const commandFailure = { success: false, status: 1, output: "Synthetic command failure" };
     const app = appRecord({
       bundlePath: "/Applications/Managed Utility.app",
       displayName: "Managed Utility",
@@ -533,24 +537,29 @@ describe("update store helpers", () => {
           }
         ]
       },
-      runMasCommand: () =>
-        new Promise((resolve) => {
-          finishCommand = resolve;
-        })
+      runMasCommand: () => command
     });
     const updating = store.performAppUpdate(app.id);
-    expect(store.hasActiveUpdateOperation()).toBe(true);
-    await store.updatePreferences({ showDockIcon: false });
-    await expect(store.prepareToQuit()).resolves.toBe(false);
-    expect(store.getSnapshot().appUpdatingIDs).toContain(app.id);
-    finishCommand({ success: false, status: 1, output: "Synthetic command failure" });
-    await updating;
-    expect(store.hasActiveUpdateOperation()).toBe(false);
-    await expect(store.prepareToQuit()).resolves.toBe(true);
+    try {
+      expect(store.hasActiveUpdateOperation()).toBe(true);
+      await store.updatePreferences({ showDockIcon: false });
+      await expect(store.prepareToQuit()).resolves.toBe(false);
+      expect(store.getSnapshot().appUpdatingIDs).toContain(app.id);
+      finishCommand(commandFailure);
+      await updating;
+      expect(store.hasActiveUpdateOperation()).toBe(false);
+      await expect(store.prepareToQuit()).resolves.toBe(true);
+    } finally {
+      finishCommand(commandFailure);
+      await Promise.allSettled([updating]);
+    }
   });
 
   it("saves pending preferences and prevents a late refresh commit during graceful quit", async () => {
     let finishScan!: (apps: AppRecord[]) => void;
+    const scan = new Promise<AppRecord[]>((resolve) => {
+      finishScan = resolve;
+    });
     let userData = "";
     const store = await makeStore({
       onUserData: (directory) => {
@@ -558,40 +567,40 @@ describe("update store helpers", () => {
       },
       clients: {
         scanner: {
-          scanApplications: () =>
-            new Promise<AppRecord[]>((resolve) => {
-              finishScan = resolve;
-            })
+          scanApplications: () => scan
         }
       }
     });
     const refreshing = store.refresh(false);
     const changingPreferences = store.updatePreferences({ showDockIcon: false });
-    await store.prepareToQuit();
-    finishScan([
-      appRecord({
-        bundlePath: "/Applications/Late Utility.app",
-        displayName: "Late Utility",
-        localVersion: version("1")
-      })
-    ]);
-    await Promise.all([refreshing, changingPreferences]);
-    expect(store.getSnapshot().apps).toEqual([]);
-    await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
-      showDockIcon: false,
-      showMenuBarIcon: true,
-      apps: []
-    });
+    try {
+      await store.prepareToQuit();
+      finishScan([
+        appRecord({
+          bundlePath: "/Applications/Late Utility.app",
+          displayName: "Late Utility",
+          localVersion: version("1")
+        })
+      ]);
+      await Promise.all([refreshing, changingPreferences]);
+      expect(store.getSnapshot().apps).toEqual([]);
+      await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
+        showDockIcon: false,
+        showMenuBarIcon: true,
+        apps: []
+      });
+    } finally {
+      finishScan([]);
+      await Promise.allSettled([refreshing, changingPreferences]);
+    }
   });
 
   it("keeps tray Settings usable during refresh and routes each update command to its own check", async () => {
     let finishScan!: (apps: AppRecord[]) => void;
-    const scanApplications = vi.fn(
-      () =>
-        new Promise<AppRecord[]>((resolve) => {
-          finishScan = resolve;
-        })
-    );
+    const scan = new Promise<AppRecord[]>((resolve) => {
+      finishScan = resolve;
+    });
+    const scanApplications = vi.fn(() => scan);
     const lookup = vi.fn(async (currentVersion: ReturnType<typeof version>, checkedAt: string) => ({
       available: false,
       currentVersion,
@@ -604,12 +613,16 @@ describe("update store helpers", () => {
     });
     const showSettings = vi.fn();
     const quit = vi.fn();
+    const refresh = vi.spyOn(store, "refresh");
+    const selfChecks: Promise<SelfUpdateRecord | undefined>[] = [];
     const options = {
       store,
       showSettings,
       quit,
       checkForUpdates: async () => {
-        await store.checkForSelfUpdate();
+        const check = store.checkForSelfUpdate();
+        selfChecks.push(check);
+        await check;
       },
       isCheckingForUpdates: false
     };
@@ -618,27 +631,36 @@ describe("update store helpers", () => {
       if (!item?.click) throw new Error(`Expected an action for ${label}.`);
       item.click({} as Electron.MenuItem, undefined, {} as Electron.KeyboardEvent);
     }
-    click("Check for Updates");
-    await vi.waitFor(() => {
-      expect(lookup).toHaveBeenCalledTimes(1);
-    });
-    expect(scanApplications).not.toHaveBeenCalled();
+    try {
+      click("Check for Updates");
+      await vi.waitFor(() => {
+        expect(lookup).toHaveBeenCalledTimes(1);
+      });
+      expect(scanApplications).not.toHaveBeenCalled();
 
-    click("Refresh");
-    expect(scanApplications).toHaveBeenCalledTimes(1);
-    expect(trayMenuTemplate(options).find((item) => item.label === "Refresh")?.enabled).toBe(false);
-    click("Refresh");
-    expect(scanApplications).toHaveBeenCalledTimes(1);
-    click("Settings");
-    click("Settings");
-    expect(showSettings).toHaveBeenCalledTimes(2);
-    expect(store.getSnapshot().isRefreshing).toBe(true);
-    finishScan([]);
-    await vi.waitFor(() => {
+      click("Refresh");
+      expect(scanApplications).toHaveBeenCalledTimes(1);
+      expect(trayMenuTemplate(options).find((item) => item.label === "Refresh")?.enabled).toBe(
+        false
+      );
+      click("Refresh");
+      expect(scanApplications).toHaveBeenCalledTimes(1);
+      click("Settings");
+      click("Settings");
+      expect(showSettings).toHaveBeenCalledTimes(2);
+      expect(store.getSnapshot().isRefreshing).toBe(true);
+      finishScan([]);
+      await Promise.all(refresh.mock.results.map((result) => result.value));
       expect(store.getSnapshot().isRefreshing).toBe(false);
-    });
-    click("Quit");
-    expect(quit).toHaveBeenCalledTimes(1);
+      click("Quit");
+      expect(quit).toHaveBeenCalledTimes(1);
+    } finally {
+      finishScan([]);
+      await Promise.allSettled([
+        ...refresh.mock.results.map((result) => result.value),
+        ...selfChecks
+      ]);
+    }
   });
 
   it("coalesces Baseline-only checks without scanning apps or running Homebrew", async () => {

@@ -20,6 +20,7 @@ type NativeTrayProbe = {
   dialogs: Electron.MessageBoxOptions[];
   command: E2ECommandControl;
   selfUpdateChecks: number;
+  restoreDockShow?: () => void;
 };
 
 test.afterEach(async () => {
@@ -517,6 +518,54 @@ test("routes native tray events with the Dock hidden and protects a running upda
   await expect
     .poll(() => page.evaluate(async () => (await window.baseline.getSnapshot()).appUpdatingIDs))
     .toEqual([]);
+
+  // A rejected native Dock restore must leave a usable recovery tray, even
+  // though the user has just switched the menu-bar preference off.
+  await application.evaluate(({ app }) => {
+    if (!app.dock) throw new Error("Expected the native Dock API.");
+    const showDock = app.dock.show.bind(app.dock);
+    const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe!;
+    probe.restoreDockShow = () => {
+      app.dock!.show = showDock;
+    };
+    app.dock.show = async () => {
+      throw new Error("Synthetic Dock restore failure");
+    };
+  });
+  await page.evaluate(() => window.baseline.updatePreferences({ showMenuBarIcon: false }));
+  expect((await page.evaluate(() => window.baseline.getSnapshot())).showMenuBarIcon).toBe(false);
+  expect(await application.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  await application.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().endsWith("#/settings"))!
+      .close();
+    (
+      globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
+    ).nativeTrayProbe!.tray!.emit("click");
+  });
+  await expect
+    .poll(() =>
+      application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some(
+          (window) => window.webContents.getURL().endsWith("#/menubar") && window.isVisible()
+        )
+      )
+    )
+    .toBe(true);
+  await application.evaluate(() => {
+    const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe!;
+    probe.tray!.emit("click");
+    probe.tray!.emit("right-click");
+    const settings = probe.menu!.items.find((item) => item.label === "Settings")!;
+    settings.click(settings, undefined, {} as Electron.KeyboardEvent);
+    probe.restoreDockShow!();
+  });
+  await expect(page.locator("h1")).toContainText("General");
+  await page.evaluate(() => window.baseline.updatePreferences({ appearancePreference: "light" }));
+  await expect.poll(() => application.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
+  expect((await page.evaluate(() => window.baseline.getSnapshot())).showMenuBarIcon).toBe(false);
   const closed = application.waitForEvent("close");
   await application
     .evaluate(() => {

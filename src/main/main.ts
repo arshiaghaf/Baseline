@@ -354,7 +354,9 @@ function destroyTray(): void {
 }
 
 function toggleMenuWindow(): void {
-  if (!store.getSnapshot().showMenuBarIcon) {
+  // A recovery tray remains usable even when the preference is off because
+  // macOS could not restore the Dock icon.
+  if (!tray) {
     return;
   }
   const window = createMenuWindow();
