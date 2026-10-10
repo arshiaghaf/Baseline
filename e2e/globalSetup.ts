@@ -30,6 +30,15 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-app-"));
   const cleanup = () => rm(temporaryDirectory, { recursive: true, force: true });
   try {
+    // Cold Swift module compilation can exceed a smoke-test timeout on CI.
+    // Compile the public native observer during preflight, before GUI tests.
+    const observer = path.join(temporaryDirectory, "native-window-state");
+    await promisify(execFile)(
+      "/usr/bin/xcrun",
+      ["swiftc", path.join(root, "e2e/nativeWindowState.swift"), "-o", observer],
+      { timeout: 120_000 }
+    );
+    process.env.BASELINE_E2E_NATIVE_OBSERVER = observer;
     const appDirectory = path.join(temporaryDirectory, "app");
     extractAll(archivePath(productionApp), appDirectory);
     const productionProvider = path.join(root, "src/main/profileStatsIntegrity.ts");

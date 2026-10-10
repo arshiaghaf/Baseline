@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { defaultPersistedSnapshot } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 import type { E2ECommandControl } from "./commandRunner";
+import { cleanupApplications } from "./applicationCleanup";
 
 const profileTestSecret = randomBytes(32).toString("base64url");
 const launchedApps = new Set<Awaited<ReturnType<typeof electron.launch>>>();
@@ -26,7 +27,7 @@ type NativeTrayProbe = {
 };
 
 test.afterEach(async () => {
-  for (const app of launchedApps) {
+  await cleanupApplications(launchedApps, async (app) => {
     await app
       .evaluate(() =>
         (
@@ -34,8 +35,7 @@ test.afterEach(async () => {
         ).nativeTrayProbe?.command.finish?.()
       )
       .catch(() => undefined);
-    await app.close();
-  }
+  });
   launchedApps.clear();
   await Promise.all(
     [...userDataDirectories].map((directory) => rm(directory, { recursive: true, force: true }))
@@ -383,7 +383,29 @@ test("routes native tray events with the Dock hidden and protects a running upda
   const application = await launchBaseline({ packaged: true, userData });
   const page = await application.firstWindow();
   await expect(page.locator("h1")).toContainText("All");
-  await application.evaluate(({ app, Tray, dialog, shell }) => {
+  application.on("console", (message) => console.log(`Native tray diagnostic: ${message.text()}`));
+  await application.evaluate(({ app, BrowserWindow, Tray, dialog, shell }) => {
+    const observeWindow = (window: Electron.BrowserWindow) => {
+      const record = (event: string) =>
+        console.log(JSON.stringify({ event, url: window.webContents.getURL(), time: Date.now() }));
+      window.on("ready-to-show", () => record("ready-to-show"));
+      window.on("show", () => record("show"));
+      window.on("hide", () => record("hide"));
+      window.on("focus", () => record("focus"));
+      window.on("blur", () => record("blur"));
+    };
+    BrowserWindow.getAllWindows().forEach(observeWindow);
+    app.on("browser-window-created", (_event, window) => observeWindow(window));
+    console.log(
+      JSON.stringify({
+        mainWindow: BrowserWindow.getAllWindows().map((window) => ({
+          visible: window.isVisible(),
+          focused: window.isFocused(),
+          url: window.webContents.getURL()
+        })),
+        dockVisible: app.dock?.isVisible()
+      })
+    );
     const probe: NativeTrayProbe = { dialogs: [], selfUpdateChecks: 0, command: { commands: [] } };
     (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }).nativeTrayProbe =
       probe;
@@ -630,13 +652,8 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => app.quit());
 `
   );
-  const observer = path.join(fixtureData, "native-window-state");
-  await promisify(execFile)("/usr/bin/xcrun", [
-    "swiftc",
-    path.join(process.cwd(), "e2e/nativeWindowState.swift"),
-    "-o",
-    observer
-  ]);
+  const observer = process.env.BASELINE_E2E_NATIVE_OBSERVER;
+  if (!observer) throw new Error("Expected the native window observer from E2E preflight.");
   const nativeState = async () => {
     const { stdout } = await promisify(execFile)(observer);
     return JSON.parse(stdout) as { frontmostPID: number; onScreenWindowIDs: number[] };
@@ -698,8 +715,9 @@ app.on("window-all-closed", () => app.quit());
       .poll(async () => (await nativeState()).frontmostPID)
       .toBe(application.process().pid);
   } finally {
-    await closeApp(fixture);
-    await closeApp(application);
+    await cleanupApplications([fixture, application]);
+    launchedApps.delete(fixture);
+    launchedApps.delete(application);
   }
 });
 
