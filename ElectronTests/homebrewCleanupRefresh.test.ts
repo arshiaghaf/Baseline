@@ -3,7 +3,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UpdateStore } from "../src/main/updateStore";
 import { SnapshotPersistence } from "../src/main/persistence";
 import {
@@ -18,6 +18,11 @@ const directories: string[] = [];
 const releaseGates: (() => void)[] = [];
 const pendingOperations: Promise<unknown>[] = [];
 const persistences: SnapshotPersistence[] = [];
+let activeDrain: Promise<void> | undefined;
+let testSignal: AbortSignal;
+beforeEach(({ signal }) => {
+  testSignal = signal;
+});
 
 function track<T>(operation: Promise<T>): Promise<T> {
   // Attach a rejection handler immediately, including for operations that are
@@ -28,9 +33,22 @@ function track<T>(operation: Promise<T>): Promise<T> {
 }
 
 async function drain() {
+  // A timeout can unwind the test's finally while afterEach has already begun.
+  // Both must await the same work before either can remove fixture directories.
+  if (activeDrain) return activeDrain;
+  const task = settleFixtureOperations();
+  activeDrain = task;
+  try {
+    await task;
+  } finally {
+    activeDrain = undefined;
+  }
+}
+
+async function settleFixtureOperations() {
   for (const release of releaseGates.splice(0)) release();
   const results = await Promise.allSettled(pendingOperations.splice(0));
-  // Include queued disk writes before removing their directories.
+  // After producers settle, load waits for persistence's current save queue.
   const writes = await Promise.allSettled(persistences.splice(0).map((p) => p.load()));
   const errors = [...results, ...writes].flatMap((result) =>
     result.status === "rejected" ? [result.reason] : []
@@ -72,16 +90,39 @@ const app: AppRecord = {
   localVersion: version("1"),
   sourceHint: "unknown"
 };
-function deferred<T = void>(teardownValue?: T) {
+function deferred<T = void>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
   });
-  releaseGates.push(() => resolve(teardownValue as T));
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
-function observeRefreshRequests(store: UpdateStore, expectedCalls = 1) {
-  const requested = deferred();
+function operationGate<T = void>(teardownValue?: T) {
+  const pending = deferred<T>();
+  releaseGates.push(() => pending.resolve(teardownValue as T));
+  return pending;
+}
+function observation(signal = testSignal) {
+  const observed = deferred();
+  const cancel = () => observed.reject(signal.reason);
+  if (signal.aborted) cancel();
+  else signal.addEventListener("abort", cancel, { once: true });
+  const promise = observed.promise.finally(() => signal.removeEventListener("abort", cancel));
+  // An observation can be interrupted before the test reaches its await.
+  void promise.catch(() => undefined);
+  return {
+    promise,
+    resolve: () => {
+      // A real event during teardown must not resume a timed-out test body.
+      if (signal.aborted) cancel();
+      else observed.resolve();
+    }
+  };
+}
+function observeRefreshRequests(store: UpdateStore, expectedCalls = 1, signal = testSignal) {
+  const requested = observation(signal);
   const refresh = store.refresh.bind(store);
   let calls = 0;
   const spy = vi.spyOn(store, "refresh").mockImplementation((...args) => {
@@ -141,7 +182,7 @@ describe("Homebrew cleanup inventory barrier", () => {
       ["success", "command failure", "scan failure"].map((outcome) => [mutation, outcome])
     )
   )("rescans after %s during cleanup with %s", async (mutation, outcome) => {
-    const scanGate = deferred<void>();
+    const scanGate = operationGate();
     const extraDirectory = "/tmp/example-extra-applications";
     let installedApp = app;
     const scans: string[][] = [];
@@ -245,13 +286,13 @@ describe("Homebrew cleanup inventory barrier", () => {
     }
   });
 
-  it.each(["completion", "assertion failure"])(
+  it.each(["completion", "assertion failure", "cancelled observation"])(
     "settles cleanup and a delayed directory save after %s",
     async (exit) => {
-      const scanGate = deferred<void>();
-      const scanStarted = deferred<void>();
-      const saveGate = deferred<void>();
-      const saveStarted = deferred<void>();
+      const scanGate = operationGate();
+      const scanStarted = observation();
+      const saveGate = operationGate();
+      const saveStarted = observation();
       const extraDirectory = "/tmp/example-delayed-applications";
       const dir = await mkdtemp(path.join(os.tmpdir(), "baseline-cleanup-delayed-save-"));
       directories.push(dir);
@@ -277,7 +318,13 @@ describe("Homebrew cleanup inventory barrier", () => {
         }
         await save(snapshot);
       });
-      const refreshRequests = observeRefreshRequests(store);
+      const cancelled = new Error("Synthetic missing-refresh cancellation");
+      const controller = new AbortController();
+      const refreshRequests = observeRefreshRequests(
+        store,
+        1,
+        exit === "cancelled observation" ? controller.signal : testSignal
+      );
       const cleanup = track(store.cleanUpHomebrew(async () => true));
       await scanStarted.promise;
       const changed = track(store.addDirectory(extraDirectory));
@@ -307,9 +354,18 @@ describe("Homebrew cleanup inventory barrier", () => {
       };
       if (exit === "assertion failure") {
         await expect(finish()).rejects.toThrow("expected true to be false");
+      } else if (exit === "cancelled observation") {
+        const pending = finish();
+        // Model a timed-out wait while persistence still prevents the expected
+        // refresh. Draining will produce that event later; it must stay rejected.
+        controller.abort(cancelled);
+        await expect(pending).rejects.toBe(cancelled);
       } else {
         await finish();
       }
+      // The refresh does happen during the cancellation drain, without turning
+      // the cancelled observation into a successful continuation.
+      expect(refreshRequests.spy).toHaveBeenCalledWith(false, { forceMetadata: false });
       expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
       expect(store.getSnapshot().isRefreshing).toBe(false);
       const saved = await persistence.load();
@@ -322,7 +378,7 @@ describe("Homebrew cleanup inventory barrier", () => {
   );
 
   it("keeps the final directories after repeated mutations while lightweight callers join cleanup", async () => {
-    const gate = deferred<void>();
+    const gate = operationGate();
     const first = "/tmp/example-first-applications";
     const second = "/tmp/example-second-applications";
     const scans: string[][] = [];
@@ -431,7 +487,7 @@ describe("Homebrew cleanup inventory barrier", () => {
   );
 
   it("drops a removed dependency from queued updates when no refresh supersedes cleanup", async () => {
-    const commandGate = deferred<void>();
+    const commandGate = operationGate();
     const runBrewCommand = vi.fn(async (args: string[]) => {
       if (args[0] === "cleanup") await commandGate.promise;
       return { success: true, status: 0, output: "" };
@@ -466,7 +522,7 @@ describe("Homebrew cleanup inventory barrier", () => {
     expect(message).toContain("Installed packages could not be refreshed");
   });
   it("keeps post-cleanup inventory when a full refresh supersedes cleanup's own lightweight refresh", async () => {
-    const inventoryGate = deferred<void>();
+    const inventoryGate = operationGate();
     const fetchInventory = vi.fn(async () => {
       await inventoryGate.promise;
       return {
@@ -513,8 +569,8 @@ describe("Homebrew cleanup inventory barrier", () => {
   )(
     "takes a fresh post-cleanup inventory during a pending $provider lookup (queued update: $queueUpdate)",
     async ({ provider, queueUpdate }) => {
-      const firstLookup = deferred<void>();
-      const secondLookup = deferred<void>();
+      const firstLookup = operationGate();
+      const secondLookup = operationGate();
       let installed = [item];
       let includeApp = false;
       const fetchInventory = vi.fn(async () => ({
@@ -584,7 +640,7 @@ describe("Homebrew cleanup inventory barrier", () => {
   it.each(["throw", "membership", "outdated", "scanner"])(
     "cancels stale queued upgrades after %s failure and revalidates after recovery",
     async (failure) => {
-      const commandGate = deferred<void>();
+      const commandGate = operationGate();
       let recovered = false;
       const runBrewCommand = vi.fn(async (args: string[]) => {
         if (args[0] === "cleanup") await commandGate.promise;
@@ -669,10 +725,10 @@ describe("Homebrew cleanup inventory barrier", () => {
     expect(restarted.getSnapshot().homebrewItems[0]?.isOutdated).toBe(false);
   });
   it("defers a full refresh through cleanup execution and the fresh inventory commit", async () => {
-    const commandGate = deferred<void>();
+    const commandGate = operationGate();
     let includeApp = false;
     let installed = [item];
-    const obsoleteLookup = deferred<void>();
+    const obsoleteLookup = operationGate();
     const runBrewCommand = vi.fn(async (args: string[]) => {
       if (args[0] === "cleanup") {
         await commandGate.promise;
@@ -726,7 +782,7 @@ describe("Homebrew cleanup inventory barrier", () => {
     expect(runBrewCommand.mock.calls.map(([args]) => args)).toEqual([["--version"], ["cleanup"]]);
   });
   it("refuses cleanup during an active inventory read without opening confirmation", async () => {
-    const gate = deferred<void>();
+    const gate = operationGate();
     const fetchInventory = vi.fn(async () => {
       await gate.promise;
       return {
@@ -764,7 +820,7 @@ describe("Homebrew cleanup inventory barrier", () => {
   });
 
   it("refuses cleanup during an active upgrade without opening confirmation", async () => {
-    const gate = deferred<void>();
+    const gate = operationGate();
     const runBrewCommand = vi.fn(async (args: string[]) => {
       if (args[0] === "upgrade") await gate.promise;
       return { success: true, status: 0, output: "" };
@@ -801,9 +857,9 @@ describe("Homebrew cleanup inventory barrier", () => {
     }
   });
   it("keeps superseded full-refresh waiters pending until the winning scan commits", async () => {
-    const cleanupScan = deferred<void>();
-    const firstScan = deferred<void>();
-    const winningScan = deferred<void>();
+    const cleanupScan = operationGate();
+    const firstScan = operationGate();
+    const winningScan = operationGate();
     let scans = 0;
     const scanner = {
       scanApplications: vi.fn(async () => {
@@ -843,7 +899,7 @@ describe("Homebrew cleanup inventory barrier", () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), "baseline-cleanup-feedback-"));
     directories.push(dir);
     const persistence = new SnapshotPersistence(dir);
-    const gate = deferred<void>();
+    const gate = operationGate();
     const store = await fixture({
       persistence,
       runBrewCommand: async (args) => {
@@ -894,8 +950,8 @@ describe("Homebrew cleanup inventory barrier", () => {
       let reads = 0;
       let includeApp = false;
       let pinned = false;
-      const lookupGate = deferred<void>();
-      const confirmGate = deferred(false);
+      const lookupGate = operationGate();
+      const confirmGate = operationGate(false);
       const lookupOutcome = vi
         .fn()
         .mockImplementationOnce(async () => {
