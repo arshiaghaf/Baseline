@@ -36,6 +36,9 @@ input {
 }
 
 button {
+  --button-radius: 0.25rem;
+
+  border-radius: var(--button-radius);
   cursor: default;
 }
 
@@ -149,7 +152,6 @@ button:disabled {
   min-height: 28px;
   padding: 0 9px;
   border: 0;
-  border-radius: 12px;
   background: transparent;
   color: #2c2c2e;
   font-size: 13px;
@@ -235,7 +237,6 @@ button:disabled {
   min-height: 28px;
   padding: 0 9px;
   border: 0;
-  border-radius: 12px;
   background: transparent;
   color: #2c2c2e;
   font-size: 13px;
@@ -440,7 +441,6 @@ button:disabled {
   width: 18px;
   height: 18px;
   border: 0;
-  border-radius: 999px;
   background: transparent;
   color: rgba(60, 60, 67, 0.54);
   padding: 0;
@@ -1246,7 +1246,6 @@ button:disabled {
   min-height: 28px;
   padding: 0 8px;
   border: 0;
-  border-radius: 6px;
   background: transparent;
   color: #1c1c1e;
   font-size: 13px;
@@ -1296,7 +1295,7 @@ button:disabled {
   width: 28px;
   height: 28px;
   border: 1px solid rgba(60, 60, 67, 0.16);
-  border-radius: 999px;
+  border-radius: var(--button-radius, 999px);
   background: rgba(255, 255, 255, 0.72);
   color: #0d0d0d;
 }
@@ -1500,7 +1499,6 @@ button:disabled {
 .ghost-button {
   padding: 0 10px;
   border: 1px solid rgba(60, 60, 67, 0.16);
-  border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
   color: #0d0d0d;
 }
@@ -1510,7 +1508,6 @@ button:disabled {
   min-width: 54px;
   padding: 0 12px;
   border: 0;
-  border-radius: 999px;
   background: rgb(var(--update-accent-rgb));
   color: white;
 }
@@ -1534,7 +1531,6 @@ button:disabled {
   min-height: 30px;
   padding: 0 12px;
   border: 1px solid rgba(255, 59, 48, 0.32);
-  border-radius: 999px;
   background: rgba(255, 59, 48, 0.14);
   color: #ff3b30;
 }
@@ -2438,7 +2434,6 @@ button:disabled {
   min-height: 30px;
   padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 999px;
   background: transparent;
   color: #2c2c2e;
   font-size: 13px;
