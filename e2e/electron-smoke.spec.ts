@@ -637,6 +637,8 @@ test("opens a keyboard-usable popover over another app's full-screen Space", asy
     fixtureScript,
     `const { app, BrowserWindow } = require("electron");
 app.setPath("userData", ${JSON.stringify(fixtureData)});
+// This fixture tests native Spaces, not hardware rendering on virtual CI Macs.
+app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
   const window = new BrowserWindow({ title: "Full-screen fixture", show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false } });
@@ -649,7 +651,7 @@ app.on("window-all-closed", () => app.quit());
   const observer = process.env.BASELINE_E2E_NATIVE_OBSERVER;
   if (!observer) throw new Error("Expected the native window observer from E2E preflight.");
   const nativeState = async () => {
-    const { stdout } = await promisify(execFile)(observer);
+    const { stdout } = await promisify(execFile)(observer, { timeout: 5000 });
     return JSON.parse(stdout) as { frontmostPID: number; onScreenWindowIDs: number[] };
   };
   const fixture = await electron.launch({
@@ -662,15 +664,38 @@ app.on("window-all-closed", () => app.quit());
   launchedApps.add(fixture);
   await fixture.firstWindow();
   try {
-    const fixtureWindowID = await fixture.evaluate(async ({ BrowserWindow }) => {
+    await expect
+      .poll(() =>
+        fixture.evaluate(({ BrowserWindow }) => {
+          const window = BrowserWindow.getAllWindows()[0];
+          return window?.isVisible() && window.isFocused();
+        })
+      )
+      .toBe(true);
+    const fixtureWindowID = await fixture.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0]!;
-      await new Promise<void>((resolve) => {
-        window.once("enter-full-screen", () => resolve());
-        window.setFullScreen(true);
-        window.focus();
+      window.once("enter-full-screen", () => {
+        (
+          globalThis as typeof globalThis & { fixtureEnteredFullScreen?: boolean }
+        ).fixtureEnteredFullScreen = true;
       });
+      window.setFullScreen(true);
+      window.focus();
       return Number(window.getMediaSourceId().split(":")[1]);
     });
+    // Poll a completed native event instead of leaving an IPC promise waiting
+    // inside Electron after the test times out and teardown starts.
+    await expect
+      .poll(
+        () =>
+          fixture.evaluate(
+            () =>
+              (globalThis as typeof globalThis & { fixtureEnteredFullScreen?: boolean })
+                .fixtureEnteredFullScreen
+          ),
+        { timeout: 15_000 }
+      )
+      .toBe(true);
     await expect.poll(async () => (await nativeState()).frontmostPID).toBe(fixture.process().pid);
     const popoverOpened = application.waitForEvent("window");
     await application.evaluate(() => {
