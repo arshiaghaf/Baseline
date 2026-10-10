@@ -2070,7 +2070,7 @@ describe("update store helpers", () => {
       latestVersion: version("14.1.0"),
       isOutdated: true
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [previousItem]
@@ -2686,7 +2686,7 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         ignoredHomebrewItemIDs: ["formula:ignored-formula", "cask:ignored-cask"],
@@ -2761,7 +2761,7 @@ describe("update store helpers", () => {
       status: command[0] === "cleanup" ? 1 : 0,
       output: command[0] === "cleanup" ? "Error: cleanup failed" : ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -2851,7 +2851,7 @@ describe("update store helpers", () => {
       latestVersion: version("1.100.0"),
       isOutdated: true
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [formula, cask]
@@ -2893,7 +2893,7 @@ describe("update store helpers", () => {
       status: command.includes("--cask") ? 1 : 0,
       output: command.includes("--cask") ? "Error: cask upgrade failed" : ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -2950,7 +2950,7 @@ describe("update store helpers", () => {
         output: command.includes("--cask") ? "Error: cask upgrade failed" : ""
       };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -3008,7 +3008,7 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         apps: [ignoredApp],
@@ -3062,7 +3062,7 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         apps: [app],
@@ -3136,7 +3136,7 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         apps: [ignoredApp],
@@ -3691,7 +3691,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -3856,7 +3856,7 @@ describe("update store helpers", () => {
         return { success: true, status: 0, output: "" };
       }
     );
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -3904,7 +3904,7 @@ describe("update store helpers", () => {
 
   it("returns failed Homebrew item updates to retryable state after a short delay", async () => {
     const itemID = "formula:retryable";
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -4643,7 +4643,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -4780,7 +4780,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [formula, cask]
@@ -4873,7 +4873,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         ignoredHomebrewItemIDs: [ignoredFormula.id],
@@ -4955,7 +4955,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [formula, secondFormula, cask]
@@ -5022,7 +5022,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -5259,7 +5259,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [item]
@@ -5331,7 +5331,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [item]
@@ -5405,7 +5405,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [outdatedItem]
@@ -5480,7 +5480,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [outdatedItem]
@@ -5557,7 +5557,7 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async () => ({ success: true, status: 0, output: "" }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [outdatedItem]
@@ -5754,7 +5754,7 @@ describe("update store helpers", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [
@@ -5815,7 +5815,7 @@ describe("update store helpers", () => {
       outdatedDetectionSucceeded: true,
       outdatedDetectionSucceededByKind: { formula: true, cask: true }
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [outdatedItem]
@@ -5936,7 +5936,8 @@ async function makeStore({
   currentAppVersion,
   currentAppIdentity,
   successRefreshDelayMS = 0,
-  onUserData
+  onUserData,
+  verifyInitialInventory = false
 }: {
   persisted?: PersistedSnapshot;
   clients?: Partial<ConstructorParameters<typeof UpdateStore>[0]["clients"]>;
@@ -5949,11 +5950,48 @@ async function makeStore({
   currentAppIdentity?: ConstructorParameters<typeof UpdateStore>[0]["currentAppIdentity"];
   successRefreshDelayMS?: ConstructorParameters<typeof UpdateStore>[0]["successRefreshDelayMS"];
   onUserData?: (directory: string) => void;
+  verifyInitialInventory?: boolean;
 } = {}): Promise<UpdateStore> {
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-update-store-"));
   tempDirs.push(userData);
   onUserData?.(userData);
-  return new UpdateStore({
+  const storeClients: NonNullable<ConstructorParameters<typeof UpdateStore>[0]["clients"]> = {
+    scanner: { scanApplications: async () => [] },
+    appStore: { lookupOutcome: async () => ({ type: "completed" }) },
+    sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
+    homebrew: {
+      fetchIndex: async () => emptyHomebrewCaskIndex,
+      lookupUpdate: () => undefined,
+      searchCasks: () => []
+    },
+    homebrewFormula: {
+      fetchIndex: async () => emptyHomebrewFormulaIndex,
+      searchFormulae: () => []
+    },
+    homebrewInventory: {
+      fetchInventory: async () => ({
+        items: [],
+        outdatedDetectionSucceeded: true,
+        outdatedDetectionSucceededByKind: { formula: true, cask: true }
+      })
+    },
+    selfUpdate: {
+      lookup: async (currentVersion, checkedAt) => ({
+        available: false,
+        currentVersion,
+        releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+        checkedAt
+      })
+    },
+    ...clients
+  };
+  // Clone injected test clients only when temporarily supplying the initial observed fixture.
+  if (verifyInitialInventory) {
+    for (const key of Object.keys(storeClients) as (keyof typeof storeClients)[]) {
+      storeClients[key] = { ...storeClients[key] } as never;
+    }
+  }
+  const store = new UpdateStore({
     persistence: new SnapshotPersistence(userData),
     persisted,
     openExternalURL,
@@ -5964,37 +6002,44 @@ async function makeStore({
     runBrewCommand,
     runMasCommand,
     successRefreshDelayMS,
-    clients: {
-      scanner: { scanApplications: async () => [] },
-      appStore: { lookupOutcome: async () => ({ type: "completed" }) },
-      sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
-      homebrew: {
-        fetchIndex: async () => emptyHomebrewCaskIndex,
-        lookupUpdate: () => undefined,
-        searchCasks: () => []
-      },
-      homebrewFormula: {
-        fetchIndex: async () => emptyHomebrewFormulaIndex,
-        searchFormulae: () => []
-      },
+    clients: storeClients
+  });
+  if (verifyInitialInventory) {
+    // These operation tests start after an observed inventory, not from cached execution authority.
+    const initialClients = {
+      scanner: { scanApplications: async () => persisted.apps },
+      appStore: { lookupOutcome: async () => ({ type: "completed" as const }) },
+      sparkle: { lookupOutcome: async () => ({ type: "completed" as const }) },
+      homebrew: { fetchIndex: async () => emptyHomebrewCaskIndex },
+      homebrewFormula: { fetchIndex: async () => emptyHomebrewFormulaIndex },
       homebrewInventory: {
         fetchInventory: async () => ({
-          items: [],
+          items: persisted.homebrewItems,
+          inventoryReadSucceededByKind: { formula: true, cask: true },
           outdatedDetectionSucceeded: true,
           outdatedDetectionSucceededByKind: { formula: true, cask: true }
         })
-      },
-      selfUpdate: {
-        lookup: async (currentVersion, checkedAt) => ({
-          available: false,
-          currentVersion,
-          releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
-          checkedAt
-        })
-      },
-      ...clients
+      }
+    };
+    const restore: (() => void)[] = [];
+    for (const key of Object.keys(initialClients) as (keyof typeof initialClients)[]) {
+      const client = storeClients[key];
+      if (!client) continue;
+      const original = { ...client };
+      Object.assign(client, initialClients[key]);
+      restore.push(() => Object.assign(client, original));
     }
-  });
+    try {
+      await store.refresh(true);
+    } finally {
+      restore.forEach((restoreClient) => restoreClient());
+    }
+  }
+  return store;
+}
+
+async function makeVerifiedStore(options: Parameters<typeof makeStore>[0] = {}) {
+  return makeStore({ ...options, verifyInitialInventory: true });
 }
 
 describe("verified formula identity and Homebrew pins", () => {
@@ -6044,7 +6089,7 @@ describe("verified formula identity and Homebrew pins", () => {
       if (command[0] === "upgrade") await blocked;
       return { success: false, status: 1, output: "Synthetic failure" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: { ...defaultPersistedSnapshot(), homebrewItems: [first, second] },
       runBrewCommand,
       clients: {
@@ -6223,7 +6268,7 @@ describe("verified formula identity and Homebrew pins", () => {
       }
       return { success: true, status: 0, output: "" };
     });
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: { ...defaultPersistedSnapshot(), homebrewItems: [renamed, failed] },
       runBrewCommand
     });
@@ -6283,7 +6328,7 @@ describe("verified formula identity and Homebrew pins", () => {
       status: 1,
       output: "Synthetic failure"
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [item],
@@ -6557,4 +6602,107 @@ describe("verified formula identity and Homebrew pins", () => {
       })[0]
     ).toMatchObject({ isOutdated: false });
   });
+});
+
+describe("multi-app installed cask pins", () => {
+  it.each([false, true])(
+    "uses one installed cask pin for each proven app (pinned %s)",
+    async (pinned) => {
+      const apps = ["Primary Utility", "Helper Utility"].map((name) =>
+        appRecord({
+          bundlePath: `/Applications/${name}.app`,
+          displayName: name,
+          bundleIdentifier: `com.example.${name.startsWith("Primary") ? "primary" : "helper"}`,
+          localVersion: version("1")
+        })
+      );
+      const client = new HomebrewCaskClient();
+      const index = client.parseIndex(
+        Buffer.from(
+          JSON.stringify([
+            {
+              token: "utility-suite",
+              version: "2",
+              artifacts: apps.map((app) => ({ app: [path.basename(app.bundlePath)] })),
+              bundle_identifiers: apps.map((app) => app.bundleIdentifier)
+            }
+          ])
+        )
+      );
+      const owner = homebrewItem({
+        id: "cask:utility-suite",
+        token: "utility-suite",
+        name: "Utility Suite",
+        kind: "cask",
+        pinned,
+        isOutdated: true,
+        latestVersion: version("2"),
+        caskMetadata: index.byToken["utility-suite"]
+      });
+      const runBrewCommand = vi.fn<
+        NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+      >(async () => ({
+        success: false,
+        status: 1,
+        output: "Synthetic failure"
+      }));
+      let userData = "";
+      const store = await makeStore({
+        onUserData: (directory) => {
+          userData = directory;
+        },
+        runBrewCommand,
+        clients: {
+          scanner: { scanApplications: async () => apps },
+          homebrew: {
+            fetchIndex: async () => index,
+            lookupUpdate: client.lookupUpdate.bind(client),
+            searchCasks: () => []
+          },
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items: [owner],
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true },
+              inventoryReadSucceededByKind: { formula: true, cask: true }
+            })
+          }
+        }
+      });
+      await store.refresh(true);
+      expect(store.getSnapshot().updates.map((update) => update.homebrewToken)).toEqual([
+        "utility-suite",
+        "utility-suite"
+      ]);
+      expect(store.getSnapshot().homebrewItems).toHaveLength(1);
+      const saved = await new SnapshotPersistence(userData).load();
+      const unowned = appRecord({
+        bundlePath: "/Applications/Unowned Utility.app",
+        displayName: "Unowned Utility",
+        bundleIdentifier: "com.example.unowned",
+        localVersion: version("1")
+      });
+      const relaunched = await makeStore({
+        persisted: {
+          ...saved,
+          apps: [...saved.apps, unowned],
+          updates: [...saved.updates, { ...saved.updates[0]!, id: unowned.id, appID: unowned.id }]
+        }
+      });
+      expect(relaunched.getSnapshot().updates.map((update) => update.appID)).toEqual(
+        apps.map((app) => app.id)
+      );
+      for (const app of apps) await store.performAppUpdate(app.id);
+      expect(
+        runBrewCommand.mock.calls.filter(([args]) => args[0] === "upgrade").map(([args]) => args)
+      ).toEqual(
+        pinned
+          ? []
+          : [
+              ["upgrade", "--cask", "--greedy", "utility-suite"],
+              ["upgrade", "--cask", "--greedy", "utility-suite"]
+            ]
+      );
+    }
+  );
 });

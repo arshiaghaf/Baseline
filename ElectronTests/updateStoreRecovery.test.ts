@@ -199,10 +199,13 @@ describe("refresh inventory recovery", () => {
   });
 
   it("preserves outdated state when membership succeeds but outdated detection fails", async () => {
-    mockInventory({ failFormulaOutdated: true });
+    mockInventory({});
     const { store } = await fixture({
       clients: { homebrewInventory: new HomebrewInventoryClient() }
     });
+    await store.refresh(true);
+    vi.restoreAllMocks();
+    mockInventory({ failFormulaOutdated: true });
     await store.refresh(true);
     expect(store.getSnapshot().homebrewItems.find((item) => item.id === formula.id)).toMatchObject({
       isOutdated: true,
@@ -257,6 +260,7 @@ describe("Discover install recovery", () => {
         return { success: true, status: 0, output: "" };
       }
     });
+    await store.refresh(true);
     const install = store.installHomebrewItem(discover);
     const update = store.performHomebrewUpdate(formula.id);
     expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(formula.id);

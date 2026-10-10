@@ -3369,6 +3369,32 @@ describe("renderer button parity", () => {
 });
 
 describe("Homebrew pin presentation", () => {
+  it.each([false, true])(
+    "applies the selected cask pin to each owned app (compact %s)",
+    (compact) => {
+      const otherApp = {
+        ...app,
+        id: "other-app",
+        displayName: "Other Utility",
+        bundlePath: "/Applications/Other Utility.app"
+      };
+      const owner = { ...cask, pinned: true, appID: app.id };
+      const otherUpdate = { ...update, id: otherApp.id, appID: otherApp.id };
+      const state = snapshot({
+        apps: [app, otherApp],
+        updates: [update, otherUpdate],
+        homebrewItems: [owner],
+        selectedTab: "apps"
+      });
+      const { rerender } = render(
+        <Dashboard compact={compact} onOpenSettings={() => undefined} snapshot={state} />
+      );
+      expect(screen.queryAllByRole("button", { name: /^Update$/ })).toHaveLength(0);
+      rerender(<AppRow app={otherApp} snapshot={state} recentlyUpdated={false} />);
+      expect(screen.getByText("Pinned in Homebrew")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Update$/ })).not.toBeInTheDocument();
+    }
+  );
   it.each(["formula", "cask"] as const)(
     "explains pinned %s rows without offering an update",
     (kind) => {

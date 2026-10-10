@@ -53,8 +53,5 @@ export function homebrewItemForAppUpdate(
 ): HomebrewManagedItem | undefined {
   if (update?.source !== "homebrew" || !update.homebrewToken) return undefined;
   const token = update.homebrewToken.toLowerCase();
-  return items.find(
-    (item) =>
-      item.kind === "cask" && item.appID === update.appID && item.token.toLowerCase() === token
-  );
+  return items.find((item) => item.kind === "cask" && item.token.toLowerCase() === token);
 }

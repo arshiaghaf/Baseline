@@ -132,6 +132,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private profileStatsMutationQueue: Promise<void> = Promise.resolve();
   private activeHomebrewCommandCount = 0;
   private activeHomebrewInventoryCount = 0;
+  private homebrewRefreshLockSequence?: number;
   private activeHomebrewInventoryTask?: {
     updateMetadata: boolean;
     task: Promise<HomebrewInventoryResult>;
@@ -1307,6 +1308,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     options: RefreshOptions,
     signal: AbortSignal
   ): Promise<void> {
+    this.homebrewRefreshLockSequence = sequence;
+    this.updateHomebrewCommandLockState();
     this.patch({
       isRefreshing: true,
       refreshErrorMessage: undefined,
@@ -1485,7 +1488,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
       );
       const preserveHomebrewCommandState =
-        this.isHomebrewCommandActive() && !options.allowHomebrewInventoryDuringActiveCommand;
+        this.isHomebrewMutationActive() && !options.allowHomebrewInventoryDuringActiveCommand;
       this.patch({
         apps,
         updates,
@@ -1560,10 +1563,28 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.state,
         inventory.inventoryReadSucceededByKind
       );
+      patch.homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
+        this.state.homebrewRecentlyUpdated,
+        homebrewIdentityReconciliationItems(this.state),
+        homebrewIdentityReconciliationItems({
+          homebrewItems: patch.homebrewItems,
+          homebrewFormulaIdentityContinuity: patch.homebrewFormulaIdentityContinuity
+        }),
+        now,
+        { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
+      );
       patch.lastRefreshNoticeMessage = recoveredHomebrewInventory?.warning;
       this.patch(patch);
       await this.persist();
       void this.processHomebrewUpdateQueue();
+    } finally {
+      // Fresh identity, membership and pins must reach state before any queued
+      // command can resume. A superseded refresh cannot release its successor.
+      if (this.homebrewRefreshLockSequence === sequence) {
+        this.homebrewRefreshLockSequence = undefined;
+        this.updateHomebrewCommandLockState();
+        void this.processHomebrewUpdateQueue();
+      }
     }
   }
 
@@ -1611,7 +1632,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         return result;
       }
     }
-    if (this.isHomebrewCommandActive() && !options.allowHomebrewInventoryDuringActiveCommand) {
+    if (this.isHomebrewMutationActive() && !options.allowHomebrewInventoryDuringActiveCommand) {
       return {
         items: this.state.homebrewItems,
         outdatedDetectionSucceeded: false,
@@ -1854,8 +1875,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private isHomebrewCommandActive(): boolean {
     return (
-      this.activeHomebrewCommandCount > 0 ||
+      this.isHomebrewMutationActive() ||
       this.activeHomebrewInventoryCount > 0 ||
+      this.homebrewRefreshLockSequence !== undefined
+    );
+  }
+
+  private isHomebrewMutationActive(): boolean {
+    return (
+      this.activeHomebrewCommandCount > 0 ||
       this.state.isRunningHomebrewMaintenance ||
       this.state.homebrewUninstallingItemIDs.length > 0 ||
       this.state.homebrewDiscoverInstallingItemIDs.length > 0
@@ -2097,7 +2125,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private updateHomebrewCommandLockState(): void {
     const isHomebrewCommandLocked =
-      this.activeHomebrewCommandCount > 0 || this.activeHomebrewInventoryCount > 0;
+      this.activeHomebrewCommandCount > 0 ||
+      this.activeHomebrewInventoryCount > 0 ||
+      this.homebrewRefreshLockSequence !== undefined;
     if (this.state.isHomebrewCommandLocked === isHomebrewCommandLocked) {
       return;
     }
@@ -2133,17 +2163,25 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
 
 function sanitizePersistedSnapshotForRuntime(snapshot: PersistedSnapshot): PersistedSnapshot {
   const homebrewItems = snapshot.homebrewItems.map((item) =>
-    !homebrewCommandToken(item)
+    item.kind === "formula"
       ? {
           ...item,
-          appID: undefined,
-          presentation: item.kind === "cask" ? ("cask" as const) : ("formula" as const),
-          iconDataURL: undefined,
+          formulaIdentityVerified: false,
           isOutdated: false,
           latestVersion: undefined,
           releaseDate: undefined
         }
-      : item
+      : !homebrewCommandToken(item)
+        ? {
+            ...item,
+            appID: undefined,
+            presentation: item.kind === "cask" ? ("cask" as const) : ("formula" as const),
+            iconDataURL: undefined,
+            isOutdated: false,
+            latestVersion: undefined,
+            releaseDate: undefined
+          }
+        : item
   );
   const migrated = { ...snapshot, homebrewItems };
   return {
@@ -2170,17 +2208,9 @@ function persistedUpdateHasValidRuntimeRoute(
   if (!token || !isValidHomebrewToken(token)) {
     return false;
   }
-  if (!snapshot.apps.some((app) => app.id === update.appID)) {
-    return false;
-  }
-
-  return snapshot.homebrewItems.some(
-    (item) =>
-      item.kind === "cask" &&
-      item.appID === update.appID &&
-      item.token.toLowerCase() === token &&
-      Boolean(homebrewCommandToken(item))
-  );
+  const appRecord = snapshot.apps.find((app) => app.id === update.appID);
+  if (!appRecord) return false;
+  return canUseHomebrewAppUpdate(appRecord, token, snapshot.homebrewItems, emptyHomebrewCaskIndex);
 }
 
 function appUpdateProfileStatsEvent({

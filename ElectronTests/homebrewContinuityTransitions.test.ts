@@ -473,15 +473,19 @@ it.each(["partial", "throw"] as const)(
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let failing = false;
     const { store, runBrewCommand } = await setup(
       { ...defaultPersistedSnapshot(), homebrewItems: [previous] },
       async () => {
+        if (!failing) return [previous];
         await pending;
         if (failure === "throw") throw new Error("Inventory unavailable");
         return [previous]; // Partial stdout must not count as successful membership.
       },
-      () => ({ formula: false, cask: true })
+      () => ({ formula: !failing, cask: true })
     );
+    await store.refresh(true);
+    failing = true;
     const refresh = store.refresh(true);
     expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
     const update = store.performHomebrewUpdate(previous.id);
@@ -527,16 +531,30 @@ it.each(["inventory-first", "provider-first"] as const)(
       }
     });
     const refresh = store.refresh(true);
-    await vi.waitFor(() =>
-      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(order === "provider-first")
-    );
+    await vi.waitFor(() => expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true));
     release();
     await refresh;
     expect(store.getSnapshot().refreshErrorMessage).toBe("Application scan unavailable");
     expect(store.getSnapshot().homebrewItems[0]).toMatchObject(fresh);
+    expect(store.getSnapshot().homebrewRecentlyUpdated).toMatchObject([
+      { itemID: previous.id, fromVersion: version("1"), toVersion: version("3") }
+    ]);
+    expect((await persistence.load()).homebrewRecentlyUpdated).toEqual(
+      store.getSnapshot().homebrewRecentlyUpdated
+    );
     const relaunched = new UpdateStore({ ...options, persisted: await persistence.load() });
-    expect(relaunched.getSnapshot().homebrewItems[0]).toMatchObject(fresh);
+    expect(relaunched.getSnapshot().homebrewItems[0]).toMatchObject({
+      ...fresh,
+      formulaIdentityVerified: false,
+      isOutdated: false,
+      latestVersion: undefined
+    });
+    expect(relaunched.getSnapshot().homebrewRecentlyUpdated).toEqual(
+      store.getSnapshot().homebrewRecentlyUpdated
+    );
     expect(relaunched.getSnapshot().ignoredHomebrewItemIDs).toContain(previous.id);
+    expect(homebrewCommandToken(relaunched.getSnapshot().homebrewItems[0]!)).toBeUndefined();
+    await relaunched.refresh(true);
     expect(homebrewCommandToken(relaunched.getSnapshot().homebrewItems[0]!)).toBe(
       "example/tools/utility"
     );
@@ -613,14 +631,16 @@ it.each(["partial", "throw"] as const)(
     const providerPending = new Promise<void>((resolve) => {
       releaseProvider = resolve;
     });
+    let failing = false;
     const { options, runBrewCommand } = await setup(
       { ...defaultPersistedSnapshot(), homebrewItems: [previous] },
       async () => {
+        if (!failing) return [previous];
         await inventoryPending;
         if (failure === "throw") throw new Error("Inventory unavailable");
         return [];
       },
-      () => ({ formula: false, cask: true })
+      () => ({ formula: !failing, cask: true })
     );
     const store = new UpdateStore({
       ...options,
@@ -628,16 +648,20 @@ it.each(["partial", "throw"] as const)(
         ...options.clients,
         scanner: {
           scanApplications: async () => {
-            await providerPending;
+            if (failing) await providerPending;
             return [];
           }
         }
       }
     });
+    await store.refresh(true);
+    failing = true;
     const refresh = store.refresh(true);
     const update = store.performHomebrewUpdate(previous.id);
     releaseInventory();
-    await vi.waitFor(() => expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false));
+    await vi.waitFor(() =>
+      expect(homebrewCommandToken(store.getSnapshot().homebrewItems[0]!)).toBeUndefined()
+    );
     try {
       await store.performHomebrewUpdateAll();
       expect(runBrewCommand.mock.calls.filter(([args]) => args[0] === "upgrade")).toEqual([]);
@@ -646,5 +670,180 @@ it.each(["partial", "throw"] as const)(
       releaseProvider();
       await Promise.all([refresh, update]);
     }
+  }
+);
+
+it("revokes persisted formula execution before startup tool checks and verifies only fresh membership", async () => {
+  const previous = formula("utility");
+  const pinned = formula("pinned-tool", [], true);
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { options, persistence } = await setup(
+    {
+      ...defaultPersistedSnapshot(),
+      autoRefreshEnabled: false,
+      homebrewItems: [previous, pinned],
+      ignoredHomebrewItemIDs: [pinned.id]
+    },
+    () => [previous, pinned]
+  );
+  await persistence.save(options.persisted);
+  const runBrewCommand = vi.fn(async (args: string[]) => {
+    if (args[0] === "--version") await waiting;
+    return { success: true, status: 0, output: "" };
+  });
+  const store = new UpdateStore({
+    ...options,
+    persisted: await persistence.load(),
+    runBrewCommand,
+    runMasCommand: async () => ({ success: true, status: 0, output: "" })
+  });
+  expect(homebrewCommandToken(store.getSnapshot().homebrewItems[0]!)).toBeUndefined();
+  expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+    formulaIdentity: previous.formulaIdentity,
+    isOutdated: false
+  });
+  const start = store.start();
+  await store.performHomebrewUpdate(previous.id);
+  await store.performHomebrewUpdateAll();
+  expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+  release();
+  await start;
+  await store.refresh(true);
+  expect(
+    runBrewCommand.mock.calls.map(([args]) => args).filter((args) => args[0] === "upgrade")
+  ).toEqual([]);
+  expect(
+    homebrewCommandToken(store.getSnapshot().homebrewItems.find((i) => i.id === previous.id)!)
+  ).toBe("example/tools/utility");
+  expect(store.getSnapshot().ignoredHomebrewItemIDs).toContain(pinned.id);
+  expect(store.getSnapshot().homebrewItems.find((i) => i.id === pinned.id)?.pinned).toBe(true);
+});
+
+it.each(["formula", "cask"] as const)(
+  "holds individual, queued, and batch %s actions until fresh pins commit",
+  async (kind) => {
+    const known = formula("utility");
+    const previous: HomebrewManagedItem =
+      kind === "formula"
+        ? known
+        : {
+            ...known,
+            id: "cask:utility",
+            kind,
+            fullToken: "utility",
+            tap: "homebrew/cask",
+            formulaIdentity: undefined
+          };
+    let phase = 0;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let observed = false;
+    const { options, runBrewCommand } = await setup(
+      { ...defaultPersistedSnapshot(), homebrewItems: [previous] },
+      () => {
+        observed = phase === 1;
+        return [{ ...previous, pinned: phase === 1 }];
+      }
+    );
+    const store = new UpdateStore({
+      ...options,
+      clients: {
+        ...options.clients,
+        scanner: {
+          scanApplications: async () => {
+            if (phase === 1) await pending;
+            return [];
+          }
+        }
+      }
+    });
+    await store.refresh(true);
+    phase = 1;
+    const refresh = store.refresh(true);
+    await vi.waitFor(() => expect(observed).toBe(true));
+    // Let the inventory task finish while the independent scanner remains blocked.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const update = store.performHomebrewUpdate(previous.id);
+    await store.performHomebrewUpdateAll();
+    try {
+      expect(runBrewCommand.mock.calls.filter(([args]) => args[0] === "upgrade")).toEqual([]);
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+    } finally {
+      release();
+      await Promise.all([refresh, update]);
+    }
+    expect(store.getSnapshot().homebrewItems[0]?.pinned).toBe(true);
+    expect(runBrewCommand.mock.calls.filter(([args]) => args[0] === "upgrade")).toEqual([]);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+  }
+);
+
+it.each(["renamed-formula", "same-version-cask"] as const)(
+  "records Baseline completion despite provider failure for %s",
+  async (scenario) => {
+    const known = formula("old-tool");
+    const previous: HomebrewManagedItem =
+      scenario === "renamed-formula"
+        ? known
+        : {
+            ...known,
+            id: "cask:desktop-tool",
+            token: "desktop-tool",
+            name: "Desktop Tool",
+            kind: "cask",
+            fullToken: "desktop-tool",
+            tap: "homebrew/cask",
+            formulaIdentity: undefined
+          };
+    const fresh: HomebrewManagedItem =
+      scenario === "renamed-formula"
+        ? {
+            ...formula("new-tool", [previous.token]),
+            installedVersion: version("3"),
+            isOutdated: false,
+            latestVersion: undefined
+          }
+        : { ...previous, isOutdated: false, latestVersion: undefined };
+    let completed = false;
+    const { options, persistence } = await setup(
+      { ...defaultPersistedSnapshot(), homebrewItems: [previous] },
+      () => [completed ? fresh : previous]
+    );
+    const store = new UpdateStore({
+      ...options,
+      runBrewCommand: async (args) => {
+        if (args[0] === "upgrade") completed = true;
+        return { success: true, status: 0, output: "" };
+      },
+      clients: {
+        ...options.clients,
+        scanner: {
+          scanApplications: async () => {
+            if (completed) throw new Error("Synthetic scan failure");
+            return [];
+          }
+        }
+      }
+    });
+    await store.refresh(true);
+    await store.performHomebrewUpdate(previous.id);
+    expect(store.getSnapshot().refreshErrorMessage).toBe("Synthetic scan failure");
+    const history = store.getSnapshot().homebrewRecentlyUpdated;
+    expect(history).toMatchObject([
+      {
+        itemID: previous.id,
+        fromVersion: version("1"),
+        toVersion: version(scenario === "renamed-formula" ? "3" : "1")
+      }
+    ]);
+    expect((await persistence.load()).homebrewRecentlyUpdated).toEqual(history);
+    const relaunched = new UpdateStore({ ...options, persisted: await persistence.load() });
+    await relaunched.refresh(true);
+    expect(relaunched.getSnapshot().homebrewRecentlyUpdated).toEqual(history);
   }
 );
