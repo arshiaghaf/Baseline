@@ -6309,9 +6309,15 @@ describe("verified formula identity and Homebrew pins", () => {
     expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([previous.id]);
   });
 
-  it.each([false, true])(
-    "preserves a renamed formula's saved ID through missing metadata and recovery (changed tap %s)",
-    async (changedTap) => {
+  it.each([
+    [false, false, false],
+    [true, false, false],
+    [false, true, false],
+    [true, true, false],
+    [false, true, true]
+  ])(
+    "preserves a renamed formula's saved ID through missing metadata and recovery (changed tap %s, first refresh failure %s, missing rename evidence %s)",
+    async (changedTap, firstRefreshFailure, missingRenameEvidence) => {
       const previous = homebrewItem({
         id: "formula:old-tool",
         token: "old-tool",
@@ -6352,11 +6358,13 @@ describe("verified formula identity and Homebrew pins", () => {
         toVersion: version("1"),
         updatedAt: "2026-10-09T00:00:00.000Z"
       };
-      let items = [current];
+      let items = [firstRefreshFailure ? missing : current];
+      let formulaReadFailed = false;
       const clients = {
         homebrewInventory: {
           fetchInventory: async () => ({
             items,
+            inventoryReadSucceededByKind: { formula: !formulaReadFailed, cask: true },
             outdatedDetectionSucceeded: true,
             outdatedDetectionSucceededByKind: { formula: true, cask: true }
           })
@@ -6374,12 +6382,21 @@ describe("verified formula identity and Homebrew pins", () => {
         runBrewCommand
       });
       await store.refresh(true);
-      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(previous.id);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(
+        firstRefreshFailure ? current.id : previous.id
+      );
       items = [missing];
       await store.refresh(true);
-      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(previous.id);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(
+        firstRefreshFailure ? current.id : previous.id
+      );
+      expect(store.getSnapshot().homebrewItems).toHaveLength(1);
+      expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual([history]);
+      const continuity = store.getSnapshot().homebrewFormulaIdentityContinuity ?? [];
+      expect(continuity.map((item) => item.id)).toEqual(firstRefreshFailure ? [previous.id] : []);
+      expect(continuity.every((item) => !homebrewCommandToken(item))).toBe(true);
       const unverified = store.getSnapshot().homebrewItems[0]!;
-      expect(unverified.formulaIdentityVerified).toBe(false);
+      if (!firstRefreshFailure) expect(unverified.formulaIdentityVerified).toBe(false);
       expect(homebrewCommandToken(unverified)).toBeUndefined();
       await store.performHomebrewUpdate(previous.id);
       await store.performHomebrewUpdate(current.id);
@@ -6387,7 +6404,18 @@ describe("verified formula identity and Homebrew pins", () => {
       // Repeat the failure through a simulated relaunch before metadata recovers.
       store = await makeStore({ persisted: store.getSnapshot(), clients, runBrewCommand });
       await store.refresh(true);
-      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(previous.id);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(
+        firstRefreshFailure ? current.id : previous.id
+      );
+      formulaReadFailed = true;
+      items = [];
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems).toHaveLength(1);
+      expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual([history]);
+      expect(store.getSnapshot().homebrewFormulaIdentityContinuity?.map((item) => item.id)).toEqual(
+        firstRefreshFailure ? [previous.id] : []
+      );
+      formulaReadFailed = false;
       items = [
         changedTap
           ? {
@@ -6398,12 +6426,20 @@ describe("verified formula identity and Homebrew pins", () => {
                 tap: "other/tools"
               }
             }
-          : current
+          : missingRenameEvidence
+            ? { ...current, formulaIdentity: { ...current.formulaIdentity!, oldNames: [] } }
+            : current
       ];
       await store.refresh(true);
-      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(changedTap ? current.id : previous.id);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(
+        changedTap || missingRenameEvidence ? current.id : previous.id
+      );
+      expect(store.getSnapshot().homebrewFormulaIdentityContinuity).toBeUndefined();
+      expect(store.getSnapshot().homebrewItems).toHaveLength(1);
       expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([previous.id]);
-      expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual(changedTap ? [] : [history]);
+      expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual(
+        changedTap || missingRenameEvidence ? [] : [history]
+      );
       expect(homebrewCommandToken(store.getSnapshot().homebrewItems[0]!)).toBe(
         changedTap ? "other/tools/new-tool" : "example/tools/new-tool"
       );

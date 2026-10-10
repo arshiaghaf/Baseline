@@ -1332,7 +1332,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       const homebrewItems = preservePreviousHomebrewInventoryMembership(
         homebrewInventory.items,
         this.state.homebrewItems,
-        homebrewInventory.inventoryReadSucceededByKind
+        homebrewInventory.inventoryReadSucceededByKind,
+        this.state.homebrewFormulaIdentityContinuity
       );
       const homebrewIndex = caskIndexForInstalledItems(catalogueIndex, homebrewItems);
       this.latestHomebrewIndex = homebrewIndex;
@@ -1467,11 +1468,16 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         previousHomebrewItems,
         (app) => this.isSelfApp(app)
       );
+      const homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
+        reconciledHomebrewItems,
+        this.state,
+        homebrewInventory.inventoryReadSucceededByKind
+      );
       const recentlyUpdated = this.mergeRecentlyUpdated(apps, updates, previousUpdates, now);
       const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
         this.state.homebrewRecentlyUpdated,
         previousHomebrewItems,
-        reconciledHomebrewItems,
+        [...reconciledHomebrewItems, ...(homebrewFormulaIdentityContinuity ?? [])],
         now,
         { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
       );
@@ -1481,6 +1487,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         apps,
         updates,
         homebrewItems: reconciledHomebrewItems,
+        homebrewFormulaIdentityContinuity,
         recentlyUpdated,
         homebrewRecentlyUpdated,
         lastRefreshDate: now,
@@ -1535,10 +1542,16 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           preservePreviousHomebrewInventoryMembership(
             recoveredHomebrewInventory.items,
             this.state.homebrewItems,
-            recoveredHomebrewInventory.inventoryReadSucceededByKind
+            recoveredHomebrewInventory.inventoryReadSucceededByKind,
+            this.state.homebrewFormulaIdentityContinuity
           ),
           this.state.homebrewItems,
           recoveredHomebrewInventory.outdatedDetectionSucceededByKind
+        );
+        patch.homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
+          patch.homebrewItems,
+          this.state,
+          recoveredHomebrewInventory.inventoryReadSucceededByKind
         );
         patch.lastRefreshNoticeMessage = recoveredHomebrewInventory.warning;
       }
@@ -2064,6 +2077,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     updates: snapshot.updates,
     recentlyUpdated: snapshot.recentlyUpdated,
     homebrewItems: snapshot.homebrewItems,
+    homebrewFormulaIdentityContinuity: snapshot.homebrewFormulaIdentityContinuity,
     homebrewRecentlyUpdated: snapshot.homebrewRecentlyUpdated,
     ignoredIDs: snapshot.ignoredIDs,
     ignoredHomebrewItemIDs: snapshot.ignoredHomebrewItemIDs,
@@ -2317,18 +2331,58 @@ function emptyHomebrewInventoryResult(): HomebrewInventoryResult {
   };
 }
 
+function homebrewIdentityReconciliationItems(
+  snapshot: Pick<PersistedSnapshot, "homebrewItems" | "homebrewFormulaIdentityContinuity">
+): HomebrewManagedItem[] {
+  // Visible inventory wins by saved ID; hidden records only provide identity evidence.
+  return [
+    ...new Map([
+      ...(snapshot.homebrewFormulaIdentityContinuity ?? []).map((item) => [item.id, item] as const),
+      ...snapshot.homebrewItems.map((item) => [item.id, item] as const)
+    ]).values()
+  ];
+}
+
+function preserveFormulaIdentityContinuity(
+  items: HomebrewManagedItem[],
+  snapshot: PersistedSnapshot,
+  readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"]
+): HomebrewManagedItem[] | undefined {
+  const incomplete =
+    readSucceeded?.formula === false ||
+    items.some((item) => item.kind === "formula" && !homebrewCommandToken(item));
+  if (!incomplete) return undefined;
+  const installedIDs = new Set(items.map((item) => item.id));
+  // Freeze one prior inventory generation, rather than accumulating removed packages
+  // across failures. No aliases are guessed from the new rack names.
+  return (snapshot.homebrewFormulaIdentityContinuity ?? snapshot.homebrewItems)
+    .filter((item) => formulaHasContinuityIdentity(item) && !installedIDs.has(item.id))
+    .map((item) => ({
+      ...item,
+      formulaIdentityVerified: false,
+      isOutdated: false,
+      latestVersion: undefined,
+      releaseDate: undefined
+    }));
+}
+
 function preservePreviousHomebrewInventoryMembership(
   currentItems: HomebrewManagedItem[],
   previousItems: HomebrewManagedItem[],
-  readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"]
+  readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"],
+  continuity: HomebrewManagedItem[] = []
 ): HomebrewManagedItem[] {
+  const identityItems = homebrewIdentityReconciliationItems({
+    homebrewItems: previousItems,
+    homebrewFormulaIdentityContinuity: continuity
+  });
   // Retain saved Ignore/history IDs when installed metadata proves a same-tap rename.
   // Ambiguous aliases or a tap switch cannot inherit another package's identity.
   const occupiedIDs = new Set(currentItems.map((item) => item.id));
   currentItems = currentItems.map((item) => {
     if (item.kind !== "formula") return item;
     if (!homebrewCommandToken(item)) {
-      const matches = previousItems.filter(
+      const matches = identityItems.filter(
         (previous) =>
           previous.kind === "formula" &&
           previous.token === item.token &&
@@ -2350,7 +2404,7 @@ function preservePreviousHomebrewInventoryMembership(
       };
     }
     const identity = item.formulaIdentity!;
-    const matches = previousItems.filter(
+    const matches = identityItems.filter(
       (previous) =>
         previous.kind === "formula" &&
         formulaHasContinuityIdentity(previous) &&

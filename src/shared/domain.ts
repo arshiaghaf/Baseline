@@ -205,6 +205,8 @@ export type PersistedSnapshot = {
   updates: UpdateRecord[];
   recentlyUpdated: RecentlyUpdatedRecord[];
   homebrewItems: HomebrewManagedItem[];
+  /** Hidden identity continuity during incomplete formula metadata; never command targets. */
+  homebrewFormulaIdentityContinuity?: HomebrewManagedItem[];
   homebrewRecentlyUpdated: HomebrewRecentlyUpdatedRecord[];
   ignoredIDs: string[];
   ignoredHomebrewItemIDs: string[];

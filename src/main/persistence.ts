@@ -141,6 +141,13 @@ function normalizeSnapshot(
       latestVersion: item.latestVersion ? version(item.latestVersion.raw) : undefined,
       installedVersion: version(item.installedVersion?.raw)
     })),
+    homebrewFormulaIdentityContinuity: input.homebrewFormulaIdentityContinuity?.map((item) => ({
+      ...item,
+      formulaIdentityVerified: false,
+      isOutdated: false,
+      latestVersion: undefined,
+      installedVersion: version(item.installedVersion?.raw)
+    })),
     homebrewRecentlyUpdated: (input.homebrewRecentlyUpdated ?? []).map((record) => ({
       ...record,
       id: record.id ?? record.itemID,
