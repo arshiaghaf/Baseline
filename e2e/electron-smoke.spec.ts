@@ -165,22 +165,50 @@ test("launches the Electron shell and renders the dashboard", async () => {
   await closeApp(app);
 });
 
-test("shows manual Homebrew cleanup beside tool Refresh in Settings", async () => {
+test("shows explanatory Homebrew cleanup row at narrow and wide Settings sizes", async () => {
   const app = await launchBaseline();
   const page = await app.firstWindow();
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.evaluate(() => window.baseline.showSettings());
   await expect(page.locator("h1")).toHaveText("General");
-  const cleanUp = page.getByRole("button", { name: "Clean up", exact: true });
+  const cleanUp = page.getByRole("button", { name: "Clean up Homebrew", exact: true });
   await expect(cleanUp).toBeVisible();
   // Startup refresh is skipped; never invoke package commands during this UI check.
   await expect(cleanUp).toBeDisabled();
-  const refresh = page.getByRole("button", { name: "Refresh", exact: true });
-  const cleanUpBounds = await cleanUp.boundingBox();
-  const refreshBounds = await refresh.boundingBox();
-  expect(cleanUpBounds!.x + cleanUpBounds!.width).toBeLessThanOrEqual(refreshBounds!.x);
-  await page.screenshot({ path: "/tmp/baseline-maintenance-settings.png" });
+  const row = page.getByRole("group", { name: "Homebrew cleanup" });
+  await expect(row).toContainText("old package versions and cached downloads");
+  await expect(row).toContainText("supporting packages that are no longer needed");
+  await expect(row).toContainText("including ignored items, and cannot be undone");
+  for (const width of [800, 1280]) {
+    await app.evaluate(({ BrowserWindow }, width) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      window.setMinimumSize(600, 600);
+      window.setContentSize(width, 900);
+    }, width);
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+    const bounds = await row.boundingBox();
+    const buttonBounds = await cleanUp.boundingBox();
+    const homebrewBounds = await page
+      .locator(".settings-row-status")
+      .filter({ has: page.getByText("Homebrew", { exact: true }) })
+      .boundingBox();
+    const masBounds = await page
+      .locator(".settings-row-status")
+      .filter({ has: page.getByText("mas", { exact: true }) })
+      .boundingBox();
+    expect(homebrewBounds!.y + homebrewBounds!.height).toBeLessThanOrEqual(bounds!.y + 1);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(masBounds!.y + 1);
+    expect(buttonBounds!.x).toBeGreaterThanOrEqual(bounds!.x);
+    expect(buttonBounds!.x + buttonBounds!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+    ).toBe(true);
+    expect(await cleanUp.evaluate((button) => getComputedStyle(button).backgroundColor)).toBe(
+      "rgb(255, 59, 48)"
+    );
+    await page.screenshot({ path: `/tmp/baseline-maintenance-row-${width}.png` });
+  }
   expect(errors).toEqual([]);
   await closeApp(app);
 });

@@ -3281,34 +3281,15 @@ function SettingsPane({
             <PanelTitle
               title="Update Tools"
               action={
-                <div className="topbar-actions">
-                  <button
-                    className="ghost-button small-button"
-                    disabled={
-                      !snapshot.isHomebrewInstalled ||
-                      snapshot.isHomebrewCommandLocked ||
-                      cleaningUp
-                    }
-                    onClick={() => void cleanUp()}
-                    title="Clean up old Homebrew versions and downloads. Unused dependencies may be removed."
-                  >
-                    {cleaningUp ? "Cleaning up…" : "Clean up"}
-                  </button>
-                  <button
-                    className="ghost-button small-button"
-                    disabled={snapshot.isHomebrewCommandLocked || cleaningUp}
-                    onClick={() => void window.baseline.refreshToolStatus()}
-                  >
-                    Refresh
-                  </button>
-                </div>
+                <button
+                  className="ghost-button small-button"
+                  disabled={snapshot.isHomebrewCommandLocked || cleaningUp}
+                  onClick={() => void window.baseline.refreshToolStatus()}
+                >
+                  Refresh
+                </button>
               }
             />
-            {cleanupMessage && (
-              <p className="settings-row-subtext" role="status">
-                {cleanupMessage}
-              </p>
-            )}
             <div className="settings-panel-box">
               <ToolStatus
                 label="Homebrew"
@@ -3317,6 +3298,33 @@ function SettingsPane({
                 ready={snapshot.isHomebrewInstalled}
                 readyDetail={homebrewReadyDetail(snapshot)}
               />
+              <div
+                className="settings-row settings-row-action homebrew-cleanup-row"
+                role="group"
+                aria-label="Homebrew cleanup"
+              >
+                <div>
+                  <SettingsRowText
+                    label="Homebrew cleanup"
+                    description="Remove old package versions and cached downloads to free space. Homebrew may also remove supporting packages that are no longer needed. This applies to all Homebrew packages, including ignored items, and cannot be undone."
+                  />
+                  {cleanupMessage && (
+                    <p className="settings-row-subtext" role="status">
+                      {cleanupMessage}
+                    </p>
+                  )}
+                </div>
+                <button
+                  className="danger-button small-button"
+                  disabled={
+                    !snapshot.isHomebrewInstalled || snapshot.isHomebrewCommandLocked || cleaningUp
+                  }
+                  onClick={() => void cleanUp()}
+                  title="Runs brew cleanup using your Homebrew settings. Unused dependencies may be removed."
+                >
+                  {cleaningUp ? "Cleaning up…" : "Clean up Homebrew"}
+                </button>
+              </div>
               <ToolStatus
                 label="mas"
                 description="Use the App Store helper when it is available."
