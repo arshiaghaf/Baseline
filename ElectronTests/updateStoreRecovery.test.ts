@@ -230,22 +230,20 @@ describe("Discover install recovery", () => {
     const installGate = new Promise<void>((resolve) => {
       releaseInstall = resolve;
     });
-    let cleanupCount = 0;
     const commands: string[][] = [];
     const { store } = await fixture({
       runBrewCommand: async (args) => {
         commands.push(args);
         if (args[0] === "install") await installGate;
-        if (args[0] === "cleanup" && ++cleanupCount === 1)
-          throw new Error("Synthetic cleanup rejection");
         return { success: true, status: 0, output: "" };
       }
     });
+    vi.spyOn(store, "refresh").mockRejectedValueOnce(new Error("Synthetic refresh rejection"));
     const install = store.installHomebrewItem(discover);
     const update = store.performHomebrewUpdate(formula.id);
     expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(formula.id);
     releaseInstall();
-    await expect(install).rejects.toThrow("Synthetic cleanup rejection");
+    await expect(install).rejects.toThrow("Synthetic refresh rejection");
     await update;
     expect(store.getSnapshot().homebrewDiscoverInstallingItemIDs).toEqual([]);
     expect(store.getSnapshot().homebrewDiscoverProgressByItemID[discover.id]).toBeUndefined();

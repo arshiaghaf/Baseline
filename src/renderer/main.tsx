@@ -3256,6 +3256,23 @@ function SettingsPane({
   section: SettingsSectionID;
   snapshot: BaselineSnapshot;
 }) {
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const [cleanupMessage, setCleanupMessage] = useState("");
+  const cleanupPending = useRef(false);
+  const cleanUp = async () => {
+    if (cleanupPending.current) return;
+    cleanupPending.current = true;
+    setCleaningUp(true);
+    setCleanupMessage("");
+    try {
+      setCleanupMessage(await window.baseline.cleanUpHomebrew());
+    } catch {
+      setCleanupMessage("Homebrew cleanup could not run. Please try again.");
+    } finally {
+      cleanupPending.current = false;
+      setCleaningUp(false);
+    }
+  };
   switch (section) {
     case "general":
       return (
@@ -3264,14 +3281,34 @@ function SettingsPane({
             <PanelTitle
               title="Update Tools"
               action={
-                <button
-                  className="ghost-button small-button"
-                  onClick={() => void window.baseline.refreshToolStatus()}
-                >
-                  Refresh
-                </button>
+                <div className="topbar-actions">
+                  <button
+                    className="ghost-button small-button"
+                    disabled={
+                      !snapshot.isHomebrewInstalled ||
+                      snapshot.isHomebrewCommandLocked ||
+                      cleaningUp
+                    }
+                    onClick={() => void cleanUp()}
+                    title="Clean up old Homebrew versions and downloads. Unused dependencies may be removed."
+                  >
+                    {cleaningUp ? "Cleaning up…" : "Clean up"}
+                  </button>
+                  <button
+                    className="ghost-button small-button"
+                    disabled={snapshot.isHomebrewCommandLocked || cleaningUp}
+                    onClick={() => void window.baseline.refreshToolStatus()}
+                  >
+                    Refresh
+                  </button>
+                </div>
               }
             />
+            {cleanupMessage && (
+              <p className="settings-row-subtext" role="status">
+                {cleanupMessage}
+              </p>
+            )}
             <div className="settings-panel-box">
               <ToolStatus
                 label="Homebrew"

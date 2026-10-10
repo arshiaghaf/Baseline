@@ -27,6 +27,7 @@ test.afterEach(async () => {
 const expectedBaselineAPI = [
   "acknowledgeProfileStatsReset",
   "chooseDirectory",
+  "cleanUpHomebrew",
   "copyDiagnostics",
   "dismissOperationFailure",
   "getAppMetadata",
@@ -161,6 +162,26 @@ test("launches the Electron shell and renders the dashboard", async () => {
     .poll(() => page.evaluate(async () => (await window.baseline.getSnapshot()).profileStats))
     .toMatchObject({ integrityStatus: "verified", events: [], signature: expect.any(String) });
 
+  await closeApp(app);
+});
+
+test("shows manual Homebrew cleanup beside tool Refresh in Settings", async () => {
+  const app = await launchBaseline();
+  const page = await app.firstWindow();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.evaluate(() => window.baseline.showSettings());
+  await expect(page.locator("h1")).toHaveText("General");
+  const cleanUp = page.getByRole("button", { name: "Clean up", exact: true });
+  await expect(cleanUp).toBeVisible();
+  // Startup refresh is skipped; never invoke package commands during this UI check.
+  await expect(cleanUp).toBeDisabled();
+  const refresh = page.getByRole("button", { name: "Refresh", exact: true });
+  const cleanUpBounds = await cleanUp.boundingBox();
+  const refreshBounds = await refresh.boundingBox();
+  expect(cleanUpBounds!.x + cleanUpBounds!.width).toBeLessThanOrEqual(refreshBounds!.x);
+  await page.screenshot({ path: "/tmp/baseline-maintenance-settings.png" });
+  expect(errors).toEqual([]);
   await closeApp(app);
 });
 

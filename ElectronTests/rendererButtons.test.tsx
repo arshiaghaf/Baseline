@@ -103,6 +103,7 @@ function installBaselineMock() {
     getDiagnostics: vi.fn(),
     getToolStatus: vi.fn(),
     refreshToolStatus: vi.fn(),
+    cleanUpHomebrew: vi.fn(async () => "Homebrew cleanup completed."),
     refresh: vi.fn(),
     setSearchText: vi.fn(),
     setSelectedTab: vi.fn(),
@@ -3180,6 +3181,28 @@ describe("renderer button parity", () => {
     expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
       collapsedAppSectionIDs: []
     });
+  });
+
+  it("places manual cleanup before Refresh and shows completion", async () => {
+    render(<SettingsView snapshot={snapshot()} />);
+    const cleanUp = screen.getByRole("button", { name: "Clean up" });
+    expect(
+      cleanUp.compareDocumentPosition(screen.getByRole("button", { name: "Refresh" })) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    fireEvent.click(cleanUp);
+    fireEvent.click(cleanUp);
+    expect(window.baseline.cleanUpHomebrew).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("status")).toHaveTextContent("Homebrew cleanup completed.");
+  });
+
+  it("disables manual cleanup without Homebrew or while commands are locked", () => {
+    const { rerender } = render(
+      <SettingsView snapshot={snapshot({ isHomebrewInstalled: false })} />
+    );
+    expect(screen.getByRole("button", { name: "Clean up" })).toBeDisabled();
+    rerender(<SettingsView snapshot={snapshot({ isHomebrewCommandLocked: true })} />);
+    expect(screen.getByRole("button", { name: "Clean up" })).toBeDisabled();
   });
 
   it("rechecks update tools from settings without running a refresh", () => {

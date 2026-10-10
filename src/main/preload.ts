@@ -20,6 +20,7 @@ const api: BaselineAPI = {
   getAppMetadata: () => ipcRenderer.invoke(ipcChannels.getAppMetadata),
   getDiagnostics: () => ipcRenderer.invoke(ipcChannels.getDiagnostics),
   getToolStatus: () => ipcRenderer.invoke(ipcChannels.getToolStatus),
+  cleanUpHomebrew: () => ipcRenderer.invoke(ipcChannels.cleanUpHomebrew),
   refreshToolStatus: () => ipcRenderer.invoke(ipcChannels.refreshToolStatus),
   refresh: (lightweight?: boolean) => ipcRenderer.invoke(ipcChannels.refresh, lightweight),
   setSearchText: (searchText: string) => ipcRenderer.invoke(ipcChannels.setSearchText, searchText),

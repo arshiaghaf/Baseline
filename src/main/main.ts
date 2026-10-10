@@ -406,6 +406,26 @@ function wireIpc(): void {
       isChecking: snapshot.isChecking
     };
   });
+  ipcMain.handle(ipcChannels.cleanUpHomebrew, (event) =>
+    store.cleanUpHomebrew(async () => {
+      const window = BrowserWindow.fromWebContents(event.sender);
+      const options: Electron.MessageBoxOptions = {
+        type: "warning",
+        title: "Clean up Homebrew?",
+        message: "Clean up Homebrew?",
+        detail:
+          "Homebrew will clean up old package versions and downloads across its installation. Unused dependencies may also be removed, according to your Homebrew settings. This applies to all Homebrew packages, including ignored items. It cannot be undone.",
+        buttons: ["Cancel", "Clean up"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true
+      };
+      const result = window
+        ? await dialog.showMessageBox(window, options)
+        : await dialog.showMessageBox(options);
+      return result.response === 1;
+    })
+  );
   ipcMain.handle(ipcChannels.refreshToolStatus, () => store.refreshToolStatus());
   ipcMain.handle(ipcChannels.refresh, (_event, lightweight?: boolean) =>
     store.refresh(Boolean(lightweight))
