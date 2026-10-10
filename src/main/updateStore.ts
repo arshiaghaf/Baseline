@@ -63,6 +63,7 @@ import { HomebrewInventoryClient, type HomebrewInventoryResult } from "./homebre
 import { SnapshotPersistence } from "./persistence";
 import { KeychainProfileStatsIntegrity, type ProfileStatsIntegrity } from "./profileStatsIntegrity";
 import { SelfUpdateClient } from "./selfUpdateClient";
+import { normalizeAppVisibility } from "../shared/appVisibility";
 import { SparkleAppcastClient } from "./sparkleAppcastClient";
 import { ProgressPublisher } from "./progressPublisher";
 import {
@@ -113,6 +114,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly homebrewFormula: HomebrewFormulaSource;
   private readonly homebrewInventory: Pick<HomebrewInventoryClient, "fetchInventory">;
   private readonly selfUpdate: Pick<SelfUpdateClient, "lookup">;
+  private selfUpdateCheckTask?: Promise<SelfUpdateRecord | undefined>;
   private readonly currentAppVersion: VersionValue;
   private readonly currentAppIdentity?: { bundlePath?: string; bundleIdentifier?: string };
   private readonly runBrewCommand: typeof defaultRunBrewCommand;
@@ -377,9 +379,51 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const appearancePreference = normalizeAppearancePreference(
       patch.appearancePreference ?? this.state.appearancePreference
     );
-    this.patch({ ...patch, appearancePreference, refreshIntervalMinutes });
+    const visibility = normalizeAppVisibility({
+      showDockIcon: patch.showDockIcon ?? this.state.showDockIcon,
+      showMenuBarIcon:
+        patch.showMenuBarIcon ?? (patch.showDockIcon === false ? true : this.state.showMenuBarIcon)
+    });
+    this.patch({ ...patch, ...visibility, appearancePreference, refreshIntervalMinutes });
     this.restartAutoRefreshLoop();
     await this.persist();
+  }
+
+  async checkForSelfUpdate(): Promise<SelfUpdateRecord | undefined> {
+    if (this.selfUpdateCheckTask) return this.selfUpdateCheckTask;
+    const task = this.lookupSelfUpdate(new Date().toISOString()).then((selfUpdate) => {
+      this.patch({ selfUpdate });
+      return selfUpdate;
+    });
+    this.selfUpdateCheckTask = task;
+    try {
+      return await task;
+    } finally {
+      if (this.selfUpdateCheckTask === task) this.selfUpdateCheckTask = undefined;
+    }
+  }
+
+  hasActiveUpdateOperation(): boolean {
+    return (
+      this.activeHomebrewCommandCount > 0 ||
+      this.state.isRunningHomebrewMaintenance ||
+      this.state.isHomebrewCleanupLocked ||
+      this.state.appUpdatingIDs.length > 0 ||
+      this.state.homebrewUpdatingItemIDs.length > 0 ||
+      this.state.homebrewQueuedItemIDs.length > 0 ||
+      this.state.homebrewUninstallingItemIDs.length > 0 ||
+      this.state.homebrewDiscoverInstallingItemIDs.length > 0
+    );
+  }
+
+  async prepareToQuit(): Promise<boolean> {
+    await this.profileStatsMutationQueue;
+    await this.persist();
+    if (this.hasActiveUpdateOperation()) return false;
+    if (this.autoRefreshTimer) clearInterval(this.autoRefreshTimer);
+    ++this.refreshSequence;
+    this.refreshController?.abort();
+    return true;
   }
 
   async toggleIgnoredApp(appID: string): Promise<void> {
@@ -2335,6 +2379,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     appearancePreference: snapshot.appearancePreference,
     useMasForAppStoreUpdates: snapshot.useMasForAppStoreUpdates,
     showMenuBarIcon: snapshot.showMenuBarIcon,
+    showDockIcon: snapshot.showDockIcon,
     profileStats: snapshot.profileStats,
     profileStatsResetAcknowledgedID: snapshot.profileStatsResetAcknowledgedID,
     operationFailures: normalizeOperationFailures(snapshot.operationFailures),

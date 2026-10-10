@@ -8,6 +8,7 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  Menu,
   nativeTheme,
   nativeImage,
   screen,
@@ -33,6 +34,7 @@ import { isAllowedExternalURL } from "../shared/security";
 import { SnapshotPersistence } from "./persistence";
 import { calculateTrayWindowPosition } from "./trayWindowPosition";
 import { UpdateStore } from "./updateStore";
+import { trayMenuTemplate } from "./trayMenu";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -45,6 +47,12 @@ let trayBaseIcon: Electron.NativeImage | undefined;
 let trayRefreshIcon: Electron.NativeImage | undefined;
 let store: UpdateStore;
 let isQuitting = false;
+let quitTask: Promise<void> | undefined;
+let quitNoticeOpen = false;
+let dockShowTask: Promise<void> | undefined;
+let lastDockShowTime = -Infinity;
+let dockHideTimer: ReturnType<typeof setTimeout> | undefined;
+let selfUpdateCheckOpen = false;
 let metadata: ReturnType<typeof appMetadata>;
 
 const trayRefreshIconDataURL =
@@ -109,7 +117,7 @@ if (hasSingleInstanceLock) {
     wireStoreEvents();
     wireIpc();
     void verifyProfileStatsIntegrityAfterLaunch();
-    updateTrayStatus(store.getSnapshot());
+    syncAppVisibility(store.getSnapshot());
     if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
       store.emit("snapshot", store.getSnapshot());
     } else {
@@ -127,8 +135,47 @@ if (hasSingleInstanceLock) {
 }
 
 app.on("window-all-closed", () => undefined);
-app.on("before-quit", () => {
-  isQuitting = true;
+app.on("before-quit", (event) => {
+  if (isQuitting || !store) return;
+  event.preventDefault();
+  if (store.hasActiveUpdateOperation()) {
+    if (!quitNoticeOpen) {
+      quitNoticeOpen = true;
+      void dialog
+        .showMessageBox({
+          type: "info",
+          message: "An app or Homebrew operation is still running",
+          detail:
+            "Wait for the current check, update, installation, removal, or Homebrew cleanup to finish, then quit Baseline.",
+          buttons: ["OK"]
+        })
+        .finally(() => {
+          quitNoticeOpen = false;
+        });
+    }
+    return;
+  }
+  quitTask ??= store
+    .prepareToQuit()
+    .then((readyToQuit) => {
+      if (!readyToQuit) {
+        quitTask = undefined;
+        app.quit();
+        return;
+      }
+      if (dockHideTimer) clearTimeout(dockHideTimer);
+      isQuitting = true;
+      app.quit();
+    })
+    .catch(() => {
+      quitTask = undefined;
+      void dialog.showMessageBox({
+        type: "error",
+        message: "Baseline could not finish saving",
+        detail: "Try quitting again after the current save finishes.",
+        buttons: ["OK"]
+      });
+    });
 });
 app.on("did-resign-active", hideMenuWindowForNativeDismissal);
 
@@ -247,6 +294,56 @@ function createTray(): void {
 
   tray.setToolTip("Baseline");
   tray.on("click", toggleMenuWindow);
+  tray.on("right-click", () => {
+    menuWindow?.hide();
+    tray?.popUpContextMenu(createTrayContextMenu());
+  });
+}
+
+function createTrayContextMenu(): Menu {
+  return Menu.buildFromTemplate(
+    trayMenuTemplate({
+      store,
+      showSettings: () => showMainWindow("settings"),
+      checkForUpdates: checkForBaselineUpdates,
+      isCheckingForUpdates: selfUpdateCheckOpen,
+      quit: () => app.quit()
+    })
+  );
+}
+
+async function checkForBaselineUpdates(): Promise<void> {
+  if (selfUpdateCheckOpen) return;
+  selfUpdateCheckOpen = true;
+  try {
+    const update = await store.checkForSelfUpdate();
+    if (isQuitting || quitTask) return;
+    if (update?.available && update.releaseURL) {
+      const result = await dialog.showMessageBox({
+        type: "info",
+        message: "A Baseline update is available",
+        detail: `Baseline ${update.latestVersion?.raw ?? ""} is available. You are using ${metadata.version}. Open the release page to download it.`,
+        buttons: ["Open Release Page", "Later"],
+        defaultId: 0,
+        cancelId: 1
+      });
+      if (result.response === 0 && !isQuitting && !quitTask)
+        await store.openExternal(update.releaseURL);
+    } else {
+      await dialog.showMessageBox({
+        type: "info",
+        message: update?.latestVersion
+          ? "Baseline is up to date"
+          : "Could not check for Baseline updates",
+        detail: update?.latestVersion
+          ? `You are using Baseline ${metadata.version}. No newer release is available.`
+          : "Check your internet connection and try again.",
+        buttons: ["OK"]
+      });
+    }
+  } finally {
+    selfUpdateCheckOpen = false;
+  }
 }
 
 function destroyTray(): void {
@@ -312,6 +409,7 @@ function mainWindowRouteFromURL(url?: string): "main" | "settings" | undefined {
 }
 
 function showMainWindow(route: "main" | "settings"): void {
+  menuWindow?.hide();
   const window = createMainWindow(route);
   const currentRoute = mainWindowRouteFromURL(window.webContents.getURL()) ?? mainWindowRoute;
   if (currentRoute !== route) {
@@ -337,7 +435,7 @@ function wireStoreEvents(): void {
   });
   store.on("snapshot", (snapshot) => {
     applyAppearancePreference(snapshot.appearancePreference);
-    updateTrayStatus(snapshot);
+    syncAppVisibility(snapshot);
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send(ipcChannels.snapshotChanged, snapshot);
     }
@@ -351,6 +449,49 @@ function wireStoreEvents(): void {
 
 function applyAppearancePreference(preference: AppearancePreference): void {
   nativeTheme.themeSource = preference;
+}
+
+function syncAppVisibility(snapshot: BaselineSnapshot): void {
+  if (snapshot.showMenuBarIcon) updateTrayStatus(snapshot);
+  if (!app.dock) {
+    if (!snapshot.showMenuBarIcon) destroyTray();
+    return;
+  }
+  if (snapshot.showDockIcon && dockHideTimer) {
+    clearTimeout(dockHideTimer);
+    dockHideTimer = undefined;
+  }
+  if (!snapshot.showDockIcon && tray && !dockShowTask) {
+    // Electron ignores Dock hides for one second after show to avoid duplicate
+    // macOS Dock icons. Replay the latest preference after that cooldown.
+    const remainingCooldown = 1100 - (performance.now() - lastDockShowTime);
+    if (remainingCooldown > 0) {
+      dockHideTimer ??= setTimeout(() => {
+        dockHideTimer = undefined;
+        if (!isQuitting) syncAppVisibility(store.getSnapshot());
+      }, remainingCooldown);
+      return;
+    }
+    if (app.dock.isVisible()) app.dock.hide();
+    return;
+  }
+  if (snapshot.showDockIcon && !app.dock.isVisible()) {
+    if (dockShowTask) return;
+    lastDockShowTime = performance.now();
+    dockShowTask ??= app.dock
+      .show()
+      .then(() => {
+        dockShowTask = undefined;
+        if (!isQuitting) syncAppVisibility(store.getSnapshot());
+      })
+      .catch(() => {
+        dockShowTask = undefined;
+        // Retain an entry point if macOS cannot restore the Dock icon.
+        createTray();
+      });
+    return;
+  }
+  if (snapshot.showDockIcon && !snapshot.showMenuBarIcon) destroyTray();
 }
 
 function updateTrayStatus(snapshot: BaselineSnapshot): void {

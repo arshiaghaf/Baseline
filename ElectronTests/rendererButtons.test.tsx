@@ -3221,6 +3221,15 @@ describe("renderer button parity", () => {
       showMenuBarIcon: false
     });
   });
+
+  it("lets users restore the Dock icon from settings while it is hidden", () => {
+    render(<SettingsView snapshot={snapshot({ showDockIcon: false })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Appearance" }));
+    const dockSwitch = screen.getByRole("switch", { name: "Show Dock icon" });
+    expect(dockSwitch).not.toBeChecked();
+    fireEvent.click(dockSwitch);
+    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({ showDockIcon: true });
+  });
 });
 
 describe("Homebrew pin presentation", () => {

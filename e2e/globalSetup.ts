@@ -34,7 +34,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     extractAll(archivePath(productionApp), appDirectory);
     const productionProvider = path.join(root, "src/main/profileStatsIntegrity.ts");
     const fixtureProvider = path.join(root, "e2e/profileStatsIntegrity.ts");
+    const productionCommands = path.join(root, "src/main/commandRunner.ts");
+    const fixtureCommands = path.join(root, "e2e/commandRunner.ts");
     let fixtureIncluded = false;
+    let commandFixtureIncluded = false;
     const loaded = await loadConfigFromFile(
       { command: "build", mode: "production" },
       path.join(root, "vite.main.config.mts")
@@ -47,7 +50,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
         configFile: false,
         mode: "production",
         resolve: {
-          alias: [{ find: "./profileStatsIntegrity", replacement: fixtureProvider }],
+          alias: [
+            { find: "./profileStatsIntegrity", replacement: fixtureProvider },
+            { find: "./commandRunner", replacement: fixtureCommands }
+          ],
           conditions: ["node"],
           mainFields: ["module", "jsnext:main", "jsnext"]
         },
@@ -63,6 +69,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
                 throw new Error("The production Keychain provider entered the E2E bundle.");
               }
               fixtureIncluded ||= module.id === fixtureProvider;
+              if (module.id === productionCommands) {
+                throw new Error("The production command runner entered the E2E bundle.");
+              }
+              commandFixtureIncluded ||= module.id === fixtureCommands;
             }
           }
         ],
@@ -90,6 +100,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     if (!fixtureIncluded) {
       throw new Error("The E2E build did not inject the test integrity provider.");
     }
+    if (!commandFixtureIncluded)
+      throw new Error("The E2E build did not inject the test command runner.");
     assertIsolatedIntegrityBundle(await readFile(path.join(appDirectory, mainPath), "utf8"));
 
     const testApp = path.join(temporaryDirectory, "Baseline.app");
@@ -111,7 +123,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     verifyMacBundle(testApp);
     process.env.BASELINE_E2E_APP_DIR = appDirectory;
     process.env.BASELINE_E2E_EXECUTABLE = path.join(testApp, "Contents", "MacOS", "Baseline");
-    console.log("E2E preflight: test provider included; production Keychain provider excluded.");
+    console.log(
+      "E2E preflight: test providers included; production Keychain and command providers excluded."
+    );
     return cleanup;
   } catch (error) {
     await cleanup();

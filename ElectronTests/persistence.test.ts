@@ -123,6 +123,7 @@ describe("snapshot persistence", () => {
     expect(loaded).toMatchObject({
       appearancePreference: "system",
       showMenuBarIcon: true,
+      showDockIcon: true,
       profileStats: { events: [], integrityStatus: "pending" }
     });
     expect(Number.isFinite(new Date(loaded.profileStats.startedUsingAt).getTime())).toBe(true);
@@ -148,6 +149,34 @@ describe("snapshot persistence", () => {
       collapsedHomebrewSectionIDs: ["discover", "recentlyUpdated"]
     });
   });
+
+  it.each([
+    { showDockIcon: false, showMenuBarIcon: true, expectedDock: false },
+    { showDockIcon: false, showMenuBarIcon: false, expectedDock: true },
+    { showDockIcon: null, showMenuBarIcon: false, expectedDock: true }
+  ])(
+    "keeps an app entry point after loading $showDockIcon/$showMenuBarIcon",
+    async ({ showDockIcon, showMenuBarIcon, expectedDock }) => {
+      const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+      tempDirs.push(userData);
+      await writeFile(
+        path.join(userData, "baseline-snapshot.json"),
+        JSON.stringify({
+          ...defaultPersistedSnapshot(),
+          showDockIcon,
+          showMenuBarIcon,
+          additionalDirectories: ["/Users/example/Apps"],
+          ignoredIDs: ["saved-app"]
+        })
+      );
+      await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
+        showDockIcon: expectedDock,
+        showMenuBarIcon,
+        additionalDirectories: ["/Users/example/Apps"],
+        ignoredIDs: ["saved-app"]
+      });
+    }
+  );
 
   it("does not restore the previously selected sidebar tab", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
