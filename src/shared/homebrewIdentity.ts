@@ -17,6 +17,11 @@ export function homebrewCommandToken(item: HomebrewManagedItem): string | undefi
   return full === `${tap}/${item.token}` ? full : undefined;
 }
 
+export function homebrewItemIdentity(item: HomebrewManagedItem): string | undefined {
+  const command = homebrewCommandToken(item);
+  return command ? (item.kind === "cask" ? `${item.tap}/${item.token}` : command) : undefined;
+}
+
 export function installedCaskEntry(
   item: HomebrewManagedItem,
   index: HomebrewCaskIndex
@@ -27,7 +32,8 @@ export function installedCaskEntry(
   // Legacy public catalogue entries may omit identity; custom taps must be explicit.
   const full = entry.fullToken ?? entry.token;
   const tap = entry.tap ?? "homebrew/cask";
-  return full === item.fullToken && tap === item.tap ? entry : undefined;
+  const identity = homebrewItemIdentity({ ...item, fullToken: full, tap });
+  return identity && identity === homebrewItemIdentity(item) ? entry : undefined;
 }
 
 export function caskIndexForInstalledItems(

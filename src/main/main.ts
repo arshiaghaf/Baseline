@@ -14,6 +14,7 @@ import {
   Tray
 } from "electron";
 import path from "node:path";
+import { realpath } from "node:fs/promises";
 import { appMetadata } from "./appMetadata";
 import { renderDiagnostics } from "../shared/diagnostics";
 import type {
@@ -93,7 +94,9 @@ if (hasSingleInstanceLock) {
       currentAppIdentity: {
         bundleIdentifier: "com.arshiaghaf.baseline",
         bundlePath: app.isPackaged
-          ? path.resolve(path.dirname(app.getPath("exe")), "../..")
+          ? await realpath(path.resolve(path.dirname(app.getPath("exe")), "../..")).catch(() =>
+              path.resolve(path.dirname(app.getPath("exe")), "../..")
+            )
           : undefined
       }
     });

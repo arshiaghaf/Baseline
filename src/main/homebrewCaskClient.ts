@@ -112,7 +112,8 @@ export class HomebrewCaskClient {
         homepageURL: sanitizeExternalURL(item?.homepage),
         presentation: classifyCaskPresentation(item),
         ...extractBundleIdentifierMetadata(item),
-        appBundleNames: extractAppBundleNames(item)
+        appBundleNames: extractAppBundleNames(item),
+        ...extractInstalledAppPaths(item)
       };
       byToken[token.toLowerCase()] = entry;
 
@@ -193,6 +194,27 @@ function indexBundleIdentifier(
   if (!existing || compareVersions(entry.version, existing.version) >= 0) {
     byBundleIdentifier[key] = entry;
   }
+}
+
+function extractInstalledAppPaths(object: any): Pick<HomebrewCaskEntry, "installedAppPaths"> {
+  const paths = new Set<string>();
+  for (const artifact of Array.isArray(object?.artifacts) ? object.artifacts : []) {
+    if (!artifact || typeof artifact !== "object" || (!artifact.app && !artifact.apps)) continue;
+    // Only installed app artifact targets are ownership evidence; delete/zap paths are not.
+    const add = (value: unknown) => {
+      if (
+        typeof value === "string" &&
+        value.startsWith("/") &&
+        value.toLowerCase().endsWith(".app")
+      )
+        paths.add(value);
+    };
+    add(artifact.target);
+    walk(artifact.app ?? artifact.apps, (key, value) => {
+      if (key === "target") add(value);
+    });
+  }
+  return paths.size ? { installedAppPaths: [...paths].sort() } : {};
 }
 
 function extractAppBundleNames(object: any): string[] {

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { mkdtemp, mkdir, symlink, rm, realpath } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const commandMock = vi.hoisted(() => ({
@@ -150,6 +153,39 @@ describe("HomebrewInventoryClient", () => {
     expect(result.items.find((item) => item.kind === "cask")).toMatchObject({ isOutdated: false });
     expect(result.items.find((item) => item.kind === "cask")?.fullToken).toBeUndefined();
     expect(result.warning).toContain("identity could not be verified");
+  });
+
+  it("canonicalizes installed app targets for symlinked custom app directories", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-cask-target-"));
+    try {
+      const actual = path.join(root, "Actual.app");
+      const target = path.join(root, "Renamed.app");
+      await mkdir(actual);
+      await symlink(actual, target);
+      commandMock.results.set("info --cask --installed --json=v2", {
+        success: true,
+        status: 0,
+        output: JSON.stringify({
+          casks: [
+            {
+              token: "notion",
+              full_token: "notion",
+              tap: "homebrew/cask",
+              installed: "4.0.0",
+              version: "4.1.0",
+              artifacts: [{ app: ["Original.app"], target }]
+            }
+          ]
+        })
+      });
+      const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+      const result = await new HomebrewInventoryClient().fetchInventory();
+      expect(
+        result.items.find((item) => item.kind === "cask")?.caskMetadata?.installedAppPaths
+      ).toEqual([await realpath(actual)]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("skips brew update when metadata updates are not requested", async () => {

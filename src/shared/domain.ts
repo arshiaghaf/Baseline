@@ -60,6 +60,7 @@ export type HomebrewCaskEntry = {
   bundleIdentifiers: string[];
   inferredBundleIdentifiers?: string[];
   appBundleNames: string[];
+  installedAppPaths?: string[];
 };
 
 export type HomebrewCaskDiscoveryItem = {

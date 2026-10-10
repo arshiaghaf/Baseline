@@ -38,6 +38,7 @@ import { homebrewItemHasAppRepresentation } from "../shared/homebrewAppLinking";
 import {
   caskIndexForInstalledItems,
   homebrewCommandToken,
+  homebrewItemIdentity,
   installedCaskEntry
 } from "../shared/homebrewIdentity";
 import type { PreferencePatch } from "../shared/ipc";
@@ -251,8 +252,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         const entry = installedCaskEntry(item, emptyHomebrewCaskIndex);
         const isSelf =
           item.kind === "cask" &&
-          (Boolean(item.appID && ownIDs.has(item.appID)) ||
-            Boolean(entry && ownApps.some((app) => appMatchesCaskEntry(app, entry))));
+          Boolean(entry && ownApps.some((app) => installedCaskIdentifiesSelf(app, entry)));
         if (isSelf) return { ...item, isSelf: true, isOutdated: false, latestVersion: undefined };
         if (item.isSelf) {
           const other = { ...item };
@@ -1463,7 +1463,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         updates,
         apps,
         homebrewIndex,
-        previousHomebrewItems
+        previousHomebrewItems,
+        (app) => this.isSelfApp(app)
       );
       const recentlyUpdated = this.mergeRecentlyUpdated(apps, updates, previousUpdates, now);
       const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
@@ -1736,7 +1737,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (
       item.isSelf ||
       !homebrewCommandToken(item) ||
-      homebrewCommandToken(item) !== homebrewCommandToken(entry.item)
+      homebrewItemIdentity(item) !== homebrewItemIdentity(entry.item)
     )
       return false;
     if (entry.requireOutdated && !item.isOutdated) {
@@ -2348,8 +2349,7 @@ export function preservePreviousHomebrewOutdatedState(
       (!homebrewCommandToken(item) ||
         !previous ||
         !homebrewCommandToken(previous) ||
-        item.fullToken !== previous.fullToken ||
-        item.tap !== previous.tap)
+        homebrewItemIdentity(item) !== homebrewItemIdentity(previous))
     )
       return item;
     if (!previous?.isOutdated) {
@@ -2418,7 +2418,8 @@ function reconcileHomebrewInventory(
   updates: UpdateRecord[],
   apps: AppRecord[] = [],
   caskIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex,
-  previousItems: HomebrewManagedItem[] = []
+  previousItems: HomebrewManagedItem[] = [],
+  isSelfApp?: (app: AppRecord) => boolean
 ): HomebrewManagedItem[] {
   const updatesByToken = new Map<string, UpdateRecord>();
   for (const update of updates) {
@@ -2446,7 +2447,14 @@ function reconcileHomebrewInventory(
         latestVersion: undefined
       };
     const caskEntry = installedCaskEntry(item, caskIndex);
-    const matchingApp = matchingHomebrewApp(updatesByToken, appsByID, apps, item, caskEntry);
+    const matchingApp = matchingHomebrewApp(
+      updatesByToken,
+      appsByID,
+      apps,
+      item,
+      caskEntry,
+      isSelfApp
+    );
     const iconDataURL =
       matchingApp?.iconDataURL ??
       (caskEntry ? undefined : matchingHomebrewAppIcon(item, updatesByToken, appsByID, apps));
@@ -2464,8 +2472,8 @@ function reconcileHomebrewInventory(
       !matchingApp &&
       previousAppID &&
       appsByID.has(previousAppID) &&
-      previousItem.fullToken === item.fullToken &&
-      previousItem.tap === item.tap
+      !isSelfApp?.(appsByID.get(previousAppID)!) &&
+      homebrewItemIdentity(previousItem) === homebrewItemIdentity(item)
         ? previousAppID
         : undefined;
     const appID = matchingApp?.id ?? preservedAppID;
@@ -2614,22 +2622,39 @@ function matchingHomebrewApp(
   appsByID: Map<string, AppRecord>,
   apps: AppRecord[],
   item: HomebrewManagedItem,
-  caskEntry: HomebrewCaskEntry | undefined
+  caskEntry: HomebrewCaskEntry | undefined,
+  isSelfApp?: (app: AppRecord) => boolean
 ): AppRecord | undefined {
+  const matches = (app: AppRecord) =>
+    (!isSelfApp?.(app) || Boolean(caskEntry && installedCaskIdentifiesSelf(app, caskEntry))) &&
+    appMatchesCaskEntry(app, caskEntry);
   const update = updatesByToken.get(item.token.toLowerCase());
   const appFromUpdate = update ? appsByID.get(update.appID) : undefined;
-  if (appFromUpdate && appMatchesCaskEntry(appFromUpdate, caskEntry)) {
+  if (appFromUpdate && matches(appFromUpdate)) {
     return appFromUpdate;
   }
 
   if (caskEntry) {
-    const byCaskMetadata = apps.find((app) => appMatchesCaskEntry(app, caskEntry));
+    const byCaskMetadata = apps.find(matches);
     if (byCaskMetadata) {
       return byCaskMetadata;
     }
   }
 
   return undefined;
+}
+
+function installedCaskIdentifiesSelf(app: AppRecord, entry: HomebrewCaskEntry): boolean {
+  const identifier = app.bundleIdentifier?.toLowerCase();
+  if (
+    identifier &&
+    entry.bundleIdentifiers.some((candidate) => candidate.toLowerCase() === identifier)
+  )
+    return true;
+  // appID and artifact basenames may come from generic name matching; they cannot prove self ownership.
+  return (entry.installedAppPaths ?? []).some(
+    (target) => path.resolve(target) === path.resolve(app.bundlePath)
+  );
 }
 
 function appMatchesCaskEntry(app: AppRecord, caskEntry: HomebrewCaskEntry | undefined): boolean {

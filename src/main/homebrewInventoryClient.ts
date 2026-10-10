@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { realpath } from "node:fs/promises";
 import type { HomebrewManagedItem, HomebrewManagedItemKind } from "../shared/domain";
 import { homebrewItemID } from "../shared/domain";
 import { maxVersion, version } from "../shared/version";
@@ -47,7 +48,7 @@ export class HomebrewInventoryClient {
       metadataReady && formulaOutdated.success ? commandStdout(formulaOutdated) || "{}" : "{}",
       metadataReady && caskOutdated.success ? commandStdout(caskOutdated) || "{}" : "{}"
     );
-    const caskMetadataReady = applyInstalledCaskMetadata(parsed.items, caskInfo);
+    const caskMetadataReady = await applyInstalledCaskMetadata(parsed.items, caskInfo);
     const commandSucceeded =
       metadataReady &&
       formulaVersions.success &&
@@ -317,7 +318,10 @@ function inventoryWarning({
   return `Homebrew outdated status could not be read reliably (${failed.join(", ")}).`;
 }
 
-function applyInstalledCaskMetadata(items: HomebrewManagedItem[], result: CommandResult): boolean {
+async function applyInstalledCaskMetadata(
+  items: HomebrewManagedItem[],
+  result: CommandResult
+): Promise<boolean> {
   let casks: any[] = [];
   try {
     const raw = JSON.parse(commandStdout(result));
@@ -350,6 +354,11 @@ function applyInstalledCaskMetadata(items: HomebrewManagedItem[], result: Comman
       item.latestVersion = undefined;
       verified = false;
       continue;
+    }
+    if (entry.installedAppPaths) {
+      entry.installedAppPaths = await Promise.all(
+        entry.installedAppPaths.map(async (target) => realpath(target).catch(() => target))
+      );
     }
     item.fullToken = candidate.fullToken;
     item.tap = candidate.tap;

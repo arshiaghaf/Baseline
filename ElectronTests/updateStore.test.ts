@@ -815,7 +815,7 @@ describe("update store helpers", () => {
             full_token: "example/tools/shared-name",
             tap: "example/tools",
             version: "0.6.3",
-            artifacts: [{ app: ["Update Utility.app"] }]
+            artifacts: [{ app: ["Update Utility.app"], target: "/Applications/Update Utility.app" }]
           }
         ])
       )
@@ -1024,7 +1024,7 @@ describe("update store helpers", () => {
             full_token: "example/tools/utility",
             tap: "example/tools",
             version: "2.0",
-            artifacts: [{ app: ["Update Utility.app"] }]
+            artifacts: [{ app: ["Update Utility.app"], target: "/Applications/Update Utility.app" }]
           }
         ])
       )
@@ -1051,6 +1051,199 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().homebrewItems[0]).toMatchObject({ isSelf: true, isOutdated: false });
   });
 
+  it.each([
+    { target: "/Vendor Apps/Update Utility.app", self: false },
+    { target: undefined, self: false },
+    { target: "/Applications/Update Utility.app", self: true },
+    {
+      target: "/Custom Apps/Renamed Utility.app",
+      self: true,
+      bundlePath: "/Custom Apps/Renamed Utility.app"
+    }
+  ])(
+    "identifies self using installed target, not basename or historical appID: %j",
+    async ({ target, self, bundlePath = "/Applications/Update Utility.app" }) => {
+      const own = appRecord({
+        bundlePath,
+        displayName: "Update Utility",
+        bundleIdentifier: "com.example.utility",
+        localVersion: version("1.0")
+      });
+      const client = new HomebrewCaskClient();
+      const metadata = client.parseIndex(
+        Buffer.from(
+          JSON.stringify([
+            {
+              token: "utility",
+              full_token: "example/tools/utility",
+              tap: "example/tools",
+              version: "2.0",
+              artifacts: [{ app: ["Update Utility.app"], target }]
+            }
+          ])
+        )
+      ).byToken.utility!;
+      const item = homebrewItem({
+        id: "cask:utility",
+        token: "utility",
+        name: "Utility",
+        kind: "cask",
+        fullToken: "example/tools/utility",
+        tap: "example/tools",
+        caskMetadata: metadata,
+        appID: own.id,
+        latestVersion: version("2.0"),
+        isOutdated: true
+      });
+      const store = await makeStore({
+        currentAppIdentity: { bundlePath, bundleIdentifier: own.bundleIdentifier },
+        persisted: { ...defaultPersistedSnapshot(), apps: [own], homebrewItems: [item] },
+        clients: {
+          scanner: { scanApplications: async () => [own] },
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items: [item],
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true }
+            })
+          }
+        }
+      });
+      expect(store.getSnapshot().homebrewItems[0]?.isSelf === true).toBe(self);
+      expect(store.getSnapshot().homebrewItems[0]?.isOutdated).toBe(!self);
+      await store.refresh(false);
+      expect(store.getSnapshot().homebrewItems[0]?.isSelf === true).toBe(self);
+      expect(store.getSnapshot().homebrewItems[0]?.isOutdated).toBe(!self);
+      expect(store.getSnapshot().homebrewItems[0]?.appID).toBe(self ? own.id : undefined);
+    }
+  );
+
+  it("does not borrow the running app version when an unrelated installed target shares its filename", async () => {
+    const own = appRecord({
+      bundlePath: "/Applications/Update Utility.app",
+      displayName: "Update Utility",
+      bundleIdentifier: "com.example.utility",
+      localVersion: version("9.0")
+    });
+    const client = new HomebrewCaskClient();
+    const metadata = client.parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "utility",
+            full_token: "example/tools/utility",
+            tap: "example/tools",
+            version: "2.0",
+            artifacts: [{ app: ["Update Utility.app"], target: "/Vendor Apps/Update Utility.app" }]
+          }
+        ])
+      )
+    ).byToken.utility!;
+    const item = homebrewItem({
+      id: "cask:utility",
+      token: "utility",
+      name: "Utility",
+      kind: "cask",
+      fullToken: "example/tools/utility",
+      tap: "example/tools",
+      caskMetadata: metadata,
+      latestVersion: version("2.0"),
+      isOutdated: true
+    });
+    const store = await makeStore({
+      currentAppIdentity: { bundlePath: own.bundlePath, bundleIdentifier: own.bundleIdentifier },
+      clients: {
+        scanner: { scanApplications: async () => [own] },
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [item],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+    await store.refresh(false);
+    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+      isOutdated: true,
+      installedVersion: { raw: "1.0.0" },
+      latestVersion: { raw: "2.0" }
+    });
+    expect(store.getSnapshot().homebrewItems[0]?.appID).toBeUndefined();
+    expect(store.getSnapshot().homebrewItems[0]?.isSelf).not.toBe(true);
+  });
+
+  it.each([true, false])(
+    "uses explicit own bundle identity without a target, never inferred quit identity: %s",
+    async (explicit) => {
+      const metadata = {
+        token: "utility",
+        fullToken: "example/tools/utility",
+        tap: "example/tools",
+        version: version("2.0"),
+        presentation: "app" as const,
+        bundleIdentifiers: explicit ? ["com.example.utility"] : [],
+        inferredBundleIdentifiers: explicit ? [] : ["com.example.utility"],
+        appBundleNames: ["Update Utility.app"]
+      };
+      const item = homebrewItem({
+        id: "cask:utility",
+        token: "utility",
+        name: "Utility",
+        kind: "cask",
+        fullToken: "example/tools/utility",
+        tap: "example/tools",
+        caskMetadata: metadata,
+        latestVersion: version("2.0"),
+        isOutdated: true
+      });
+      const store = await makeStore({
+        currentAppIdentity: {
+          bundlePath: "/Custom Apps/Renamed Utility.app",
+          bundleIdentifier: "com.example.utility"
+        },
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] }
+      });
+      expect(store.getSnapshot().homebrewItems[0]?.isSelf === true).toBe(explicit);
+    }
+  );
+
+  it("recognizes the product's installed app target while keeping self updates independent", async () => {
+    const metadata = new HomebrewCaskClient().parseIndex(
+      Buffer.from(
+        JSON.stringify([
+          {
+            token: "self-app",
+            full_token: "example/tools/self-app",
+            tap: "example/tools",
+            version: "0.6.3",
+            artifacts: [{ app: ["Baseline.app"], target: "/Applications/Baseline.app" }]
+          }
+        ])
+      )
+    ).byToken["self-app"]!;
+    const item = homebrewItem({
+      id: "cask:self-app",
+      token: "self-app",
+      name: "Self App",
+      kind: "cask",
+      fullToken: "example/tools/self-app",
+      tap: "example/tools",
+      caskMetadata: metadata,
+      latestVersion: version("0.6.3"),
+      isOutdated: true
+    });
+    const store = await makeStore({
+      currentAppVersion: "0.6.2",
+      currentAppIdentity: {
+        bundlePath: "/Applications/Baseline.app",
+        bundleIdentifier: "com.arshiaghaf.baseline"
+      },
+      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] }
+    });
+    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({ isSelf: true, isOutdated: false });
+  });
+
   it.each(["1.0", "2.0", "3.0"])(
     "keeps own updates on the download shortcut when installed at %s",
     async (local) => {
@@ -1069,7 +1262,9 @@ describe("update store helpers", () => {
               full_token: "example/tools/utility",
               tap: "example/tools",
               version: "2.0",
-              artifacts: [{ app: ["Update Utility.app"] }]
+              artifacts: [
+                { app: ["Update Utility.app"], target: "/Applications/Update Utility.app" }
+              ]
             }
           ])
         )

@@ -6,6 +6,7 @@ import { HomebrewCaskClient } from "../src/main/homebrewCaskClient";
 import {
   caskIndexForInstalledItems,
   homebrewCommandToken,
+  homebrewItemIdentity,
   installedCaskEntry
 } from "../src/shared/homebrewIdentity";
 import type { HomebrewManagedItem } from "../src/shared/domain";
@@ -74,6 +75,19 @@ describe("installed cask identity", () => {
       expect(caskIndexForInstalledItems(catalogue, [item]).byToken["shared-name"]).toBeUndefined();
     }
   });
+  it.each(["shared-name", "homebrew/cask/shared-name"])(
+    "canonicalizes equivalent verified public full token %s",
+    (fullToken) => {
+      const item = { ...installed, fullToken, tap: "homebrew/cask", caskMetadata: undefined };
+      expect(installedCaskEntry(item, catalogue)).toBe(catalogue.byToken["shared-name"]);
+      expect(caskIndexForInstalledItems(catalogue, [item]).byToken["shared-name"]).toBe(
+        catalogue.byToken["shared-name"]
+      );
+      expect(homebrewCommandToken(item)).toBe(fullToken);
+      expect(homebrewItemIdentity(item)).toBe("homebrew/cask/shared-name");
+    }
+  );
+
   it("preserves verified public casks and rejects mismatched or unsafe full tokens", () => {
     const item = {
       ...installed,
