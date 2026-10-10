@@ -53,6 +53,7 @@ export type PreferencePatch = Partial<{
   appearancePreference: AppearancePreference;
   useMasForAppStoreUpdates: boolean;
   showMenuBarIcon: boolean;
+  showDockIcon: boolean;
 }>;
 
 export type BaselineAPI = {

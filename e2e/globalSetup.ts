@@ -5,7 +5,7 @@ import { createPackage, extractAll, extractFile, getRawHeader } from "@electron/
 import { signAsync } from "@electron/osx-sign";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { build, loadConfigFromFile, mergeConfig } from "vite";
 import { assertIsolatedIntegrityBundle, assertProductionIntegrityBundle } from "./bundleIsolation";
 import { localAdHocSigningOptions, verifyMacBundle } from "../macSigning.config";
+import { isAffectedFullScreenImage, nativeFullScreenSkipReason } from "./fullScreenCapability";
 
 // Never launch production startup during smoke tests: it can access the host Keychain.
 // Instrument only a disposable copy of the packaged build, leaving out/ untouched.
@@ -30,11 +31,63 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-app-"));
   const cleanup = () => rm(temporaryDirectory, { recursive: true, force: true });
   try {
+    // Cold Swift module compilation can exceed a smoke-test timeout on CI.
+    // Compile the public native observer during preflight, before GUI tests.
+    const observer = path.join(temporaryDirectory, "native-window-state");
+    await promisify(execFile)(
+      "/usr/bin/xcrun",
+      ["swiftc", path.join(root, "e2e/nativeWindowState.swift"), "-o", observer],
+      { timeout: 120_000 }
+    );
+    process.env.BASELINE_E2E_NATIVE_OBSERVER = observer;
+    const fixtureContents = path.join(temporaryDirectory, "FullScreenFixture.app", "Contents");
+    await mkdir(path.join(fixtureContents, "MacOS"), { recursive: true });
+    await writeFile(
+      path.join(fixtureContents, "Info.plist"),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>FullScreenFixture</string>
+<key>CFBundleIdentifier</key><string>org.example.baseline.fullscreen-fixture</string>
+<key>CFBundleName</key><string>Full-screen fixture</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>NSPrincipalClass</key><string>NSApplication</string>
+</dict></plist>\n`
+    );
+    const fullScreenFixture = path.join(fixtureContents, "MacOS", "FullScreenFixture");
+    await promisify(execFile)(
+      "/usr/bin/xcrun",
+      ["swiftc", path.join(root, "e2e/fullScreenFixture.swift"), "-o", fullScreenFixture],
+      { timeout: 120_000 }
+    );
+    process.env.BASELINE_E2E_FULLSCREEN_FIXTURE = fullScreenFixture;
+    delete process.env.BASELINE_E2E_FULLSCREEN_SKIP_REASON;
+    if (
+      process.platform === "darwin" &&
+      process.arch === "x64" &&
+      process.env.GITHUB_ACTIONS === "true"
+    ) {
+      const image = await readFile(path.join(os.homedir(), "imagedata.json"), "utf8");
+      if (isAffectedFullScreenImage(image)) {
+        const probe = await promisify(execFile)(fullScreenFixture, ["--probe"], {
+          timeout: 20_000
+        });
+        const reason = nativeFullScreenSkipReason(probe.stdout);
+        console.log("Native full-screen capability on image 20260824.0517.1:", probe.stdout.trim());
+        if (reason) {
+          process.env.BASELINE_E2E_FULLSCREEN_SKIP_REASON = reason;
+          console.log(reason);
+        }
+      }
+    }
     const appDirectory = path.join(temporaryDirectory, "app");
     extractAll(archivePath(productionApp), appDirectory);
     const productionProvider = path.join(root, "src/main/profileStatsIntegrity.ts");
     const fixtureProvider = path.join(root, "e2e/profileStatsIntegrity.ts");
+    const productionCommands = path.join(root, "src/main/commandRunner.ts");
+    const fixtureCommands = path.join(root, "e2e/commandRunner.ts");
     let fixtureIncluded = false;
+    let commandFixtureIncluded = false;
     const loaded = await loadConfigFromFile(
       { command: "build", mode: "production" },
       path.join(root, "vite.main.config.mts")
@@ -47,7 +100,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
         configFile: false,
         mode: "production",
         resolve: {
-          alias: [{ find: "./profileStatsIntegrity", replacement: fixtureProvider }],
+          alias: [
+            { find: "./profileStatsIntegrity", replacement: fixtureProvider },
+            { find: "./commandRunner", replacement: fixtureCommands }
+          ],
           conditions: ["node"],
           mainFields: ["module", "jsnext:main", "jsnext"]
         },
@@ -63,6 +119,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
                 throw new Error("The production Keychain provider entered the E2E bundle.");
               }
               fixtureIncluded ||= module.id === fixtureProvider;
+              if (module.id === productionCommands) {
+                throw new Error("The production command runner entered the E2E bundle.");
+              }
+              commandFixtureIncluded ||= module.id === fixtureCommands;
             }
           }
         ],
@@ -90,6 +150,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     if (!fixtureIncluded) {
       throw new Error("The E2E build did not inject the test integrity provider.");
     }
+    if (!commandFixtureIncluded)
+      throw new Error("The E2E build did not inject the test command runner.");
     assertIsolatedIntegrityBundle(await readFile(path.join(appDirectory, mainPath), "utf8"));
 
     const testApp = path.join(temporaryDirectory, "Baseline.app");
@@ -111,7 +173,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     verifyMacBundle(testApp);
     process.env.BASELINE_E2E_APP_DIR = appDirectory;
     process.env.BASELINE_E2E_EXECUTABLE = path.join(testApp, "Contents", "MacOS", "Baseline");
-    console.log("E2E preflight: test provider included; production Keychain provider excluded.");
+    console.log(
+      "E2E preflight: test providers included; production Keychain and command providers excluded."
+    );
     return cleanup;
   } catch (error) {
     await cleanup();

@@ -2,22 +2,56 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { _electron as electron, expect, test } from "@playwright/test";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { once } from "node:events";
 import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { defaultPersistedSnapshot } from "../src/shared/domain";
 import { version } from "../src/shared/version";
+import type { E2ECommandControl } from "./commandRunner";
+import { cleanupApplications } from "./applicationCleanup";
 
 const profileTestSecret = randomBytes(32).toString("base64url");
 const launchedApps = new Set<Awaited<ReturnType<typeof electron.launch>>>();
+const nativeFixtures = new Set<{ process(): ChildProcess; close(): Promise<void> }>();
 const userDataDirectories = new Set<string>();
 
+type NativeTrayProbe = {
+  tray?: Electron.Tray;
+  menu?: Electron.Menu;
+  dialogs: Electron.MessageBoxOptions[];
+  command: E2ECommandControl;
+  selfUpdateChecks: number;
+  restoreDockShow?: () => void;
+};
+
 test.afterEach(async () => {
-  for (const app of launchedApps) {
-    await app.close();
+  // Finish the foreign full-screen Space before quitting Baseline. Still drain
+  // both groups and retain each error if either graceful close fails.
+  const failures: unknown[] = [];
+  for (const applications of [[...nativeFixtures], [...launchedApps]]) {
+    try {
+      await cleanupApplications(applications, async (app) => {
+        const electronApp = [...launchedApps].find((candidate) => candidate === app);
+        if (!electronApp) return;
+        await electronApp
+          .evaluate(() =>
+            (
+              globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
+            ).nativeTrayProbe?.command.finish?.()
+          )
+          .catch(() => undefined);
+      });
+    } catch (error) {
+      failures.push(error);
+    }
   }
+  if (failures.length) throw new AggregateError(failures, "Test application cleanup failed.");
   launchedApps.clear();
+  nativeFixtures.clear();
   await Promise.all(
     [...userDataDirectories].map((directory) => rm(directory, { recursive: true, force: true }))
   );
@@ -259,6 +293,477 @@ test("persists preferences across Electron relaunches", async () => {
     });
 
   await closeApp(secondApp);
+});
+
+test("keeps hidden-Dock settings reachable across close, reopen, and relaunch", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  const firstApp = await launchBaseline({ packaged: true, userData });
+  const page = await firstApp.firstWindow();
+  await expect(page.locator("h1")).toContainText("All");
+  expect(await firstApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
+  await page.evaluate(() => window.baseline.showSettings());
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("switch", { name: "Show Dock icon", exact: true }).click();
+  await expect.poll(() => firstApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  await expect
+    .poll(() => page.evaluate(() => window.baseline.getSnapshot()))
+    .toMatchObject({
+      showDockIcon: false,
+      showMenuBarIcon: true
+    });
+  await firstApp.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (!window) throw new Error("Expected a main window.");
+    window.close();
+  });
+  expect(
+    await firstApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible())
+  ).toBe(false);
+  // The same main-process Settings action is used by the tray and preload.
+  await page.evaluate(() => window.baseline.showSettings());
+  await expect(page.getByRole("switch", { name: "Show Dock icon", exact: true })).not.toBeChecked();
+  expect(await firstApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  // Cover the actual renderer/preload/native restore path instead of a separate
+  // mocked control-wiring test.
+  await page.getByRole("switch", { name: "Show Dock icon", exact: true }).click();
+  await expect.poll(() => firstApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
+  await page.getByRole("switch", { name: "Show Dock icon", exact: true }).click();
+  await expect.poll(() => firstApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+
+  await page.evaluate(async () => {
+    // Exercise a pending native Dock-show promise followed by another hide.
+    await Promise.all([
+      window.baseline.updatePreferences({ showDockIcon: true }),
+      window.baseline.updatePreferences({ showDockIcon: false })
+    ]);
+  });
+  await expect.poll(() => firstApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  await closeApp(firstApp);
+
+  const secondApp = await launchBaseline({ packaged: true, userData });
+  const secondPage = await secondApp.firstWindow();
+  await expect(secondPage.locator("h1")).toContainText("All");
+  await expect.poll(() => secondApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  await secondPage.evaluate(() => window.baseline.updatePreferences({ showMenuBarIcon: false }));
+  await expect.poll(() => secondApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
+  await expect
+    .poll(() => secondPage.evaluate(() => window.baseline.getSnapshot()))
+    .toMatchObject({
+      showDockIcon: true,
+      showMenuBarIcon: false
+    });
+  await secondApp.evaluate(({ app, BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.close();
+    app.emit("activate");
+  });
+  expect(
+    await secondApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible())
+  ).toBe(true);
+  await closeApp(secondApp);
+});
+
+test("routes native tray events with the Dock hidden and protects a running update from Quit", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({
+      ...defaultPersistedSnapshot(),
+      autoRefreshEnabled: false,
+      showDockIcon: false,
+      apps: [
+        {
+          id: "fixture-app",
+          bundlePath: "/Applications/Fixture Utility.app",
+          displayName: "Fixture Utility",
+          localVersion: version("1"),
+          sourceHint: "appStore"
+        }
+      ],
+      updates: [
+        {
+          id: "fixture-app",
+          appID: "fixture-app",
+          source: "appStore",
+          supportLevel: "supported",
+          localVersion: version("1"),
+          remoteVersion: version("2"),
+          appStoreItemID: 123,
+          updateURL: "https://example.com/update",
+          checkedAt: "2026-10-10T00:00:00.000Z"
+        }
+      ]
+    })
+  );
+  const application = await launchBaseline({ packaged: true, userData });
+  const page = await application.firstWindow();
+  await expect(page.locator("h1")).toContainText("All");
+  // DOM visibility can precede ready-to-show on slower runners. Wait for
+  // native startup before simulating a user gesture, or startup steals focus.
+  await expect
+    .poll(() =>
+      application.evaluate(({ app, BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().endsWith("#/main")
+        );
+        return {
+          mainVisible: window?.isVisible(),
+          dockVisible: app.dock?.isVisible()
+        };
+      })
+    )
+    .toEqual({ mainVisible: true, dockVisible: false });
+  await application.evaluate(({ app, Tray, dialog, shell }) => {
+    const probe: NativeTrayProbe = { dialogs: [], selfUpdateChecks: 0, command: { commands: [] } };
+    (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }).nativeTrayProbe =
+      probe;
+    const setTitle = Tray.prototype.setTitle;
+    Tray.prototype.setTitle = function (title, options) {
+      probe.tray = this;
+      if (options) setTitle.call(this, title, options);
+      else setTitle.call(this, title);
+    };
+    // Inspect the real native Menu without showing a blocking OS popup in CI.
+    Tray.prototype.popUpContextMenu = function (menu) {
+      probe.menu = menu;
+    };
+    dialog.showMessageBox = (async (...args: unknown[]) => {
+      probe.dialogs.push(args.at(-1) as Electron.MessageBoxOptions);
+      return { response: 0, checkboxChecked: false };
+    }) as typeof dialog.showMessageBox;
+    globalThis.fetch = async () => {
+      ++probe.selfUpdateChecks;
+      return new Response(
+        JSON.stringify({
+          tag_name: app.getVersion(),
+          html_url: "https://github.com/arshiaghaf/Baseline/releases/latest"
+        }),
+        { status: 200 }
+      );
+    };
+    shell.openExternal = async () => undefined;
+  });
+  // A normal snapshot captures the existing native Tray through its status update.
+  await page.evaluate(() => window.baseline.updatePreferences({ appearancePreference: "dark" }));
+  await application.evaluate(() => {
+    const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe;
+    if (!probe?.tray) throw new Error("Expected the native Tray.");
+    probe.tray.emit("click");
+  });
+  await expect
+    .poll(() =>
+      application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some(
+          (window) => window.webContents.getURL().endsWith("#/menubar") && window.isVisible()
+        )
+      )
+    )
+    .toBe(true);
+  await application.evaluate(({ BrowserWindow }) => {
+    const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe!;
+    probe.tray!.emit("click");
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().endsWith("#/main"))!
+      .close();
+    probe.tray!.emit("right-click");
+    const settings = probe.menu?.items.find((item) => item.label === "Settings");
+    if (!settings) throw new Error("Expected Settings in the native menu.");
+    settings.click(settings, undefined, {} as Electron.KeyboardEvent);
+    settings.click(settings, undefined, {} as Electron.KeyboardEvent);
+  });
+  await expect(page.locator("h1")).toContainText("General");
+  expect(await application.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  expect(
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/menubar"))
+        ?.isVisible()
+    )
+  ).toBe(false);
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  for (const width of [660, 1020]) {
+    await application.evaluate(({ BrowserWindow }, width) => {
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/settings"))!
+        .setSize(width, 760);
+    }, width);
+    await expect(page.getByRole("switch", { name: "Show Dock icon", exact: true })).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)
+    ).toBe(true);
+    await page.screenshot({ path: test.info().outputPath(`dock-menu-settings-${width}.png`) });
+  }
+  await application.evaluate(() => {
+    const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe!;
+    const check = probe.menu!.items.find((item) => item.label === "Check for Updates")!;
+    check.click(check, undefined, {} as Electron.KeyboardEvent);
+    check.click(check, undefined, {} as Electron.KeyboardEvent);
+  });
+  await expect
+    .poll(() =>
+      application.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
+        ).nativeTrayProbe?.dialogs.map((dialog) => dialog.message)
+      )
+    )
+    .toContain("Baseline is up to date");
+  expect(
+    await application.evaluate(
+      () =>
+        (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }).nativeTrayProbe
+          ?.selfUpdateChecks
+    )
+  ).toBe(1);
+  await page.evaluate(() => {
+    void window.baseline.performAppUpdate("fixture-app");
+  });
+  await expect
+    .poll(() => page.evaluate(async () => (await window.baseline.getSnapshot()).appUpdatingIDs))
+    .toContain("fixture-app");
+  await application.evaluate(() => {
+    const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe!;
+    const quit = probe.menu!.items.find((item) => item.label === "Quit")!;
+    quit.click(quit, undefined, {} as Electron.KeyboardEvent);
+    quit.click(quit, undefined, {} as Electron.KeyboardEvent);
+  });
+  await expect
+    .poll(() =>
+      application.evaluate(() =>
+        (
+          globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
+        ).nativeTrayProbe?.dialogs.map((dialog) => dialog.message)
+      )
+    )
+    .toContain("An app or Homebrew operation is still running");
+  expect((await page.evaluate(() => window.baseline.getSnapshot())).appUpdatingIDs).toContain(
+    "fixture-app"
+  );
+  await application.evaluate(() =>
+    (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }).nativeTrayProbe!
+      .command.finish!()
+  );
+  await expect
+    .poll(() => page.evaluate(async () => (await window.baseline.getSnapshot()).appUpdatingIDs))
+    .toEqual([]);
+
+  // A rejected native Dock restore must leave a usable recovery tray, even
+  // though the user has just switched the menu-bar preference off.
+  await application.evaluate(({ app }) => {
+    if (!app.dock) throw new Error("Expected the native Dock API.");
+    const showDock = app.dock.show.bind(app.dock);
+    const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe!;
+    probe.restoreDockShow = () => {
+      app.dock!.show = showDock;
+    };
+    app.dock.show = async () => {
+      throw new Error("Synthetic Dock restore failure");
+    };
+  });
+  await page.evaluate(() => window.baseline.updatePreferences({ showMenuBarIcon: false }));
+  expect((await page.evaluate(() => window.baseline.getSnapshot())).showMenuBarIcon).toBe(false);
+  expect(await application.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  await application.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().endsWith("#/settings"))!
+      .close();
+    (
+      globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
+    ).nativeTrayProbe!.tray!.emit("click");
+  });
+  await expect
+    .poll(() =>
+      application.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows().some(
+          (window) => window.webContents.getURL().endsWith("#/menubar") && window.isVisible()
+        )
+      )
+    )
+    .toBe(true);
+  await application.evaluate(() => {
+    const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe!;
+    probe.tray!.emit("click");
+    probe.tray!.emit("right-click");
+    const settings = probe.menu!.items.find((item) => item.label === "Settings")!;
+    settings.click(settings, undefined, {} as Electron.KeyboardEvent);
+    probe.restoreDockShow!();
+  });
+  await expect(page.locator("h1")).toContainText("Appearance");
+  expect(
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/settings"))
+        ?.isVisible()
+    )
+  ).toBe(true);
+  await page.evaluate(() => window.baseline.updatePreferences({ appearancePreference: "light" }));
+  await expect.poll(() => application.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
+  expect((await page.evaluate(() => window.baseline.getSnapshot())).showMenuBarIcon).toBe(false);
+  const closed = application.waitForEvent("close");
+  await application
+    .evaluate(() => {
+      const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+        .nativeTrayProbe!;
+      const quit = probe.menu!.items.find((item) => item.label === "Quit")!;
+      quit.click(quit, undefined, {} as Electron.KeyboardEvent);
+    })
+    .catch((error: unknown) => {
+      if (
+        !(error instanceof Error) ||
+        !/Execution context was destroyed|Target page, context or browser has been closed/u.test(
+          error.message
+        )
+      )
+        throw error;
+    });
+  await closed;
+  launchedApps.delete(application);
+});
+
+test("opens a keyboard-usable popover over another app's full-screen Space", async () => {
+  test.skip(process.platform !== "darwin", "macOS full-screen Spaces behavior");
+  const unavailable = process.env.BASELINE_E2E_FULLSCREEN_SKIP_REASON;
+  test.skip(Boolean(unavailable), unavailable);
+  const application = await launchBaseline({ packaged: true });
+  const page = await application.firstWindow();
+  await expect(page.locator("h1")).toContainText("All");
+  await application.evaluate(({ Tray }) => {
+    const probe: NativeTrayProbe = { dialogs: [], selfUpdateChecks: 0, command: { commands: [] } };
+    (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }).nativeTrayProbe =
+      probe;
+    const setTitle = Tray.prototype.setTitle;
+    Tray.prototype.setTitle = function (title, options) {
+      probe.tray = this;
+      if (options) setTitle.call(this, title, options);
+      else setTitle.call(this, title);
+    };
+  });
+  await page.evaluate(() => window.baseline.updatePreferences({ autoRefreshEnabled: false }));
+
+  const observer = process.env.BASELINE_E2E_NATIVE_OBSERVER;
+  if (!observer) throw new Error("Expected the native window observer from E2E preflight.");
+  const nativeState = async () => {
+    const { stdout } = await promisify(execFile)(observer, { timeout: 5000 });
+    return JSON.parse(stdout) as { frontmostPID: number; onScreenWindowIDs: number[] };
+  };
+  // Rendered content can precede ready-to-show and its native activation.
+  // Complete Baseline startup before the foreign fixture takes focus.
+  await expect
+    .poll(async () => ({
+      mainReady: await application.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().endsWith("#/main")
+        );
+        return window?.isVisible() === true && window.isFocused();
+      }),
+      frontmostPID: (await nativeState()).frontmostPID
+    }))
+    .toEqual({ mainReady: true, frontmostPID: application.process().pid });
+  const executable = process.env.BASELINE_E2E_FULLSCREEN_FIXTURE;
+  if (!executable) throw new Error("Expected the native full-screen fixture from E2E preflight.");
+  const child = spawn(executable, [], { detached: true, stdio: ["ignore", "pipe", "pipe"] });
+  const fixture = {
+    process: () => child,
+    close: async () => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const closed = once(child, "close");
+      child.kill("SIGTERM");
+      await closed;
+    }
+  };
+  nativeFixtures.add(fixture);
+  let output = "";
+  let errorOutput = "";
+  let launchError: Error | undefined;
+  child.stdout.on("data", (data: Buffer) => {
+    output += data.toString();
+  });
+  child.stderr.on("data", (data: Buffer) => {
+    errorOutput += data.toString();
+  });
+  child.on("error", (error) => {
+    launchError = error;
+  });
+  // The native delegate prints its window ID only after AppKit completes the
+  // real full-screen transition. A missing event remains a test failure.
+  await expect
+    .poll(
+      () => {
+        if (launchError) throw launchError;
+        if (child.exitCode !== null || child.signalCode !== null) {
+          throw new Error(
+            `Native full-screen fixture exited before its transition: ${errorOutput}`
+          );
+        }
+        return output.trim();
+      },
+      { timeout: 15_000 }
+    )
+    .toMatch(/^\d+$/);
+  const fixtureWindowID = Number(output.trim());
+  await expect.poll(async () => (await nativeState()).frontmostPID).toBe(child.pid);
+  const popoverOpened = application.waitForEvent("window");
+  await application.evaluate(() => {
+    (
+      globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
+    ).nativeTrayProbe!.tray!.emit("click");
+  });
+  const popover = await popoverOpened;
+  await expect(popover.getByRole("button", { name: "Search", exact: true })).toBeVisible();
+  const popoverWindowID = await application.evaluate(({ BrowserWindow }) =>
+    Number(
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/menubar"))!
+        .getMediaSourceId()
+        .split(":")[1]
+    )
+  );
+  await expect.poll(nativeState).toMatchObject({
+    frontmostPID: fixture.process().pid,
+    onScreenWindowIDs: expect.arrayContaining([fixtureWindowID, popoverWindowID])
+  });
+  expect(
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/menubar"))!
+        .isFocused()
+    )
+  ).toBe(true);
+  await popover.getByRole("button", { name: "Search", exact: true }).click();
+  await popover.getByRole("textbox").press("f");
+  await expect(popover.getByRole("textbox")).toHaveValue("f");
+  expect((await nativeState()).frontmostPID).toBe(fixture.process().pid);
+  await popover.evaluate(() => window.baseline.showSettings());
+  await expect(page.locator("h1")).toContainText("General");
+  await expect.poll(async () => (await nativeState()).frontmostPID).toBe(application.process().pid);
+});
+
+test("recovers a saved configuration with both app icons hidden", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({
+      ...defaultPersistedSnapshot(),
+      showDockIcon: false,
+      showMenuBarIcon: false
+    })
+  );
+  const application = await launchBaseline({ packaged: true, userData });
+  const page = await application.firstWindow();
+  await expect(page.locator("h1")).toContainText("All");
+  await expect.poll(() => application.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => window.baseline.getSnapshot()))
+    .toMatchObject({
+      showDockIcon: true,
+      showMenuBarIcon: false
+    });
+  await closeApp(application);
 });
 
 test("reuses the main window without duplicate setup", async () => {

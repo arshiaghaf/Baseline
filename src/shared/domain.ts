@@ -223,6 +223,7 @@ export type PersistedSnapshot = {
   appearancePreference: AppearancePreference;
   useMasForAppStoreUpdates: boolean;
   showMenuBarIcon: boolean;
+  showDockIcon: boolean;
   profileStats: ProfileStats;
   profileStatsResetAcknowledgedID?: string;
   lastRefreshDate?: string;
@@ -329,6 +330,7 @@ export function defaultPersistedSnapshot(now = new Date().toISOString()): Persis
     appearancePreference: "system",
     useMasForAppStoreUpdates: true,
     showMenuBarIcon: true,
+    showDockIcon: true,
     profileStats: defaultProfileStats(now)
   };
 }

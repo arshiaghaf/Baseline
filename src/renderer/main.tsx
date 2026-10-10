@@ -3460,11 +3460,17 @@ function SettingsPane({
             </div>
           </section>
           <section className="panel settings-panel">
-            <PanelTitle title="Menu Bar" />
+            <PanelTitle title="Dock & Menu Bar" />
             <div className="settings-panel-box">
               <Toggle
+                label="Show Dock icon"
+                description="Show Baseline in the Dock and Command-Tab app switcher. Turning this off keeps the menu bar icon on so you can reopen Baseline."
+                value={snapshot.showDockIcon}
+                patch="showDockIcon"
+              />
+              <Toggle
                 label="Show menu bar icon"
-                description="Keep the compact update popover available in the menu bar."
+                description="Click for the compact update popover. Right-click to refresh your apps, open Settings, check for Baseline updates, or quit. Turning this off shows the Dock icon."
                 value={snapshot.showMenuBarIcon}
                 patch="showMenuBarIcon"
               />

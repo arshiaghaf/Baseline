@@ -45,6 +45,7 @@ When the required local tooling is available, Baseline can run update and instal
 - Supports uninstalling Homebrew-managed casks and formulae from item actions
 - Supports Homebrew search from the main window and menu bar tray to discover installable casks and formulae
 - Lets you search installed apps and filter available updates
+- Lets you hide the Dock icon in Settings > Appearance while keeping menu-bar access, with right-click actions for Refresh, Settings, Check for Updates (Baseline itself), and Quit
 - Provides external fallback links when local CLI tooling is unavailable
 
 ![Baseline Ignored tab showing app and Homebrew item actions](docs/images/baseline-ignored-updates.png)
