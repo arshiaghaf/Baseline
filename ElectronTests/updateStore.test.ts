@@ -5399,6 +5399,13 @@ describe("update store helpers", () => {
   });
 });
 
+async function settleCleanupOperations(...operations: (Promise<unknown> | undefined)[]) {
+  const results = await Promise.allSettled(operations);
+  for (const result of results) {
+    if (result.status === "rejected") throw result.reason;
+  }
+}
+
 describe("manual Homebrew cleanup", () => {
   it("requires confirmation and holds the command lock through confirmation and cleanup", async () => {
     const runBrewCommand = vi.fn<
@@ -5423,18 +5430,23 @@ describe("manual Homebrew cleanup", () => {
         })
     );
     const cleanup = store.cleanUpHomebrew(confirm);
-    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
-    expect(store.getSnapshot().isHomebrewCleanupLocked).toBe(true);
-    const duplicate = vi.fn(async () => true);
-    expect(await store.cleanUpHomebrew(duplicate)).toContain("busy");
-    expect(duplicate).not.toHaveBeenCalled();
-    expect(runBrewCommand).not.toHaveBeenCalled();
-    resolveConfirmation(true);
-    expect(await cleanup).toBe("Homebrew cleanup completed.");
-    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["cleanup"]]);
-    expect(fetchInventory).toHaveBeenCalledWith({ updateMetadata: false });
-    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
-    expect(store.getSnapshot().isHomebrewCleanupLocked).toBe(false);
+    try {
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+      expect(store.getSnapshot().isHomebrewCleanupLocked).toBe(true);
+      const duplicate = vi.fn(async () => true);
+      expect(await store.cleanUpHomebrew(duplicate)).toContain("busy");
+      expect(duplicate).not.toHaveBeenCalled();
+      expect(runBrewCommand).not.toHaveBeenCalled();
+      resolveConfirmation(true);
+      expect(await cleanup).toBe("Homebrew cleanup completed.");
+      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["cleanup"]]);
+      expect(fetchInventory).toHaveBeenCalledWith({ updateMetadata: false });
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+      expect(store.getSnapshot().isHomebrewCleanupLocked).toBe(false);
+    } finally {
+      resolveConfirmation(false);
+      await cleanup;
+    }
   });
 
   it("holds the lock during cleanup and resumes queued updates after maintenance refresh", async () => {
@@ -5471,25 +5483,31 @@ describe("manual Homebrew cleanup", () => {
     await store.refreshToolStatus();
     runBrewCommand.mockClear();
     const cleanup = store.cleanUpHomebrew(async () => true);
-    await vi.waitFor(() =>
-      expect(runBrewCommand).toHaveBeenCalledWith(["cleanup"], expect.any(Function))
-    );
-    const queued = store.performHomebrewUpdate(item.id);
-    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
-    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(item.id);
-    const confirmAgain = vi.fn(async () => true);
-    expect(await store.cleanUpHomebrew(confirmAgain)).toContain("busy");
-    expect(confirmAgain).not.toHaveBeenCalled();
-    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["cleanup"]]);
-    finishCleanup();
-    expect(await cleanup).toBe("Homebrew cleanup completed.");
-    await queued;
-    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
-      ["cleanup"],
-      ["upgrade", "managed"]
-    ]);
-    expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
-    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+    let queued: Promise<void> | undefined;
+    try {
+      await vi.waitFor(() =>
+        expect(runBrewCommand).toHaveBeenCalledWith(["cleanup"], expect.any(Function))
+      );
+      queued = store.performHomebrewUpdate(item.id);
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+      expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(item.id);
+      const confirmAgain = vi.fn(async () => true);
+      expect(await store.cleanUpHomebrew(confirmAgain)).toContain("busy");
+      expect(confirmAgain).not.toHaveBeenCalled();
+      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["cleanup"]]);
+      finishCleanup();
+      expect(await cleanup).toBe("Homebrew cleanup completed.");
+      await queued;
+      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+        ["cleanup"],
+        ["upgrade", "managed"]
+      ]);
+      expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+    } finally {
+      finishCleanup();
+      await settleCleanupOperations(cleanup, queued);
+    }
   });
 
   it("does not clean up or refresh when confirmation is cancelled", async () => {
