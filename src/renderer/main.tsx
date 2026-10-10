@@ -116,6 +116,7 @@ const initialSnapshot: BaselineSnapshot = {
   searchText: "",
   isRunningHomebrewMaintenance: false,
   isHomebrewCommandLocked: false,
+  isHomebrewCleanupLocked: false,
   appUpdatingIDs: [],
   appUpdatedPendingRefreshIDs: [],
   homebrewUpdatingItemIDs: [],
@@ -3317,7 +3318,7 @@ function SettingsPane({
                 <button
                   className="danger-button small-button"
                   disabled={
-                    !snapshot.isHomebrewInstalled || snapshot.isHomebrewCommandLocked || cleaningUp
+                    !snapshot.isHomebrewInstalled || snapshot.isHomebrewCleanupLocked || cleaningUp
                   }
                   onClick={() => void cleanUp()}
                   title="Runs brew cleanup using your Homebrew settings. Unused dependencies may be removed."

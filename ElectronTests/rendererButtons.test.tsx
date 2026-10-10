@@ -69,6 +69,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     searchText: "",
     isRunningHomebrewMaintenance: false,
     isHomebrewCommandLocked: false,
+    isHomebrewCleanupLocked: false,
     appUpdatingIDs: [],
     appUpdatedPendingRefreshIDs: [],
     homebrewUpdatingItemIDs: [],
@@ -3228,8 +3229,30 @@ describe("renderer button parity", () => {
       <SettingsView snapshot={snapshot({ isHomebrewInstalled: false })} />
     );
     expect(screen.getByRole("button", { name: "Clean up Homebrew" })).toBeDisabled();
-    rerender(<SettingsView snapshot={snapshot({ isHomebrewCommandLocked: true })} />);
+    rerender(
+      <SettingsView
+        snapshot={snapshot({ isHomebrewCommandLocked: true, isHomebrewCleanupLocked: true })}
+      />
+    );
     expect(screen.getByRole("button", { name: "Clean up Homebrew" })).toBeDisabled();
+    rerender(
+      <SettingsView
+        snapshot={snapshot({ isHomebrewCommandLocked: false, isHomebrewCleanupLocked: true })}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Clean up Homebrew" })).toBeDisabled();
+  });
+
+  it("allows cleanup during provider waits while keeping other tool actions locked", () => {
+    render(
+      <SettingsView
+        snapshot={snapshot({ isHomebrewCommandLocked: true, isHomebrewCleanupLocked: false })}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Clean up Homebrew" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Clean up Homebrew" }));
+    expect(window.baseline.cleanUpHomebrew).toHaveBeenCalledTimes(1);
   });
 
   it("rechecks update tools from settings without running a refresh", () => {

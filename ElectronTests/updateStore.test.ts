@@ -5482,6 +5482,7 @@ describe("manual Homebrew cleanup", () => {
     );
     const cleanup = store.cleanUpHomebrew(confirm);
     expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+    expect(store.getSnapshot().isHomebrewCleanupLocked).toBe(true);
     const duplicate = vi.fn(async () => true);
     expect(await store.cleanUpHomebrew(duplicate)).toContain("busy");
     expect(duplicate).not.toHaveBeenCalled();
@@ -5491,6 +5492,7 @@ describe("manual Homebrew cleanup", () => {
     expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([["cleanup"]]);
     expect(fetchInventory).toHaveBeenCalledWith({ updateMetadata: false });
     expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+    expect(store.getSnapshot().isHomebrewCleanupLocked).toBe(false);
   });
 
   it("holds the lock during cleanup and resumes queued updates after maintenance refresh", async () => {

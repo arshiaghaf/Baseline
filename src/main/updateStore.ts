@@ -200,6 +200,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       searchText: "",
       isRunningHomebrewMaintenance: false,
       isHomebrewCommandLocked: false,
+      isHomebrewCleanupLocked: false,
       appUpdatingIDs: [],
       appUpdatedPendingRefreshIDs: [],
       homebrewUpdatingItemIDs: [],
@@ -1280,8 +1281,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
   }
 
-  private reserveHomebrewCommandLock(): (() => void) | undefined {
-    if (this.isHomebrewCommandActive()) {
+  private reserveHomebrewCommandLock(
+    options: { allowRefreshSupersession?: boolean } = {}
+  ): (() => void) | undefined {
+    // Cleanup owns a fresh inventory generation and can supersede app-provider
+    // waits. It must still exclude every Homebrew mutation and inventory read.
+    const busy = options.allowRefreshSupersession
+      ? this.isHomebrewMutationActive() || this.activeHomebrewInventoryCount > 0
+      : this.isHomebrewCommandActive();
+    if (busy) {
       return undefined;
     }
     let released = false;
@@ -1680,7 +1688,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   async cleanUpHomebrew(confirm: () => Promise<boolean>): Promise<string> {
     if (!this.state.isHomebrewInstalled) return "Homebrew is not available.";
-    const release = this.reserveHomebrewCommandLock();
+    const release = this.reserveHomebrewCommandLock({ allowRefreshSupersession: true });
     if (!release) return "Homebrew is busy. Try again when the current operation finishes.";
     try {
       if (!(await confirm())) return "";
@@ -1912,9 +1920,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private isHomebrewCommandActive(): boolean {
+    return this.isHomebrewMutationActive() || this.activeHomebrewInventoryCount > 0;
+  }
+
+  private isHomebrewMutationActive(): boolean {
     return (
       this.activeHomebrewCommandCount > 0 ||
-      this.activeHomebrewInventoryCount > 0 ||
       this.state.isRunningHomebrewMaintenance ||
       this.state.homebrewUninstallingItemIDs.length > 0 ||
       this.state.homebrewDiscoverInstallingItemIDs.length > 0
@@ -2157,10 +2168,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private updateHomebrewCommandLockState(): void {
     const isHomebrewCommandLocked =
       this.activeHomebrewCommandCount > 0 || this.activeHomebrewInventoryCount > 0;
-    if (this.state.isHomebrewCommandLocked === isHomebrewCommandLocked) {
+    const isHomebrewCleanupLocked =
+      this.isHomebrewMutationActive() || this.activeHomebrewInventoryCount > 0;
+    if (
+      this.state.isHomebrewCommandLocked === isHomebrewCommandLocked &&
+      this.state.isHomebrewCleanupLocked === isHomebrewCleanupLocked
+    ) {
       return;
     }
-    this.patch({ isHomebrewCommandLocked });
+    this.patch({ isHomebrewCommandLocked, isHomebrewCleanupLocked });
   }
 }
 
