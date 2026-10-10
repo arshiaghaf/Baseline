@@ -118,6 +118,7 @@ const initialSnapshot: BaselineSnapshot = {
   isRunningHomebrewMaintenance: false,
   isHomebrewCommandLocked: false,
   isHomebrewCleanupLocked: false,
+  isCleaningUpHomebrew: false,
   appUpdatingIDs: [],
   appUpdatedPendingRefreshIDs: [],
   homebrewUpdatingItemIDs: [],
@@ -3290,8 +3291,10 @@ function SettingsPane({
   section: SettingsSectionID;
   snapshot: BaselineSnapshot;
 }) {
-  const [cleaningUp, setCleaningUp] = useState(false);
-  const [cleanupMessage, setCleanupMessage] = useState("");
+  const [cleanupRequestPending, setCleaningUp] = useState(false);
+  const cleaningUp = cleanupRequestPending || snapshot.isCleaningUpHomebrew;
+  const [cleanupResponseMessage, setCleanupMessage] = useState("");
+  const cleanupMessage = snapshot.homebrewCleanupMessage ?? cleanupResponseMessage;
   const cleanupPending = useRef(false);
   const cleanUp = async () => {
     if (cleanupPending.current) return;

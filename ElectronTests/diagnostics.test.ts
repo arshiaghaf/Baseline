@@ -48,6 +48,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     isRunningHomebrewMaintenance: false,
     isHomebrewCommandLocked: false,
     isHomebrewCleanupLocked: false,
+    isCleaningUpHomebrew: false,
     appUpdatingIDs: [],
     appUpdatedPendingRefreshIDs: [],
     homebrewUpdatingItemIDs: [],

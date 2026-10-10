@@ -548,11 +548,16 @@ describe("Homebrew cleanup inventory barrier", () => {
     const restarted = await fixture({ persisted });
     expect(restarted.getSnapshot().homebrewItems[0]?.isOutdated).toBe(false);
   });
-  it("supersedes a full refresh started while cleanup is still executing", async () => {
+  it("defers a full refresh through cleanup execution and the fresh inventory commit", async () => {
     const commandGate = deferred<void>();
+    let includeApp = false;
+    let installed = [item];
     const obsoleteLookup = deferred<void>();
     const runBrewCommand = vi.fn(async (args: string[]) => {
-      if (args[0] === "cleanup") await commandGate.promise;
+      if (args[0] === "cleanup") {
+        await commandGate.promise;
+        installed = [];
+      }
       return { success: true, status: 0, output: "" };
     });
     const lookupOutcome = vi
@@ -563,7 +568,7 @@ describe("Homebrew cleanup inventory barrier", () => {
       })
       .mockImplementation(async () => ({ type: "completed" }));
     const fetchInventory = vi.fn(async () => ({
-      items: [],
+      items: [...installed],
       outdatedDetectionSucceeded: true,
       outdatedDetectionSucceededByKind: { formula: true, cask: true },
       inventoryReadSucceededByKind: { formula: true, cask: true }
@@ -571,26 +576,35 @@ describe("Homebrew cleanup inventory barrier", () => {
     const store = await fixture({
       runBrewCommand,
       clients: {
-        scanner: { scanApplications: async () => [app] },
+        scanner: { scanApplications: async () => (includeApp ? [app] : []) },
         appStore: { lookupOutcome },
         homebrewInventory: { fetchInventory }
       }
     });
     await store.refreshToolStatus();
+    await store.refresh(true);
+    includeApp = true;
     const cleanup = store.cleanUpHomebrew(async () => true);
     await vi.waitFor(() =>
       expect(runBrewCommand).toHaveBeenCalledWith(["cleanup"], expect.any(Function))
     );
     const obsolete = store.refresh();
-    await vi.waitFor(() => expect(lookupOutcome).toHaveBeenCalledTimes(1));
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(lookupOutcome).not.toHaveBeenCalled();
     const queued = store.performHomebrewUpdate(item.id);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(item.id);
     commandGate.resolve();
+    await vi.waitFor(() => expect(lookupOutcome).toHaveBeenCalledTimes(1));
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(item.id);
+    obsoleteLookup.resolve();
     expect(await cleanup).toBe("Homebrew cleanup completed.");
     await queued;
     expect(store.getSnapshot().homebrewItems).toEqual([]);
-    expect(fetchInventory).toHaveBeenCalledTimes(1);
-    obsoleteLookup.resolve();
     await obsolete;
+    // The follow-up app scan may reuse cleanup's committed inventory while the
+    // cancelled queued attempt is still unwinding its mutation guard.
+    expect(fetchInventory).toHaveBeenCalledTimes(2);
+    expect(lookupOutcome).toHaveBeenCalledTimes(2);
     expect(store.getSnapshot().homebrewItems).toEqual([]);
     expect(runBrewCommand.mock.calls.map(([args]) => args)).toEqual([["--version"], ["cleanup"]]);
   });
@@ -669,4 +683,164 @@ describe("Homebrew cleanup inventory barrier", () => {
       await update;
     }
   });
+  it("keeps superseded full-refresh waiters pending until the winning scan commits", async () => {
+    const cleanupScan = deferred<void>();
+    const firstScan = deferred<void>();
+    const winningScan = deferred<void>();
+    let scans = 0;
+    const scanner = {
+      scanApplications: vi.fn(async () => {
+        const scan = ++scans;
+        if (scan === 1) await cleanupScan.promise;
+        if (scan === 2) await firstScan.promise;
+        if (scan === 3) await winningScan.promise;
+        return scan === 3 ? [{ ...app, localVersion: version("2") }] : [];
+      })
+    };
+    const store = await fixture({ clients: { scanner } });
+    await store.refreshToolStatus();
+    const cleanup = store.cleanUpHomebrew(async () => true);
+    await vi.waitFor(() => expect(scans).toBe(1));
+    let firstResolved = false;
+    const first = store.refresh(false).then(() => {
+      firstResolved = true;
+    });
+    const second = store.refresh(false);
+    cleanupScan.resolve();
+    await vi.waitFor(() => expect(scans).toBe(3));
+    firstScan.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    try {
+      expect(firstResolved).toBe(false);
+      expect(store.getSnapshot().isRefreshing).toBe(true);
+    } finally {
+      winningScan.resolve();
+      await Promise.all([cleanup, first, second]);
+    }
+    expect(store.getSnapshot().apps[0]?.localVersion).toEqual(version("2"));
+  });
+
+  it("publishes pending cleanup and its result without persisting runtime feedback", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "baseline-cleanup-feedback-"));
+    directories.push(dir);
+    const persistence = new SnapshotPersistence(dir);
+    const gate = deferred<void>();
+    const store = await fixture({
+      persistence,
+      runBrewCommand: async (args) => {
+        if (args[0] === "cleanup") await gate.promise;
+        return {
+          success: args[0] !== "cleanup",
+          status: args[0] === "cleanup" ? 1 : 0,
+          output: "Synthetic failure"
+        };
+      }
+    });
+    // Availability is independently set by the tool-status probe.
+    await store.refreshToolStatus();
+    const cleanup = store.cleanUpHomebrew(async () => true);
+    await vi.waitFor(() => expect(store.getSnapshot().isCleaningUpHomebrew).toBe(true));
+    expect(store.getSnapshot().homebrewCleanupMessage).toBeUndefined();
+    gate.resolve();
+    const message = await cleanup;
+    expect(message).toContain("did not complete");
+    expect(store.getSnapshot().homebrewCleanupMessage).toBe(message);
+    expect(store.getSnapshot().isCleaningUpHomebrew).toBe(false);
+    const saved = await persistence.load();
+    expect(saved).not.toHaveProperty("isCleaningUpHomebrew");
+    expect(saved).not.toHaveProperty("homebrewCleanupMessage");
+    const restarted = await fixture({ persisted: saved });
+    expect(restarted.getSnapshot().isCleaningUpHomebrew).toBe(false);
+    expect(restarted.getSnapshot().homebrewCleanupMessage).toBeUndefined();
+  });
+
+  it.each(
+    ["formula", "cask"].flatMap((kind) =>
+      ["cancel", "confirmation error", "membership failure"].map((outcome) => ({ kind, outcome }))
+    )
+  )(
+    "keeps $kind upgrades excluded after $outcome and superseded pin observations",
+    async ({ kind, outcome }) => {
+      const target: HomebrewManagedItem =
+        kind === "formula"
+          ? item
+          : {
+              ...item,
+              id: "cask:unused-tool",
+              kind: "cask",
+              fullToken: "unused-tool",
+              tap: "homebrew/cask",
+              formulaIdentity: undefined
+            };
+      let reads = 0;
+      let includeApp = false;
+      let pinned = false;
+      const lookupGate = deferred<void>();
+      const confirmGate = deferred<boolean>();
+      const lookupOutcome = vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          await lookupGate.promise;
+          return { type: "completed" };
+        })
+        .mockResolvedValue({ type: "completed" });
+      const runBrewCommand = vi.fn(async (args: string[]) => ({
+        success: true,
+        status: 0,
+        output: args.join(" ")
+      }));
+      const store = await fixture({
+        runBrewCommand,
+        clients: {
+          scanner: { scanApplications: async () => (includeApp ? [app] : []) },
+          appStore: { lookupOutcome },
+          homebrewInventory: {
+            fetchInventory: async () => {
+              const complete = ++reads < 3 || outcome !== "membership failure";
+              return {
+                items: [{ ...target, pinned }],
+                outdatedDetectionSucceeded: complete,
+                outdatedDetectionSucceededByKind: { formula: true, cask: true },
+                inventoryReadSucceededByKind: { formula: complete, cask: complete }
+              };
+            }
+          }
+        }
+      });
+      await store.refreshToolStatus();
+      await store.refresh(true);
+      pinned = true;
+      includeApp = true;
+      const old = store.refresh(false);
+      await vi.waitFor(() => expect(lookupOutcome).toHaveBeenCalledTimes(1));
+      const cleanup = store
+        .cleanUpHomebrew(async () => {
+          await confirmGate.promise;
+          if (outcome === "confirmation error") throw new Error("Synthetic confirmation failure");
+          return false;
+        })
+        .catch((error: unknown) => error);
+      const queued = store.performHomebrewUpdate(target.id);
+      expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(target.id);
+      const next = store.refresh(false);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      confirmGate.resolve(false);
+      const result = await cleanup;
+      await Promise.all([next, queued]);
+      if (outcome === "confirmation error") {
+        expect(result).toBeInstanceOf(Error);
+        expect(store.getSnapshot().homebrewCleanupMessage).toContain("could not run");
+      } else if (outcome === "membership failure") {
+        expect(result).toContain("Installed packages could not be refreshed");
+        expect(store.getSnapshot().homebrewItems[0]?.isOutdated).toBe(false);
+      } else {
+        expect(result).toBe("");
+        expect(store.getSnapshot().homebrewItems[0]?.pinned).toBe(true);
+      }
+      expect(store.getSnapshot().isCleaningUpHomebrew).toBe(false);
+      lookupGate.resolve();
+      await old;
+      expect(runBrewCommand.mock.calls.filter(([args]) => args[0] === "upgrade")).toEqual([]);
+    }
+  );
 });

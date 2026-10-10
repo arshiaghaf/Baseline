@@ -123,6 +123,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly successRefreshDelayMS: number;
   private refreshTask?: Promise<void>;
   private cleanupRefreshTask?: Promise<void>;
+  private cleanupRefreshRequested = false;
   private homebrewCleanupRequiresInventory = false;
   private refreshSequence = 0;
   private refreshController?: AbortController;
@@ -202,6 +203,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       isRunningHomebrewMaintenance: false,
       isHomebrewCommandLocked: false,
       isHomebrewCleanupLocked: false,
+      isCleaningUpHomebrew: false,
       appUpdatingIDs: [],
       appUpdatedPendingRefreshIDs: [],
       homebrewUpdatingItemIDs: [],
@@ -296,27 +298,45 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
     if (this.cleanupRefreshTask) {
+      this.cleanupRefreshRequested = true;
       await this.cleanupRefreshTask;
       if (lightweight) return;
-      // Full refreshes may follow directory or App Store mutations that happened
-      // after cleanup's scan began. Re-scan only after its inventory is committed.
+      // A mutation after cleanup's scan began still needs its own full scan.
       return this.refresh(false, options);
     }
     if (this.refreshTask && lightweight) {
-      return this.refreshTask;
+      return this.waitForRefreshCompletion(this.refreshTask);
     }
     const sequence = ++this.refreshSequence;
     this.refreshController?.abort();
     const controller = new AbortController();
     this.refreshController = controller;
-    const task = this.computeRefresh(lightweight, sequence, options, controller.signal);
-    this.refreshTask = task;
-    return task.finally(() => {
-      if (this.refreshTask === task) {
-        this.refreshTask = undefined;
-        this.refreshController = undefined;
+    const task = this.computeRefresh(lightweight, sequence, options, controller.signal).finally(
+      () => {
+        if (this.refreshTask === task) {
+          this.refreshTask = undefined;
+          this.refreshController = undefined;
+        }
       }
-    });
+    );
+    this.refreshTask = task;
+    return this.waitForRefreshCompletion(task);
+  }
+
+  private async waitForRefreshCompletion(task: Promise<void>): Promise<void> {
+    // Superseded callers must observe the winning scan's commit, not merely the
+    // completion of their own aborted generation.
+    for (;;) {
+      try {
+        await task;
+      } catch (error) {
+        if (!this.refreshTask || this.refreshTask === task) throw error;
+      }
+      if (this.cleanupRefreshTask) await this.cleanupRefreshTask;
+      const next = this.refreshTask;
+      if (!next || next === task) return;
+      task = next;
+    }
   }
 
   async refreshToolStatus(): Promise<void> {
@@ -1765,8 +1785,40 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!this.state.isHomebrewInstalled) return "Homebrew is not available.";
     const release = this.reserveHomebrewCommandLock({ allowRefreshSupersession: true });
     if (!release) return "Homebrew is busy. Try again when the current operation finishes.";
+    const refreshWasActive = Boolean(this.refreshTask);
+    this.cleanupRefreshRequested = false;
+    let finish!: () => void;
+    this.cleanupRefreshTask = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.patch({ isCleaningUpHomebrew: true, homebrewCleanupMessage: undefined });
     try {
-      if (!(await confirm())) return "";
+      let confirmed = false;
+      let confirmationRejected = false;
+      let confirmationError: unknown;
+      try {
+        confirmed = await confirm();
+      } catch (error) {
+        confirmationRejected = true;
+        confirmationError = error;
+      }
+      if (!confirmed) {
+        // A refresh that overlaps confirmation may have observed new pins or
+        // membership without committing them. Reconcile before releasing work,
+        // even when no cleanup command was run.
+        const refreshed =
+          !(refreshWasActive || this.cleanupRefreshRequested) ||
+          (await this.refreshHomebrewCleanupInventory());
+        let message = confirmationRejected
+          ? "Homebrew cleanup could not run. Please try again."
+          : "";
+        if (!refreshed) {
+          message = `${message || "Homebrew cleanup cancelled."} Installed packages could not be refreshed. Refresh again before updating.`;
+        }
+        this.patch({ homebrewCleanupMessage: message || undefined });
+        if (confirmationRejected) throw confirmationError;
+        return message;
+      }
       let message: string;
       try {
         const result = await this.runBrewWithResultEvents(["cleanup"], () => undefined);
@@ -1776,57 +1828,59 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       } catch {
         message = "Homebrew cleanup could not run. Try again or check Homebrew in Terminal.";
       }
-      // Own this refresh generation: other refresh callers join it, and obsolete
-      // provider lookups cannot delay or replace the post-cleanup inventory read.
-      let finish!: () => void;
-      const barrier = new Promise<void>((resolve) => {
-        finish = resolve;
-      });
-      this.cleanupRefreshTask = barrier;
-      const sequence = ++this.refreshSequence;
-      this.refreshController?.abort();
-      const controller = new AbortController();
-      this.refreshController = controller;
-      let refreshed = false;
-      try {
-        await this.computeRefresh(
-          true,
-          sequence,
-          {
-            allowHomebrewInventoryDuringActiveCommand: true,
-            onHomebrewInventoryReconciled: (inventory) => {
-              refreshed = this.homebrewInventoryIsComplete(inventory);
-            }
-          },
-          controller.signal
-        );
-        if (!refreshed) {
-          this.homebrewCleanupRequiresInventory = true;
-          this.cancelQueuedHomebrewUpdates();
-          this.invalidateHomebrewUpdateTargets();
-          await this.persist().catch(() => undefined);
-        }
-      } catch {
-        refreshed = false;
+      const refreshed = await this.refreshHomebrewCleanupInventory();
+      if (!refreshed) {
+        message += " Installed packages could not be refreshed. Refresh again before updating.";
+      }
+      this.patch({ homebrewCleanupMessage: message });
+      return message;
+    } finally {
+      this.patch({ isCleaningUpHomebrew: false });
+      this.cleanupRefreshTask = undefined;
+      finish();
+      release();
+    }
+  }
+
+  private async refreshHomebrewCleanupInventory(): Promise<boolean> {
+    // Own this generation so obsolete provider lookups cannot replace the
+    // inventory commit required before cleanup's reservation is released.
+    const sequence = ++this.refreshSequence;
+    this.refreshController?.abort();
+    const controller = new AbortController();
+    this.refreshController = controller;
+    let refreshed = false;
+    try {
+      await this.computeRefresh(
+        true,
+        sequence,
+        {
+          allowHomebrewInventoryDuringActiveCommand: true,
+          onHomebrewInventoryReconciled: (inventory) => {
+            refreshed = this.homebrewInventoryIsComplete(inventory);
+          }
+        },
+        controller.signal
+      );
+      if (!refreshed) {
         this.homebrewCleanupRequiresInventory = true;
         this.cancelQueuedHomebrewUpdates();
         this.invalidateHomebrewUpdateTargets();
         await this.persist().catch(() => undefined);
-      } finally {
-        this.cleanupRefreshTask = undefined;
-        if (this.refreshController === controller) {
-          this.refreshTask = undefined;
-          this.refreshController = undefined;
-        }
-        finish();
       }
-      if (!refreshed) {
-        return `${message} Installed packages could not be refreshed. Refresh again before updating.`;
-      }
-      return message;
+    } catch {
+      refreshed = false;
+      this.homebrewCleanupRequiresInventory = true;
+      this.cancelQueuedHomebrewUpdates();
+      this.invalidateHomebrewUpdateTargets();
+      await this.persist().catch(() => undefined);
     } finally {
-      release();
+      if (this.refreshController === controller) {
+        this.refreshTask = undefined;
+        this.refreshController = undefined;
+      }
     }
+    return refreshed;
   }
 
   private homebrewInventoryIsComplete(inventory: HomebrewInventoryResult): boolean {

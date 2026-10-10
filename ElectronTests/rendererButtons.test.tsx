@@ -70,6 +70,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
     isRunningHomebrewMaintenance: false,
     isHomebrewCommandLocked: false,
     isHomebrewCleanupLocked: false,
+    isCleaningUpHomebrew: false,
     appUpdatingIDs: [],
     appUpdatedPendingRefreshIDs: [],
     homebrewUpdatingItemIDs: [],
@@ -3202,6 +3203,37 @@ describe("renderer button parity", () => {
     fireEvent.click(cleanUp);
     expect(window.baseline.cleanUpHomebrew).toHaveBeenCalledTimes(1);
     expect(await screen.findByRole("status")).toHaveTextContent("Homebrew cleanup completed.");
+  });
+
+  it("retains the cleanup result after leaving and reopening Settings", async () => {
+    const state = snapshot();
+    let finish!: (message: string) => void;
+    vi.mocked(window.baseline.cleanUpHomebrew).mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finish = resolve;
+        })
+    );
+    const { rerender } = render(<SettingsView snapshot={state} />);
+    fireEvent.click(screen.getByRole("button", { name: "Clean up Homebrew" }));
+    rerender(<div>Apps</div>);
+    await act(async () => finish("Homebrew cleanup did not complete."));
+    rerender(
+      <SettingsView
+        snapshot={{
+          ...state,
+          homebrewCleanupMessage: "Homebrew cleanup did not complete."
+        }}
+      />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Homebrew cleanup did not complete.");
+  });
+
+  it("shows cleanup still pending when reopening Settings during confirmation", () => {
+    const { rerender } = render(<div>Apps</div>);
+    rerender(<SettingsView snapshot={snapshot({ isCleaningUpHomebrew: true })} />);
+    expect(screen.getByRole("button", { name: "Cleaning up…" })).toBeDisabled();
+    expect(window.baseline.cleanUpHomebrew).not.toHaveBeenCalled();
   });
 
   it("keeps cleanup pending and failure feedback in its explanatory row", async () => {

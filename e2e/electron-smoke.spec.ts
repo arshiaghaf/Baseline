@@ -163,10 +163,11 @@ test("launches the Electron shell and renders the dashboard", async () => {
       const snapshot = await window.baseline.getSnapshot();
       return {
         global: snapshot.isHomebrewCommandLocked,
-        cleanup: snapshot.isHomebrewCleanupLocked
+        cleanup: snapshot.isHomebrewCleanupLocked,
+        cleaning: snapshot.isCleaningUpHomebrew
       };
     })
-  ).resolves.toEqual({ global: false, cleanup: false });
+  ).resolves.toEqual({ global: false, cleanup: false, cleaning: false });
   await expect
     .poll(() => page.evaluate(async () => (await window.baseline.getSnapshot()).profileStats))
     .toMatchObject({ integrityStatus: "verified", events: [], signature: expect.any(String) });
