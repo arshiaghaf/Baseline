@@ -9,7 +9,7 @@ export function homebrewCommandToken(item: HomebrewManagedItem): string | undefi
   if (!isValidHomebrewToken(item.token)) return undefined;
   if (item.kind === "formula") {
     const identity = item.formulaIdentity;
-    if (!identity) return undefined;
+    if (!identity || item.formulaIdentityVerified === false) return undefined;
     const { name, fullName, tap, oldNames } = identity;
     if (
       typeof name !== "string" ||

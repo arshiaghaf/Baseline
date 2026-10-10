@@ -176,6 +176,8 @@ export type HomebrewManagedItem = {
   caskMetadata?: HomebrewCaskEntry;
   // Installed formula metadata proves canonical names and historical rack aliases.
   formulaIdentity?: { name: string; fullName: string; tap: string; oldNames: string[] };
+  // False retains identity for saved-ID continuity only, never command authorization.
+  formulaIdentityVerified?: boolean;
   pinned?: boolean;
   isSelf?: boolean;
   name: string;

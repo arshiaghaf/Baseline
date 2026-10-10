@@ -30,6 +30,7 @@ import type {
   UpdateRecord
 } from "../src/shared/domain";
 import { version } from "../src/shared/version";
+import { homebrewCommandToken } from "../src/shared/homebrewIdentity";
 
 let tempDirs: string[] = [];
 
@@ -6307,6 +6308,107 @@ describe("verified formula identity and Homebrew pins", () => {
     });
     expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([previous.id]);
   });
+
+  it.each([false, true])(
+    "preserves a renamed formula's saved ID through missing metadata and recovery (changed tap %s)",
+    async (changedTap) => {
+      const previous = homebrewItem({
+        id: "formula:old-tool",
+        token: "old-tool",
+        name: "Old Tool",
+        formulaIdentity: {
+          name: "old-tool",
+          fullName: "example/tools/old-tool",
+          tap: "example/tools",
+          oldNames: []
+        }
+      });
+      const current = homebrewItem({
+        id: "formula:new-tool",
+        token: "new-tool",
+        name: "New Tool",
+        isOutdated: true,
+        latestVersion: version("2"),
+        formulaIdentity: {
+          name: "new-tool",
+          fullName: "example/tools/new-tool",
+          tap: "example/tools",
+          oldNames: ["old-tool"]
+        }
+      });
+      const missing = {
+        ...current,
+        formulaIdentity: undefined,
+        isOutdated: false,
+        latestVersion: undefined
+      };
+      const history = {
+        id: previous.id,
+        itemID: previous.id,
+        kind: previous.kind,
+        token: previous.token,
+        displayName: previous.name,
+        fromVersion: version("0"),
+        toVersion: version("1"),
+        updatedAt: "2026-10-09T00:00:00.000Z"
+      };
+      let items = [current];
+      const clients = {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items,
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      };
+      const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+      let store = await makeStore({
+        persisted: {
+          ...defaultPersistedSnapshot(),
+          homebrewItems: [previous],
+          ignoredHomebrewItemIDs: [previous.id],
+          homebrewRecentlyUpdated: [history]
+        },
+        clients,
+        runBrewCommand
+      });
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(previous.id);
+      items = [missing];
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(previous.id);
+      const unverified = store.getSnapshot().homebrewItems[0]!;
+      expect(unverified.formulaIdentityVerified).toBe(false);
+      expect(homebrewCommandToken(unverified)).toBeUndefined();
+      await store.performHomebrewUpdate(previous.id);
+      await store.performHomebrewUpdate(current.id);
+      expect(runBrewCommand).not.toHaveBeenCalled();
+      // Repeat the failure through a simulated relaunch before metadata recovers.
+      store = await makeStore({ persisted: store.getSnapshot(), clients, runBrewCommand });
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(previous.id);
+      items = [
+        changedTap
+          ? {
+              ...current,
+              formulaIdentity: {
+                ...current.formulaIdentity!,
+                fullName: "other/tools/new-tool",
+                tap: "other/tools"
+              }
+            }
+          : current
+      ];
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(changedTap ? current.id : previous.id);
+      expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([previous.id]);
+      expect(store.getSnapshot().homebrewRecentlyUpdated).toEqual(changedTap ? [] : [history]);
+      expect(homebrewCommandToken(store.getSnapshot().homebrewItems[0]!)).toBe(
+        changedTap ? "other/tools/new-tool" : "example/tools/new-tool"
+      );
+    }
+  );
 
   it("does not preserve a stale update target after a same-name formula tap changes", () => {
     const previous = homebrewItem({

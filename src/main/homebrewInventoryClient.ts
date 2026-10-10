@@ -433,6 +433,7 @@ function applyInstalledFormulaMetadata(
       continue;
     }
     item.formulaIdentity = identity;
+    item.formulaIdentityVerified = true;
     item.fullToken = identity.fullName;
     item.tap = identity.tap;
     // Match the proven full name, never strip taps from an outdated record.

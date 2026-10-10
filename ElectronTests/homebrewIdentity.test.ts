@@ -142,6 +142,7 @@ describe("installed formula command identity", () => {
   };
   it("uses the qualified installed formula name and rejects unsafe or unverified identities", () => {
     expect(homebrewCommandToken(formula)).toBe("example/tools/utility");
+    expect(homebrewCommandToken({ ...formula, formulaIdentityVerified: false })).toBeUndefined();
     expect(homebrewCommandToken({ ...formula, formulaIdentity: undefined })).toBeUndefined();
     for (const fullName of ["utility", "other/tools/utility", "example/tools/utility;bad"]) {
       expect(

@@ -2326,12 +2326,34 @@ function preservePreviousHomebrewInventoryMembership(
   // Ambiguous aliases or a tap switch cannot inherit another package's identity.
   const occupiedIDs = new Set(currentItems.map((item) => item.id));
   currentItems = currentItems.map((item) => {
-    if (item.kind !== "formula" || !homebrewCommandToken(item)) return item;
+    if (item.kind !== "formula") return item;
+    if (!homebrewCommandToken(item)) {
+      const matches = previousItems.filter(
+        (previous) =>
+          previous.kind === "formula" &&
+          previous.token === item.token &&
+          formulaHasContinuityIdentity(previous)
+      );
+      const previous = matches.length === 1 ? matches[0] : undefined;
+      if (!previous || (previous.id !== item.id && occupiedIDs.has(previous.id))) return item;
+      occupiedIDs.add(previous.id);
+      // A transient metadata failure must not detach saved preferences/history.
+      // Retain identity only as continuity evidence; all commands stay blocked.
+      return {
+        ...item,
+        id: previous.id,
+        formulaIdentity: previous.formulaIdentity,
+        formulaIdentityVerified: false,
+        isOutdated: false,
+        latestVersion: undefined,
+        releaseDate: undefined
+      };
+    }
     const identity = item.formulaIdentity!;
     const matches = previousItems.filter(
       (previous) =>
         previous.kind === "formula" &&
-        homebrewCommandToken(previous) &&
+        formulaHasContinuityIdentity(previous) &&
         previous.formulaIdentity?.tap === identity.tap &&
         (previous.formulaIdentity.fullName === identity.fullName ||
           identity.oldNames.includes(previous.formulaIdentity.name) ||
@@ -2798,4 +2820,13 @@ function homebrewItemProgressTokens(item: HomebrewManagedItem): string[] {
       ...(item.kind === "formula" && item.formulaIdentity ? [item.formulaIdentity.name] : [])
     ])
   ].map((token) => token.toLowerCase());
+}
+
+function formulaHasContinuityIdentity(item: HomebrewManagedItem): boolean {
+  // Validate saved structural identity independently of its current verification.
+  // This helper is for ID reconciliation only; execution uses homebrewCommandToken.
+  return (
+    item.kind === "formula" &&
+    Boolean(homebrewCommandToken({ ...item, formulaIdentityVerified: undefined }))
+  );
 }
