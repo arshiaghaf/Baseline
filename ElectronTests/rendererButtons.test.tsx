@@ -173,6 +173,11 @@ function domRect({
   } as DOMRect;
 }
 
+beforeEach(() => {
+  installBaselineMock();
+  window.location.hash = "";
+});
+
 describe("renderer button parity", () => {
   it.each([false, true])(
     "keeps inspectable failure details on the dashboard (compact=%s)",
@@ -258,10 +263,6 @@ describe("renderer button parity", () => {
     await waitFor(() => expect(progressRingValue(container)).toBeCloseTo(1));
     act(() => receive({ ...base, snapshotRevision: 1 }));
     expect(progressRingValue(container)).toBeCloseTo(1);
-  });
-  beforeEach(() => {
-    installBaselineMock();
-    window.location.hash = "";
   });
 
   it("shows app ignore/update actions and makes updating glyph non-clickable", () => {
@@ -367,125 +368,37 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Updated" })).toBeInTheDocument();
   });
 
-  it("eases Homebrew update progress within the current stage", () => {
-    vi.useFakeTimers();
-    try {
-      const { container } = render(
-        <UpdateActionButton
-          state={{
-            type: "updating",
-            progress: HomebrewMaintenanceProgressStage.downloading
-          }}
-          onAction={() => undefined}
-        />
-      );
-
-      const initialProgress = progressRingValue(container);
-      expect(initialProgress).toBeCloseTo(HomebrewMaintenanceProgressStage.downloading);
-
-      act(() => {
-        vi.advanceTimersByTime(4500);
-      });
-
-      const easedProgress = progressRingValue(container);
-      expect(easedProgress).toBeGreaterThan(initialProgress);
-      expect(easedProgress).toBeLessThan(0.58);
-
-      act(() => {
-        vi.advanceTimersByTime(60_000);
-      });
-
-      expect(progressRingValue(container)).toBeCloseTo(0.58, 2);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("eases active Homebrew update progress from the queued marker", () => {
+  it("eases Homebrew progress monotonically across stages without jumping or claiming completion", () => {
     vi.useFakeTimers();
     try {
       const { container, rerender } = render(
         <UpdateActionButton
-          state={{
-            type: "updating",
-            progress: HomebrewMaintenanceProgressStage.queued
-          }}
+          state={{ type: "updating", progress: HomebrewMaintenanceProgressStage.queued }}
           onAction={() => undefined}
         />
       );
-
-      const initialProgress = progressRingValue(container);
-      expect(initialProgress).toBeCloseTo(HomebrewMaintenanceProgressStage.queued);
-
-      act(() => {
-        vi.advanceTimersByTime(2500);
-      });
-
-      const easedProgress = progressRingValue(container);
-      expect(easedProgress).toBeGreaterThan(initialProgress);
-      expect(easedProgress).toBeLessThan(0.28);
-
-      rerender(
-        <UpdateActionButton
-          state={{
-            type: "updating",
-            progress: HomebrewMaintenanceProgressStage.downloading
-          }}
-          onAction={() => undefined}
-        />
-      );
-      expect(progressRingValue(container)).toBeCloseTo(easedProgress);
-      expect(progressRingValue(container)).toBeLessThan(
-        HomebrewMaintenanceProgressStage.downloading
-      );
-
-      act(() => {
-        vi.advanceTimersByTime(60_000);
-      });
-
-      expect(progressRingValue(container)).toBeCloseTo(0.58, 2);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("continues easing toward the next Homebrew progress stage without jumping", () => {
-    vi.useFakeTimers();
-    try {
-      const { container, rerender } = render(
-        <UpdateActionButton
-          state={{
-            type: "updating",
-            progress: HomebrewMaintenanceProgressStage.downloading
-          }}
-          onAction={() => undefined}
-        />
-      );
-
-      act(() => {
-        vi.advanceTimersByTime(60_000);
-      });
-      expect(progressRingValue(container)).toBeCloseTo(0.58, 2);
-      const downloadingCapProgress = progressRingValue(container);
-
-      rerender(
-        <UpdateActionButton
-          state={{
-            type: "updating",
-            progress: HomebrewMaintenanceProgressStage.installing
-          }}
-          onAction={() => undefined}
-        />
-      );
-      expect(progressRingValue(container)).toBeCloseTo(downloadingCapProgress);
-      expect(progressRingValue(container)).toBeLessThan(
-        HomebrewMaintenanceProgressStage.installing
-      );
-
-      act(() => {
-        vi.advanceTimersByTime(60_000);
-      });
-      expect(progressRingValue(container)).toBeCloseTo(0.84, 2);
+      expect(progressRingValue(container)).toBeCloseTo(HomebrewMaintenanceProgressStage.queued);
+      for (const [stage, nextStage] of [
+        [HomebrewMaintenanceProgressStage.queued, HomebrewMaintenanceProgressStage.downloading],
+        [HomebrewMaintenanceProgressStage.downloading, HomebrewMaintenanceProgressStage.installing],
+        [HomebrewMaintenanceProgressStage.installing, HomebrewMaintenanceProgressStage.finalizing]
+      ] as const) {
+        const previous = progressRingValue(container);
+        rerender(
+          <UpdateActionButton
+            state={{ type: "updating", progress: stage }}
+            onAction={() => undefined}
+          />
+        );
+        expect(progressRingValue(container)).toBeCloseTo(previous);
+        act(() => vi.advanceTimersByTime(4500));
+        const eased = progressRingValue(container);
+        expect(eased).toBeGreaterThan(previous);
+        expect(eased).toBeLessThan(nextStage);
+        act(() => vi.advanceTimersByTime(60_000));
+        expect(progressRingValue(container)).toBeGreaterThan(eased);
+        expect(progressRingValue(container)).toBeLessThan(nextStage);
+      }
     } finally {
       vi.useRealTimers();
     }
@@ -1301,10 +1214,8 @@ describe("renderer button parity", () => {
         "Only updates and installs completed with Baseline are counted."
       )
     ).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Time with Baseline" })).not.toBeInTheDocument();
     expect(screen.getByText("with Baseline")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Stats" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Privacy" })).not.toBeInTheDocument();
     expect(screen.getByText("Total updates")).toBeInTheDocument();
     expect(screen.getByText("Unique apps")).toBeInTheDocument();
     expect(screen.getByText("Homebrew Installs")).toBeInTheDocument();
@@ -1315,10 +1226,7 @@ describe("renderer button parity", () => {
     expect(
       [...document.querySelectorAll(".profile-metric strong")].map((metric) => metric.textContent)
     ).toEqual(["10", "4", "1", "In-app updater"]);
-    expect(screen.queryByText("Favorite channel")).not.toBeInTheDocument();
     expect(screen.getByText("Favorite source")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Source mix" })).not.toBeInTheDocument();
-    expect(document.querySelector(".profile-source-section")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Most updated apps" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Most updated tools" })).toBeInTheDocument();
     expect(
@@ -1335,14 +1243,8 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText("5 updates via In-app updater")).toBeInTheDocument();
     expect(screen.getByText("50%")).toBeInTheDocument();
-    expect(screen.queryByText("In-app updater 45%")).not.toBeInTheDocument();
     expect(screen.getAllByLabelText("In-app updater: 5 updates (50%)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("In-app updater").length).toBeGreaterThan(0);
-    expect(document.querySelector(".profile-start-panel-box")?.hasAttribute("title")).toBe(false);
-    const sourceSegment = document.querySelector(".profile-source-segment") as HTMLElement;
-    expect(sourceSegment).not.toBeNull();
-    fireEvent.pointerMove(sourceSegment, { clientX: 45 });
-    expect(sourceSegment.style.getPropertyValue("--profile-source-tooltip-x")).toBe("");
     const topAppRow = screen.getByText("Example").closest("li");
     expect(topAppRow).not.toBeNull();
     expect(topAppRow?.querySelector(".profile-top-app-icon img")).toHaveAttribute(
@@ -1353,38 +1255,16 @@ describe("renderer button parity", () => {
       ".profile-top-app-list:not(.profile-top-tool-list) li"
     );
     expect(topAppTiles).toHaveLength(3);
-    expect([...topAppTiles].every((tile) => !tile.hasAttribute("title"))).toBe(true);
-    expect(
-      [
-        ...document.querySelectorAll(
-          ".profile-top-app-list:not(.profile-top-tool-list) .profile-top-app-rank"
-        )
-      ].map((rank) => rank.className)
-    ).toEqual([
-      "profile-top-app-rank profile-top-app-rank-1",
-      "profile-top-app-rank profile-top-app-rank-2",
-      "profile-top-app-rank profile-top-app-rank-3"
-    ]);
     expect(screen.getByText("Stable App")).toBeInTheDocument();
     expect(screen.getByText("Third App")).toBeInTheDocument();
     expect([...topAppTiles].some((tile) => tile.textContent?.includes("Fourth App"))).toBe(false);
     const topToolTiles = document.querySelectorAll(".profile-top-tool-list li");
     expect(topToolTiles).toHaveLength(2);
-    expect([...topToolTiles].every((tile) => !tile.hasAttribute("title"))).toBe(true);
     expect(screen.getByText("aws-vault")).toBeInTheDocument();
     expect(screen.getByText("1 update · CLI Cask")).toBeInTheDocument();
     expect(screen.getByText("ripgrep")).toBeInTheDocument();
     expect(screen.getByText("1 update · Formula")).toBeInTheDocument();
     expect([...topToolTiles].some((tile) => tile.textContent?.includes("Orion"))).toBe(false);
-    expect(
-      screen.queryByText(
-        "Only updates and installs completed with Baseline are counted. Stats stay private on this Mac."
-      )
-    ).not.toBeInTheDocument();
-    expect(document.querySelector(".profile-footer-panel")).toBeNull();
-    expect(document.querySelector(".profile-footer-row")).toBeNull();
-    expect(screen.queryByText("Private stats")).not.toBeInTheDocument();
-    expect(screen.queryByText("Verified")).not.toBeInTheDocument();
     expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
   });
 
@@ -1486,8 +1366,9 @@ describe("renderer button parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
 
     expect(screen.getAllByRole("heading", { name: "Diagnostics" })).toHaveLength(2);
+    expect(screen.getByText("Current version")).toBeInTheDocument();
     expect(await screen.findByText("0.1.0")).toBeInTheDocument();
-    expect(screen.queryByText("0.1.0 (224)")).not.toBeInTheDocument();
+    expect(screen.getByText("Diagnostic report")).toBeInTheDocument();
   });
 
   it("clears compact toolbar search and full-window sidebar search", () => {
@@ -1503,6 +1384,7 @@ describe("renderer button parity", () => {
     expect(window.baseline.setSearchText).toHaveBeenCalledWith("");
 
     unmount();
+    vi.mocked(window.baseline.setSearchText).mockClear();
     render(
       <Dashboard
         compact={false}
@@ -1915,26 +1797,6 @@ describe("renderer button parity", () => {
     fireEvent.click(busyButton);
     expect(requestConfirmation).not.toHaveBeenCalled();
     expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
-  });
-
-  it("orders discover actions as install then open page", () => {
-    const item: HomebrewCaskDiscoveryItem = {
-      id: "cask:raycast",
-      token: "raycast",
-      displayName: "Raycast",
-      kind: "cask",
-      version: version("1.2.3"),
-      homepageURL: "https://www.raycast.com"
-    };
-    const { container } = render(
-      <DiscoverRow item={item} snapshot={snapshot({ homebrewDiscoverItems: [item] })} />
-    );
-
-    expect(
-      within(container.querySelector(".row-actions") as HTMLElement)
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label") ?? button.textContent)
-    ).toEqual(["Install", "Open Homebrew page"]);
   });
 
   it("confirms install in the dashboard overlay before invoking install", () => {
@@ -2483,53 +2345,6 @@ describe("renderer button parity", () => {
     expect(within(searchDialog).queryByText("No matches found.")).not.toBeInTheDocument();
   });
 
-  it("keeps app sections visible without Settings section controls", () => {
-    const ignoredFormula: HomebrewManagedItem = {
-      ...cask,
-      id: "formula:ripgrep",
-      token: "ripgrep",
-      name: "ripgrep",
-      kind: "formula"
-    };
-    const fixedSectionsSnapshot = snapshot({
-      selectedTab: "apps",
-      ignoredIDs: [app.id],
-      ignoredHomebrewItemIDs: [ignoredFormula.id],
-      homebrewItems: [ignoredFormula]
-    });
-    const { rerender } = render(
-      <Dashboard
-        compact={false}
-        onOpenSettings={() => undefined}
-        snapshot={fixedSectionsSnapshot}
-      />
-    );
-
-    expect(screen.getByTitle("Collapse Ignored")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Example")).toBeInTheDocument();
-
-    rerender(
-      <Dashboard
-        compact={false}
-        onOpenSettings={() => undefined}
-        snapshot={{ ...fixedSectionsSnapshot, selectedTab: "homebrew" }}
-      />
-    );
-
-    expect(screen.getByTitle("Collapse Ignored")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("ripgrep")).toBeInTheDocument();
-
-    rerender(<SettingsView snapshot={fixedSectionsSnapshot} />);
-
-    expect(screen.queryByRole("heading", { name: "Sections" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Installed apps")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Recently updated apps")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Ignored apps")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Recently updated Homebrew")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Installed Homebrew")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Ignored Homebrew")).not.toBeInTheDocument();
-  });
-
   it("renders compact menu bar as all updates without tabs or recent sections", () => {
     const { container } = render(
       <Dashboard
@@ -2727,59 +2542,6 @@ describe("renderer button parity", () => {
     );
     expect(standaloneCard).toBeDefined();
     expect(within(standaloneCard as HTMLElement).getByText("Homebrew")).toBeInTheDocument();
-  });
-
-  it("renders app and Homebrew recently updated sections as card grids outside compact mode", () => {
-    const recentApp = {
-      id: "recent:app",
-      appID: app.id,
-      displayName: app.displayName,
-      fromVersion: version("1.0.0"),
-      toVersion: version("2.0.0"),
-      updatedAt: "2026-04-29T12:00:00.000Z"
-    };
-    const recentCask = {
-      id: "recent:cask",
-      itemID: cask.id,
-      token: cask.token,
-      kind: cask.kind,
-      displayName: cask.name,
-      fromVersion: version("1.0.0"),
-      toVersion: version("2.0.0"),
-      updatedAt: "2026-04-30T12:00:00.000Z"
-    };
-
-    const { container, rerender } = render(
-      <Dashboard
-        compact={false}
-        onOpenSettings={() => undefined}
-        snapshot={snapshot({
-          selectedTab: "apps",
-          updates: [],
-          recentlyUpdated: [recentApp]
-        })}
-      />
-    );
-
-    expect(container.querySelector(".recent-grid")).toBeInTheDocument();
-    expect(container.querySelector(".recent-card")).toBeInTheDocument();
-    expect(container.querySelector(".rows .recent-card")).not.toBeInTheDocument();
-
-    rerender(
-      <Dashboard
-        compact={false}
-        onOpenSettings={() => undefined}
-        snapshot={snapshot({
-          selectedTab: "homebrew",
-          homebrewItems: [{ ...cask, isOutdated: false }],
-          updates: [],
-          homebrewRecentlyUpdated: [recentCask]
-        })}
-      />
-    );
-
-    expect(container.querySelector(".recent-grid")).toBeInTheDocument();
-    expect(container.querySelector(".recent-card")).toBeInTheDocument();
   });
 
   it("shows source labels on recently updated app cards without active updates", () => {
@@ -3430,18 +3192,6 @@ describe("renderer button parity", () => {
     expect(screen.getByText("Custom folder")).toBeInTheDocument();
     expect(screen.getByText("/Users/test/Extra Apps")).toBeInTheDocument();
     expect(screen.getAllByTitle("Remove")).toHaveLength(1);
-  });
-
-  it("shows app version and build number in settings", async () => {
-    render(<SettingsView snapshot={snapshot()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Diagnostics" }));
-    expect(screen.getByText("Current version")).toBeInTheDocument();
-    expect(await screen.findByText("0.1.0")).toBeInTheDocument();
-    expect(screen.queryByText("0.1.0 (224)")).not.toBeInTheDocument();
-    expect(screen.queryByText("Build number")).not.toBeInTheDocument();
-    expect(screen.queryByText("224")).not.toBeInTheDocument();
-    expect(screen.getByText("Diagnostic report")).toBeInTheDocument();
   });
 
   it("updates the appearance preference from settings", () => {

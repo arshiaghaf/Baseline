@@ -248,21 +248,42 @@ describe("HomebrewInventoryClient", () => {
 
   it("runs brew update before inventory commands when metadata updates are requested", async () => {
     const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+    const { runBrewCommand } = await import("../src/main/commandRunner");
+    let finishUpdate!: () => void;
+    const metadataUpdate = new Promise<void>((resolve) => {
+      finishUpdate = resolve;
+    });
+    vi.mocked(runBrewCommand).mockImplementationOnce(async (args) => {
+      commandMock.calls.push(args);
+      await metadataUpdate;
+      return { success: true, status: 0, output: "" };
+    });
 
-    const result = await new HomebrewInventoryClient().fetchInventory({ updateMetadata: true });
+    const inventory = new HomebrewInventoryClient().fetchInventory({ updateMetadata: true });
+    try {
+      expect(commandMock.calls).toEqual([["update"]]);
+    } finally {
+      finishUpdate();
+    }
+    const result = await inventory;
 
     expect(result.outdatedDetectionSucceeded).toBe(true);
     expect(result.outdatedDetectionSucceededByKind).toEqual({ formula: true, cask: true });
-    expect(commandMock.calls[0]).toEqual(["update"]);
-    expect(commandMock.calls.map((args) => args.join(" "))).toEqual([
-      "update",
-      "list --formula --versions",
-      "list --cask --versions",
-      "outdated --formula --json=v2",
-      "outdated --cask --greedy --json=v2",
-      "info --cask --installed --json=v2",
-      "info --formula --installed --json=v2"
-    ]);
+    expect(
+      commandMock.calls
+        .slice(1)
+        .map((args) => args.join(" "))
+        .sort()
+    ).toEqual(
+      [
+        "list --formula --versions",
+        "list --cask --versions",
+        "outdated --formula --json=v2",
+        "outdated --cask --greedy --json=v2",
+        "info --cask --installed --json=v2",
+        "info --formula --installed --json=v2"
+      ].sort()
+    );
   });
 
   it("retains installed tap identity and its own artifacts", async () => {

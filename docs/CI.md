@@ -3,12 +3,12 @@
 This repository uses GitHub Actions for pull request and `main` branch validation.
 
 Baseline is an Electron app that targets macOS first, so CI runs across
-GitHub's macOS hosted runners: `macos-26`, `macos-26-intel`, `macos-15`,
-and `macos-15-intel`.
+the configured macOS runners: `xcode-27`, `macos-26`, `macos-26-intel`,
+`macos-15`, and `macos-15-intel`.
 
 The CI workflow:
 
-- Installs Node dependencies with `npm ci`.
+- Uses Node.js 24 and installs dependencies with `npm ci`.
 - Lints release scripts with `bash -n`.
 - Typechecks the Electron main/preload/renderer TypeScript.
 - Runs Vitest unit tests.

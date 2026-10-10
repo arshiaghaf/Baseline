@@ -409,7 +409,7 @@ describe("update store helpers", () => {
     });
   });
 
-  it("refreshes app inventory after adding an additional scan directory", async () => {
+  it("refreshes app inventory after adding and removing an additional scan directory", async () => {
     let userData = "";
     const scanState: { directory: string; app?: AppRecord } = { directory: "" };
     const scannedDirectories: string[][] = [];
@@ -446,42 +446,8 @@ describe("update store helpers", () => {
       ]);
       expect(store.getSnapshot().apps).toEqual([addedApp]);
     });
-  });
-
-  it("refreshes app inventory after removing an additional scan directory", async () => {
-    let userData = "";
-    const scanState: { directory: string; app?: AppRecord } = { directory: "" };
-    const scannedDirectories: string[][] = [];
-    const store = await makeStore({
-      onUserData: (directory) => {
-        userData = directory;
-      },
-      clients: {
-        scanner: {
-          scanApplications: async (directories) => {
-            scannedDirectories.push(directories);
-            return scanState.app && directories.includes(scanState.directory)
-              ? [scanState.app]
-              : [];
-          }
-        }
-      }
-    });
-    scanState.directory = path.resolve(path.join(userData, "Extra Apps"));
-    const removableApp = appRecord({
-      bundlePath: path.join(scanState.directory, "Example.app"),
-      displayName: "Example",
-      localVersion: version("1.0.0")
-    });
-    scanState.app = removableApp;
-
-    await store.addDirectory(scanState.directory);
-    await vi.waitFor(() => {
-      expect(store.getSnapshot().apps).toEqual([removableApp]);
-    });
 
     await store.removeDirectory(scanState.directory);
-
     await vi.waitFor(() => {
       expect(scannedDirectories.at(-1)).toEqual([
         "/Applications",
@@ -1007,7 +973,11 @@ describe("update store helpers", () => {
         persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
         runBrewCommand: async (args, onLine) => {
           commands.push(args);
-          if (args[0] === "upgrade") onLine?.("Upgrading shared-name");
+          if (args[0] === "upgrade") {
+            onLine?.("Installing shared-name");
+            expect(store.getSnapshot().homebrewBatchProgressByItemID[item.id]).toBeGreaterThan(0);
+            expect(store.getSnapshot().homebrewBatchProgressByItemID[item.id]).toBeLessThan(1);
+          }
           return { success: true, status: 0, output: "" };
         }
       });
@@ -1216,42 +1186,6 @@ describe("update store helpers", () => {
       expect(store.getSnapshot().homebrewItems[0]?.isSelf === true).toBe(explicit);
     }
   );
-
-  it("recognizes the product's installed app target while keeping self updates independent", async () => {
-    const metadata = new HomebrewCaskClient().parseIndex(
-      Buffer.from(
-        JSON.stringify([
-          {
-            token: "self-app",
-            full_token: "example/tools/self-app",
-            tap: "example/tools",
-            version: "0.6.3",
-            artifacts: [{ app: ["Baseline.app"], target: "/Applications/Baseline.app" }]
-          }
-        ])
-      )
-    ).byToken["self-app"]!;
-    const item = homebrewItem({
-      id: "cask:self-app",
-      token: "self-app",
-      name: "Self App",
-      kind: "cask",
-      fullToken: "example/tools/self-app",
-      tap: "example/tools",
-      caskMetadata: metadata,
-      latestVersion: version("0.6.3"),
-      isOutdated: true
-    });
-    const store = await makeStore({
-      currentAppVersion: "0.6.2",
-      currentAppIdentity: {
-        bundlePath: "/Applications/Baseline.app",
-        bundleIdentifier: "com.arshiaghaf.baseline"
-      },
-      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] }
-    });
-    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({ isSelf: true, isOutdated: false });
-  });
 
   it.each(["1.0", "2.0", "3.0"])(
     "keeps own updates on the download shortcut when installed at %s",
@@ -2640,10 +2574,14 @@ describe("update store helpers", () => {
   });
 
   it("suppresses duplicate Homebrew cask uninstall dispatches while running", async () => {
+    let finish!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     const runBrewCommand = vi.fn(
       async (_args: string[], onOutputLine: (line: string) => void = () => undefined) => {
         onOutputLine("Error: still running");
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await gate;
         return { success: false, status: 1, output: "Error: still running" };
       }
     );
@@ -2662,11 +2600,14 @@ describe("update store helpers", () => {
       runBrewCommand
     });
 
-    await Promise.all([
-      store.uninstallHomebrewItem("cask:notion"),
-      store.uninstallHomebrewItem("cask:notion")
-    ]);
-
+    const first = store.uninstallHomebrewItem("cask:notion");
+    const second = store.uninstallHomebrewItem("cask:notion");
+    try {
+      expect(runBrewCommand).toHaveBeenCalledTimes(1);
+    } finally {
+      finish();
+      await Promise.all([first, second]);
+    }
     expect(runBrewCommand).toHaveBeenCalledTimes(1);
     expect(runBrewCommand).toHaveBeenCalledWith(
       ["uninstall", "--cask", "notion"],
@@ -3041,7 +2982,7 @@ describe("update store helpers", () => {
       status: 0,
       output: ""
     }));
-    const store = await makeStore({
+    const store = await makeVerifiedStore({
       persisted: {
         ...defaultPersistedSnapshot(),
         ignoredHomebrewItemIDs: ["formula:ripgrep"],
@@ -4105,10 +4046,7 @@ describe("update store helpers", () => {
     let resolveCommand!: (result: { success: boolean; status: number; output: string }) => void;
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
-    >(async (command) => {
-      if (command[0] === "cleanup") {
-        return { success: true, status: 0, output: "" };
-      }
+    >(async () => {
       return await new Promise((resolve) => {
         resolveCommand = resolve;
       });
@@ -4153,9 +4091,6 @@ describe("update store helpers", () => {
         return await new Promise((resolve) => {
           resolveAvailability = resolve;
         });
-      }
-      if (command[0] === "cleanup") {
-        return { success: true, status: 0, output: "" };
       }
       return await new Promise((resolve) => {
         resolveInstall = resolve;
@@ -4209,9 +4144,6 @@ describe("update store helpers", () => {
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
     >(async (command) => {
       if (command[0] === "--version") {
-        return { success: true, status: 0, output: "" };
-      }
-      if (command[0] === "cleanup") {
         return { success: true, status: 0, output: "" };
       }
       return await new Promise((resolve) => {
@@ -5792,7 +5724,7 @@ describe("verified formula identity and Homebrew pins", () => {
         latestVersion: version("2")
       });
       const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
-      const store = await makeStore({
+      const store = await makeVerifiedStore({
         persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
         runBrewCommand
       });

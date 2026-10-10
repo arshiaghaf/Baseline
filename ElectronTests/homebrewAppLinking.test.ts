@@ -26,8 +26,11 @@ const codeCask: HomebrewManagedItem = {
 };
 
 describe("Homebrew app linking", () => {
-  it("matches casks to ignored apps by explicit app link", () => {
+  it("represents casks only when their explicit app link matches a listed app", () => {
     expect(homebrewItemHasAppRepresentation({ ...codeCask, appID: app.id }, [app])).toBe(true);
+    expect(homebrewItemHasAppRepresentation({ ...codeCask, appID: "app:missing" }, [app])).toBe(
+      false
+    );
   });
 
   it("does not use app bundle names alone as app-backed proof", () => {
@@ -52,6 +55,7 @@ describe("Homebrew app linking", () => {
       token: "visual-studio-code",
       name: "visual-studio-code",
       kind: "formula",
+      appID: app.id,
       installedVersion: version("1.0.0"),
       latestVersion: version("2.0.0"),
       isOutdated: true
