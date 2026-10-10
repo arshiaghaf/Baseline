@@ -293,7 +293,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
-    if (this.cleanupRefreshTask) return this.cleanupRefreshTask;
+    if (this.cleanupRefreshTask) {
+      await this.cleanupRefreshTask;
+      if (lightweight) return;
+      // Full refreshes may follow directory or App Store mutations that happened
+      // after cleanup's scan began. Re-scan only after its inventory is committed.
+      return this.refresh(false, options);
+    }
     if (this.refreshTask && lightweight) {
       return this.refreshTask;
     }
@@ -1746,8 +1752,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       inventory.inventoryReadSucceededByKind?.cask !== false &&
       inventory.outdatedDetectionSucceeded &&
       inventory.outdatedDetectionSucceededByKind?.formula !== false &&
-      inventory.outdatedDetectionSucceededByKind?.cask !== false &&
-      !inventory.warning
+      inventory.outdatedDetectionSucceededByKind?.cask !== false
     );
   }
 

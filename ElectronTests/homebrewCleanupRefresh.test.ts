@@ -85,6 +85,222 @@ async function fixture(options: Partial<ConstructorParameters<typeof UpdateStore
   });
 }
 describe("Homebrew cleanup inventory barrier", () => {
+  it.each(
+    ["add", "remove", "mas"].flatMap((mutation) =>
+      ["success", "command failure", "scan failure"].map((outcome) => [mutation, outcome])
+    )
+  )("rescans after %s during cleanup with %s", async (mutation, outcome) => {
+    const scanGate = deferred<void>();
+    const extraDirectory = "/tmp/example-extra-applications";
+    let installedApp = app;
+    const scans: string[][] = [];
+    const scanner = {
+      scanApplications: vi.fn(async (paths: string[]) => {
+        scans.push([...paths]);
+        const found = mutation === "mas" || paths.includes(extraDirectory) ? [installedApp] : [];
+        if (scans.length === 1) {
+          await scanGate.promise;
+          if (outcome === "scan failure") throw new Error("Synthetic cleanup scan failure");
+        }
+        return found;
+      })
+    };
+    const store = await fixture({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        additionalDirectories: mutation === "remove" ? [extraDirectory] : [],
+        apps: [app],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "appStore",
+            supportLevel: "supported",
+            localVersion: app.localVersion,
+            remoteVersion: version("2"),
+            appStoreItemID: 123,
+            checkedAt: new Date().toISOString()
+          }
+        ]
+      },
+      runBrewCommand: async (args) => ({
+        success: args[0] !== "cleanup" || outcome !== "command failure",
+        status: args[0] === "cleanup" && outcome === "command failure" ? 1 : 0,
+        output: ""
+      }),
+      runMasCommand: async (args) => {
+        if (args[0] === "upgrade") installedApp = { ...app, localVersion: version("2") };
+        return { success: true, status: 0, output: "" };
+      },
+      clients: {
+        scanner,
+        appStore: {
+          lookupOutcome: async (_identifier, localVersion) => ({
+            type: "completed",
+            ...(localVersion.raw === "1"
+              ? {
+                  value: {
+                    remoteVersion: version("2"),
+                    appStoreItemID: 123,
+                    updateURL: "https://apps.apple.com/app/example"
+                  }
+                }
+              : {})
+          })
+        }
+      }
+    });
+    const refreshRequested = vi.spyOn(store, "refresh");
+    await store.refreshToolStatus();
+    const cleanup = store.cleanUpHomebrew(async () => true);
+    await vi.waitFor(() => expect(scanner.scanApplications).toHaveBeenCalledTimes(1));
+    const changed =
+      mutation === "add"
+        ? store.addDirectory(extraDirectory)
+        : mutation === "remove"
+          ? store.removeDirectory(extraDirectory)
+          : store.performAppUpdate(app.id);
+    if (mutation === "mas") {
+      await vi.waitFor(() => expect(installedApp.localVersion).toEqual(version("2")));
+    } else {
+      await vi.waitFor(() =>
+        expect(store.getSnapshot().additionalDirectories.includes(extraDirectory)).toBe(
+          mutation === "add"
+        )
+      );
+    }
+    // The mutation has persisted or completed; its full refresh must wait.
+    await vi.waitFor(() =>
+      expect(refreshRequested).toHaveBeenCalledWith(false, { forceMetadata: false })
+    );
+    expect(scanner.scanApplications).toHaveBeenCalledTimes(1);
+    scanGate.resolve();
+    await Promise.all([cleanup, changed]);
+    expect(scans.length).toBeGreaterThanOrEqual(2);
+    expect(scans.at(-1)?.includes(extraDirectory)).toBe(mutation === "add");
+    expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+    if (mutation === "remove") {
+      expect(store.getSnapshot().apps).toEqual([]);
+    } else {
+      expect(store.getSnapshot().apps[0]?.localVersion).toEqual(
+        version(mutation === "mas" ? "2" : "1")
+      );
+    }
+    if (mutation === "mas") {
+      expect(store.getSnapshot().updates).toEqual([]);
+      expect(store.getSnapshot().appUpdatingIDs).toEqual([]);
+      expect(store.getSnapshot().appUpdatedPendingRefreshIDs).toEqual([]);
+    }
+  });
+
+  it("keeps the final directories after repeated mutations while lightweight callers join cleanup", async () => {
+    const gate = deferred<void>();
+    const first = "/tmp/example-first-applications";
+    const second = "/tmp/example-second-applications";
+    const scans: string[][] = [];
+    const scanner = {
+      scanApplications: vi.fn(async (paths: string[]) => {
+        scans.push([...paths]);
+        if (scans.length === 1) await gate.promise;
+        return paths.includes(second) ? [app] : [];
+      })
+    };
+    const store = await fixture({ clients: { scanner } });
+    const refreshRequested = vi.spyOn(store, "refresh");
+    await store.refreshToolStatus();
+    const cleanup = store.cleanUpHomebrew(async () => true);
+    await vi.waitFor(() => expect(scanner.scanApplications).toHaveBeenCalledTimes(1));
+    const lightweight = store.refresh(true);
+    const addFirst = store.addDirectory(first);
+    const addSecond = store.addDirectory(second);
+    const removeFirst = store.removeDirectory(first);
+    await vi.waitFor(() => expect(store.getSnapshot().additionalDirectories).toEqual([second]));
+    await vi.waitFor(() => expect(refreshRequested).toHaveBeenCalledTimes(4));
+    gate.resolve();
+    await Promise.all([cleanup, lightweight, addFirst, addSecond, removeFirst]);
+    expect(scans.at(-1)).toContain(second);
+    expect(scans.at(-1)).not.toContain(first);
+    expect(store.getSnapshot().apps.map((candidate) => candidate.id)).toEqual([app.id]);
+  });
+
+  it("preserves verified formula actions and the warning when cask identity is unavailable", async () => {
+    const cask: HomebrewManagedItem = {
+      id: "cask:example-unverified",
+      token: "example-unverified",
+      name: "Example unverified cask",
+      kind: "cask",
+      installedVersion: version("1"),
+      isOutdated: false
+    };
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => ({
+      success: true,
+      status: 0,
+      output: ""
+    }));
+    const store = await fixture({
+      runBrewCommand,
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [item, cask],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true },
+            inventoryReadSucceededByKind: { formula: true, cask: true },
+            warning: "Installed cask identity could not be verified."
+          })
+        }
+      }
+    });
+    await store.refreshToolStatus();
+    expect(await store.cleanUpHomebrew(async () => true)).toBe("Homebrew cleanup completed.");
+    await store.refresh();
+    await store.refresh();
+    expect(
+      store.getSnapshot().homebrewItems.find((candidate) => candidate.id === item.id)
+    ).toMatchObject({ isOutdated: true, latestVersion: version("2") });
+    expect(store.getSnapshot().lastRefreshNoticeMessage).toContain("cask identity");
+    await store.performHomebrewUpdate(cask.id);
+    await store.performHomebrewUpdate(item.id);
+    await store.performHomebrewUpdateAll();
+    expect(runBrewCommand.mock.calls.map(([args]) => args)).toEqual([
+      ["--version"],
+      ["cleanup"],
+      ["upgrade", item.token],
+      ["update"],
+      ["upgrade", item.token]
+    ]);
+  });
+
+  it.each(["formula membership", "cask membership", "formula outdated", "cask outdated"])(
+    "still rejects incomplete %s despite an unrelated cask warning",
+    async (failure) => {
+      const store = await fixture({
+        clients: {
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items: [item],
+              outdatedDetectionSucceeded: !failure.endsWith("outdated"),
+              outdatedDetectionSucceededByKind: {
+                formula: failure !== "formula outdated",
+                cask: failure !== "cask outdated"
+              },
+              inventoryReadSucceededByKind: {
+                formula: failure !== "formula membership",
+                cask: failure !== "cask membership"
+              },
+              warning: "Installed cask identity could not be verified."
+            })
+          }
+        }
+      });
+      await store.refreshToolStatus();
+      expect(await store.cleanUpHomebrew(async () => true)).toContain("could not be refreshed");
+      expect(store.getSnapshot().homebrewItems[0]?.isOutdated).toBe(false);
+    }
+  );
+
   it("drops a removed dependency from queued updates when no refresh supersedes cleanup", async () => {
     const commandGate = deferred<void>();
     const runBrewCommand = vi.fn(async (args: string[]) => {
@@ -221,7 +437,8 @@ describe("Homebrew cleanup inventory barrier", () => {
       }
       expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
       expect(store.getSnapshot().homebrewItems).toEqual([]);
-      expect(fetchInventory).toHaveBeenCalledTimes(2);
+      // The full caller now performs its own refresh after cleanup commits.
+      expect(fetchInventory).toHaveBeenCalledTimes(3);
     }
   );
   it.each(["throw", "membership", "outdated", "scanner"])(
