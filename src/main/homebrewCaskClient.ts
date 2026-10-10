@@ -106,11 +106,14 @@ export class HomebrewCaskClient {
 
       const entry: HomebrewCaskEntry = {
         token,
+        fullToken: typeof item.full_token === "string" ? item.full_token : token,
+        tap: typeof item.tap === "string" ? item.tap : "homebrew/cask",
         version: version(comparableVersion(item?.version)),
         homepageURL: sanitizeExternalURL(item?.homepage),
         presentation: classifyCaskPresentation(item),
         ...extractBundleIdentifierMetadata(item),
-        appBundleNames: extractAppBundleNames(item)
+        appBundleNames: extractAppBundleNames(item),
+        ...extractInstalledAppPaths(item)
       };
       byToken[token.toLowerCase()] = entry;
 
@@ -139,7 +142,10 @@ export class HomebrewCaskClient {
       remoteVersion: entry.version,
       token: entry.token,
       homepageURL:
-        sanitizeExternalURL(`https://formulae.brew.sh/cask/${entry.token}`) ?? entry.homepageURL
+        entry.tap && entry.tap !== "homebrew/cask"
+          ? entry.homepageURL
+          : (sanitizeExternalURL(`https://formulae.brew.sh/cask/${entry.token}`) ??
+            entry.homepageURL)
     };
   }
 }
@@ -188,6 +194,27 @@ function indexBundleIdentifier(
   if (!existing || compareVersions(entry.version, existing.version) >= 0) {
     byBundleIdentifier[key] = entry;
   }
+}
+
+function extractInstalledAppPaths(object: any): Pick<HomebrewCaskEntry, "installedAppPaths"> {
+  const paths = new Set<string>();
+  for (const artifact of Array.isArray(object?.artifacts) ? object.artifacts : []) {
+    if (!artifact || typeof artifact !== "object" || (!artifact.app && !artifact.apps)) continue;
+    // Only installed app artifact targets are ownership evidence; delete/zap paths are not.
+    const add = (value: unknown) => {
+      if (
+        typeof value === "string" &&
+        value.startsWith("/") &&
+        value.toLowerCase().endsWith(".app")
+      )
+        paths.add(value);
+    };
+    add(artifact.target);
+    walk(artifact.app ?? artifact.apps, (key, value) => {
+      if (key === "target") add(value);
+    });
+  }
+  return paths.size ? { installedAppPaths: [...paths].sort() } : {};
 }
 
 function extractAppBundleNames(object: any): string[] {

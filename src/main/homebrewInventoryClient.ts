@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { realpath } from "node:fs/promises";
 import type { HomebrewManagedItem, HomebrewManagedItemKind } from "../shared/domain";
 import { homebrewItemID } from "../shared/domain";
 import { maxVersion, version } from "../shared/version";
 import { runBrewCommand, type CommandResult } from "./commandRunner";
+import { HomebrewCaskClient } from "./homebrewCaskClient";
+import { homebrewCommandToken } from "../shared/homebrewIdentity";
 
 type OutdatedMetadata = {
   latestVersion: ReturnType<typeof version>;
@@ -32,9 +35,10 @@ export class HomebrewInventoryClient {
       runBrewCommand(["list", "--formula", "--versions"]),
       runBrewCommand(["list", "--cask", "--versions"])
     ]);
-    const [formulaOutdated, caskOutdated] = await Promise.all([
+    const [formulaOutdated, caskOutdated, caskInfo] = await Promise.all([
       runBrewCommand(["outdated", "--formula", "--json=v2"]),
-      runBrewCommand(["outdated", "--cask", "--greedy", "--json=v2"])
+      runBrewCommand(["outdated", "--cask", "--greedy", "--json=v2"]),
+      runBrewCommand(["info", "--cask", "--installed", "--json=v2"])
     ]);
 
     const metadataReady = !updateResult || updateResult.success;
@@ -44,6 +48,7 @@ export class HomebrewInventoryClient {
       metadataReady && formulaOutdated.success ? commandStdout(formulaOutdated) || "{}" : "{}",
       metadataReady && caskOutdated.success ? commandStdout(caskOutdated) || "{}" : "{}"
     );
+    const caskMetadataReady = await applyInstalledCaskMetadata(parsed.items, caskInfo);
     const commandSucceeded =
       metadataReady &&
       formulaVersions.success &&
@@ -70,14 +75,20 @@ export class HomebrewInventoryClient {
           caskOutdated.success &&
           parsed.outdatedDetectionSucceededByKind.cask
       },
-      warning: inventoryWarning({
-        updateResult,
-        formulaVersions,
-        caskVersions,
-        formulaOutdated,
-        caskOutdated,
-        parsedSucceeded: parsed.outdatedDetectionSucceeded
-      })
+      warning:
+        [
+          !caskMetadataReady ? "Installed cask identity could not be verified." : undefined,
+          inventoryWarning({
+            updateResult,
+            formulaVersions,
+            caskVersions,
+            formulaOutdated,
+            caskOutdated,
+            parsedSucceeded: parsed.outdatedDetectionSucceeded
+          })
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined
     };
   }
 }
@@ -305,4 +316,54 @@ function inventoryWarning({
     return undefined;
   }
   return `Homebrew outdated status could not be read reliably (${failed.join(", ")}).`;
+}
+
+async function applyInstalledCaskMetadata(
+  items: HomebrewManagedItem[],
+  result: CommandResult
+): Promise<boolean> {
+  let casks: any[] = [];
+  try {
+    const raw = JSON.parse(commandStdout(result));
+    if (result.success && Array.isArray(raw?.casks)) casks = raw.casks;
+  } catch {
+    /* Missing metadata must not borrow an unrelated public catalogue entry. */
+  }
+  const client = new HomebrewCaskClient();
+  let verified = true;
+  for (const item of items) {
+    if (item.kind !== "cask") continue;
+    const matches = casks.filter((cask) => cask?.token === item.token && cask.installed != null);
+    const raw = matches.length === 1 ? matches[0] : undefined;
+    const entry = raw
+      ? client.parseIndex(Buffer.from(JSON.stringify([raw]))).byToken[item.token.toLowerCase()]
+      : undefined;
+    const candidate = { ...item, fullToken: raw?.full_token, tap: raw?.tap, caskMetadata: entry };
+    if (
+      typeof candidate.fullToken !== "string" ||
+      typeof candidate.tap !== "string" ||
+      !homebrewCommandToken(candidate)
+    ) {
+      item.isOutdated = false;
+      item.latestVersion = undefined;
+      verified = false;
+      continue;
+    }
+    if (!entry) {
+      item.isOutdated = false;
+      item.latestVersion = undefined;
+      verified = false;
+      continue;
+    }
+    if (entry.installedAppPaths) {
+      entry.installedAppPaths = await Promise.all(
+        entry.installedAppPaths.map(async (target) => realpath(target).catch(() => target))
+      );
+    }
+    item.fullToken = candidate.fullToken;
+    item.tap = candidate.tap;
+    item.caskMetadata = entry;
+    if (item.isOutdated) item.latestVersion = entry.version;
+  }
+  return verified;
 }
