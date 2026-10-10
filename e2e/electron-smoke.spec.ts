@@ -29,17 +29,27 @@ type NativeTrayProbe = {
 };
 
 test.afterEach(async () => {
-  await cleanupApplications([...launchedApps, ...nativeFixtures], async (app) => {
-    const electronApp = [...launchedApps].find((candidate) => candidate === app);
-    if (!electronApp) return;
-    await electronApp
-      .evaluate(() =>
-        (
-          globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
-        ).nativeTrayProbe?.command.finish?.()
-      )
-      .catch(() => undefined);
-  });
+  // Finish the foreign full-screen Space before quitting Baseline. Still drain
+  // both groups and retain each error if either graceful close fails.
+  const failures: unknown[] = [];
+  for (const applications of [[...nativeFixtures], [...launchedApps]]) {
+    try {
+      await cleanupApplications(applications, async (app) => {
+        const electronApp = [...launchedApps].find((candidate) => candidate === app);
+        if (!electronApp) return;
+        await electronApp
+          .evaluate(() =>
+            (
+              globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
+            ).nativeTrayProbe?.command.finish?.()
+          )
+          .catch(() => undefined);
+      });
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (failures.length) throw new AggregateError(failures, "Test application cleanup failed.");
   launchedApps.clear();
   nativeFixtures.clear();
   await Promise.all(
@@ -641,6 +651,19 @@ test("opens a keyboard-usable popover over another app's full-screen Space", asy
     const { stdout } = await promisify(execFile)(observer, { timeout: 5000 });
     return JSON.parse(stdout) as { frontmostPID: number; onScreenWindowIDs: number[] };
   };
+  // Rendered content can precede ready-to-show and its native activation.
+  // Complete Baseline startup before the foreign fixture takes focus.
+  await expect
+    .poll(async () => ({
+      mainReady: await application.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().endsWith("#/main")
+        );
+        return window?.isVisible() === true && window.isFocused();
+      }),
+      frontmostPID: (await nativeState()).frontmostPID
+    }))
+    .toEqual({ mainReady: true, frontmostPID: application.process().pid });
   const executable = process.env.BASELINE_E2E_FULLSCREEN_FIXTURE;
   if (!executable) throw new Error("Expected the native full-screen fixture from E2E preflight.");
   const child = spawn(executable, [], { detached: true, stdio: ["ignore", "pipe", "pipe"] });
