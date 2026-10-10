@@ -24,6 +24,13 @@ const item: HomebrewManagedItem = {
   token: "unused-tool",
   name: "unused-tool",
   kind: "formula",
+  formulaIdentity: {
+    name: "unused-tool",
+    fullName: "unused-tool",
+    tap: "homebrew/core",
+    oldNames: []
+  },
+  formulaIdentityVerified: true,
   installedVersion: version("1"),
   latestVersion: version("2"),
   isOutdated: true

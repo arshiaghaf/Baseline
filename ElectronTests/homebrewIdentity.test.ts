@@ -124,3 +124,56 @@ describe("installed cask identity", () => {
     }
   });
 });
+
+describe("installed formula command identity", () => {
+  const formula: HomebrewManagedItem = {
+    id: "formula:utility",
+    token: "utility",
+    name: "Utility",
+    kind: "formula",
+    installedVersion: version("1"),
+    isOutdated: true,
+    formulaIdentity: {
+      name: "utility",
+      fullName: "example/tools/utility",
+      tap: "example/tools",
+      oldNames: []
+    }
+  };
+  it("uses the qualified installed formula name and rejects unsafe or unverified identities", () => {
+    expect(homebrewCommandToken(formula)).toBe("example/tools/utility");
+    expect(homebrewCommandToken({ ...formula, formulaIdentityVerified: false })).toBeUndefined();
+    expect(homebrewCommandToken({ ...formula, formulaIdentity: undefined })).toBeUndefined();
+    for (const fullName of ["utility", "other/tools/utility", "example/tools/utility;bad"]) {
+      expect(
+        homebrewCommandToken({
+          ...formula,
+          formulaIdentity: { ...formula.formulaIdentity!, fullName }
+        })
+      ).toBeUndefined();
+    }
+    expect(homebrewCommandToken({ ...formula, token: "other" })).toBeUndefined();
+  });
+  it("accepts only installed same-tap rename evidence for a historical rack", () => {
+    const renamed = { ...formula, token: "old-utility" };
+    expect(homebrewCommandToken(renamed)).toBeUndefined();
+    expect(
+      homebrewCommandToken({
+        ...renamed,
+        formulaIdentity: { ...formula.formulaIdentity!, oldNames: ["old-utility"] }
+      })
+    ).toBe("example/tools/utility");
+    expect(
+      homebrewCommandToken({
+        ...renamed,
+        formulaIdentity: { ...formula.formulaIdentity!, oldNames: ["example/tools/old-utility"] }
+      })
+    ).toBe("example/tools/utility");
+    expect(
+      homebrewCommandToken({
+        ...renamed,
+        formulaIdentity: { ...formula.formulaIdentity!, oldNames: ["other/tools/old-utility"] }
+      })
+    ).toBeUndefined();
+  });
+});

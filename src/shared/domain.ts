@@ -174,6 +174,15 @@ export type HomebrewManagedItem = {
   fullToken?: string;
   tap?: string;
   caskMetadata?: HomebrewCaskEntry;
+  // Installed formula metadata proves canonical names and historical rack aliases.
+  formulaIdentity?: { name: string; fullName: string; tap: string; oldNames: string[] };
+  // False retains identity for saved-ID continuity only, never command authorization.
+  formulaIdentityVerified?: boolean;
+  pinned?: boolean;
+  /** Pin observation while installed identity is unavailable; requires fresh proof to associate. */
+  unverifiedPinObservation?: boolean;
+  /** Last proven identity for pin metadata; never authorizes a command. */
+  pinnedIdentity?: string;
   isSelf?: boolean;
   name: string;
   kind: HomebrewManagedItemKind;
@@ -200,6 +209,8 @@ export type PersistedSnapshot = {
   updates: UpdateRecord[];
   recentlyUpdated: RecentlyUpdatedRecord[];
   homebrewItems: HomebrewManagedItem[];
+  /** Hidden identity continuity during incomplete formula metadata; never command targets. */
+  homebrewFormulaIdentityContinuity?: HomebrewManagedItem[];
   homebrewRecentlyUpdated: HomebrewRecentlyUpdatedRecord[];
   ignoredIDs: string[];
   ignoredHomebrewItemIDs: string[];

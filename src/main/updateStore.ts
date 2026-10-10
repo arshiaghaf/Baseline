@@ -135,6 +135,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private profileStatsMutationQueue: Promise<void> = Promise.resolve();
   private activeHomebrewCommandCount = 0;
   private activeHomebrewInventoryCount = 0;
+  private homebrewRefreshLockSequence?: number;
   private activeHomebrewInventoryTask?: {
     updateMetadata: boolean;
     task: Promise<HomebrewInventoryResult>;
@@ -541,6 +542,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         return;
       }
       const item = this.matchingHomebrewItemForApp(appRecord);
+      if (item?.pinned) return;
       if (item && homebrewItemCanRunAppUpdate(item, update)) {
         await this.performHomebrewItemUpdate(item, {
           profileStatsEvent: appUpdateProfileStatsEvent({
@@ -562,7 +564,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   async performHomebrewUpdate(itemID: string): Promise<void> {
     const item = this.state.homebrewItems.find((candidate) => candidate.id === itemID);
-    if (!item?.isOutdated || item.isSelf || !homebrewCommandToken(item)) {
+    if (!item?.isOutdated || item.pinned || item.isSelf || !homebrewCommandToken(item)) {
       return;
     }
     await this.performHomebrewItemUpdate(item, { requireOutdated: true });
@@ -592,7 +594,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       requireOutdated?: boolean;
     } = {}
   ): Promise<void> | undefined {
-    if (this.homebrewCleanupRequiresInventory || item.isSelf || !homebrewCommandToken(item)) {
+    if (
+      this.homebrewCleanupRequiresInventory ||
+      item.pinned ||
+      item.isSelf ||
+      !homebrewCommandToken(item)
+    ) {
       return undefined;
     }
     if (
@@ -634,13 +641,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const command =
       item.kind === "cask"
         ? ["upgrade", "--cask", "--greedy", homebrewCommandToken(item)!]
-        : ["upgrade", item.token];
-    const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
+        : ["upgrade", homebrewCommandToken(item)!];
+    const progressTokens = homebrewItemProgressTokens(item);
+    const parser = new HomebrewMaintenanceOutputParser(progressTokens);
     const commandResult = await this.runBrewWithResultEvents(command, (event) => {
       this.applyHomebrewProgressEvent(
         event,
         parser,
-        new Map([[item.token.toLowerCase(), [itemID]]])
+        new Map(progressTokens.map((token) => [token, [itemID]]))
       );
     });
     if (commandResult.success) {
@@ -715,21 +723,20 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const affected = itemsWithEvents.map(({ item }) => item);
     const formulaTokens = affected
       .filter((item) => item.kind === "formula")
-      .map((item) => item.token);
+      .map((item) => homebrewCommandToken(item)!);
     const caskTokens = affected
       .filter((item) => item.kind === "cask")
       .map((item) => homebrewCommandToken(item)!);
     const affectedIDs = affected.map((item) => item.id);
     const affectedByToken = new Map<string, string[]>();
     for (const item of affected) {
-      affectedByToken.set(item.token.toLowerCase(), [
-        ...(affectedByToken.get(item.token.toLowerCase()) ?? []),
-        item.id
-      ]);
+      for (const token of homebrewItemProgressTokens(item)) {
+        affectedByToken.set(token, [...(affectedByToken.get(token) ?? []), item.id]);
+      }
     }
     const affectedKindByID = new Map(affected.map((item) => [item.id, item.kind]));
     const parser = new HomebrewMaintenanceOutputParser(
-      affected.map((item) => item.token.toLowerCase())
+      affected.flatMap(homebrewItemProgressTokens)
     );
     const sequence = [
       ...(formulaTokens.length > 0 ? [["upgrade", ...formulaTokens]] : []),
@@ -855,17 +862,16 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     try {
       const formulaTokens = affected
         .filter((item) => item.kind === "formula")
-        .map((item) => item.token);
+        .map((item) => homebrewCommandToken(item)!);
       const caskTokens = affected
         .filter((item) => item.kind === "cask")
         .map((item) => homebrewCommandToken(item)!);
       const affectedIDs = affected.map((item) => item.id);
       const affectedByToken = new Map<string, string[]>();
       for (const item of affected) {
-        affectedByToken.set(item.token.toLowerCase(), [
-          ...(affectedByToken.get(item.token.toLowerCase()) ?? []),
-          item.id
-        ]);
+        for (const token of homebrewItemProgressTokens(item)) {
+          affectedByToken.set(token, [...(affectedByToken.get(token) ?? []), item.id]);
+        }
       }
       const affectedKindByID = new Map(affected.map((item) => [item.id, item.kind]));
 
@@ -892,7 +898,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.clearOperationFailure("homebrew:maintenance", "update");
 
       const parser = new HomebrewMaintenanceOutputParser(
-        affected.map((item) => item.token.toLowerCase())
+        affected.flatMap(homebrewItemProgressTokens)
       );
       const sequence = [
         ["update"],
@@ -1016,6 +1022,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       (item) =>
         (!requestedItemIDs || requestedItemIDs.has(item.id)) &&
         item.isOutdated &&
+        !item.pinned &&
         !this.state.ignoredHomebrewItemIDs.includes(item.id) &&
         !this.state.homebrewUpdatedPendingRefreshItemIDs.includes(item.id) &&
         !item.isSelf &&
@@ -1312,6 +1319,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     options: RefreshOptions,
     signal: AbortSignal
   ): Promise<void> {
+    this.homebrewRefreshLockSequence = sequence;
+    this.updateHomebrewCommandLockState();
     this.patch({
       isRefreshing: true,
       refreshErrorMessage: undefined,
@@ -1320,24 +1329,25 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const now = new Date().toISOString();
     const force =
       options.forceMetadata ?? (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand);
-    let completedHomebrewInventory: HomebrewInventoryResult | undefined;
+    let homebrewInventoryTask: Promise<HomebrewInventoryResult> | undefined;
     try {
+      homebrewInventoryTask = this.fetchHomebrewInventory(lightweight, options);
       const [apps, catalogueIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
         await Promise.all([
           this.scanner.scanApplications(this.scanDirectories()),
           this.homebrew.fetchIndex({ force }),
           this.homebrewFormula.fetchIndex({ force }),
-          this.fetchHomebrewInventory(lightweight, options),
+          homebrewInventoryTask,
           this.lookupSelfUpdate(now)
         ]);
-      completedHomebrewInventory = homebrewInventory;
       if (sequence !== this.refreshSequence) {
         return;
       }
       const homebrewItems = preservePreviousHomebrewInventoryMembership(
         homebrewInventory.items,
         this.state.homebrewItems,
-        homebrewInventory.inventoryReadSucceededByKind
+        homebrewInventory.inventoryReadSucceededByKind,
+        this.state.homebrewFormulaIdentityContinuity
       );
       const homebrewIndex = caskIndexForInstalledItems(catalogueIndex, homebrewItems);
       this.latestHomebrewIndex = homebrewIndex;
@@ -1463,7 +1473,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       const reconciledHomebrewItems = reconcileHomebrewInventory(
         preservePreviousHomebrewOutdatedState(
           homebrewItems,
-          previousHomebrewItems,
+          homebrewIdentityReconciliationItems(this.state),
           homebrewInventory.outdatedDetectionSucceededByKind
         ),
         updates,
@@ -1472,20 +1482,29 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         previousHomebrewItems,
         (app) => this.isSelfApp(app)
       );
+      const homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
+        reconciledHomebrewItems,
+        this.state,
+        homebrewInventory.inventoryReadSucceededByKind
+      );
       const recentlyUpdated = this.mergeRecentlyUpdated(apps, updates, previousUpdates, now);
       const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
         this.state.homebrewRecentlyUpdated,
-        previousHomebrewItems,
-        reconciledHomebrewItems,
+        homebrewIdentityReconciliationItems(this.state),
+        homebrewIdentityReconciliationItems({
+          homebrewItems: reconciledHomebrewItems,
+          homebrewFormulaIdentityContinuity
+        }),
         now,
         { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
       );
       const preserveHomebrewCommandState =
-        this.isHomebrewCommandActive() && !options.allowHomebrewInventoryDuringActiveCommand;
+        this.isHomebrewMutationActive() && !options.allowHomebrewInventoryDuringActiveCommand;
       this.patch({
         apps,
         updates,
         homebrewItems: reconciledHomebrewItems,
+        homebrewFormulaIdentityContinuity,
         recentlyUpdated,
         homebrewRecentlyUpdated,
         lastRefreshDate: now,
@@ -1533,9 +1552,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (sequence !== this.refreshSequence) {
         return;
       }
-      const recoveredHomebrewInventory =
-        completedHomebrewInventory ??
-        (await this.activeHomebrewInventoryTask?.task.catch(() => undefined));
+      // Keep this refresh's task even after the shared inventory lock is released.
+      // An unrelated provider failure must not discard fresh membership evidence.
+      const recoveredHomebrewInventory = await homebrewInventoryTask?.catch(() => undefined);
       if (sequence !== this.refreshSequence) {
         return;
       }
@@ -1543,25 +1562,54 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         isRefreshing: false,
         refreshErrorMessage: error instanceof Error ? error.message : "Refresh failed."
       };
-      if (recoveredHomebrewInventory) {
-        patch.homebrewItems = preservePreviousHomebrewOutdatedState(
-          preservePreviousHomebrewInventoryMembership(
-            recoveredHomebrewInventory.items,
-            this.state.homebrewItems,
-            recoveredHomebrewInventory.inventoryReadSucceededByKind
-          ),
+      const inventory = recoveredHomebrewInventory ?? {
+        items: [],
+        inventoryReadSucceededByKind: { formula: false, cask: false },
+        outdatedDetectionSucceededByKind: { formula: false, cask: false }
+      };
+      patch.homebrewItems = preservePreviousHomebrewOutdatedState(
+        preservePreviousHomebrewInventoryMembership(
+          inventory.items,
           this.state.homebrewItems,
-          recoveredHomebrewInventory.outdatedDetectionSucceededByKind
-        );
-        patch.lastRefreshNoticeMessage = recoveredHomebrewInventory.warning;
-      }
+          inventory.inventoryReadSucceededByKind,
+          this.state.homebrewFormulaIdentityContinuity
+        ),
+        homebrewIdentityReconciliationItems(this.state),
+        inventory.outdatedDetectionSucceededByKind
+      );
+      patch.homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
+        patch.homebrewItems,
+        this.state,
+        inventory.inventoryReadSucceededByKind
+      );
+      patch.homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
+        this.state.homebrewRecentlyUpdated,
+        homebrewIdentityReconciliationItems(this.state),
+        homebrewIdentityReconciliationItems({
+          homebrewItems: patch.homebrewItems,
+          homebrewFormulaIdentityContinuity: patch.homebrewFormulaIdentityContinuity
+        }),
+        now,
+        { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
+      );
+      patch.lastRefreshNoticeMessage = recoveredHomebrewInventory?.warning;
       this.patch(patch);
       if (this.homebrewCleanupRequiresInventory || options.onHomebrewInventoryReconciled) {
         this.homebrewCleanupRequiresInventory = true;
         this.invalidateHomebrewUpdateTargets();
         await this.persist().catch(() => undefined);
+      } else {
+        await this.persist();
       }
       void this.processHomebrewUpdateQueue();
+    } finally {
+      // Fresh identity, membership and pins must reach state before any queued
+      // command can resume. A superseded refresh cannot release its successor.
+      if (this.homebrewRefreshLockSequence === sequence) {
+        this.homebrewRefreshLockSequence = undefined;
+        this.updateHomebrewCommandLockState();
+        void this.processHomebrewUpdateQueue();
+      }
     }
   }
 
@@ -1609,7 +1657,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         return result;
       }
     }
-    if (this.isHomebrewCommandActive() && !options.allowHomebrewInventoryDuringActiveCommand) {
+    if (this.isHomebrewMutationActive() && !options.allowHomebrewInventoryDuringActiveCommand) {
       return {
         items: this.state.homebrewItems,
         outdatedDetectionSucceeded: false,
@@ -1621,7 +1669,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const task = this.fetchFreshHomebrewInventory(updateMetadata);
     this.activeHomebrewInventoryTask = { updateMetadata, task };
     try {
-      return await task;
+      const result = await task;
+      if (result.inventoryReadSucceededByKind?.formula === false) {
+        this.invalidateFormulaMembership();
+      }
+      return result;
+    } catch (error) {
+      this.invalidateFormulaMembership();
+      throw error;
     } finally {
       if (this.activeHomebrewInventoryTask?.task === task) {
         this.activeHomebrewInventoryTask = undefined;
@@ -1629,6 +1684,26 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.activeHomebrewInventoryCount = Math.max(0, this.activeHomebrewInventoryCount - 1);
       this.updateHomebrewCommandLockState();
     }
+  }
+
+  private invalidateFormulaMembership(): void {
+    // Revoke execution before releasing the inventory lock, even if another
+    // refresh provider is still pending. Keep saved identity/pins as evidence.
+    const readSucceeded = { formula: false, cask: true };
+    const homebrewItems = preservePreviousHomebrewInventoryMembership(
+      [],
+      this.state.homebrewItems.filter((item) => item.kind === "formula"),
+      readSucceeded
+    );
+    homebrewItems.push(...this.state.homebrewItems.filter((item) => item.kind === "cask"));
+    this.patch({
+      homebrewItems,
+      homebrewFormulaIdentityContinuity: preserveFormulaIdentityContinuity(
+        homebrewItems,
+        this.state,
+        readSucceeded
+      )
+    });
   }
 
   private async fetchFreshHomebrewInventory(
@@ -1851,6 +1926,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   ): boolean {
     if (
       this.homebrewCleanupRequiresInventory ||
+      item.pinned ||
       item.isSelf ||
       !homebrewCommandToken(item) ||
       homebrewItemIdentity(item) !== homebrewItemIdentity(entry.item)
@@ -1920,7 +1996,11 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private isHomebrewCommandActive(): boolean {
-    return this.isHomebrewMutationActive() || this.activeHomebrewInventoryCount > 0;
+    return (
+      this.isHomebrewMutationActive() ||
+      this.activeHomebrewInventoryCount > 0 ||
+      this.homebrewRefreshLockSequence !== undefined
+    );
   }
 
   private isHomebrewMutationActive(): boolean {
@@ -2167,7 +2247,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private updateHomebrewCommandLockState(): void {
     const isHomebrewCommandLocked =
-      this.activeHomebrewCommandCount > 0 || this.activeHomebrewInventoryCount > 0;
+      this.activeHomebrewCommandCount > 0 ||
+      this.activeHomebrewInventoryCount > 0 ||
+      this.homebrewRefreshLockSequence !== undefined;
     const isHomebrewCleanupLocked =
       this.isHomebrewMutationActive() || this.activeHomebrewInventoryCount > 0;
     if (
@@ -2186,6 +2268,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     updates: snapshot.updates,
     recentlyUpdated: snapshot.recentlyUpdated,
     homebrewItems: snapshot.homebrewItems,
+    homebrewFormulaIdentityContinuity: snapshot.homebrewFormulaIdentityContinuity,
     homebrewRecentlyUpdated: snapshot.homebrewRecentlyUpdated,
     ignoredIDs: snapshot.ignoredIDs,
     ignoredHomebrewItemIDs: snapshot.ignoredHomebrewItemIDs,
@@ -2207,17 +2290,25 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
 
 function sanitizePersistedSnapshotForRuntime(snapshot: PersistedSnapshot): PersistedSnapshot {
   const homebrewItems = snapshot.homebrewItems.map((item) =>
-    item.kind === "cask" && !homebrewCommandToken(item)
+    item.kind === "formula"
       ? {
           ...item,
-          appID: undefined,
-          presentation: "cask" as const,
-          iconDataURL: undefined,
+          formulaIdentityVerified: false,
           isOutdated: false,
           latestVersion: undefined,
           releaseDate: undefined
         }
-      : item
+      : !homebrewCommandToken(item)
+        ? {
+            ...item,
+            appID: undefined,
+            presentation: item.kind === "cask" ? ("cask" as const) : ("formula" as const),
+            iconDataURL: undefined,
+            isOutdated: false,
+            latestVersion: undefined,
+            releaseDate: undefined
+          }
+        : item
   );
   const migrated = { ...snapshot, homebrewItems };
   return {
@@ -2244,17 +2335,9 @@ function persistedUpdateHasValidRuntimeRoute(
   if (!token || !isValidHomebrewToken(token)) {
     return false;
   }
-  if (!snapshot.apps.some((app) => app.id === update.appID)) {
-    return false;
-  }
-
-  return snapshot.homebrewItems.some(
-    (item) =>
-      item.kind === "cask" &&
-      item.appID === update.appID &&
-      item.token.toLowerCase() === token &&
-      Boolean(homebrewCommandToken(item))
-  );
+  const appRecord = snapshot.apps.find((app) => app.id === update.appID);
+  if (!appRecord) return false;
+  return canUseHomebrewAppUpdate(appRecord, token, snapshot.homebrewItems, emptyHomebrewCaskIndex);
 }
 
 function appUpdateProfileStatsEvent({
@@ -2439,18 +2522,179 @@ function emptyHomebrewInventoryResult(): HomebrewInventoryResult {
   };
 }
 
+function homebrewIdentityReconciliationItems(
+  snapshot: Pick<PersistedSnapshot, "homebrewItems" | "homebrewFormulaIdentityContinuity">
+): HomebrewManagedItem[] {
+  // Visible inventory wins by saved ID; hidden records only provide identity evidence.
+  return [
+    ...new Map([
+      ...(snapshot.homebrewFormulaIdentityContinuity ?? []).map((item) => [item.id, item] as const),
+      ...snapshot.homebrewItems.map((item) => [item.id, item] as const)
+    ]).values()
+  ];
+}
+
+function preserveFormulaIdentityContinuity(
+  items: HomebrewManagedItem[],
+  snapshot: PersistedSnapshot,
+  readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"]
+): HomebrewManagedItem[] | undefined {
+  const incomplete =
+    readSucceeded?.formula === false ||
+    items.some((item) => item.kind === "formula" && !homebrewCommandToken(item));
+  if (!incomplete) return undefined;
+  const visibleByID = new Map(items.map((item) => [item.id, item]));
+  // Freeze one complete prior inventory generation, rather than accumulating removed packages
+  // across failures. No aliases are guessed from the new rack names.
+  return (snapshot.homebrewFormulaIdentityContinuity ?? snapshot.homebrewItems)
+    .filter(formulaHasContinuityIdentity)
+    .map((item) => {
+      const visible = visibleByID.get(item.id);
+      // Refresh members of the frozen generation only: later generations cannot grow it.
+      return visible && formulaHasContinuityIdentity(visible) ? visible : item;
+    })
+    .map((item) => ({
+      ...item,
+      formulaIdentityVerified: false,
+      isOutdated: false,
+      latestVersion: undefined,
+      releaseDate: undefined
+    }));
+}
+
 function preservePreviousHomebrewInventoryMembership(
   currentItems: HomebrewManagedItem[],
   previousItems: HomebrewManagedItem[],
-  readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"]
+  readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"],
+  continuity: HomebrewManagedItem[] = []
 ): HomebrewManagedItem[] {
+  const identityItems = homebrewIdentityReconciliationItems({
+    homebrewItems: previousItems,
+    homebrewFormulaIdentityContinuity: continuity
+  });
+  // Retain saved Ignore/history IDs when installed metadata proves a same-tap rename.
+  // Ambiguous aliases or a tap switch cannot inherit another package's identity.
+  const occupiedIDs = new Set(currentItems.map((item) => item.id));
+  currentItems = currentItems.map((item) => {
+    if (item.kind !== "formula") return item;
+    if (!homebrewCommandToken(item)) {
+      const matches = identityItems.filter(
+        (previous) =>
+          previous.kind === "formula" &&
+          previous.token === item.token &&
+          formulaHasContinuityIdentity(previous)
+      );
+      const previous = matches.length === 1 ? matches[0] : undefined;
+      if (!previous || (previous.id !== item.id && occupiedIDs.has(previous.id))) return item;
+      occupiedIDs.add(previous.id);
+      // A transient metadata failure must not detach saved preferences/history.
+      // Retain identity only as continuity evidence; all commands stay blocked.
+      return {
+        ...item,
+        id: previous.id,
+        formulaIdentity: previous.formulaIdentity,
+        formulaIdentityVerified: false,
+        isOutdated: false,
+        latestVersion: undefined,
+        releaseDate: undefined
+      };
+    }
+    const identity = item.formulaIdentity!;
+    const matches = identityItems.filter(
+      (previous) =>
+        previous.kind === "formula" &&
+        formulaHasContinuityIdentity(previous) &&
+        previous.formulaIdentity?.tap === identity.tap &&
+        (previous.formulaIdentity.fullName === identity.fullName ||
+          identity.oldNames.includes(previous.formulaIdentity.name) ||
+          identity.oldNames.includes(`${identity.tap}/${previous.formulaIdentity.name}`))
+    );
+    const previous = matches.length === 1 ? matches[0] : undefined;
+    if (!previous || (previous.id !== item.id && occupiedIDs.has(previous.id))) return item;
+    occupiedIDs.add(previous.id);
+    const observations = previousItems.filter(
+      (candidate) =>
+        candidate.kind === "formula" &&
+        candidate.token === item.token &&
+        typeof candidate.unverifiedPinObservation === "boolean" &&
+        (!candidate.tap || candidate.tap === identity.tap)
+    );
+    const observation = observations.length === 1 ? observations[0] : undefined;
+    // Apply a raw rack's observation only after fresh unique same-tap identity
+    // proves its relationship to the saved package. Fresh explicit fields win.
+    return {
+      ...item,
+      id: previous.id,
+      pinned: item.pinned ?? observation?.unverifiedPinObservation,
+      unverifiedPinObservation: undefined
+    };
+  });
   if (!readSucceeded || (readSucceeded.formula && readSucceeded.cask)) {
     return currentItems;
   }
   return [
     ...currentItems.filter((item) => readSucceeded[item.kind]),
-    ...previousItems.filter((item) => !readSucceeded[item.kind])
+    ...previousItems
+      .filter((item) => !readSucceeded[item.kind])
+      .map((item) =>
+        item.kind === "formula"
+          ? {
+              ...item,
+              formulaIdentityVerified: false,
+              isOutdated: false,
+              latestVersion: undefined,
+              releaseDate: undefined
+            }
+          : item
+      )
   ].sort((lhs, rhs) => lhs.kind.localeCompare(rhs.kind) || lhs.name.localeCompare(rhs.name));
+}
+
+function knownPinIdentity(item: HomebrewManagedItem): string | undefined {
+  const identity =
+    homebrewItemIdentity(item) ??
+    (formulaHasContinuityIdentity(item)
+      ? homebrewItemIdentity({ ...item, formulaIdentityVerified: undefined })
+      : item.pinnedIdentity);
+  return identity && isValidHomebrewToken(identity) ? identity : undefined;
+}
+
+function pinIdentityCanContinue(
+  item: HomebrewManagedItem,
+  previous: HomebrewManagedItem,
+  previousIdentity: string,
+  candidates: HomebrewManagedItem[]
+): boolean {
+  if (item.kind !== previous.kind) return false;
+  const identity = homebrewItemIdentity(item);
+  if (identity) {
+    if (identity === previousIdentity) return true;
+    const currentFormula = item.formulaIdentity;
+    if (item.kind !== "formula" || !currentFormula) return false;
+    const matches = candidates.filter(
+      (candidate) =>
+        formulaHasContinuityIdentity(candidate) &&
+        candidate.formulaIdentity?.tap === currentFormula.tap &&
+        (candidate.formulaIdentity.fullName === currentFormula.fullName ||
+          currentFormula.oldNames.includes(candidate.formulaIdentity.name) ||
+          currentFormula.oldNames.includes(
+            `${currentFormula.tap}/${candidate.formulaIdentity.name}`
+          ))
+    );
+    return matches.length === 1 && matches[0]?.id === previous.id;
+  }
+  // Unknown identity may retain a pin only under the existing saved ID and rack.
+  // It supplies no execution capability, alias inference, or cross-tap transfer.
+  return (
+    item.id === previous.id &&
+    item.token === previous.token &&
+    (!item.tap ||
+      previousIdentity.startsWith(`${item.tap}/`) ||
+      (item.tap === "homebrew/core" && !previousIdentity.includes("/"))) &&
+    (!item.formulaIdentity ||
+      (formulaHasContinuityIdentity(item) &&
+        homebrewItemIdentity({ ...item, formulaIdentityVerified: undefined }) === previousIdentity))
+  );
 }
 
 export function preservePreviousHomebrewOutdatedState(
@@ -2458,22 +2702,80 @@ export function preservePreviousHomebrewOutdatedState(
   previousItems: HomebrewManagedItem[],
   outdatedDetectionSucceededByKind: Record<HomebrewManagedItemKind, boolean>
 ): HomebrewManagedItem[] {
+  const previousByID = new Map(previousItems.map((item) => [item.id, item]));
+  currentItems = currentItems.map((item) => {
+    const previous = previousByID.get(item.id);
+    const identity = homebrewItemIdentity(item);
+    const previousIdentity = previous && knownPinIdentity(previous);
+    if (!identity) {
+      const observation =
+        typeof item.pinned === "boolean"
+          ? item.pinned
+          : previous?.kind === item.kind && previous.token === item.token
+            ? previous.unverifiedPinObservation
+            : undefined;
+      if (typeof observation === "boolean") {
+        return {
+          ...item,
+          pinned: observation,
+          unverifiedPinObservation: observation,
+          pinnedIdentity:
+            previous &&
+            previousIdentity &&
+            pinIdentityCanContinue(item, previous, previousIdentity, previousItems)
+              ? previousIdentity
+              : undefined
+        };
+      }
+    }
+    if (
+      identity &&
+      item.pinned === undefined &&
+      previous &&
+      previousIdentity &&
+      typeof previous.unverifiedPinObservation === "boolean" &&
+      pinIdentityCanContinue(item, previous, previousIdentity, previousItems)
+    ) {
+      return {
+        ...item,
+        pinned: previous.unverifiedPinObservation,
+        pinnedIdentity: previous.unverifiedPinObservation ? identity : undefined,
+        unverifiedPinObservation: undefined
+      };
+    }
+    if (item.pinned !== undefined && identity) {
+      return {
+        ...item,
+        pinnedIdentity: item.pinned ? identity : undefined,
+        unverifiedPinObservation: undefined
+      };
+    }
+    if (
+      item.pinned !== false &&
+      previous?.pinned &&
+      previousIdentity &&
+      pinIdentityCanContinue(item, previous, previousIdentity, previousItems)
+    ) {
+      // Retain pin evidence even when identity is not executable. Recovery still
+      // requires fresh same-package proof; explicit false is authoritative.
+      return { ...item, pinned: true, pinnedIdentity: identity ?? previousIdentity };
+    }
+    return item;
+  });
   if (outdatedDetectionSucceededByKind.formula && outdatedDetectionSucceededByKind.cask) {
     return currentItems;
   }
 
-  const previousByID = new Map(previousItems.map((item) => [item.id, item]));
   return currentItems.map((item) => {
     const previous = previousByID.get(item.id);
     if (outdatedDetectionSucceededByKind[item.kind]) {
       return item;
     }
     if (
-      item.kind === "cask" &&
-      (!homebrewCommandToken(item) ||
-        !previous ||
-        !homebrewCommandToken(previous) ||
-        homebrewItemIdentity(item) !== homebrewItemIdentity(previous))
+      !homebrewCommandToken(item) ||
+      !previous ||
+      !homebrewCommandToken(previous) ||
+      homebrewItemIdentity(item) !== homebrewItemIdentity(previous)
     )
       return item;
     if (!previous?.isOutdated) {
@@ -2519,7 +2821,10 @@ function canUseHomebrewAppUpdate(
 }
 
 function homebrewItemCanRunAppUpdate(item: HomebrewManagedItem, update: UpdateRecord): boolean {
-  return item.isOutdated || isVersionGreater(update.remoteVersion, item.installedVersion);
+  return (
+    !item.pinned &&
+    (item.isOutdated || isVersionGreater(update.remoteVersion, item.installedVersion))
+  );
 }
 
 function homebrewCaskItemProvesAppOwnership(
@@ -2876,4 +3181,22 @@ function catalogueCacheNotice(...statuses: Array<CatalogueStatus | undefined>): 
     .filter(Boolean)
     .sort()[0];
   return `Using cached Homebrew catalogue metadata${checkedAt ? ` (last checked ${checkedAt})` : ""}. Refresh to retry.`;
+}
+
+function homebrewItemProgressTokens(item: HomebrewManagedItem): string[] {
+  return [
+    ...new Set([
+      item.token,
+      ...(item.kind === "formula" && item.formulaIdentity ? [item.formulaIdentity.name] : [])
+    ])
+  ].map((token) => token.toLowerCase());
+}
+
+function formulaHasContinuityIdentity(item: HomebrewManagedItem): boolean {
+  // Validate saved structural identity independently of its current verification.
+  // This helper is for ID reconciliation only; execution uses homebrewCommandToken.
+  return (
+    item.kind === "formula" &&
+    Boolean(homebrewCommandToken({ ...item, formulaIdentityVerified: undefined }))
+  );
 }
