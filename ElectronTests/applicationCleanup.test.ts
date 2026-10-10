@@ -18,18 +18,17 @@ function killDetachedGroup(child: ChildProcess) {
   }
 }
 
-async function startChild() {
-  const child = spawn(
-    process.execPath,
-    [
-      "-e",
-      "process.on('message', () => process.exit(0)); process.send('ready'); setInterval(() => {}, 1000);"
-    ],
-    { detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] }
-  );
+async function startChild(withDescendant = false) {
+  const script = withDescendant
+    ? "const { spawn } = require('node:child_process'); const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); process.send(child.pid); setInterval(() => {}, 1000);"
+    : "process.on('message', () => process.exit(0)); process.send('ready'); setInterval(() => {}, 1000);";
+  const child = spawn(process.execPath, ["-e", script], {
+    detached: true,
+    stdio: ["ignore", "ignore", "ignore", "ipc"]
+  });
   children.add(child);
-  await once(child, "message");
-  return child;
+  const [message] = await once(child, "message");
+  return { child, descendantPID: withDescendant ? Number(message) : undefined };
 }
 
 function gracefulApplication(child: ChildProcess) {
@@ -48,87 +47,36 @@ afterEach(async () => {
     [...children].map(async (child) => {
       if (child.exitCode !== null || child.signalCode !== null) return;
       const exited = once(child, "exit");
-      child.kill("SIGKILL");
+      killDetachedGroup(child);
       await exited;
     })
   );
   children.clear();
 });
 
-test("reports a stalled close after draining owned processes and leaves unrelated processes alive", async () => {
-  const stalled = await startChild();
-  const healthy = await startChild();
-  const unrelated = await startChild();
-  await expect(
-    cleanupApplications(
-      [
-        { process: () => stalled, close: () => new Promise<void>(() => undefined) },
-        gracefulApplication(healthy)
-      ],
-      undefined,
-      100
-    )
-  ).rejects.toMatchObject({
-    message: expect.stringContaining("graceful close exceeded"),
-    errors: [
-      expect.objectContaining({ message: expect.stringContaining("graceful close exceeded") })
-    ]
-  });
-  expect(stalled.signalCode).toBe("SIGKILL");
-  expect(healthy.exitCode).toBe(0);
-  expect(unrelated.exitCode).toBeNull();
-  expect(unrelated.signalCode).toBeNull();
-});
-
-test("reports a close failure after every owned process has exited", async () => {
-  const failed = await startChild();
-  const healthy = await startChild();
-  await expect(
-    cleanupApplications(
-      [
-        {
-          process: () => failed,
-          close: async () => {
-            throw new Error("Fixture close failed");
-          }
-        },
-        gracefulApplication(healthy)
-      ],
-      undefined,
-      100
-    )
-  ).rejects.toThrow("Test application cleanup failed.");
-  expect(failed.signalCode).toBe("SIGKILL");
-  expect(healthy.exitCode).toBe(0);
-});
-
-test("a stalled detached application also releases its child processes", async () => {
-  const parent = spawn(
-    process.execPath,
-    [
-      "-e",
-      "const { spawn } = require('node:child_process'); const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); process.send(child.pid); setInterval(() => {}, 1000);"
-    ],
-    { detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] }
-  );
-  children.add(parent);
-  const [descendantPID] = await once(parent, "message");
+test("reports a hung shutdown after draining its tree and other owned apps without killing unrelated processes", async () => {
+  const { child: stalled, descendantPID } = await startChild(true);
+  const { child: healthy } = await startChild();
+  const { child: unrelated } = await startChild();
   try {
     await expect(
       cleanupApplications(
-        [{ process: () => parent, close: () => new Promise<void>(() => undefined) }],
+        [
+          { process: () => stalled, close: () => new Promise<void>(() => undefined) },
+          gracefulApplication(healthy)
+        ],
         undefined,
         100
       )
-    ).rejects.toMatchObject({
-      errors: [
-        expect.objectContaining({ message: expect.stringContaining("graceful close exceeded") })
-      ]
-    });
+    ).rejects.toMatchObject({ message: expect.stringContaining("graceful close exceeded") });
+    expect(stalled.signalCode).toBe("SIGKILL");
+    expect(healthy.exitCode).toBe(0);
+    expect(unrelated.exitCode).toBeNull();
+    expect(unrelated.signalCode).toBeNull();
     await expect
       .poll(() => {
         try {
-          process.kill(descendantPID, 0);
+          process.kill(descendantPID!, 0);
           return true;
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
@@ -138,17 +86,18 @@ test("a stalled detached application also releases its child processes", async (
       .toBe(false);
   } finally {
     // Retain cleanup even if a regression kills only the parent.
-    killDetachedGroup(parent);
+    killDetachedGroup(stalled);
   }
 });
 
-test("an exit during fallback termination preserves the original graceful-close failure", async () => {
-  const child = await startChild();
-  const healthy = await startChild();
+test("an exit race retains a close error after all owned applications have been drained", async () => {
+  const { child: failed } = await startChild();
+  const { child: healthy } = await startChild();
+  const closeError = new Error("Fixture close failed");
   const originalKill = process.kill.bind(process);
   const kill = vi.spyOn(process, "kill").mockImplementation((pid, signal) => {
-    if (pid === -child.pid! && signal === "SIGKILL") {
-      child.kill("SIGKILL");
+    if (pid === -failed.pid! && signal === "SIGKILL") {
+      failed.kill("SIGKILL");
       throw Object.assign(new Error("Process group already exited"), { code: "ESRCH" });
     }
     return originalKill(pid, signal);
@@ -157,18 +106,22 @@ test("an exit during fallback termination preserves the original graceful-close 
     await expect(
       cleanupApplications(
         [
-          { process: () => child, close: () => new Promise<void>(() => undefined) },
+          {
+            process: () => failed,
+            close: async () => {
+              throw closeError;
+            }
+          },
           gracefulApplication(healthy)
         ],
         undefined,
         100
       )
     ).rejects.toMatchObject({
-      errors: [
-        expect.objectContaining({ message: expect.stringContaining("graceful close exceeded") })
-      ]
+      message: expect.stringContaining(closeError.message),
+      errors: [closeError]
     });
-    expect(child.signalCode).toBe("SIGKILL");
+    expect(failed.signalCode).toBe("SIGKILL");
     expect(healthy.exitCode).toBe(0);
   } finally {
     kill.mockRestore();

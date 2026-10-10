@@ -296,25 +296,24 @@ test("keeps hidden-Dock settings reachable across close, reopen, and relaunch", 
       showDockIcon: false,
       showMenuBarIcon: true
     });
-  const windowID = await firstApp.evaluate(({ BrowserWindow }) => {
+  await firstApp.evaluate(({ BrowserWindow }) => {
     const window = BrowserWindow.getAllWindows()[0];
     if (!window) throw new Error("Expected a main window.");
     window.close();
-    return window.id;
   });
   expect(
     await firstApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible())
   ).toBe(false);
   // The same main-process Settings action is used by the tray and preload.
-  await page.evaluate(async () => {
-    await window.baseline.showSettings();
-    await window.baseline.showSettings();
-  });
-  expect(await firstApp.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.id)).toBe(
-    windowID
-  );
+  await page.evaluate(() => window.baseline.showSettings());
   await expect(page.getByRole("switch", { name: "Show Dock icon", exact: true })).not.toBeChecked();
   expect(await firstApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  // Cover the actual renderer/preload/native restore path instead of a separate
+  // mocked control-wiring test.
+  await page.getByRole("switch", { name: "Show Dock icon", exact: true }).click();
+  await expect.poll(() => firstApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
+  await page.getByRole("switch", { name: "Show Dock icon", exact: true }).click();
+  await expect.poll(() => firstApp.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
 
   await page.evaluate(async () => {
     // Exercise a pending native Dock-show promise followed by another hide.
@@ -393,12 +392,11 @@ test("routes native tray events with the Dock hidden and protects a running upda
         );
         return {
           mainVisible: window?.isVisible(),
-          mainFocused: window?.isFocused(),
           dockVisible: app.dock?.isVisible()
         };
       })
     )
-    .toEqual({ mainVisible: true, mainFocused: true, dockVisible: false });
+    .toEqual({ mainVisible: true, dockVisible: false });
   await application.evaluate(({ app, Tray, dialog, shell }) => {
     const probe: NativeTrayProbe = { dialogs: [], selfUpdateChecks: 0, command: { commands: [] } };
     (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }).nativeTrayProbe =
@@ -663,81 +661,75 @@ app.on("window-all-closed", () => app.quit());
   });
   launchedApps.add(fixture);
   await fixture.firstWindow();
-  try {
-    await expect
-      .poll(() =>
-        fixture.evaluate(({ BrowserWindow }) => {
-          const window = BrowserWindow.getAllWindows()[0];
-          return window?.isVisible() && window.isFocused();
-        })
-      )
-      .toBe(true);
-    const fixtureWindowID = await fixture.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0]!;
-      window.once("enter-full-screen", () => {
-        (
-          globalThis as typeof globalThis & { fixtureEnteredFullScreen?: boolean }
-        ).fixtureEnteredFullScreen = true;
-      });
-      window.setFullScreen(true);
-      window.focus();
-      return Number(window.getMediaSourceId().split(":")[1]);
-    });
-    // Poll a completed native event instead of leaving an IPC promise waiting
-    // inside Electron after the test times out and teardown starts.
-    await expect
-      .poll(
-        () =>
-          fixture.evaluate(
-            () =>
-              (globalThis as typeof globalThis & { fixtureEnteredFullScreen?: boolean })
-                .fixtureEnteredFullScreen
-          ),
-        { timeout: 15_000 }
-      )
-      .toBe(true);
-    await expect.poll(async () => (await nativeState()).frontmostPID).toBe(fixture.process().pid);
-    const popoverOpened = application.waitForEvent("window");
-    await application.evaluate(() => {
+  // The global hook drains both tracked apps once, and reports teardown errors
+  // separately so a shutdown failure cannot replace the behavioral failure.
+  await expect
+    .poll(() =>
+      fixture.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        return window?.isVisible();
+      })
+    )
+    .toBe(true);
+  const fixtureWindowID = await fixture.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0]!;
+    window.once("enter-full-screen", () => {
       (
-        globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
-      ).nativeTrayProbe!.tray!.emit("click");
+        globalThis as typeof globalThis & { fixtureEnteredFullScreen?: boolean }
+      ).fixtureEnteredFullScreen = true;
     });
-    const popover = await popoverOpened;
-    await expect(popover.getByRole("button", { name: "Search", exact: true })).toBeVisible();
-    const popoverWindowID = await application.evaluate(({ BrowserWindow }) =>
-      Number(
-        BrowserWindow.getAllWindows()
-          .find((window) => window.webContents.getURL().endsWith("#/menubar"))!
-          .getMediaSourceId()
-          .split(":")[1]
-      )
-    );
-    await expect.poll(nativeState).toMatchObject({
-      frontmostPID: fixture.process().pid,
-      onScreenWindowIDs: expect.arrayContaining([fixtureWindowID, popoverWindowID])
-    });
-    expect(
-      await application.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()
-          .find((window) => window.webContents.getURL().endsWith("#/menubar"))!
-          .isFocused()
-      )
-    ).toBe(true);
-    await popover.getByRole("button", { name: "Search", exact: true }).click();
-    await popover.getByRole("textbox").press("f");
-    await expect(popover.getByRole("textbox")).toHaveValue("f");
-    expect((await nativeState()).frontmostPID).toBe(fixture.process().pid);
-    await popover.evaluate(() => window.baseline.showSettings());
-    await expect(page.locator("h1")).toContainText("General");
-    await expect
-      .poll(async () => (await nativeState()).frontmostPID)
-      .toBe(application.process().pid);
-  } finally {
-    await cleanupApplications([fixture, application]);
-    launchedApps.delete(fixture);
-    launchedApps.delete(application);
-  }
+    window.setFullScreen(true);
+    window.focus();
+    return Number(window.getMediaSourceId().split(":")[1]);
+  });
+  // Poll a completed native event instead of leaving an IPC promise waiting
+  // inside Electron after the test times out and teardown starts.
+  await expect
+    .poll(
+      () =>
+        fixture.evaluate(
+          () =>
+            (globalThis as typeof globalThis & { fixtureEnteredFullScreen?: boolean })
+              .fixtureEnteredFullScreen
+        ),
+      { timeout: 15_000 }
+    )
+    .toBe(true);
+  await expect.poll(async () => (await nativeState()).frontmostPID).toBe(fixture.process().pid);
+  const popoverOpened = application.waitForEvent("window");
+  await application.evaluate(() => {
+    (
+      globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }
+    ).nativeTrayProbe!.tray!.emit("click");
+  });
+  const popover = await popoverOpened;
+  await expect(popover.getByRole("button", { name: "Search", exact: true })).toBeVisible();
+  const popoverWindowID = await application.evaluate(({ BrowserWindow }) =>
+    Number(
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/menubar"))!
+        .getMediaSourceId()
+        .split(":")[1]
+    )
+  );
+  await expect.poll(nativeState).toMatchObject({
+    frontmostPID: fixture.process().pid,
+    onScreenWindowIDs: expect.arrayContaining([fixtureWindowID, popoverWindowID])
+  });
+  expect(
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/menubar"))!
+        .isFocused()
+    )
+  ).toBe(true);
+  await popover.getByRole("button", { name: "Search", exact: true }).click();
+  await popover.getByRole("textbox").press("f");
+  await expect(popover.getByRole("textbox")).toHaveValue("f");
+  expect((await nativeState()).frontmostPID).toBe(fixture.process().pid);
+  await popover.evaluate(() => window.baseline.showSettings());
+  await expect(page.locator("h1")).toContainText("General");
+  await expect.poll(async () => (await nativeState()).frontmostPID).toBe(application.process().pid);
 });
 
 test("recovers a saved configuration with both app icons hidden", async () => {

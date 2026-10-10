@@ -66,7 +66,7 @@ export async function cleanupApplications<Application extends OwnedApplication>(
         if (result.status === "rejected") throw result.reason;
         if (result.status === "timeout") {
           throw new Error(
-            `Test-owned application ${child.pid} graceful close exceeded ${timeoutMilliseconds}ms.`
+            `Test-owned ${child.spawnfile.split("/").at(-1)} (${child.pid}) graceful close exceeded ${timeoutMilliseconds}ms.`
           );
         }
       } finally {

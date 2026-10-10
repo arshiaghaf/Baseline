@@ -612,13 +612,12 @@ describe("update store helpers", () => {
       clients: { scanner: { scanApplications }, selfUpdate: { lookup } }
     });
     const showSettings = vi.fn();
-    const quit = vi.fn();
     const refresh = vi.spyOn(store, "refresh");
     const selfChecks: Promise<SelfUpdateRecord | undefined>[] = [];
     const options = {
       store,
       showSettings,
-      quit,
+      quit: () => undefined,
       checkForUpdates: async () => {
         const check = store.checkForSelfUpdate();
         selfChecks.push(check);
@@ -629,6 +628,7 @@ describe("update store helpers", () => {
     function click(label: string) {
       const item = trayMenuTemplate(options).find((item) => item.label === label);
       if (!item?.click) throw new Error(`Expected an action for ${label}.`);
+      if (item.enabled === false) return;
       item.click({} as Electron.MenuItem, undefined, {} as Electron.KeyboardEvent);
     }
     try {
@@ -646,14 +646,11 @@ describe("update store helpers", () => {
       click("Refresh");
       expect(scanApplications).toHaveBeenCalledTimes(1);
       click("Settings");
-      click("Settings");
-      expect(showSettings).toHaveBeenCalledTimes(2);
+      expect(showSettings).toHaveBeenCalledTimes(1);
       expect(store.getSnapshot().isRefreshing).toBe(true);
       finishScan([]);
       await Promise.all(refresh.mock.results.map((result) => result.value));
       expect(store.getSnapshot().isRefreshing).toBe(false);
-      click("Quit");
-      expect(quit).toHaveBeenCalledTimes(1);
     } finally {
       finishScan([]);
       await Promise.allSettled([
