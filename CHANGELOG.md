@@ -5,15 +5,21 @@
 ### Added
 
 - General > Update Tools now offers a confirmed `Clean up Homebrew` action with an explanation of its installation-wide effects. ([#256](https://github.com/arshiaghaf/Baseline/pull/256))
-- Settings now includes `Show Dock icon`, while the menu-bar icon offers right-click actions for Refresh, Settings, Check for Updates, and Quit. Baseline keeps an entry point available, and its compact popover stays in the current full-screen Space. ([#259](https://github.com/arshiaghaf/Baseline/pull/259))
+- Settings now includes `Show Dock icon`, with safeguards that keep an entry point available. ([#259](https://github.com/arshiaghaf/Baseline/pull/259))
+- The menu-bar icon now offers right-click actions for Refresh, Settings, Check for Updates, and Quit. ([#259](https://github.com/arshiaghaf/Baseline/pull/259))
+- The compact popover now stays in the current full-screen Space. ([#259](https://github.com/arshiaghaf/Baseline/pull/259))
 
 ### Fixed
 
 - Removed a vulnerable formatter from Electron download tooling while preserving proxy connections, TLS trust, and credentials. ([#253](https://github.com/arshiaghaf/Baseline/pull/253))
-- Homebrew actions now use verified installed package identities, avoid collisions between taps, and preserve saved state across proven package renames. Pinned packages are labeled and excluded from updates and queues. ([#254](https://github.com/arshiaghaf/Baseline/pull/254)), ([#255](https://github.com/arshiaghaf/Baseline/pull/255))
-- Baseline's own updates stay on its dedicated update route instead of appearing among ordinary app or Homebrew updates. ([#254](https://github.com/arshiaghaf/Baseline/pull/254))
-- Ordinary Homebrew updates and installs now follow Homebrew's native cleanup policy without extra global cleanup or dependency-removal commands. Explicit cleanup safely reconciles inventory and pending refreshes before allowing queued updates to continue. ([#256](https://github.com/arshiaghaf/Baseline/pull/256))
-- Contributor regression tests now better cover package ownership, pins, and lifecycle behavior, and safely settle asynchronous cleanup work before removing test fixtures. ([#257](https://github.com/arshiaghaf/Baseline/pull/257)), ([#260](https://github.com/arshiaghaf/Baseline/pull/260))
+- Homebrew actions now use verified installed package identities and avoid collisions between taps. ([#254](https://github.com/arshiaghaf/Baseline/pull/254)), ([#255](https://github.com/arshiaghaf/Baseline/pull/255))
+- Saved package state now survives proven Homebrew package renames. ([#254](https://github.com/arshiaghaf/Baseline/pull/254)), ([#255](https://github.com/arshiaghaf/Baseline/pull/255))
+- Pinned Homebrew packages are now labeled and excluded from updates and queues. ([#255](https://github.com/arshiaghaf/Baseline/pull/255))
+- Baseline's own updates now stay on its dedicated update route instead of appearing among ordinary app or Homebrew updates. ([#254](https://github.com/arshiaghaf/Baseline/pull/254))
+- Ordinary Homebrew updates and installs now follow Homebrew's native cleanup policy without extra global cleanup or dependency-removal commands. ([#256](https://github.com/arshiaghaf/Baseline/pull/256))
+- Explicit Homebrew cleanup now safely reconciles inventory and pending refreshes before allowing queued updates to continue. ([#256](https://github.com/arshiaghaf/Baseline/pull/256))
+- Contributor regression tests now better cover package ownership, pins, and lifecycle behavior. ([#257](https://github.com/arshiaghaf/Baseline/pull/257))
+- Asynchronous cleanup tests now finish their work before removing fixtures. ([#260](https://github.com/arshiaghaf/Baseline/pull/260))
 
 ## 0.6.3 — 2026-10-09
 
