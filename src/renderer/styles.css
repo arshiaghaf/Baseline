@@ -36,7 +36,7 @@ input {
 }
 
 button {
-  --button-radius: 0.25rem;
+  --button-radius: 0.75rem;
 
   border-radius: var(--button-radius);
   cursor: default;
