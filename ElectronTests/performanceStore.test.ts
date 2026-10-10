@@ -139,6 +139,7 @@ describe("performance store integration", () => {
       token: "example",
       name: "Example",
       kind: "formula" as const,
+      formulaIdentity: { name: "example", fullName: "example", tap: "homebrew/core", oldNames: [] },
       installedVersion: version("1"),
       isOutdated: true,
       latestVersion: version("2")

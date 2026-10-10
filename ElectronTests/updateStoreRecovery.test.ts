@@ -31,6 +31,12 @@ const formula: HomebrewManagedItem = {
   token: "managed-tool",
   name: "managed-tool",
   kind: "formula",
+  formulaIdentity: {
+    name: "managed-tool",
+    fullName: "managed-tool",
+    tap: "homebrew/core",
+    oldNames: []
+  },
   installedVersion: version("1"),
   latestVersion: version("2"),
   isOutdated: true
@@ -121,6 +127,16 @@ function mockInventory(
       if (!success) stdout = "";
     } else if (args[0] === "info") {
       stdout = JSON.stringify({
+        formulae: options.empty
+          ? []
+          : [
+              {
+                name: "managed-tool",
+                full_name: "managed-tool",
+                tap: "homebrew/core",
+                installed: [{ version: "1" }]
+              }
+            ],
         casks: options.empty
           ? []
           : [

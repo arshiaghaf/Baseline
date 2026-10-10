@@ -45,7 +45,16 @@ function homebrewItem(
     kind: "formula",
     installedVersion: version("1.0.0"),
     isOutdated: false,
-    ...(patch.kind === "cask" ? { fullToken: patch.token, tap: "homebrew/cask" } : {}),
+    ...(patch.kind === "cask"
+      ? { fullToken: patch.token, tap: "homebrew/cask" }
+      : {
+          formulaIdentity: {
+            name: patch.token,
+            fullName: patch.token,
+            tap: "homebrew/core",
+            oldNames: []
+          }
+        }),
     ...patch
   };
 }
@@ -5986,3 +5995,349 @@ async function makeStore({
     }
   });
 }
+
+describe("verified formula identity and Homebrew pins", () => {
+  it.each(["formula", "cask"] as const)(
+    "excludes pinned %s packages from individual and batch upgrades",
+    async (kind) => {
+      const item = homebrewItem({
+        id: `${kind}:utility`,
+        token: "utility",
+        name: "Utility",
+        kind,
+        isOutdated: true,
+        pinned: true,
+        latestVersion: version("2")
+      });
+      const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+      const store = await makeStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+        runBrewCommand
+      });
+      await store.performHomebrewUpdate(item.id);
+      await store.performHomebrewUpdateAll();
+      expect(runBrewCommand).not.toHaveBeenCalled();
+      expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+      expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([]);
+    }
+  );
+
+  it("drops a queued upgrade when a refresh reports the package pinned", async () => {
+    const first = homebrewItem({
+      id: "formula:first-tool",
+      token: "first-tool",
+      name: "First",
+      isOutdated: true
+    });
+    const second = homebrewItem({
+      id: "formula:second-tool",
+      token: "second-tool",
+      name: "Second",
+      isOutdated: true
+    });
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runBrewCommand = vi.fn(async (command: string[]) => {
+      if (command[0] === "upgrade") await blocked;
+      return { success: false, status: 1, output: "Synthetic failure" };
+    });
+    const store = await makeStore({
+      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [first, second] },
+      runBrewCommand,
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [first, { ...second, pinned: true }],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+    const firstUpdate = store.performHomebrewUpdate(first.id);
+    const secondUpdate = store.performHomebrewUpdate(second.id);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toContain(second.id);
+    await store.refresh(true, { allowHomebrewInventoryDuringActiveCommand: true });
+    release();
+    await Promise.all([firstUpdate, secondUpdate]);
+    expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+      ["upgrade", "first-tool"]
+    ]);
+    expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([]);
+  });
+
+  it("does not route a pinned Homebrew app to an external updater", async () => {
+    const app = appRecord({
+      bundlePath: "/fixture/Managed.app",
+      displayName: "Managed",
+      localVersion: version("1")
+    });
+    const item = homebrewItem({
+      id: "cask:managed-app",
+      token: "managed-app",
+      name: "Managed",
+      kind: "cask",
+      appID: app.id,
+      pinned: true,
+      isOutdated: true
+    });
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const openExternalURL = vi.fn(async () => true);
+    const openAppBundle = vi.fn(async () => undefined);
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        apps: [app],
+        homebrewItems: [item],
+        updates: [
+          {
+            id: app.id,
+            appID: app.id,
+            source: "homebrew",
+            supportLevel: "supported",
+            localVersion: version("1"),
+            remoteVersion: version("2"),
+            homebrewToken: item.token,
+            checkedAt: "2026-10-10T00:00:00.000Z"
+          }
+        ]
+      },
+      runBrewCommand,
+      openExternalURL,
+      openAppBundle
+    });
+    await store.performAppUpdate(app.id);
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(openExternalURL).not.toHaveBeenCalled();
+    expect(openAppBundle).not.toHaveBeenCalled();
+  });
+
+  it("records partial batch completion under a renamed formula's saved ID", async () => {
+    const renamed = homebrewItem({
+      id: "formula:old-tool",
+      token: "old-tool",
+      name: "Renamed",
+      isOutdated: true,
+      latestVersion: version("2"),
+      formulaIdentity: {
+        name: "new-tool",
+        fullName: "example/tools/new-tool",
+        tap: "example/tools",
+        oldNames: ["old-tool"]
+      }
+    });
+    const failed = homebrewItem({
+      id: "formula:failed-tool",
+      token: "failed-tool",
+      name: "Failed",
+      isOutdated: true
+    });
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async (command, onOutputLine) => {
+      if (command[0] === "upgrade") {
+        onOutputLine?.("🍺  /opt/homebrew/Cellar/new-tool/2: 10 files");
+        return { success: false, status: 1, output: "Synthetic failure" };
+      }
+      return { success: true, status: 0, output: "" };
+    });
+    const store = await makeStore({
+      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [renamed, failed] },
+      runBrewCommand
+    });
+    await store.performHomebrewUpdateAll();
+    expect(runBrewCommand).toHaveBeenCalledWith(
+      ["upgrade", "example/tools/new-tool", "failed-tool"],
+      expect.any(Function)
+    );
+    expect(store.getSnapshot().homebrewBatchFailedItemIDs).toContain(failed.id);
+    expect(store.getSnapshot().homebrewBatchFailedItemIDs).not.toContain(renamed.id);
+    expect(store.getSnapshot().profileStats.events).toContainEqual(
+      expect.objectContaining({ targetID: renamed.id })
+    );
+  });
+
+  it.each(["formula", "cask"] as const)(
+    "retains a known %s pin when older metadata omits the field, and accepts explicit unpinning",
+    (kind) => {
+      const previous = homebrewItem({
+        id: `${kind}:utility`,
+        token: "utility",
+        name: "Utility",
+        kind,
+        pinned: true
+      });
+      const current = { ...previous, pinned: undefined };
+      expect(
+        preservePreviousHomebrewOutdatedState([current], [previous], {
+          formula: true,
+          cask: true
+        })[0]?.pinned
+      ).toBe(true);
+      expect(
+        preservePreviousHomebrewOutdatedState([{ ...current, pinned: false }], [previous], {
+          formula: true,
+          cask: true
+        })[0]?.pinned
+      ).toBe(false);
+    }
+  );
+
+  it("qualifies custom formula upgrades and preserves their saved Ignore key", async () => {
+    const item = homebrewItem({
+      id: "formula:utility",
+      token: "utility",
+      name: "Utility",
+      isOutdated: true,
+      formulaIdentity: {
+        name: "utility",
+        fullName: "example/tools/utility",
+        tap: "example/tools",
+        oldNames: []
+      }
+    });
+    const runBrewCommand = vi.fn(async () => ({
+      success: false,
+      status: 1,
+      output: "Synthetic failure"
+    }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [item],
+        ignoredHomebrewItemIDs: [item.id]
+      },
+      runBrewCommand
+    });
+    await store.performHomebrewUpdate(item.id);
+    expect(runBrewCommand).toHaveBeenCalledWith(
+      ["upgrade", "example/tools/utility"],
+      expect.any(Function)
+    );
+    expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([item.id]);
+  });
+
+  it("clears legacy formula action targets while preserving preferences and history", async () => {
+    const item = homebrewItem({
+      id: "formula:utility",
+      token: "utility",
+      name: "Utility",
+      isOutdated: true,
+      formulaIdentity: undefined,
+      latestVersion: version("2")
+    });
+    const history = {
+      id: item.id,
+      itemID: item.id,
+      kind: item.kind,
+      token: item.token,
+      displayName: item.name,
+      fromVersion: version("1"),
+      toVersion: version("2"),
+      updatedAt: "2026-10-09T00:00:00.000Z"
+    };
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [item],
+        ignoredHomebrewItemIDs: [item.id],
+        homebrewRecentlyUpdated: [history],
+        additionalDirectories: ["/fixture/apps"],
+        refreshIntervalMinutes: 45
+      },
+      runBrewCommand
+    });
+    await store.performHomebrewUpdate(item.id);
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(store.getSnapshot()).toMatchObject({
+      ignoredHomebrewItemIDs: [item.id],
+      homebrewRecentlyUpdated: [history],
+      additionalDirectories: ["/fixture/apps"],
+      refreshIntervalMinutes: 45,
+      homebrewItems: [{ id: item.id, isOutdated: false, latestVersion: undefined }]
+    });
+  });
+
+  it("retains saved formula IDs across a proven same-tap rename on refresh", async () => {
+    const previous = homebrewItem({
+      id: "formula:old-tool",
+      token: "old-tool",
+      name: "Old Tool",
+      formulaIdentity: {
+        name: "old-tool",
+        fullName: "example/tools/old-tool",
+        tap: "example/tools",
+        oldNames: []
+      }
+    });
+    const current = homebrewItem({
+      id: "formula:new-tool",
+      token: "new-tool",
+      name: "New Tool",
+      formulaIdentity: {
+        name: "new-tool",
+        fullName: "example/tools/new-tool",
+        tap: "example/tools",
+        oldNames: ["old-tool"]
+      }
+    });
+    const store = await makeStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [previous],
+        ignoredHomebrewItemIDs: [previous.id]
+      },
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => ({
+            items: [current],
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          })
+        }
+      }
+    });
+    await store.refresh(true);
+    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
+      id: previous.id,
+      token: "new-tool"
+    });
+    expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([previous.id]);
+  });
+
+  it("does not preserve a stale update target after a same-name formula tap changes", () => {
+    const previous = homebrewItem({
+      id: "formula:utility",
+      token: "utility",
+      name: "Utility",
+      isOutdated: true,
+      latestVersion: version("9"),
+      formulaIdentity: {
+        name: "utility",
+        fullName: "example/tools/utility",
+        tap: "example/tools",
+        oldNames: []
+      }
+    });
+    const current = homebrewItem({
+      id: previous.id,
+      token: previous.token,
+      name: previous.name,
+      formulaIdentity: {
+        name: "utility",
+        fullName: "other/tools/utility",
+        tap: "other/tools",
+        oldNames: []
+      }
+    });
+    expect(
+      preservePreviousHomebrewOutdatedState([current], [previous], {
+        formula: false,
+        cask: true
+      })[0]
+    ).toMatchObject({ isOutdated: false });
+  });
+});

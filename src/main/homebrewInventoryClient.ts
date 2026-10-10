@@ -12,6 +12,7 @@ import { homebrewCommandToken } from "../shared/homebrewIdentity";
 type OutdatedMetadata = {
   latestVersion: ReturnType<typeof version>;
   releaseDate?: string;
+  pinned?: boolean;
 };
 
 export type HomebrewInventoryOptions = {
@@ -35,10 +36,11 @@ export class HomebrewInventoryClient {
       runBrewCommand(["list", "--formula", "--versions"]),
       runBrewCommand(["list", "--cask", "--versions"])
     ]);
-    const [formulaOutdated, caskOutdated, caskInfo] = await Promise.all([
+    const [formulaOutdated, caskOutdated, caskInfo, formulaInfo] = await Promise.all([
       runBrewCommand(["outdated", "--formula", "--json=v2"]),
       runBrewCommand(["outdated", "--cask", "--greedy", "--json=v2"]),
-      runBrewCommand(["info", "--cask", "--installed", "--json=v2"])
+      runBrewCommand(["info", "--cask", "--installed", "--json=v2"]),
+      runBrewCommand(["info", "--formula", "--installed", "--json=v2"])
     ]);
 
     const metadataReady = !updateResult || updateResult.success;
@@ -47,6 +49,11 @@ export class HomebrewInventoryClient {
       commandStdout(caskVersions),
       metadataReady && formulaOutdated.success ? commandStdout(formulaOutdated) || "{}" : "{}",
       metadataReady && caskOutdated.success ? commandStdout(caskOutdated) || "{}" : "{}"
+    );
+    const formulaMetadataReady = applyInstalledFormulaMetadata(
+      parsed.items,
+      formulaInfo,
+      metadataReady && formulaOutdated.success ? commandStdout(formulaOutdated) : "{}"
     );
     const caskMetadataReady = await applyInstalledCaskMetadata(parsed.items, caskInfo);
     const commandSucceeded =
@@ -77,6 +84,7 @@ export class HomebrewInventoryClient {
       },
       warning:
         [
+          !formulaMetadataReady ? "Installed formula identity could not be verified." : undefined,
           !caskMetadataReady ? "Installed cask identity could not be verified." : undefined,
           inventoryWarning({
             updateResult,
@@ -162,6 +170,7 @@ export class HomebrewInventoryParser {
         installedVersion,
         latestVersion: metadata?.latestVersion,
         isOutdated: Boolean(metadata),
+        pinned: metadata?.pinned,
         releaseDate: metadata?.releaseDate
       });
     }
@@ -177,6 +186,7 @@ export class HomebrewInventoryParser {
         installedVersion,
         latestVersion: metadata?.latestVersion,
         isOutdated: Boolean(metadata),
+        pinned: metadata?.pinned,
         releaseDate: metadata?.releaseDate
       });
     }
@@ -243,13 +253,14 @@ export class HomebrewInventoryParser {
     kindValue: HomebrewManagedItemKind
   ): void {
     for (const item of items) {
-      const token = item?.name ?? item?.token;
+      const token = item?.full_name ?? item?.name ?? item?.token;
       if (typeof token !== "string") {
         continue;
       }
       result.set(key(kindValue, token), {
         latestVersion: version(currentVersion(item, kindValue)),
-        releaseDate: parseReleaseDate(item)
+        releaseDate: parseReleaseDate(item),
+        pinned: typeof item?.pinned === "boolean" ? item.pinned : undefined
       });
     }
   }
@@ -360,10 +371,84 @@ async function applyInstalledCaskMetadata(
         entry.installedAppPaths.map(async (target) => realpath(target).catch(() => target))
       );
     }
+    item.pinned = typeof raw.pinned === "boolean" ? raw.pinned : item.pinned;
     item.fullToken = candidate.fullToken;
     item.tap = candidate.tap;
     item.caskMetadata = entry;
     if (item.isOutdated) item.latestVersion = entry.version;
+  }
+  return verified;
+}
+
+function applyInstalledFormulaMetadata(
+  items: HomebrewManagedItem[],
+  result: CommandResult,
+  outdatedJSON: string
+): boolean {
+  let formulae: any[] = [];
+  let outdated: any[] = [];
+  try {
+    const raw = JSON.parse(commandStdout(result));
+    if (result.success && Array.isArray(raw?.formulae)) formulae = raw.formulae;
+  } catch {
+    /* Unverified installed identity must never borrow catalogue identity. */
+  }
+  try {
+    const raw = JSON.parse(outdatedJSON);
+    if (Array.isArray(raw?.formulae)) outdated = raw.formulae;
+  } catch {
+    /* Outdated parsing status is reported separately. */
+  }
+  let verified = true;
+  for (const item of items) {
+    if (item.kind !== "formula") continue;
+    const matches = formulae.filter(
+      (raw) =>
+        Array.isArray(raw?.installed) &&
+        raw.installed.length > 0 &&
+        (raw.name === item.token ||
+          (Array.isArray(raw.oldnames) &&
+            (raw.oldnames.includes(item.token) ||
+              raw.oldnames.includes(`${raw.tap}/${item.token}`))))
+    );
+    const raw = matches.length === 1 ? matches[0] : undefined;
+    const identity =
+      raw &&
+      typeof raw.name === "string" &&
+      typeof raw.full_name === "string" &&
+      typeof raw.tap === "string"
+        ? {
+            name: raw.name,
+            fullName: raw.full_name,
+            tap: raw.tap,
+            oldNames: Array.isArray(raw.oldnames)
+              ? raw.oldnames.filter((name: unknown): name is string => typeof name === "string")
+              : []
+          }
+        : undefined;
+    if (!identity || !homebrewCommandToken({ ...item, formulaIdentity: identity })) {
+      item.isOutdated = false;
+      item.latestVersion = undefined;
+      verified = false;
+      continue;
+    }
+    item.formulaIdentity = identity;
+    item.fullToken = identity.fullName;
+    item.tap = identity.tap;
+    // Match the proven full name, never strip taps from an outdated record.
+    const targets = outdated.filter(
+      (entry) => (entry?.full_name ?? entry?.name) === identity.fullName
+    );
+    const target = targets.length === 1 ? targets[0] : undefined;
+    item.isOutdated = Boolean(target);
+    item.latestVersion = target ? version(currentVersion(target, "formula")) : undefined;
+    item.releaseDate = target ? parseReleaseDate(target) : undefined;
+    item.pinned =
+      typeof raw.pinned === "boolean"
+        ? raw.pinned
+        : typeof target?.pinned === "boolean"
+          ? target.pinned
+          : undefined;
   }
   return verified;
 }

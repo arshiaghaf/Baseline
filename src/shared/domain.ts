@@ -174,6 +174,9 @@ export type HomebrewManagedItem = {
   fullToken?: string;
   tap?: string;
   caskMetadata?: HomebrewCaskEntry;
+  // Installed formula metadata proves canonical names and historical rack aliases.
+  formulaIdentity?: { name: string; fullName: string; tap: string; oldNames: string[] };
+  pinned?: boolean;
   isSelf?: boolean;
   name: string;
   kind: HomebrewManagedItemKind;

@@ -33,6 +33,23 @@ describe("HomebrewInventoryClient", () => {
     commandMock.results = new Map([
       ["update", { success: true, status: 0, output: "" }],
       ["list --formula --versions", { success: true, status: 0, output: "ripgrep 14.0.0\n" }],
+      [
+        "info --formula --installed --json=v2",
+        {
+          success: true,
+          status: 0,
+          output: JSON.stringify({
+            formulae: [
+              {
+                name: "ripgrep",
+                full_name: "ripgrep",
+                tap: "homebrew/core",
+                installed: [{ version: "14.0.0" }]
+              }
+            ]
+          })
+        }
+      ],
       ["list --cask --versions", { success: true, status: 0, output: "notion 4.0.0\n" }],
       [
         "info --cask --installed --json=v2",
@@ -72,6 +89,163 @@ describe("HomebrewInventoryClient", () => {
     ]);
   });
 
+  it("joins custom formula updates by verified full name while retaining the saved rack ID", async () => {
+    commandMock.results.set("list --formula --versions", {
+      success: true,
+      status: 0,
+      output: "utility 1.0\n"
+    });
+    commandMock.results.set("info --formula --installed --json=v2", {
+      success: true,
+      status: 0,
+      output: JSON.stringify({
+        formulae: [
+          {
+            name: "utility",
+            full_name: "example/tools/utility",
+            tap: "example/tools",
+            installed: [{ version: "1.0" }]
+          }
+        ]
+      })
+    });
+    commandMock.results.set("outdated --formula --json=v2", {
+      success: true,
+      status: 0,
+      output: JSON.stringify({
+        formulae: [
+          { name: "utility", current_version: "99" },
+          { name: "other/tools/utility", current_version: "88" },
+          { name: "example/tools/utility", current_version: "2.0", pinned: true }
+        ]
+      })
+    });
+    const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+    const { homebrewCommandToken } = await import("../src/shared/homebrewIdentity");
+    const item = (await new HomebrewInventoryClient().fetchInventory()).items.find(
+      (item) => item.kind === "formula"
+    )!;
+    expect(item).toMatchObject({
+      id: "formula:utility",
+      fullToken: "example/tools/utility",
+      isOutdated: true,
+      pinned: true,
+      latestVersion: { raw: "2.0" }
+    });
+    expect(homebrewCommandToken(item)).toBe("example/tools/utility");
+  });
+
+  it.each([
+    "{}",
+    "invalid",
+    JSON.stringify({
+      formulae: [
+        {
+          name: "ripgrep",
+          full_name: "example/tools/ripgrep",
+          tap: "other/tools",
+          installed: [{ version: "14" }]
+        }
+      ]
+    }),
+    JSON.stringify({
+      formulae: [
+        {
+          name: "ripgrep",
+          full_name: "ripgrep",
+          tap: "homebrew/core",
+          installed: [{ version: "14" }]
+        },
+        {
+          name: "ripgrep",
+          full_name: "example/tools/ripgrep",
+          tap: "example/tools",
+          installed: [{ version: "14" }]
+        }
+      ]
+    })
+  ])("blocks unverified or ambiguous installed formula identities: %s", async (output) => {
+    commandMock.results.set("info --formula --installed --json=v2", {
+      success: true,
+      status: 0,
+      output
+    });
+    const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+    const result = await new HomebrewInventoryClient().fetchInventory();
+    expect(result.items.find((item) => item.kind === "formula")).toMatchObject({
+      isOutdated: false,
+      latestVersion: undefined
+    });
+    expect(result.warning).toContain("Installed formula identity could not be verified");
+  });
+
+  it.each(["old-tool", "example/tools/old-tool"])(
+    "preserves a historical rack ID for an installed formula rename alias %s",
+    async (oldName) => {
+      commandMock.results.set("list --formula --versions", {
+        success: true,
+        status: 0,
+        output: "old-tool 1\n"
+      });
+      commandMock.results.set("info --formula --installed --json=v2", {
+        success: true,
+        status: 0,
+        output: JSON.stringify({
+          formulae: [
+            {
+              name: "new-tool",
+              full_name: "example/tools/new-tool",
+              tap: "example/tools",
+              oldnames: [oldName],
+              installed: [{ version: "1" }]
+            }
+          ]
+        })
+      });
+      commandMock.results.set("outdated --formula --json=v2", {
+        success: true,
+        status: 0,
+        output: JSON.stringify({
+          formulae: [{ name: "example/tools/new-tool", current_version: "2" }]
+        })
+      });
+      const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+      const { homebrewCommandToken } = await import("../src/shared/homebrewIdentity");
+      const item = (await new HomebrewInventoryClient().fetchInventory()).items.find(
+        (item) => item.kind === "formula"
+      )!;
+      expect(item.id).toBe("formula:old-tool");
+      expect(item.isOutdated).toBe(true);
+      expect(homebrewCommandToken(item)).toBe("example/tools/new-tool");
+    }
+  );
+
+  it("retains pin status for current casks and accepts older Homebrew without a pin field", async () => {
+    const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+    const raw = JSON.parse(commandMock.results.get("info --cask --installed --json=v2")!.output);
+    raw.casks[0].pinned = true;
+    commandMock.results.set("info --cask --installed --json=v2", {
+      success: true,
+      status: 0,
+      output: JSON.stringify(raw)
+    });
+    commandMock.results.set("outdated --cask --greedy --json=v2", {
+      success: true,
+      status: 0,
+      output: JSON.stringify({ casks: [] })
+    });
+    expect(
+      (await new HomebrewInventoryClient().fetchInventory()).items.find(
+        (item) => item.kind === "cask"
+      )
+    ).toMatchObject({ pinned: true, isOutdated: false });
+    expect(
+      (await new HomebrewInventoryClient().fetchInventory()).items.find(
+        (item) => item.kind === "formula"
+      )?.pinned
+    ).toBeUndefined();
+  });
+
   it("runs brew update before inventory commands when metadata updates are requested", async () => {
     const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
 
@@ -86,7 +260,8 @@ describe("HomebrewInventoryClient", () => {
       "list --cask --versions",
       "outdated --formula --json=v2",
       "outdated --cask --greedy --json=v2",
-      "info --cask --installed --json=v2"
+      "info --cask --installed --json=v2",
+      "info --formula --installed --json=v2"
     ]);
   });
 

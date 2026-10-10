@@ -3367,3 +3367,59 @@ describe("renderer button parity", () => {
     });
   });
 });
+
+describe("Homebrew pin presentation", () => {
+  it.each(["formula", "cask"] as const)(
+    "explains pinned %s rows without offering an update",
+    (kind) => {
+      const item = { ...cask, kind, pinned: true, appID: undefined };
+      render(<HomebrewRow item={item} snapshot={snapshot({ homebrewItems: [item] })} />);
+      expect(screen.getByText("Pinned in Homebrew")).toHaveAttribute(
+        "title",
+        "Pinned in Homebrew; unpin in Homebrew to update."
+      );
+      expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+      expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
+    }
+  );
+
+  it("blocks a pinned Homebrew app action while retaining publisher provider actions", () => {
+    const item = { ...cask, pinned: true };
+    const { rerender } = render(
+      <AppRow app={app} snapshot={snapshot({ homebrewItems: [item] })} recentlyUpdated={false} />
+    );
+    expect(screen.getByText("Pinned in Homebrew")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+    rerender(
+      <AppRow
+        app={app}
+        snapshot={snapshot({ homebrewItems: [item], updates: [{ ...update, source: "sparkle" }] })}
+        recentlyUpdated={false}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Open updater" })).toBeInTheDocument();
+  });
+
+  it.each([false, true])(
+    "keeps pinned packages visible and excludes them from update counts (compact %s)",
+    (compact) => {
+      const item = { ...cask, kind: "formula" as const, appID: undefined, pinned: true };
+      render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            apps: [],
+            updates: [],
+            selectedTab: "installed",
+            homebrewItems: [item]
+          })}
+        />
+      );
+      if (!compact) expect(screen.getAllByText("Pinned in Homebrew").length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Update Brews" })).not.toBeInTheDocument();
+    }
+  );
+});

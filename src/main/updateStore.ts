@@ -530,6 +530,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         return;
       }
       const item = this.matchingHomebrewItemForApp(appRecord);
+      if (item?.pinned) return;
       if (item && homebrewItemCanRunAppUpdate(item, update)) {
         await this.performHomebrewItemUpdate(item, {
           profileStatsEvent: appUpdateProfileStatsEvent({
@@ -551,7 +552,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   async performHomebrewUpdate(itemID: string): Promise<void> {
     const item = this.state.homebrewItems.find((candidate) => candidate.id === itemID);
-    if (!item?.isOutdated || item.isSelf || !homebrewCommandToken(item)) {
+    if (!item?.isOutdated || item.pinned || item.isSelf || !homebrewCommandToken(item)) {
       return;
     }
     await this.performHomebrewItemUpdate(item, { requireOutdated: true });
@@ -581,7 +582,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       requireOutdated?: boolean;
     } = {}
   ): Promise<void> | undefined {
-    if (item.isSelf || !homebrewCommandToken(item)) {
+    if (item.pinned || item.isSelf || !homebrewCommandToken(item)) {
       return undefined;
     }
     if (
@@ -623,13 +624,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const command =
       item.kind === "cask"
         ? ["upgrade", "--cask", "--greedy", homebrewCommandToken(item)!]
-        : ["upgrade", item.token];
-    const parser = new HomebrewMaintenanceOutputParser([item.token.toLowerCase()]);
+        : ["upgrade", homebrewCommandToken(item)!];
+    const progressTokens = homebrewItemProgressTokens(item);
+    const parser = new HomebrewMaintenanceOutputParser(progressTokens);
     const commandResult = await this.runBrewWithResultEvents(command, (event) => {
       this.applyHomebrewProgressEvent(
         event,
         parser,
-        new Map([[item.token.toLowerCase(), [itemID]]])
+        new Map(progressTokens.map((token) => [token, [itemID]]))
       );
     });
     if (commandResult.success) {
@@ -706,21 +708,20 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const affected = itemsWithEvents.map(({ item }) => item);
     const formulaTokens = affected
       .filter((item) => item.kind === "formula")
-      .map((item) => item.token);
+      .map((item) => homebrewCommandToken(item)!);
     const caskTokens = affected
       .filter((item) => item.kind === "cask")
       .map((item) => homebrewCommandToken(item)!);
     const affectedIDs = affected.map((item) => item.id);
     const affectedByToken = new Map<string, string[]>();
     for (const item of affected) {
-      affectedByToken.set(item.token.toLowerCase(), [
-        ...(affectedByToken.get(item.token.toLowerCase()) ?? []),
-        item.id
-      ]);
+      for (const token of homebrewItemProgressTokens(item)) {
+        affectedByToken.set(token, [...(affectedByToken.get(token) ?? []), item.id]);
+      }
     }
     const affectedKindByID = new Map(affected.map((item) => [item.id, item.kind]));
     const parser = new HomebrewMaintenanceOutputParser(
-      affected.map((item) => item.token.toLowerCase())
+      affected.flatMap(homebrewItemProgressTokens)
     );
     const sequence = [
       ...(formulaTokens.length > 0 ? [["upgrade", ...formulaTokens]] : []),
@@ -849,17 +850,16 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     try {
       const formulaTokens = affected
         .filter((item) => item.kind === "formula")
-        .map((item) => item.token);
+        .map((item) => homebrewCommandToken(item)!);
       const caskTokens = affected
         .filter((item) => item.kind === "cask")
         .map((item) => homebrewCommandToken(item)!);
       const affectedIDs = affected.map((item) => item.id);
       const affectedByToken = new Map<string, string[]>();
       for (const item of affected) {
-        affectedByToken.set(item.token.toLowerCase(), [
-          ...(affectedByToken.get(item.token.toLowerCase()) ?? []),
-          item.id
-        ]);
+        for (const token of homebrewItemProgressTokens(item)) {
+          affectedByToken.set(token, [...(affectedByToken.get(token) ?? []), item.id]);
+        }
       }
       const affectedKindByID = new Map(affected.map((item) => [item.id, item.kind]));
 
@@ -886,7 +886,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.clearOperationFailure("homebrew:maintenance", "update");
 
       const parser = new HomebrewMaintenanceOutputParser(
-        affected.map((item) => item.token.toLowerCase())
+        affected.flatMap(homebrewItemProgressTokens)
       );
       const sequence = [
         ["update"],
@@ -1014,6 +1014,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       (item) =>
         (!requestedItemIDs || requestedItemIDs.has(item.id)) &&
         item.isOutdated &&
+        !item.pinned &&
         !this.state.ignoredHomebrewItemIDs.includes(item.id) &&
         !this.state.homebrewUpdatedPendingRefreshItemIDs.includes(item.id) &&
         !item.isSelf &&
@@ -1735,6 +1736,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     item: HomebrewManagedItem
   ): boolean {
     if (
+      item.pinned ||
       item.isSelf ||
       !homebrewCommandToken(item) ||
       homebrewItemIdentity(item) !== homebrewItemIdentity(entry.item)
@@ -2083,11 +2085,11 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
 
 function sanitizePersistedSnapshotForRuntime(snapshot: PersistedSnapshot): PersistedSnapshot {
   const homebrewItems = snapshot.homebrewItems.map((item) =>
-    item.kind === "cask" && !homebrewCommandToken(item)
+    !homebrewCommandToken(item)
       ? {
           ...item,
           appID: undefined,
-          presentation: "cask" as const,
+          presentation: item.kind === "cask" ? ("cask" as const) : ("formula" as const),
           iconDataURL: undefined,
           isOutdated: false,
           latestVersion: undefined,
@@ -2320,6 +2322,26 @@ function preservePreviousHomebrewInventoryMembership(
   previousItems: HomebrewManagedItem[],
   readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"]
 ): HomebrewManagedItem[] {
+  // Retain saved Ignore/history IDs when installed metadata proves a same-tap rename.
+  // Ambiguous aliases or a tap switch cannot inherit another package's identity.
+  const occupiedIDs = new Set(currentItems.map((item) => item.id));
+  currentItems = currentItems.map((item) => {
+    if (item.kind !== "formula" || !homebrewCommandToken(item)) return item;
+    const identity = item.formulaIdentity!;
+    const matches = previousItems.filter(
+      (previous) =>
+        previous.kind === "formula" &&
+        homebrewCommandToken(previous) &&
+        previous.formulaIdentity?.tap === identity.tap &&
+        (previous.formulaIdentity.fullName === identity.fullName ||
+          identity.oldNames.includes(previous.formulaIdentity.name) ||
+          identity.oldNames.includes(`${identity.tap}/${previous.formulaIdentity.name}`))
+    );
+    const previous = matches.length === 1 ? matches[0] : undefined;
+    if (!previous || previous.id === item.id || occupiedIDs.has(previous.id)) return item;
+    occupiedIDs.add(previous.id);
+    return { ...item, id: previous.id };
+  });
   if (!readSucceeded || (readSucceeded.formula && readSucceeded.cask)) {
     return currentItems;
   }
@@ -2334,22 +2356,34 @@ export function preservePreviousHomebrewOutdatedState(
   previousItems: HomebrewManagedItem[],
   outdatedDetectionSucceededByKind: Record<HomebrewManagedItemKind, boolean>
 ): HomebrewManagedItem[] {
+  const previousByID = new Map(previousItems.map((item) => [item.id, item]));
+  currentItems = currentItems.map((item) => {
+    const previous = previousByID.get(item.id);
+    if (
+      item.pinned === undefined &&
+      previous?.pinned &&
+      homebrewCommandToken(item) &&
+      homebrewItemIdentity(item) === homebrewItemIdentity(previous)
+    ) {
+      // Missing pin fields are unknown, not proof that Homebrew unpinned a package.
+      return { ...item, pinned: true };
+    }
+    return item;
+  });
   if (outdatedDetectionSucceededByKind.formula && outdatedDetectionSucceededByKind.cask) {
     return currentItems;
   }
 
-  const previousByID = new Map(previousItems.map((item) => [item.id, item]));
   return currentItems.map((item) => {
     const previous = previousByID.get(item.id);
     if (outdatedDetectionSucceededByKind[item.kind]) {
       return item;
     }
     if (
-      item.kind === "cask" &&
-      (!homebrewCommandToken(item) ||
-        !previous ||
-        !homebrewCommandToken(previous) ||
-        homebrewItemIdentity(item) !== homebrewItemIdentity(previous))
+      !homebrewCommandToken(item) ||
+      !previous ||
+      !homebrewCommandToken(previous) ||
+      homebrewItemIdentity(item) !== homebrewItemIdentity(previous)
     )
       return item;
     if (!previous?.isOutdated) {
@@ -2395,7 +2429,10 @@ function canUseHomebrewAppUpdate(
 }
 
 function homebrewItemCanRunAppUpdate(item: HomebrewManagedItem, update: UpdateRecord): boolean {
-  return item.isOutdated || isVersionGreater(update.remoteVersion, item.installedVersion);
+  return (
+    !item.pinned &&
+    (item.isOutdated || isVersionGreater(update.remoteVersion, item.installedVersion))
+  );
 }
 
 function homebrewCaskItemProvesAppOwnership(
@@ -2752,4 +2789,13 @@ function catalogueCacheNotice(...statuses: Array<CatalogueStatus | undefined>): 
     .filter(Boolean)
     .sort()[0];
   return `Using cached Homebrew catalogue metadata${checkedAt ? ` (last checked ${checkedAt})` : ""}. Refresh to retry.`;
+}
+
+function homebrewItemProgressTokens(item: HomebrewManagedItem): string[] {
+  return [
+    ...new Set([
+      item.token,
+      ...(item.kind === "formula" && item.formulaIdentity ? [item.formulaIdentity.name] : [])
+    ])
+  ].map((token) => token.toLowerCase());
 }
