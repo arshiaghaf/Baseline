@@ -1315,17 +1315,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const now = new Date().toISOString();
     const force =
       options.forceMetadata ?? (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand);
-    let completedHomebrewInventory: HomebrewInventoryResult | undefined;
+    let homebrewInventoryTask: Promise<HomebrewInventoryResult> | undefined;
     try {
+      homebrewInventoryTask = this.fetchHomebrewInventory(lightweight, options);
       const [apps, catalogueIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
         await Promise.all([
           this.scanner.scanApplications(this.scanDirectories()),
           this.homebrew.fetchIndex({ force }),
           this.homebrewFormula.fetchIndex({ force }),
-          this.fetchHomebrewInventory(lightweight, options),
+          homebrewInventoryTask,
           this.lookupSelfUpdate(now)
         ]);
-      completedHomebrewInventory = homebrewInventory;
       if (sequence !== this.refreshSequence) {
         return;
       }
@@ -1530,9 +1530,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (sequence !== this.refreshSequence) {
         return;
       }
-      const recoveredHomebrewInventory =
-        completedHomebrewInventory ??
-        (await this.activeHomebrewInventoryTask?.task.catch(() => undefined));
+      // Keep this refresh's task even after the shared inventory lock is released.
+      // An unrelated provider failure must not discard fresh membership evidence.
+      const recoveredHomebrewInventory = await homebrewInventoryTask?.catch(() => undefined);
       if (sequence !== this.refreshSequence) {
         return;
       }
@@ -1540,25 +1540,29 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         isRefreshing: false,
         refreshErrorMessage: error instanceof Error ? error.message : "Refresh failed."
       };
-      if (recoveredHomebrewInventory) {
-        patch.homebrewItems = preservePreviousHomebrewOutdatedState(
-          preservePreviousHomebrewInventoryMembership(
-            recoveredHomebrewInventory.items,
-            this.state.homebrewItems,
-            recoveredHomebrewInventory.inventoryReadSucceededByKind,
-            this.state.homebrewFormulaIdentityContinuity
-          ),
-          homebrewIdentityReconciliationItems(this.state),
-          recoveredHomebrewInventory.outdatedDetectionSucceededByKind
-        );
-        patch.homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
-          patch.homebrewItems,
-          this.state,
-          recoveredHomebrewInventory.inventoryReadSucceededByKind
-        );
-        patch.lastRefreshNoticeMessage = recoveredHomebrewInventory.warning;
-      }
+      const inventory = recoveredHomebrewInventory ?? {
+        items: [],
+        inventoryReadSucceededByKind: { formula: false, cask: false },
+        outdatedDetectionSucceededByKind: { formula: false, cask: false }
+      };
+      patch.homebrewItems = preservePreviousHomebrewOutdatedState(
+        preservePreviousHomebrewInventoryMembership(
+          inventory.items,
+          this.state.homebrewItems,
+          inventory.inventoryReadSucceededByKind,
+          this.state.homebrewFormulaIdentityContinuity
+        ),
+        homebrewIdentityReconciliationItems(this.state),
+        inventory.outdatedDetectionSucceededByKind
+      );
+      patch.homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
+        patch.homebrewItems,
+        this.state,
+        inventory.inventoryReadSucceededByKind
+      );
+      patch.lastRefreshNoticeMessage = recoveredHomebrewInventory?.warning;
       this.patch(patch);
+      await this.persist();
       void this.processHomebrewUpdateQueue();
     }
   }
@@ -1619,7 +1623,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     const task = this.fetchFreshHomebrewInventory(updateMetadata);
     this.activeHomebrewInventoryTask = { updateMetadata, task };
     try {
-      return await task;
+      const result = await task;
+      if (result.inventoryReadSucceededByKind?.formula === false) {
+        this.invalidateFormulaMembership();
+      }
+      return result;
+    } catch (error) {
+      this.invalidateFormulaMembership();
+      throw error;
     } finally {
       if (this.activeHomebrewInventoryTask?.task === task) {
         this.activeHomebrewInventoryTask = undefined;
@@ -1627,6 +1638,26 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.activeHomebrewInventoryCount = Math.max(0, this.activeHomebrewInventoryCount - 1);
       this.updateHomebrewCommandLockState();
     }
+  }
+
+  private invalidateFormulaMembership(): void {
+    // Revoke execution before releasing the inventory lock, even if another
+    // refresh provider is still pending. Keep saved identity/pins as evidence.
+    const readSucceeded = { formula: false, cask: true };
+    const homebrewItems = preservePreviousHomebrewInventoryMembership(
+      [],
+      this.state.homebrewItems.filter((item) => item.kind === "formula"),
+      readSucceeded
+    );
+    homebrewItems.push(...this.state.homebrewItems.filter((item) => item.kind === "cask"));
+    this.patch({
+      homebrewItems,
+      homebrewFormulaIdentityContinuity: preserveFormulaIdentityContinuity(
+        homebrewItems,
+        this.state,
+        readSucceeded
+      )
+    });
   }
 
   private async fetchFreshHomebrewInventory(
@@ -2446,7 +2477,19 @@ function preservePreviousHomebrewInventoryMembership(
   }
   return [
     ...currentItems.filter((item) => readSucceeded[item.kind]),
-    ...previousItems.filter((item) => !readSucceeded[item.kind])
+    ...previousItems
+      .filter((item) => !readSucceeded[item.kind])
+      .map((item) =>
+        item.kind === "formula"
+          ? {
+              ...item,
+              formulaIdentityVerified: false,
+              isOutdated: false,
+              latestVersion: undefined,
+              releaseDate: undefined
+            }
+          : item
+      )
   ].sort((lhs, rhs) => lhs.kind.localeCompare(rhs.kind) || lhs.name.localeCompare(rhs.name));
 }
 
