@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.3 — 2026-10-09
+
+### Added
+
+- Contributor checks now cover macOS 27 on Apple Silicon. ([#247](https://github.com/arshiaghaf/Baseline/pull/247))
+- Update and install failure details now remain available after refresh or relaunch until retried or dismissed. ([#248](https://github.com/arshiaghaf/Baseline/pull/248))
+
+### Fixed
+
+- Settings and history now save safely during concurrent changes and recover from a valid backup when the primary file is corrupt. ([#245](https://github.com/arshiaghaf/Baseline/pull/245))
+- Sparkle updates now compare marketing versions and builds consistently, avoid false updates from matching build annotations, and retain valid build-only updates after relaunch or temporary lookup failures. ([#245](https://github.com/arshiaghaf/Baseline/pull/245)), ([#252](https://github.com/arshiaghaf/Baseline/pull/252))
+- Failed Homebrew inventory reads no longer remove installed items or their update routes, and install queues recover when saving history fails. ([#245](https://github.com/arshiaghaf/Baseline/pull/245))
+- Updated Electron to fix a macOS launch crash, and isolated contributor smoke tests from the host Keychain. ([#246](https://github.com/arshiaghaf/Baseline/pull/246))
+- Refreshes reuse unchanged icons and cached metadata, cancel obsolete lookups, and keep progress updates responsive. ([#248](https://github.com/arshiaghaf/Baseline/pull/248))
+- Packaged apps now have ad-hoc resource seals and must pass strict recursive signature verification. ([#251](https://github.com/arshiaghaf/Baseline/pull/251))
+
 ## 0.6.2 — 2026-10-04
 
 ### Added
