@@ -64,9 +64,11 @@ describe("Electron download proxy dependencies", () => {
         assert.ok(global.GLOBAL_AGENT);
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'download-proxy-'));
         let captured;
+        let verified = false;
+        process.on('beforeExit', () => assert.ok(verified, 'download probe must settle'));
         https.globalAgent.createConnection = (options, callback) => {
           captured = options.tls;
-          callback(new Error('fixture tunnel stopped'));
+          setImmediate(() => callback(new Error('fixture tunnel stopped')));
         };
         const { GotDownloader } = fromGet('./GotDownloader.js');
         new GotDownloader().download('https://example.test/artifact.zip', path.join(root, 'download'), {
@@ -80,6 +82,7 @@ describe("Electron download proxy dependencies", () => {
           assert.equal(captured.key, 'fixture key');
           assert.equal(captured.servername, 'example.test');
           assert.notEqual(captured.rejectUnauthorized, false);
+          verified = true;
         }).catch(error => { console.error(error); process.exitCode = 1; }).finally(() => {
           fs.rmSync(root, { recursive: true, force: true });
         });
