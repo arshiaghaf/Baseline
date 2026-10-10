@@ -383,29 +383,23 @@ test("routes native tray events with the Dock hidden and protects a running upda
   const application = await launchBaseline({ packaged: true, userData });
   const page = await application.firstWindow();
   await expect(page.locator("h1")).toContainText("All");
-  application.on("console", (message) => console.log(`Native tray diagnostic: ${message.text()}`));
-  await application.evaluate(({ app, BrowserWindow, Tray, dialog, shell }) => {
-    const observeWindow = (window: Electron.BrowserWindow) => {
-      const record = (event: string) =>
-        console.log(JSON.stringify({ event, url: window.webContents.getURL(), time: Date.now() }));
-      window.on("ready-to-show", () => record("ready-to-show"));
-      window.on("show", () => record("show"));
-      window.on("hide", () => record("hide"));
-      window.on("focus", () => record("focus"));
-      window.on("blur", () => record("blur"));
-    };
-    BrowserWindow.getAllWindows().forEach(observeWindow);
-    app.on("browser-window-created", (_event, window) => observeWindow(window));
-    console.log(
-      JSON.stringify({
-        mainWindow: BrowserWindow.getAllWindows().map((window) => ({
-          visible: window.isVisible(),
-          focused: window.isFocused(),
-          url: window.webContents.getURL()
-        })),
-        dockVisible: app.dock?.isVisible()
+  // DOM visibility can precede ready-to-show on slower runners. Wait for
+  // native startup before simulating a user gesture, or startup steals focus.
+  await expect
+    .poll(() =>
+      application.evaluate(({ app, BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows().find((window) =>
+          window.webContents.getURL().endsWith("#/main")
+        );
+        return {
+          mainVisible: window?.isVisible(),
+          mainFocused: window?.isFocused(),
+          dockVisible: app.dock?.isVisible()
+        };
       })
-    );
+    )
+    .toEqual({ mainVisible: true, mainFocused: true, dockVisible: false });
+  await application.evaluate(({ app, Tray, dialog, shell }) => {
     const probe: NativeTrayProbe = { dialogs: [], selfUpdateChecks: 0, command: { commands: [] } };
     (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }).nativeTrayProbe =
       probe;

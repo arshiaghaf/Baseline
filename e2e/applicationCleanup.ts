@@ -25,7 +25,8 @@ async function settledWithin(promise: Promise<unknown>, milliseconds: number) {
   }
 }
 
-// Only applications launched by this test are eligible for the bounded fallback.
+// Callers must own the child and its detached process group, as Playwright's
+// Electron launcher does. Never pass an attached or externally owned process.
 // Always attempt every application, even when one close rejects or stalls.
 export async function cleanupApplications<Application extends OwnedApplication>(
   applications: Iterable<Application>,
@@ -36,12 +37,12 @@ export async function cleanupApplications<Application extends OwnedApplication>(
     [...applications].map(async (application) => {
       const child = application.process();
       const hasExited = () => child.exitCode !== null || child.signalCode !== null;
-      let onExit: (() => void) | undefined;
+      let onClose: (() => void) | undefined;
       const exited = new Promise<void>((resolve) => {
         if (hasExited()) resolve();
         else {
-          onExit = resolve;
-          child.once("exit", onExit);
+          onClose = resolve;
+          child.once("close", onClose);
         }
       });
       try {
@@ -50,13 +51,16 @@ export async function cleanupApplications<Application extends OwnedApplication>(
           await application.close();
         })();
         const result = await settledWithin(closing, timeoutMilliseconds);
-        if (result.status !== "fulfilled" && !hasExited()) child.kill("SIGKILL");
+        if (result.status !== "fulfilled" && !hasExited()) {
+          if (process.platform === "win32") child.kill("SIGKILL");
+          else if (child.pid) process.kill(-child.pid, "SIGKILL");
+        }
         if ((await settledWithin(exited, timeoutMilliseconds)).status === "timeout") {
           throw new Error(`Test-owned application ${child.pid} did not exit; retain its fixtures.`);
         }
         if (result.status === "rejected") throw result.reason;
       } finally {
-        if (onExit) child.removeListener("exit", onExit);
+        if (onClose) child.removeListener("close", onClose);
       }
     })
   );

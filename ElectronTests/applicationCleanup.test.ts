@@ -10,6 +10,14 @@ import { cleanupApplications } from "../e2e/applicationCleanup";
 
 const children = new Set<ChildProcess>();
 
+function killDetachedGroup(child: ChildProcess) {
+  try {
+    process.kill(-child.pid!, "SIGKILL");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+  }
+}
+
 async function startChild() {
   const child = spawn(
     process.execPath,
@@ -17,7 +25,7 @@ async function startChild() {
       "-e",
       "process.on('message', () => process.exit(0)); process.send('ready'); setInterval(() => {}, 1000);"
     ],
-    { stdio: ["ignore", "ignore", "ignore", "ipc"] }
+    { detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] }
   );
   children.add(child);
   await once(child, "message");
@@ -85,4 +93,38 @@ test("reports a close failure after every owned process has exited", async () =>
   ).rejects.toThrow("Test application cleanup failed.");
   expect(failed.signalCode).toBe("SIGKILL");
   expect(healthy.exitCode).toBe(0);
+});
+
+test("a stalled detached application also releases its child processes", async () => {
+  const parent = spawn(
+    process.execPath,
+    [
+      "-e",
+      "const { spawn } = require('node:child_process'); const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' }); process.send(child.pid); setInterval(() => {}, 1000);"
+    ],
+    { detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] }
+  );
+  children.add(parent);
+  const [descendantPID] = await once(parent, "message");
+  try {
+    await cleanupApplications(
+      [{ process: () => parent, close: () => new Promise<void>(() => undefined) }],
+      undefined,
+      100
+    );
+    await expect
+      .poll(() => {
+        try {
+          process.kill(descendantPID, 0);
+          return true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+          throw error;
+        }
+      })
+      .toBe(false);
+  } finally {
+    // Retain cleanup even if a regression kills only the parent.
+    killDetachedGroup(parent);
+  }
 });
