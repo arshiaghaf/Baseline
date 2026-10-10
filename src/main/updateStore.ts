@@ -2496,7 +2496,7 @@ export function preservePreviousHomebrewOutdatedState(
     }
     const previousIdentity = previous && knownPinIdentity(previous);
     if (
-      item.pinned === undefined &&
+      item.pinned !== false &&
       previous?.pinned &&
       previousIdentity &&
       pinIdentityCanContinue(item, previous, previousIdentity, previousItems)

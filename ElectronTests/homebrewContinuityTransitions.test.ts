@@ -107,9 +107,14 @@ async function setup(persisted: PersistedSnapshot, inventory: () => HomebrewMana
   return { store: new UpdateStore(options), options, persistence, runBrewCommand };
 }
 
-it.each(["formula", "cask"] as const)(
-  "preserve known %s pin across identity failure and missing pin on same-identity recovery",
-  async (kind) => {
+it.each([
+  ["formula", undefined],
+  ["cask", undefined],
+  ["formula", true],
+  ["cask", true]
+] as const)(
+  "preserve known %s pin across identity failure and missing pin on same-identity recovery (failure pin %s)",
+  async (kind, failurePin) => {
     const known = formula("utility", [], true);
     const previous =
       kind === "formula"
@@ -126,7 +131,7 @@ it.each(["formula", "cask"] as const)(
       kind === "formula"
         ? missing(previous)
         : { ...missing(previous), fullToken: undefined, tap: undefined };
-    let inventory: HomebrewManagedItem[] = [unverified];
+    let inventory: HomebrewManagedItem[] = [{ ...unverified, pinned: failurePin }];
     const { store, options, persistence, runBrewCommand } = await setup(
       { ...defaultPersistedSnapshot(), homebrewItems: [previous] },
       () => inventory
