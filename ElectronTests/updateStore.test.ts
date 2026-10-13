@@ -34,10 +34,15 @@ import { homebrewCommandToken } from "../src/shared/homebrewIdentity";
 import { trayMenuTemplate } from "../src/main/trayMenu";
 
 let tempDirs: string[] = [];
+const fixtureCleanups: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
-  await Promise.all(tempDirs.map((directory) => rm(directory, { force: true, recursive: true })));
-  tempDirs = [];
+  try {
+    await Promise.all(fixtureCleanups.splice(0).map((cleanup) => cleanup()));
+  } finally {
+    await Promise.all(tempDirs.map((directory) => rm(directory, { force: true, recursive: true })));
+    tempDirs = [];
+  }
 });
 
 function homebrewItem(
@@ -5487,67 +5492,146 @@ describe("update store helpers", () => {
     ]);
   });
 
-  it("keeps the Homebrew command lock through batch maintenance refresh", async () => {
-    const discoverItem = {
-      id: "formula:fd",
-      kind: "formula" as const,
-      token: "fd",
-      displayName: "fd",
-      presentation: "formula" as const,
-      version: version("10.0.0")
-    };
-    const outdatedItem = homebrewItem({
-      id: "formula:ripgrep",
-      token: "ripgrep",
-      name: "ripgrep",
-      kind: "formula",
-      latestVersion: version("14.1.0"),
-      isOutdated: true
-    });
-    const runBrewCommand = vi.fn<
-      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
-    >(async () => ({ success: true, status: 0, output: "" }));
-    const fetchInventory = vi.fn(async () => ({
-      items: [{ ...outdatedItem, installedVersion: version("14.1.0"), isOutdated: false }],
-      outdatedDetectionSucceeded: true,
-      outdatedDetectionSucceededByKind: { formula: true, cask: true }
-    }));
-    const store = await makeVerifiedStore({
-      persisted: {
-        ...defaultPersistedSnapshot(),
-        homebrewItems: [outdatedItem]
-      },
-      clients: {
-        homebrewInventory: { fetchInventory }
-      },
-      runBrewCommand,
-      successRefreshDelayMS: 100
-    });
-
-    vi.useFakeTimers();
-    try {
-      const maintenance = store.performHomebrewUpdateAll();
-
-      await vi.waitFor(() => {
-        expect(store.getSnapshot().homebrewUpdatedPendingRefreshItemIDs).toContain(outdatedItem.id);
+  for (const delayPersistence of [false, true]) {
+    it(`keeps the Homebrew command lock through batch maintenance refresh (delayed persistence: ${delayPersistence})`, async ({
+      signal
+    }) => {
+      // Distinguish the store hold from the runner's 100 ms log-flush timer.
+      const successRefreshDelayMS = 137;
+      const discoverItem = {
+        id: "formula:fd",
+        kind: "formula" as const,
+        token: "fd",
+        displayName: "fd",
+        presentation: "formula" as const,
+        version: version("10.0.0")
+      };
+      const outdatedItem = homebrewItem({
+        id: "formula:ripgrep",
+        token: "ripgrep",
+        name: "ripgrep",
+        kind: "formula",
+        latestVersion: version("14.1.0"),
+        isOutdated: true
       });
-      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+      const runBrewCommand = vi.fn<
+        NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+      >(async () => ({ success: true, status: 0, output: "" }));
+      const fetchInventory = vi.fn(async () => ({
+        items: [{ ...outdatedItem, installedVersion: version("14.1.0"), isOutdated: false }],
+        outdatedDetectionSucceeded: true,
+        outdatedDetectionSucceededByKind: { formula: true, cask: true }
+      }));
+      let persistence!: SnapshotPersistence;
+      let releasePersistence!: () => void;
+      const persistenceGate = new Promise<void>((resolve) => {
+        releasePersistence = resolve;
+      });
+      if (!delayPersistence) releasePersistence();
+      const store = await makeVerifiedStore({
+        persisted: {
+          ...defaultPersistedSnapshot(),
+          homebrewItems: [outdatedItem]
+        },
+        clients: {
+          homebrewInventory: { fetchInventory }
+        },
+        runBrewCommand,
+        successRefreshDelayMS,
+        onPersistence: (value) => {
+          persistence = value;
+        }
+      });
 
-      await store.installHomebrewItem(discoverItem);
-      expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
-        ["update"],
-        ["upgrade", "ripgrep"]
-      ]);
+      const save = persistence.save.bind(persistence);
+      let delayed = false;
+      const saveSpy = vi.spyOn(persistence, "save").mockImplementation(async (snapshot) => {
+        if (
+          !delayed &&
+          snapshot.profileStats.events.some((event) => event.type === "homebrewUpdate")
+        ) {
+          delayed = true;
+          await persistenceGate;
+        }
+        await save(snapshot);
+      });
+      vi.useFakeTimers();
+      let resolveHoldScheduled!: () => void;
+      const holdScheduled = new Promise<void>((resolve) => {
+        resolveHoldScheduled = resolve;
+      });
+      const scheduleTimeout = globalThis.setTimeout;
+      const timerSpy = vi
+        .spyOn(globalThis, "setTimeout")
+        .mockImplementation((callback, delay, ...args) => {
+          const timer = scheduleTimeout(callback, delay, ...args);
+          if (delay === successRefreshDelayMS) resolveHoldScheduled();
+          return timer;
+        });
+      let maintenance: Promise<void> | undefined;
+      let cleanupTask: Promise<void> | undefined;
+      const cleanup = () =>
+        (cleanupTask ??= (async () => {
+          releasePersistence();
+          try {
+            if (maintenance) {
+              await Promise.race([holdScheduled, maintenance]);
+              await vi.runOnlyPendingTimersAsync();
+              await maintenance;
+            }
+          } finally {
+            try {
+              await persistence.load();
+            } finally {
+              timerSpy.mockRestore();
+              vi.useRealTimers();
+              saveSpy.mockRestore();
+            }
+          }
+        })());
+      // afterEach may begin before a timed-out test's finally has finished.
+      fixtureCleanups.push(cleanup);
 
-      await vi.advanceTimersByTimeAsync(100);
-      await maintenance;
+      try {
+        maintenance = store.performHomebrewUpdateAll();
+        void maintenance.catch(() => undefined);
 
-      expect(fetchInventory).toHaveBeenCalledOnce();
-      expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        await observeTestPromise(
+          vi.waitFor(() => {
+            expect(store.getSnapshot().homebrewUpdatedPendingRefreshItemIDs).toContain(
+              outdatedItem.id
+            );
+          }),
+          signal
+        );
+        expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+
+        await store.installHomebrewItem(discoverItem);
+        expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+          ["update"],
+          ["upgrade", "ripgrep"]
+        ]);
+
+        if (delayPersistence) {
+          // Advancing time while the save is held must not release the command lock.
+          await vi.advanceTimersByTimeAsync(successRefreshDelayMS);
+          expect(fetchInventory).not.toHaveBeenCalled();
+          expect(store.getSnapshot().isHomebrewCommandLocked).toBe(true);
+        }
+        releasePersistence();
+        // The pending-refresh marker precedes persistence and does not prove
+        // that the success-hold timer has been registered yet.
+        await observeTestPromise(holdScheduled, signal);
+        await vi.advanceTimersByTimeAsync(successRefreshDelayMS);
+        await observeTestPromise(maintenance, signal);
+
+        expect(fetchInventory).toHaveBeenCalledOnce();
+        expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+      } finally {
+        await cleanup();
+      }
+    });
+  }
 
   it("keeps the Homebrew command lock through cask uninstall refresh", async () => {
     const discoverItem = {
@@ -5841,6 +5925,7 @@ async function makeStore({
   currentAppIdentity,
   successRefreshDelayMS = 0,
   onUserData,
+  onPersistence,
   verifyInitialInventory = false
 }: {
   persisted?: PersistedSnapshot;
@@ -5854,6 +5939,7 @@ async function makeStore({
   currentAppIdentity?: ConstructorParameters<typeof UpdateStore>[0]["currentAppIdentity"];
   successRefreshDelayMS?: ConstructorParameters<typeof UpdateStore>[0]["successRefreshDelayMS"];
   onUserData?: (directory: string) => void;
+  onPersistence?: (persistence: SnapshotPersistence) => void;
   verifyInitialInventory?: boolean;
 } = {}): Promise<UpdateStore> {
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-update-store-"));
@@ -5895,8 +5981,10 @@ async function makeStore({
       storeClients[key] = { ...storeClients[key] } as never;
     }
   }
+  const persistence = new SnapshotPersistence(userData);
+  onPersistence?.(persistence);
   const store = new UpdateStore({
-    persistence: new SnapshotPersistence(userData),
+    persistence,
     persisted,
     openExternalURL,
     openAppBundle,
@@ -6610,3 +6698,17 @@ describe("multi-app installed cask pins", () => {
     }
   );
 });
+
+async function observeTestPromise<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  let cancel!: () => void;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    cancel = () => reject(signal.reason);
+    if (signal.aborted) cancel();
+    else signal.addEventListener("abort", cancel, { once: true });
+  });
+  try {
+    return await Promise.race([promise, aborted]);
+  } finally {
+    signal.removeEventListener("abort", cancel);
+  }
+}
