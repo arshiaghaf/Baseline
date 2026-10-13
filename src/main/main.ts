@@ -10,9 +10,9 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
-  nativeImage,
   screen,
   shell,
+  systemPreferences,
   Tray
 } from "electron";
 import path from "node:path";
@@ -35,6 +35,8 @@ import { SnapshotPersistence } from "./persistence";
 import { calculateTrayWindowPosition } from "./trayWindowPosition";
 import { UpdateStore } from "./updateStore";
 import { trayMenuTemplate } from "./trayMenu";
+import { createTrayIcons } from "./trayIcons";
+import { TrayRefreshAnimation } from "./trayRefreshAnimation";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -43,8 +45,9 @@ let mainWindow: BrowserWindow | undefined;
 let mainWindowRoute: "main" | "settings" | undefined;
 let menuWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
-let trayBaseIcon: Electron.NativeImage | undefined;
-let trayRefreshIcon: Electron.NativeImage | undefined;
+let trayIcons: ReturnType<typeof createTrayIcons> | undefined;
+let trayAnimation: TrayRefreshAnimation | undefined;
+let stopTrayMotionObservation: (() => void) | undefined;
 let store: UpdateStore;
 let isQuitting = false;
 let quitTask: Promise<void> | undefined;
@@ -54,10 +57,6 @@ let lastDockShowTime = -Infinity;
 let dockHideTimer: ReturnType<typeof setTimeout> | undefined;
 let selfUpdateCheckOpen = false;
 let metadata: ReturnType<typeof appMetadata>;
-
-const trayRefreshIconDataURL =
-  "data:image/png;base64," +
-  "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABIklEQVQ4EaWSP2pCQRCHTUidAySkCgErb5DSVBZapfIeOY6FjVYWgeANklIFCYiNSPAMFonf99wF9+3zD+QH3467+2acnZla7Z+6Cv6vwQ6CbWBb8Bj2C+wIvsM+M0NO5B7e4Q/W8BH4wf5CH24hk85j2MAcmnAoM+2AgSaQBdF5C1PowjNU6YFDg5hJoi92ph1ZJbfpxkx8Tj09vnznc8ziTZdrF2QXYieKgxOLWVqHJ7+5cUEvcAexjZ6dUq98aTqmFeeifH92b0EsjAU6Jgsbi6z9LH9oa8zCVlXJ1nZhBrbc1idyOCyOQdpQfo7D5ZA5bDo7fJkMYiY+x0BxlNf8Nm3H3HGPo5/9C3eFrIlZFK3CLkFnJ1XFll/atb1X1boDYBs/6p2bHjwAAAAASUVORK5CYII=";
 
 const isDevelopment = !app.isPackaged;
 
@@ -165,6 +164,7 @@ app.on("before-quit", (event) => {
       }
       if (dockHideTimer) clearTimeout(dockHideTimer);
       isQuitting = true;
+      destroyTray();
       app.quit();
     })
     .catch(() => {
@@ -283,17 +283,32 @@ function createTray(): void {
   if (tray) {
     return;
   }
-  trayBaseIcon = nativeImage.createFromDataURL(
-    "data:image/svg+xml;charset=utf-8," +
-      encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path fill="black" d="M9 1.5a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15Zm0 2.2 4.7 8.1H4.3L9 3.7Z"/></svg>`
-      )
-  );
-  trayBaseIcon.setTemplateImage(true);
-  trayRefreshIcon = nativeImage.createFromDataURL(trayRefreshIconDataURL);
-  trayRefreshIcon.setTemplateImage(true);
-
-  tray = new Tray(trayBaseIcon);
+  trayIcons ??= createTrayIcons();
+  const nativeTray = new Tray(trayIcons.idle);
+  tray = nativeTray;
+  const icons = trayIcons;
+  trayAnimation = new TrayRefreshAnimation((frame) => {
+    if (!nativeTray.isDestroyed()) {
+      nativeTray.setImage(frame === undefined ? icons.idle : icons.refreshing[frame]!);
+    }
+  });
+  const motionChanged = () => {
+    if (!isQuitting) updateExistingTrayStatus(store.getSnapshot());
+  };
+  nativeTheme.on("updated", motionChanged);
+  const motionSubscription =
+    process.platform === "darwin"
+      ? systemPreferences.subscribeWorkspaceNotification(
+          "NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification",
+          motionChanged
+        )
+      : undefined;
+  stopTrayMotionObservation = () => {
+    nativeTheme.removeListener("updated", motionChanged);
+    if (motionSubscription !== undefined) {
+      systemPreferences.unsubscribeWorkspaceNotification(motionSubscription);
+    }
+  };
 
   tray.setToolTip("Baseline");
   tray.on("click", toggleMenuWindow);
@@ -301,6 +316,7 @@ function createTray(): void {
     menuWindow?.hide();
     tray?.popUpContextMenu(createTrayContextMenu());
   });
+  updateExistingTrayStatus(store.getSnapshot());
 }
 
 function createTrayContextMenu(): Menu {
@@ -350,6 +366,10 @@ async function checkForBaselineUpdates(): Promise<void> {
 }
 
 function destroyTray(): void {
+  trayAnimation?.dispose();
+  trayAnimation = undefined;
+  stopTrayMotionObservation?.();
+  stopTrayMotionObservation = undefined;
   menuWindow?.destroy();
   menuWindow = undefined;
   tray?.destroy();
@@ -500,25 +520,23 @@ function syncAppVisibility(snapshot: BaselineSnapshot): void {
 }
 
 function updateTrayStatus(snapshot: BaselineSnapshot): void {
+  if (isQuitting) return;
   if (!snapshot.showMenuBarIcon) {
     destroyTray();
     return;
   }
   createTray();
-  if (!tray) {
-    return;
-  }
-  if (snapshot.isRefreshing) {
-    if (trayRefreshIcon && !trayRefreshIcon.isEmpty()) {
-      tray.setImage(trayRefreshIcon);
-    }
-    tray.setTitle("");
-    return;
-  }
-  if (trayBaseIcon) {
-    tray.setImage(trayBaseIcon);
-  }
-  tray.setTitle(trayUpdateTitle(snapshot));
+  updateExistingTrayStatus(snapshot);
+}
+
+function updateExistingTrayStatus(snapshot: BaselineSnapshot): void {
+  if (!tray || isQuitting) return;
+  const { prefersReducedMotion } = systemPreferences.getAnimationSettings();
+  trayAnimation?.update(snapshot.isRefreshing, prefersReducedMotion);
+  tray.setToolTip(
+    snapshot.isRefreshing ? "Baseline — Checking installed apps for updates…" : "Baseline"
+  );
+  tray.setTitle(snapshot.isRefreshing ? "" : trayUpdateTitle(snapshot));
 }
 
 function trayUpdateTitle(snapshot: BaselineSnapshot): string {

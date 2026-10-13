@@ -28,6 +28,15 @@ type NativeTrayProbe = {
   restoreDockShow?: () => void;
 };
 
+type TrayAnimationProbe = {
+  tray?: Electron.Tray;
+  images: { png: string; size: Electron.Size; scales: number[]; template: boolean }[];
+  tooltip: string;
+  reducedMotion: boolean;
+  releaseFetch?: () => void;
+  accessibilityChanged?: () => void;
+};
+
 test.afterEach(async () => {
   // Finish the foreign full-screen Space before quitting Baseline. Still drain
   // both groups and retain each error if either graceful close fails.
@@ -1202,6 +1211,154 @@ test("shows the installed suite pin for every owned app", async () => {
     await expect(page.getByText("Pinned in Homebrew", { exact: true })).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
   } finally {
+    await closeApp(application);
+  }
+});
+
+test("animates the native tray only during installed-app refresh and honors Reduce Motion", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({ ...defaultPersistedSnapshot(), autoRefreshEnabled: false })
+  );
+  const application = await launchBaseline({ packaged: true, userData });
+  console.log(
+    `Tray fixture PID ${application.process().pid}; executable ${process.env.BASELINE_E2E_EXECUTABLE}`
+  );
+  const page = await application.firstWindow();
+  await expect(page.locator("h1")).toContainText("All");
+  await application.evaluate(({ Tray, systemPreferences }) => {
+    const probe: TrayAnimationProbe = { images: [], tooltip: "", reducedMotion: false };
+    (
+      globalThis as typeof globalThis & { trayAnimationProbe?: TrayAnimationProbe }
+    ).trayAnimationProbe = probe;
+    const setImage = Tray.prototype.setImage;
+    Tray.prototype.setImage = function (image) {
+      probe.tray = this;
+      if (typeof image !== "string") {
+        probe.images.push({
+          png: image.toPNG().toString("base64"),
+          size: image.getSize(),
+          scales: image.getScaleFactors(),
+          template: image.isTemplateImage()
+        });
+      }
+      setImage.call(this, image);
+    };
+    const setToolTip = Tray.prototype.setToolTip;
+    Tray.prototype.setToolTip = function (tooltip) {
+      probe.tray = this;
+      probe.tooltip = tooltip;
+      setToolTip.call(this, tooltip);
+    };
+    const animationSettings = systemPreferences.getAnimationSettings.bind(systemPreferences);
+    systemPreferences.getAnimationSettings = () => ({
+      ...animationSettings(),
+      prefersReducedMotion: probe.reducedMotion
+    });
+    const subscribe = systemPreferences.subscribeWorkspaceNotification.bind(systemPreferences);
+    systemPreferences.subscribeWorkspaceNotification = (name, callback) => {
+      if (name === "NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification") {
+        probe.accessibilityChanged = () => callback(name, {}, "");
+      }
+      return subscribe(name, callback);
+    };
+    const fetchGate = new Promise<void>((resolve) => {
+      probe.releaseFetch = resolve;
+    });
+    globalThis.fetch = async (input) => {
+      if (String(input).endsWith("/cask.json")) {
+        await fetchGate;
+        return new Response("[]", { status: 200 });
+      }
+      if (String(input).endsWith("/formula.json")) return new Response("[]", { status: 200 });
+      return new Response("{}", { status: 404 });
+    };
+  });
+  const probeState = () =>
+    application.evaluate(() => {
+      const probe = (globalThis as typeof globalThis & { trayAnimationProbe?: TrayAnimationProbe })
+        .trayAnimationProbe!;
+      return {
+        images: probe.images,
+        tooltip: probe.tooltip,
+        title: probe.tray && !probe.tray.isDestroyed() ? probe.tray.getTitle() : undefined,
+        destroyed: probe.tray?.isDestroyed()
+      };
+    });
+  try {
+    // Recreate through the existing setting so the real accessibility observer
+    // is captured, without changing any system preferences.
+    await page.evaluate(() => window.baseline.updatePreferences({ showMenuBarIcon: false }));
+    await page.evaluate(() => window.baseline.updatePreferences({ showMenuBarIcon: true }));
+    await page.evaluate(() => {
+      (globalThis as typeof globalThis & { trayRefreshTask?: Promise<void> }).trayRefreshTask =
+        window.baseline.refresh();
+    });
+    await expect
+      .poll(async () => new Set((await probeState()).images.map((image) => image.png)).size)
+      .toBeGreaterThan(3);
+    expect(await probeState()).toMatchObject({
+      tooltip: "Baseline — Checking installed apps for updates…",
+      title: ""
+    });
+    const animated = (await probeState()).images;
+    expect(
+      animated.every(
+        (image) =>
+          image.template &&
+          image.size.width === 18 &&
+          image.size.height === 18 &&
+          image.scales.join(",") === "1,2"
+      )
+    ).toBe(true);
+    await page.evaluate(() => window.baseline.setSelectedTab("apps"));
+
+    await application.evaluate(() => {
+      const probe = (globalThis as typeof globalThis & { trayAnimationProbe?: TrayAnimationProbe })
+        .trayAnimationProbe!;
+      probe.reducedMotion = true;
+      probe.accessibilityChanged!();
+    });
+    const staticState = await probeState();
+    expect(staticState.images.at(-1)?.png).toBe(animated[0]?.png);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect((await probeState()).images).toHaveLength(staticState.images.length);
+
+    // Removing/re-enabling a busy tray cleans the old timer/observer and resumes
+    // with the latest accessibility preference, rather than a stale idle icon.
+    await page.evaluate(() => window.baseline.updatePreferences({ showMenuBarIcon: false }));
+    expect((await probeState()).destroyed).toBe(true);
+    await page.evaluate(() => window.baseline.updatePreferences({ showMenuBarIcon: true }));
+    await application.evaluate(() => {
+      const probe = (globalThis as typeof globalThis & { trayAnimationProbe?: TrayAnimationProbe })
+        .trayAnimationProbe!;
+      probe.reducedMotion = false;
+      probe.accessibilityChanged!();
+    });
+    const resumed = (await probeState()).images.length;
+    await expect.poll(async () => (await probeState()).images.length).toBeGreaterThan(resumed + 2);
+    await application.evaluate(() => {
+      (globalThis as typeof globalThis & { trayAnimationProbe?: TrayAnimationProbe })
+        .trayAnimationProbe!.releaseFetch!();
+    });
+    await page.evaluate(async () => {
+      await (globalThis as typeof globalThis & { trayRefreshTask?: Promise<void> }).trayRefreshTask;
+    });
+    expect(await probeState()).toMatchObject({ tooltip: "Baseline", title: "✓" });
+    const idle = await probeState();
+    expect(idle.images.at(-1)?.png).not.toBe(animated[0]?.png);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect((await probeState()).images).toHaveLength(idle.images.length);
+  } finally {
+    await application.evaluate(() => {
+      (
+        globalThis as typeof globalThis & { trayAnimationProbe?: TrayAnimationProbe }
+      ).trayAnimationProbe?.releaseFetch?.();
+    });
+    await page.evaluate(async () => {
+      await (globalThis as typeof globalThis & { trayRefreshTask?: Promise<void> }).trayRefreshTask;
+    });
     await closeApp(application);
   }
 });

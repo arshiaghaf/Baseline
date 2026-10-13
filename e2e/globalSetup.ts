@@ -86,8 +86,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     const fixtureProvider = path.join(root, "e2e/profileStatsIntegrity.ts");
     const productionCommands = path.join(root, "src/main/commandRunner.ts");
     const fixtureCommands = path.join(root, "e2e/commandRunner.ts");
+    const productionScanner = path.join(root, "src/main/bundleScanner.ts");
+    const fixtureScanner = path.join(root, "e2e/bundleScanner.ts");
     let fixtureIncluded = false;
     let commandFixtureIncluded = false;
+    let scannerFixtureIncluded = false;
     const loaded = await loadConfigFromFile(
       { command: "build", mode: "production" },
       path.join(root, "vite.main.config.mts")
@@ -102,7 +105,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
         resolve: {
           alias: [
             { find: "./profileStatsIntegrity", replacement: fixtureProvider },
-            { find: "./commandRunner", replacement: fixtureCommands }
+            { find: "./commandRunner", replacement: fixtureCommands },
+            { find: "./bundleScanner", replacement: fixtureScanner }
           ],
           conditions: ["node"],
           mainFields: ["module", "jsnext:main", "jsnext"]
@@ -123,6 +127,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
                 throw new Error("The production command runner entered the E2E bundle.");
               }
               commandFixtureIncluded ||= module.id === fixtureCommands;
+              if (module.id === productionScanner) {
+                throw new Error("The production app scanner entered the E2E bundle.");
+              }
+              scannerFixtureIncluded ||= module.id === fixtureScanner;
             }
           }
         ],
@@ -152,6 +160,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     }
     if (!commandFixtureIncluded)
       throw new Error("The E2E build did not inject the test command runner.");
+    if (!scannerFixtureIncluded)
+      throw new Error("The E2E build did not inject the test app scanner.");
     assertIsolatedIntegrityBundle(await readFile(path.join(appDirectory, mainPath), "utf8"));
 
     const testApp = path.join(temporaryDirectory, "Baseline.app");
