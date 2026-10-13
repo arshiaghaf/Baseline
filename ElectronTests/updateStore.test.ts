@@ -5527,6 +5527,10 @@ describe("update store helpers", () => {
       const persistenceGate = new Promise<void>((resolve) => {
         releasePersistence = resolve;
       });
+      let resolvePersistenceStarted!: () => void;
+      const persistenceStarted = new Promise<void>((resolve) => {
+        resolvePersistenceStarted = resolve;
+      });
       if (!delayPersistence) releasePersistence();
       const store = await makeVerifiedStore({
         persisted: {
@@ -5551,6 +5555,7 @@ describe("update store helpers", () => {
           snapshot.profileStats.events.some((event) => event.type === "homebrewUpdate")
         ) {
           delayed = true;
+          resolvePersistenceStarted();
           await persistenceGate;
         }
         await save(snapshot);
@@ -5613,6 +5618,7 @@ describe("update store helpers", () => {
         ]);
 
         if (delayPersistence) {
+          await observeTestPromise(persistenceStarted, signal);
           // Advancing time while the save is held must not release the command lock.
           await vi.advanceTimersByTimeAsync(successRefreshDelayMS);
           expect(fetchInventory).not.toHaveBeenCalled();
