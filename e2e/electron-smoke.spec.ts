@@ -30,7 +30,13 @@ type NativeTrayProbe = {
 
 type TrayAnimationProbe = {
   tray?: Electron.Tray;
-  images: { png: string; size: Electron.Size; scales: number[]; template: boolean }[];
+  images: {
+    png: string;
+    size: Electron.Size;
+    scales: number[];
+    template: boolean;
+    edgeAlpha: number;
+  }[];
   tooltip: string;
   reducedMotion: boolean;
   releaseFetch?: () => void;
@@ -1236,11 +1242,22 @@ test("animates the native tray only during installed-app refresh and honors Redu
     Tray.prototype.setImage = function (image) {
       probe.tray = this;
       if (typeof image !== "string") {
+        const pixels = image.toBitmap({ scaleFactor: 2 });
+        const size = image.getSize().width * 2;
+        let edgeAlpha = 0;
+        for (let offset = 0; offset < size; offset += 1) {
+          edgeAlpha +=
+            pixels[offset * 4 + 3]! +
+            pixels[((size - 1) * size + offset) * 4 + 3]! +
+            pixels[offset * size * 4 + 3]! +
+            pixels[(offset * size + size - 1) * 4 + 3]!;
+        }
         probe.images.push({
           png: image.toPNG().toString("base64"),
           size: image.getSize(),
           scales: image.getScaleFactors(),
-          template: image.isTemplateImage()
+          template: image.isTemplateImage(),
+          edgeAlpha
         });
       }
       setImage.call(this, image);
@@ -1297,7 +1314,7 @@ test("animates the native tray only during installed-app refresh and honors Redu
     });
     await expect
       .poll(async () => new Set((await probeState()).images.map((image) => image.png)).size)
-      .toBeGreaterThan(3);
+      .toBeGreaterThan(10);
     expect(await probeState()).toMatchObject({
       tooltip: "Baseline — Checking installed apps for updates…",
       title: ""
@@ -1307,9 +1324,10 @@ test("animates the native tray only during installed-app refresh and honors Redu
       animated.every(
         (image) =>
           image.template &&
-          image.size.width === 18 &&
-          image.size.height === 18 &&
-          image.scales.join(",") === "1,2"
+          image.size.width === 22 &&
+          image.size.height === 22 &&
+          image.scales.join(",") === "1,2" &&
+          image.edgeAlpha === 0
       )
     ).toBe(true);
     await page.evaluate(() => window.baseline.setSelectedTab("apps"));

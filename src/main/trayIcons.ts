@@ -4,7 +4,8 @@
 import { nativeImage } from "electron";
 import { trayRefreshFrameCount } from "./trayRefreshAnimation";
 
-const iconSize = 18;
+// Leave room for the original 16-point glyph at diagonal angles.
+const iconSize = 22;
 const fullTurn = 2 * Math.PI;
 
 // The existing two circular arrows glyph, kept as the canonical artwork.
@@ -71,6 +72,8 @@ function createIcon(coverageAt: (x: number, y: number) => number): Electron.Nati
 }
 
 function idleCoverage(x: number, y: number): number {
+  x -= (iconSize - 18) / 2;
+  y -= (iconSize - 18) / 2;
   const dx = x - 9;
   const dy = y - 9;
   // Preserve the original 15-point circle and its triangular cutout.
