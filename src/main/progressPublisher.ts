@@ -7,10 +7,12 @@ export class ProgressPublisher {
   private pending?: { revision: number; patch: Partial<SnapshotProgress> };
   private timer?: NodeJS.Timeout;
   private lastRevision = 0;
+  private disposed = false;
 
   constructor(private readonly emit: (event: SnapshotProgressEvent) => void) {}
 
   publish(patch: Partial<SnapshotProgress>, revision: number, terminal: boolean): void {
+    if (this.disposed) return;
     this.pending = { revision, patch: { ...this.pending?.patch, ...patch } };
     if (terminal) {
       this.flush();
@@ -25,13 +27,23 @@ export class ProgressPublisher {
   // A full snapshot already carries the latest progress, so queued deltas
   // must not arrive afterwards and overwrite its terminal state.
   reset(revision: number): void {
+    if (this.disposed) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     this.pending = undefined;
     this.lastRevision = revision;
   }
 
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = undefined;
+    this.pending = undefined;
+  }
+
   private flush(): void {
+    if (this.disposed) return;
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     if (!this.pending) return;
