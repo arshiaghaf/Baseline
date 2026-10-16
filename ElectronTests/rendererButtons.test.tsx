@@ -15,6 +15,7 @@ import {
   SettingsView,
   UpdateActionButton
 } from "../src/renderer/main";
+import { AppUpdateCard, RecentAppCard, IgnoredAppCard } from "../src/renderer/components/ItemViews";
 import type {
   AppRecord,
   BaselineSnapshot,
@@ -224,6 +225,57 @@ describe("renderer button parity", () => {
     );
     expect(screen.queryByText("Waiting for admin password")).not.toBeInTheDocument();
   });
+
+  it.each([
+    ["update card", AppUpdateCard],
+    ["recent card", RecentAppCard],
+    ["ignored card", IgnoredAppCard],
+    ["row", AppRow]
+  ] as const)(
+    "uses selected-cask and uninstall ownership for the %s waiting line",
+    (_label, Component) => {
+      const operation = {
+        id: "1".repeat(32),
+        itemIDs: [cask.id],
+        appIDs: [],
+        phase: "waiting" as const,
+        waitingPromptID: "2".repeat(32)
+      };
+      const state = snapshot({
+        homebrewItems: [{ ...cask, appID: "app:other-bundle" }],
+        homebrewUpdatingItemIDs: [cask.id],
+        homebrewOperation: operation
+      });
+      const { rerender } = render(<Component app={app} snapshot={state} recentlyUpdated={false} />);
+      expect(screen.getByRole("status")).toHaveTextContent("Waiting for admin password");
+      // Removal uses explicit installed ownership even without a Homebrew update.
+      rerender(
+        <Component
+          app={app}
+          snapshot={snapshot({
+            updates: [],
+            homebrewItems: [cask],
+            homebrewUninstallingItemIDs: [cask.id],
+            homebrewOperation: operation
+          })}
+          recentlyUpdated={false}
+        />
+      );
+      expect(screen.getByRole("status")).toHaveTextContent("Waiting for admin password");
+      // A same-token formula is never ownership evidence for the app.
+      rerender(
+        <Component
+          app={app}
+          snapshot={snapshot({
+            homebrewItems: [{ ...cask, id: "formula:example", kind: "formula", appID: undefined }],
+            homebrewOperation: { ...operation, itemIDs: ["formula:example"] }
+          })}
+          recentlyUpdated={false}
+        />
+      );
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    }
+  );
 
   it("shows the password wait for removal even without an update action", () => {
     render(

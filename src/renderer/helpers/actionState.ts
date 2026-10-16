@@ -180,13 +180,21 @@ export function appUpdateActionState(
       queued,
       updating: isUpdating,
       progress,
-      waitingForAdmin: isWaitingForAdmin(snapshot, {
-        appID: app.id,
-        itemID: matchedHomebrewItem?.id
-      }),
+      waitingForAdmin: appIsWaitingForAdmin(app, snapshot),
       done
     })
   };
+}
+
+/** Use the same proven app/cask identity for row status and its action. */
+export function appIsWaitingForAdmin(app: AppRecord, snapshot: BaselineSnapshot): boolean {
+  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
+  const selectedItem = homebrewItemForAppUpdate(update, snapshot.homebrewItems);
+  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  return (
+    isWaitingForAdmin(snapshot, { appID: app.id, itemID: selectedItem?.id }) ||
+    isWaitingForAdmin(snapshot, { itemID: uninstallableItem?.id })
+  );
 }
 
 export function isWaitingForAdmin(

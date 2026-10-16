@@ -15,6 +15,7 @@ import { isCask } from "../../shared/homebrewAppLinking";
 import { ActionConfirmationContext } from "./ActionConfirmation";
 import {
   appControlState,
+  appIsWaitingForAdmin,
   isHomebrewCommandActive,
   actionStateFromFlags,
   homebrewControlState,
@@ -112,7 +113,7 @@ export function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
             app.localVersion.raw || "unknown"
           )}
         </p>
-        <AdminPasswordStatus snapshot={snapshot} appID={app.id} />
+        <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
     </article>
   );
@@ -174,7 +175,7 @@ export function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
             ? updatedRelativeLabel(recentlyUpdatedRecord.updatedAt)
             : "Updated recently"}
         </p>
-        <AdminPasswordStatus snapshot={snapshot} appID={app.id} />
+        <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
     </article>
   );
@@ -243,7 +244,7 @@ export function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: Ba
             app.localVersion.raw || "unknown"
           )}
         </p>
-        <AdminPasswordStatus snapshot={snapshot} appID={app.id} />
+        <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
     </article>
   );
@@ -298,7 +299,7 @@ export function AppRow({
             app.localVersion.raw || "unknown"
           )}
         </p>
-        <AdminPasswordStatus snapshot={snapshot} appID={app.id} />
+        <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
       <div className="row-actions">
         {update && !isHomebrewUpdatePinned && (
@@ -700,13 +701,14 @@ export function HomebrewItemIcon({
 function AdminPasswordStatus({
   snapshot,
   itemID,
-  appID
+  app
 }: {
   snapshot: BaselineSnapshot;
   itemID?: string;
-  appID?: string;
+  app?: AppRecord;
 }) {
-  return isWaitingForAdmin(snapshot, { itemID, appID }) ? (
-    <p role="status">Waiting for admin password</p>
-  ) : null;
+  const waiting = app
+    ? appIsWaitingForAdmin(app, snapshot)
+    : isWaitingForAdmin(snapshot, { itemID });
+  return waiting ? <p role="status">Waiting for admin password</p> : null;
 }
