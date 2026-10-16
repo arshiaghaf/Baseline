@@ -198,6 +198,25 @@ it("contains observer failures through cleanup instead of throwing from socket c
   expect((await coordinator.finish(true)).helperError).toBe(true);
 });
 
+it.each(["cancelled", "error", "command-exit"] as const)(
+  "denies BEGIN when waiting publication synchronously starts %s cleanup",
+  async (reason) => {
+    let cleanup: Promise<void> | undefined;
+    changed.mockImplementation((prompt) => {
+      if (prompt) cleanup = coordinator.prepareCleanup(reason, performance.now() + 1000);
+    });
+    const peer = await client();
+    expect((await peer.send(M.begin)).type).toBe(M.deny);
+    await peer.close();
+    await cleanup;
+    expect(await coordinator.finish(true)).toEqual({
+      cancelled: reason === "cancelled",
+      helperError: reason !== "cancelled",
+      cleanupConfirmed: true
+    });
+  }
+);
+
 it("denies an already-deferred admission after waiting-clear publication fails while still draining completion", async () => {
   const one = await client(),
     two = await client(second);

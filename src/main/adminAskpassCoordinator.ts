@@ -153,10 +153,10 @@ export class AdminAskpassCoordinator {
     } else if (peer.promptID !== frame.promptID)
       throw new Error("Administrator invocation changed.");
     const admission = frame.type === M.hello || frame.type === M.begin;
-    let result = (this.stopped || this.error) && admission ? "deny" : this.lifecycle.receive(frame);
-    // Publishing BEGIN may itself fail. Never ACK admission after an observer
-    // error, even when the command owner has not begun teardown yet.
-    if (result === "ack" && admission && this.error) result = "deny";
+    let result = this.admissionBlocked() && admission ? "deny" : this.lifecycle.receive(frame);
+    // Waiting publication can synchronously cancel or begin command cleanup.
+    // Recheck every admission latch before acknowledging the native dialog.
+    if (admission && this.admissionBlocked()) result = "deny";
     if (result === "defer") {
       peer.deferred = frame;
       return;
@@ -181,6 +181,10 @@ export class AdminAskpassCoordinator {
       if (candidate.deferred) this.receive(candidate, candidate.deferred);
       if (this.lifecycle.waitingPromptID) break;
     }
+  }
+
+  private admissionBlocked(): boolean {
+    return this.stopped || this.error || this.lifecycle.cancelled || this.lifecycle.helperError;
   }
 
   private write(peer: Peer, frame: AskpassFrame): void {
