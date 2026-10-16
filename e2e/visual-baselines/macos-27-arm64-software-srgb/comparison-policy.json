@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "baselineSource": "a3292e0b3a5b0735b681eb5f9568023ecbcb9ac2",
   "captureConfigurationSHA256": "c2a7313f95de6b84e4f55d2088b262dbe91baa182d9df653f9810901f1cb19ed",
-  "comparisonConfigurationSHA256": "3efda886f3fd88e1a85e3d792a5e37293e414396e5ed8cadab412daac9599829",
+  "comparisonConfigurationSHA256": "307014b3e8154357ced3920503fbcc3463d1fc8cd0395174c6d42a68e89c7883",
   "perPixelPerceptualThreshold": 0.01,
   "maxDiffPixels": 0,
   "masks": [],
   "referencePNGCount": 176,
   "originalPNGsRegenerated": false,
-  "reason": "Independent unchanged-source repeat analysis: seven raw disclosure-edge pixels differ by 1\u20133/255 in RGB, unchanged alpha. Installed Playwright comparator accepts this pair at threshold0.008 or above; final threshold0.01 allows only tiny per-pixel rounding with no changed-pixel budget.",
-  "previousComparisonConfigurationSHA256": "1d428e0dda73f749e43a9e7f6251fce04f229f8b05b755ce96e39c6fde81bbfd",
-  "harnessFollowUp": "Explicit separate CI lane and early environment reporting; local sizes, launch flags, fixture, threshold and original PNGs retained."
+  "reason": "Independent unchanged-source repeat analysis: seven raw disclosure-edge pixels differ by 1–3/255 in RGB, unchanged alpha. Installed Playwright comparator accepts this pair at threshold0.008 or above; final threshold0.01 allows only tiny per-pixel rounding with no changed-pixel budget.",
+  "previousComparisonConfigurationSHA256": "3efda886f3fd88e1a85e3d792a5e37293e414396e5ed8cadab412daac9599829",
+  "harnessFollowUp": "User-approved retained local comparisons and ordinary five-lane CI; CI screenshot portability deferred. Temporary CI capture/probe behavior removed; original PNGs, fixture, launch flags and strict comparison policy unchanged."
 }

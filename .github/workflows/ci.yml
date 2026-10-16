@@ -20,8 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Temporary parent-approved PR288 probe; restore all five lanes before acceptance.
-        os: ${{ fromJSON(github.event.pull_request.number == 288 && '["xcode-27"]' || '["xcode-27","macos-26","macos-26-intel","macos-15","macos-15-intel"]') }}
+        os: [xcode-27, macos-26, macos-26-intel, macos-15, macos-15-intel]
 
     steps:
       - name: Check out repository
@@ -73,43 +72,7 @@ jobs:
         run: npm run build
 
       - name: Electron smoke test
-        id: electron-smoke
         run: npm run test:electron
-
-      - name: Electron visual comparison (macOS 27 Apple Silicon)
-        if: matrix.os == 'xcode-27'
-        env:
-          BASELINE_VISUAL_LANE: xcode-27
-        run: npx playwright test --config playwright.visual.config.ts --output test-results/normal-comparison
-
-      # Temporary artifact-only original-source capture; remove before acceptance.
-      # The normal comparison above remains independently red for missing originals.
-      - name: Probe PR 288 original-source toolbar alpha
-        if: always() && matrix.os == 'xcode-27' && github.event.pull_request.number == 288 && steps.electron-smoke.outcome == 'success'
-        env:
-          BASELINE_VISUAL_LANE: xcode-27
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin a3292e0b3a5b0735b681eb5f9568023ecbcb9ac2
-          mkdir -p ci-original-evidence
-          BASELINE_VISUAL_PROBE_PHASE=capture npx playwright test --config playwright.visual.capture.config.ts --grep 'tray-narrow-light-reduce$' --update-snapshots --output test-results/probe-capture 2>&1 | tee ci-original-evidence/capture.log
-          shasum -a 256 ci-original-capture/xcode-27-macos-27-arm64-software-srgb/*.png > ci-original-evidence/original-png-sha256.txt
-          probe_status=0
-          BASELINE_VISUAL_PROBE_PHASE=repeat npx playwright test --config playwright.visual.capture.config.ts --grep 'tray-narrow-light-reduce$' --repeat-each 5 --output test-results/probe-repeats 2>&1 | tee ci-original-evidence/probe-repeats.log || probe_status=$?
-          shasum -a 256 -c ci-original-evidence/original-png-sha256.txt > ci-original-evidence/probe-png-integrity.log
-          exit "$probe_status"
-
-      - name: Retain visual comparison evidence
-        if: always() && matrix.os == 'xcode-27'
-        uses: actions/upload-artifact@v7
-        with:
-          name: electron-visual-results
-          path: |
-            test-results/
-            ci-original-capture/
-            ci-original-evidence/
-            ci-toolbar-probe/
-          retention-days: 7
 
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high

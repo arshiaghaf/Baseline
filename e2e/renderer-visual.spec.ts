@@ -4,7 +4,7 @@
 import { _electron as electron, expect, test } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { BaselineSnapshot, MenuTab } from "../src/shared/domain";
@@ -149,35 +149,17 @@ for (const surface of ["main", "tray"] as const) {
             await page.emulateMedia({ colorScheme: theme, reducedMotion: motion });
             await page.clock.setFixedTime(new Date(visualTime));
             await page.reload();
-            const ciLane = testInfo.config.metadata.visualLane === "xcode-27";
-            const bounds = {
-              ...sizes[surface][size],
-              ...(ciLane && surface === "main"
-                ? { width: size === "wide" ? 1000 : 660, height: 640 }
-                : {})
-            };
+            const bounds = sizes[surface][size];
             const geometry = await application.evaluate(
-              ({ BrowserWindow, screen }, { route, bounds, ciLane }) => {
+              ({ BrowserWindow, screen }, { route, bounds }) => {
                 const window = BrowserWindow.getAllWindows().find((window) =>
                   window.webContents.getURL().endsWith(route)
                 );
                 if (!window) throw new Error(`Missing native window ${route}`);
                 const display = screen.getPrimaryDisplay();
-                // CI's desktop cannot fit the local 760/900-height windows.
-                // Fixed content bounds remain inside its work area; never adapt
-                // a requested viewport to whatever dimensions happen to fit.
-                const requestedContentBounds = ciLane
-                  ? { x: display.workArea.x, y: display.workArea.y + 32, ...bounds }
-                  : undefined;
-                if (requestedContentBounds) {
-                  window.show();
-                  window.setContentBounds(requestedContentBounds);
-                } else {
-                  window.setContentSize(bounds.width, bounds.height);
-                  window.show();
-                }
+                window.setContentSize(bounds.width, bounds.height);
+                window.show();
                 return {
-                  requestedContentBounds,
                   contentBounds: window.getContentBounds(),
                   windowBounds: window.getBounds(),
                   primaryDisplayID: display.id,
@@ -192,7 +174,7 @@ for (const surface of ["main", "tray"] as const) {
                   }))
                 };
               },
-              { route: surface === "main" ? "#/main" : "#/menubar", bounds, ciLane }
+              { route: surface === "main" ? "#/main" : "#/menubar", bounds }
             );
             const renderer = await page.evaluate(async () => {
               await document.fonts.ready;
@@ -248,21 +230,6 @@ for (const surface of ["main", "tray"] as const) {
                 `${JSON.stringify(environment, null, 2)}\n`
               );
             }
-            if (geometry.requestedContentBounds) {
-              const requested = geometry.requestedContentBounds;
-              const area = geometry.primaryWorkArea;
-              expect(requested.x, "CI content left fits work area").toBeGreaterThanOrEqual(area.x);
-              expect(requested.y, "CI content top fits work area").toBeGreaterThanOrEqual(area.y);
-              expect(
-                requested.x + requested.width,
-                "CI content right fits work area"
-              ).toBeLessThanOrEqual(area.x + area.width);
-              expect(
-                requested.y + requested.height,
-                "CI content bottom fits work area"
-              ).toBeLessThanOrEqual(area.y + area.height);
-              expect(geometry.contentBounds).toEqual(geometry.requestedContentBounds);
-            }
             await expect
               .poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight })))
               .toEqual(bounds);
@@ -293,147 +260,7 @@ for (const surface of ["main", "tray"] as const) {
                   requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
                 );
               });
-              // Temporary, one-case CI diagnostic. Keep the assertion first so
-              // frame sampling cannot turn a failing comparison into a pass.
-              const phase = process.env.BASELINE_VISUAL_PROBE_PHASE;
-              if (!phase || name !== "tray-narrow-light-reduce" || state !== "search") {
-                await expect(page).toHaveScreenshot(`${name}-${state}.png`);
-                return;
-              }
-              expect(ciLane).toBe(true);
-              expect(["capture", "repeat"]).toContain(phase);
-              const directory = path.join(
-                process.cwd(),
-                "ci-toolbar-probe",
-                `${phase}-${testInfo.repeatEachIndex}`
-              );
-              await mkdir(directory, { recursive: true });
-              const measure = () =>
-                page.evaluate(() => {
-                  const selectors = [
-                    "html",
-                    "body",
-                    ".app-shell.compact",
-                    ".popover-titlebar",
-                    ".topbar-actions",
-                    ".toolbar-search",
-                    ".toolbar-search-field",
-                    ".toolbar-search input",
-                    'button[title="Settings"]',
-                    'button[title="Settings"] svg',
-                    'button[title="Settings"] svg path'
-                  ];
-                  return {
-                    performanceTime: performance.now(),
-                    dpr: devicePixelRatio,
-                    fonts: document.fonts.status,
-                    activeElement: document.activeElement?.outerHTML,
-                    elements: selectors.map((selector) => {
-                      const element = document.querySelector(selector);
-                      if (!element) return { selector, missing: true };
-                      const style = getComputedStyle(element);
-                      return {
-                        selector,
-                        rect: element.getBoundingClientRect().toJSON(),
-                        style: Object.fromEntries(
-                          [
-                            // Avoid adding utility candidates to Tailwind's
-                            // automatic scan of test files.
-                            "trans" + "form",
-                            "transform-origin",
-                            "opacity",
-                            "color",
-                            "background-color",
-                            "filter",
-                            "backdrop-" + "filter",
-                            "fill",
-                            "stroke",
-                            "stroke-width",
-                            "font-family",
-                            "font-size",
-                            "line-height",
-                            "transition",
-                            "animation",
-                            "will-change"
-                          ].map((property) => [property, style.getPropertyValue(property)])
-                        )
-                      };
-                    }),
-                    animations: document.getAnimations().map((animation) => ({
-                      state: animation.playState,
-                      currentTime: animation.currentTime,
-                      timing: animation.effect?.getComputedTiming()
-                    }))
-                  };
-                });
-              const before = await measure();
-              expect(before.dpr, "Probe preserves native CI DPR1").toBe(1);
-              const assertionStarted = performance.now();
-              let assertionError: unknown;
-              try {
-                await expect(page).toHaveScreenshot(`${name}-${state}.png`);
-              } catch (error) {
-                assertionError = error;
-              }
-              const assertionEnded = performance.now();
-              let samplingError: unknown;
-              try {
-                await writeFile(
-                  path.join(directory, "assertion.json"),
-                  JSON.stringify(
-                    {
-                      screenshot: `${name}-${state}.png`,
-                      before,
-                      after: await measure(),
-                      hostStartMs: assertionStarted,
-                      hostEndMs: assertionEnded,
-                      durationMs: assertionEnded - assertionStarted,
-                      error: assertionError ? String(assertionError) : null
-                    },
-                    null,
-                    2
-                  )
-                );
-                // These are next-rAF-paced samples, not consecutive display
-                // frames: awaiting capture can skip intervening frames.
-                for (let frame = 0; frame < 8; frame++) {
-                  const rafTime = await page.evaluate(
-                    () => new Promise<number>((resolve) => requestAnimationFrame(resolve))
-                  );
-                  const before = await measure();
-                  const started = performance.now();
-                  await page.screenshot({
-                    path: path.join(directory, `frame-${frame}.png`),
-                    animations: "disabled",
-                    caret: "hide",
-                    scale: "css"
-                  });
-                  const ended = performance.now();
-                  await writeFile(
-                    path.join(directory, `frame-${frame}.json`),
-                    JSON.stringify(
-                      {
-                        screenshot: `frame-${frame}.png`,
-                        rafTime,
-                        before,
-                        after: await measure(),
-                        hostStartMs: started,
-                        hostEndMs: ended,
-                        durationMs: ended - started
-                      },
-                      null,
-                      2
-                    )
-                  );
-                }
-              } catch (error) {
-                samplingError = error;
-                console.error("Toolbar probe sampling failed:", error);
-              }
-              // Diagnostic failure must never replace the strict comparison's
-              // original failure, and neither failure is treated as a pass.
-              if (assertionError) throw assertionError;
-              if (samplingError) throw samplingError;
+              await expect(page).toHaveScreenshot(`${name}-${state}.png`);
             };
             const tab = async (selectedTab: MenuTab) => {
               await page.evaluate(

@@ -112,11 +112,7 @@ export default async function visualSetup(config: FullConfig): Promise<() => Pro
             "e2e/renderer-visual.spec.ts",
             "e2e/visualSnapshot.ts",
             "e2e/visualSetup.ts",
-            ".github/workflows/ci.yml",
-            ...(config.configFile &&
-            path.basename(config.configFile) !== "playwright.visual.config.ts"
-              ? [path.basename(config.configFile)]
-              : [])
+            ".github/workflows/ci.yml"
           ].map(async (file) => [file, digest(await readFile(path.join(root, file)))])
         )
       ),

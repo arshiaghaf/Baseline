@@ -26,17 +26,15 @@ const macOS =
         .trim()
         .split(".")[0]
     : "unsupported";
-const lane = process.env.BASELINE_VISUAL_LANE;
-if (lane && lane !== "xcode-27") throw new Error(`Unknown visual lane: ${lane}`);
 const directory = path.join(
   process.cwd(),
   "e2e",
   "visual-baselines",
-  `${lane ? `${lane}-` : ""}macos-${macOS}-${process.arch}-software-srgb`
+  `macos-${macOS}-${process.arch}-software-srgb`
 );
 
 // System fonts and native rasterization belong to a named platform lane.
-// Keep smoke coverage on every CI runner; compare pixels on xcode-27 only.
+// Retain local comparisons; CI screenshot portability is deferred.
 export default defineConfig(base, {
   globalSetup: "./e2e/visualSetup.ts",
   testIgnore: [],
@@ -45,7 +43,7 @@ export default defineConfig(base, {
   timeout: 120_000,
   retries: 0,
   updateSnapshots: "none",
-  metadata: { visualLane: lane ?? "local", visualBaselineDirectory: directory },
+  metadata: { visualLane: "local", visualBaselineDirectory: directory },
   snapshotPathTemplate: `${directory}/{arg}{ext}`,
   expect: {
     toHaveScreenshot: {

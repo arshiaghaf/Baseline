@@ -4,39 +4,35 @@ The source baseline is `a3292e0b3a5b0735b681eb5f9568023ecbcb9ac2`.
 Application source is unchanged in the baseline PR. Keep its committed PNGs
 unchanged throughout the renderer extraction stack.
 
-The authoritative comparison lane is `xcode-27` (macOS 27, Apple Silicon), selected
-with `BASELINE_VISUAL_LANE=xcode-27`. It has its own named snapshot directory;
-the original local captures remain in `macos-27-arm64-software-srgb`.
-Visual launches use `--disable-gpu --force-color-profile=srgb` to make rasterization
-deterministic; default-GPU Electron smoke coverage remains unchanged. This lane
-does not establish production GPU/backdrop rendering equivalence.
+The retained comparison lane is local macOS 27.2 build 26B5112a, Apple Silicon,
+DPR 2, Electron 44.7.0 / Chromium 152.0.7977.130. Its 176 original PNGs are in
+`macos-27-arm64-software-srgb`; the 16 cases use main content viewports 660×760
+and 1280×900, and tray 360×560 and 440×640. Visual launches use
+`--disable-gpu --force-color-profile=srgb`. This software-rendered lane does not
+establish production GPU/backdrop rendering equivalence.
+
+CI screenshot portability is deferred with user approval. Ordinary CI retains all
+five macOS lanes and its existing tests, build and default-GPU Electron smoke
+coverage; it does not run or establish screenshot acceptance. The macOS 27.0.1
+CI image produced stable per-launch differences on partially transparent toolbar
+edges despite unchanged measured layout/styles/animations. Those CI references
+were rejected and are not committed. No rendering experiments or temporary CI
+capture/probe behavior remain.
+
 Comparisons use a 0.01 per-pixel perceptual color threshold and allow zero pixels
-above it. This accounts for observed 1–3/255 channel rounding on a few disclosure
-edges in unchanged-source repeats; it is not an allowed-pixel budget or mask.
-The original local captures use macOS 27.2. The macOS 27.0.1 CI image did not
-match them: its desktop constrained main-window heights and tray pixels differed.
-CI therefore needs separately captured original-source images and unchanged
-repeat comparisons before this baseline unlocks source moves. Other CI runners keep
-their existing Electron smoke coverage. Missing baselines fail; comparison never
-creates or updates expected images. OS, architecture, viewport, native content
-bounds, device scale factor, locale, timezone, fonts and Electron/Chromium runtime
-are recorded alongside the snapshots. `provenance.json` records source, fixture,
-configuration and packaged-renderer hashes. Every visual preflight rebuilds with
-Forge's renderer configuration and verifies the packaged renderer matches it,
-rejecting stale `out/` builds.
-Environment is attached before dimension and pixel assertions, including display
-work areas/scale factors, requested and actual native content/window bounds, and
-renderer DPR. The CI lane requests fixed main content viewports of 660×640 and
-1000×640, versus the retained local 660×760 and 1280×900. Both lanes retain tray
-360×560 and 440×640. CI content origin is primary work-area x and work-area y+32;
-the requested rectangle must fit the work area, and exact content bounds and
-viewport are asserted, with no adaptive sizing.
-The shorter CI main viewport intentionally covers clipping/overflow on that
-desktop; it does not replace the taller local coverage.
-`png-sha256.json` records every retained original PNG's SHA-256.
-`comparison-policy.json` records the final comparison threshold/configuration
-separately from the original capture configuration; the PNGs were not regenerated
-when the color-rounding policy was established.
+above it. This accounts for measured local 1–3/255 channel rounding on a few
+opaque disclosure edges; it is not an allowed-pixel budget or mask. Missing
+baselines fail; comparisons never create or update expected images.
+
+`provenance.json` records original source, fixture, configuration and packaged
+renderer hashes; `png-sha256.json` records every original PNG's SHA-256.
+`comparison-policy.json` records the current comparison configuration separately
+from the original capture configuration. Original PNGs and capture provenance
+remain unchanged. Every visual preflight rebuilds with Forge's renderer
+configuration and verifies every packaged non-map renderer byte matches the
+current checkout, rejecting stale `out/` builds. Per-run environment files are
+saved before dimension/pixel assertions, including display/work area, native
+content/window bounds, viewport/DPR, fonts, locale/timezone and runtime identity.
 
 Run comparisons after building the intended checkout:
 
@@ -65,9 +61,9 @@ npx playwright test --config playwright.visual.config.ts
 ```
 
 Explicit snapshot updates reject tracked or untracked application-source changes
-from the original baseline. Never regenerate baselines from extracted code. A CI
-image that renders differently needs original-source capture and repeat evidence
-on that image before moving source, not an increased pixel tolerance.
+from the original baseline. Never regenerate baselines from extracted code. The retained local
+originals are the visual references for this refactor; ordinary CI acceptance
+does not claim pixel portability to another platform.
 
 The matrix covers actual packaged Electron full-window and native tray popover
 renderer surfaces, two native content widths, light/dark, and normal/reduced
