@@ -1,0 +1,69 @@
+.settings-number-input {
+  width: 68px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid rgba(60, 60, 67, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.86);
+  outline: 0;
+  text-align: right;
+}
+
+.settings-number-input:focus-visible {
+  border-color: rgba(0, 0, 0, 0.72);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.18);
+}
+
+.settings-number-input:disabled {
+  cursor: not-allowed;
+}
+
+.small-button {
+  min-height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.appearance-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.appearance-options button {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: #2c2c2e;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.appearance-options button:not(.selected):hover {
+  border-color: rgba(60, 60, 67, 0.12);
+  background: rgba(60, 60, 67, 0.07);
+}
+
+.appearance-options button.selected {
+  border-color: rgba(60, 60, 67, 0.1);
+  background: rgba(60, 60, 67, 0.08);
+  color: #1c1c1e;
+}
+
+.appearance-options span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

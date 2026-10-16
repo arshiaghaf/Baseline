@@ -1,0 +1,138 @@
+.sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  max-width: var(--sidebar-width);
+  padding: 49px 10px 12px;
+  background: transparent;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 49px;
+  -webkit-app-region: drag;
+}
+
+.source-list {
+  display: grid;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.source-list + .source-list {
+  margin-top: 20px;
+}
+
+.source-list button,
+.sidebar-footer button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #2c2c2e;
+  font-size: 13px;
+  font-weight: 300;
+  text-align: left;
+  transition: none;
+  -webkit-app-region: no-drag;
+}
+
+.source-list button *,
+.sidebar-footer button * {
+  -webkit-app-region: no-drag;
+}
+
+.source-list button > svg,
+.source-list button > span,
+.sidebar-footer button > svg,
+.sidebar-footer button > span {
+  pointer-events: none;
+}
+
+.source-list button.selected,
+.sidebar-footer button.selected {
+  background: rgba(60, 60, 67, 0.12);
+  color: #1c1c1e;
+}
+
+.source-list span,
+.sidebar-footer span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-list strong {
+  min-width: 19px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(60, 60, 67, 0.07);
+  color: #3a3a3c;
+  font-size: 11px;
+  font-weight: 400;
+  text-align: center;
+}
+
+.source-list button.selected strong {
+  background: rgba(60, 60, 67, 0.09);
+  color: #1c1c1e;
+}
+
+@media (hover: hover) {
+  .source-list button:not(.selected):hover,
+  .sidebar-footer button:not(.selected):hover,
+  .back-to-app-button:hover {
+    background: rgba(60, 60, 67, 0.08);
+  }
+}
+
+.sidebar-footer {
+  display: grid;
+  margin-top: auto;
+  -webkit-app-region: no-drag;
+}
+
+.settings-sidebar {
+  gap: 18px;
+}
+
+.settings-sidebar-header {
+  display: grid;
+  -webkit-app-region: no-drag;
+}
+
+.settings-sidebar .source-list button,
+.back-to-app-button {
+  grid-template-columns: 18px minmax(0, 1fr);
+}
+
+.back-to-app-button {
+  display: grid;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #2c2c2e;
+  font-size: 13px;
+  font-weight: 300;
+  text-align: left;
+}
+
+.back-to-app-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

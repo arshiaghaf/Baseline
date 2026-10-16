@@ -1,0 +1,111 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Arshia Ghaf
+ * SPDX-License-Identifier: GPL-3.0-only
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sidebar-width: 196px;
+  --update-accent-rgb: 1, 105, 204;
+
+  color: #0d0d0d;
+  background: transparent;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  font-feature-settings: "kern";
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: default;
+}
+
+button:disabled {
+  opacity: 0.48;
+}
+
+.app-shell {
+  --sidebar-background: rgba(255, 255, 255, 0.5);
+  --scrollbar-thumb: rgba(60, 60, 60, 0.07);
+  --scrollbar-thumb-hover: rgba(60, 60, 60, 0.16);
+  --scrollbar-track: transparent;
+
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--sidebar-background);
+}
+
+.app-content-surface {
+  width: 100vw;
+  height: 100vh;
+}
+
+.app-shell,
+.app-shell * {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  scrollbar-width: thin;
+}
+
+.app-shell::-webkit-scrollbar,
+.app-shell *::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+.app-shell::-webkit-scrollbar-track,
+.app-shell *::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+.app-shell::-webkit-scrollbar-thumb,
+.app-shell *::-webkit-scrollbar-thumb {
+  min-width: 16px;
+  min-height: 16px;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+}
+
+.app-shell::-webkit-scrollbar-thumb:hover,
+.app-shell *::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.app-shell::-webkit-scrollbar-corner,
+.app-shell *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.app-shell.compact {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  padding: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 18px;
+  background: var(--sidebar-background);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+}

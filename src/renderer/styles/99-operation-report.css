@@ -1,0 +1,51 @@
+.operation-output {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+  font:
+    11px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  padding: 10px;
+  border: 1px solid var(--border-color, #8886);
+  border-radius: 6px;
+}
+
+.failure-disclosure-label {
+  float: right;
+  margin-left: 12px;
+}
+.operation-failure-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.operation-failure-actions button {
+  margin-left: 0;
+}
+.operation-report-preview {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .operation-failure[open] .operation-failure-content {
+    animation: failure-details-in 120ms ease-out;
+  }
+}
+@keyframes failure-details-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
