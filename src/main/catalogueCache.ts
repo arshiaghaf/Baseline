@@ -33,7 +33,7 @@ type Entry<T> = {
 export class CatalogueCache<T> {
   private entry?: Entry<T>;
   private task?: Promise<T>;
-  private prepared = false;
+  private preparation?: Promise<void>;
   private retryAfter = 0;
   private lastRequestFailed = false;
   private uncachedResponse?: { checkedAt: number; freshUntil: number; staleUntil: number };
@@ -63,28 +63,25 @@ export class CatalogueCache<T> {
   }
 
   async fetch(options: CatalogueFetchOptions = {}): Promise<T> {
+    // Preparation is shared independently from network work. A cache-only caller
+    // must never make a concurrent forced caller inherit its freshness decision.
+    this.preparation ??= this.prepare();
+    await this.preparation;
     if (this.task) return this.task;
-    // Include preparation in the shared task, so startup callers cannot race a disk load.
-    const task = this.fetchPrepared(options);
+    if (this.retryAfter > Date.now() + retryDelayMS) this.retryAfter = 0;
+    const clockRolledBack = Boolean(this.entry && Date.now() < this.entry.checkedAt);
+    if (!clockRolledBack && !options.force) {
+      if (this.entry && Date.now() < this.entry.freshUntil) return this.entry.value;
+      if (Date.now() < this.retryAfter) return this.lastGood();
+    }
+    // Only actual revalidation (including a necessary disk eviction) coalesces.
+    const task = this.revalidate(clockRolledBack);
     this.task = task;
     try {
       return await task;
     } finally {
       if (this.task === task) this.task = undefined;
     }
-  }
-
-  private async fetchPrepared(options: CatalogueFetchOptions): Promise<T> {
-    await this.prepare();
-    if (this.retryAfter > Date.now() + retryDelayMS) this.retryAfter = 0;
-    if (this.entry && Date.now() < this.entry.checkedAt) {
-      this.entry = undefined;
-      this.retryAfter = 0;
-      await this.persist();
-    }
-    if (!options.force && this.entry && Date.now() < this.entry.freshUntil) return this.entry.value;
-    if (!options.force && Date.now() < this.retryAfter) return this.lastGood();
-    return this.revalidate();
   }
 
   private staleForbidden(): boolean {
@@ -106,8 +103,6 @@ export class CatalogueCache<T> {
   }
 
   private async prepare(): Promise<void> {
-    if (this.prepared) return;
-    this.prepared = true;
     if (!this.storage) return;
     try {
       const data = await this.storage.load(this.maxBytes + maxHeaderBytes);
@@ -198,9 +193,14 @@ export class CatalogueCache<T> {
     }
   }
 
-  private async revalidate(): Promise<T> {
+  private async revalidate(clockRolledBack = false): Promise<T> {
     let response: Response | undefined;
     try {
+      if (clockRolledBack) {
+        this.entry = undefined;
+        this.retryAfter = 0;
+        await this.persist();
+      }
       const headers: Record<string, string> = {};
       if (this.entry?.etag) headers["If-None-Match"] = this.entry.etag;
       if (this.entry?.modified) headers["If-Modified-Since"] = this.entry.modified;
