@@ -221,15 +221,22 @@ for (const surface of ["main", "tray"] as const) {
               runtime: await application.evaluate(() => process.versions),
               gpuFeatureStatus: await application.evaluate(({ app }) => app.getGPUFeatureStatus())
             };
-            await testInfo.attach("render-environment", {
-              body: JSON.stringify(
+            // The list reporter does not persist body-only attachments. Keep
+            // early metadata on disk even when a dimension assertion fails.
+            const environmentPath = testInfo.outputPath("render-environment.json");
+            await writeFile(
+              environmentPath,
+              JSON.stringify(
                 {
                   ...environment,
                   provenance: JSON.parse(process.env.BASELINE_VISUAL_PROVENANCE ?? "null")
                 },
                 null,
                 2
-              ),
+              )
+            );
+            await testInfo.attach("render-environment", {
+              path: environmentPath,
               contentType: "application/json"
             });
             if (testInfo.config.updateSnapshots !== "none") {
