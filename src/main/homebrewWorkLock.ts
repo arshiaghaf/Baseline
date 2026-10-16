@@ -108,10 +108,21 @@ export class HomebrewWorkLock<Inventory> {
     try {
       this.callbacks.onLockStateChange();
     } catch (error) {
+      let failure = error;
+      try {
+        read.invalidateBeforeRelease();
+      } catch (invalidationError) {
+        failure = invalidationError;
+      }
       this.activeInventoryTask = undefined;
       this.inventoryCount -= 1;
-      rejectTask(error);
-      throw error;
+      try {
+        this.callbacks.onLockStateChange();
+      } catch (notificationError) {
+        failure = notificationError;
+      }
+      rejectTask(failure);
+      throw failure;
     }
 
     const run = async () => {

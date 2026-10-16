@@ -130,6 +130,44 @@ describe("Homebrew inventory serialization", () => {
     }
   });
 
+  it("invalidates and republishes an unlocked state when the first lock notification throws", async () => {
+    const published: boolean[] = [];
+    let shouldThrow = true;
+    let lockedDuringInvalidation = false;
+    const start = vi.fn(async () => "fresh");
+    const lock = new HomebrewWorkLock<string>({
+      hasOtherMutation: () => false,
+      onLockStateChange: () => {
+        published.push(lock.isCleanupLocked);
+        if (shouldThrow) {
+          shouldThrow = false;
+          throw new Error("snapshot listener failed");
+        }
+      },
+      onCommandReleased: () => undefined
+    });
+    const read: HomebrewInventoryRead<string> = {
+      updateMetadata: false,
+      allowDuringMutation: false,
+      blocked: () => "blocked",
+      start,
+      reconcileBeforeRelease: () => undefined,
+      invalidateBeforeRelease: () => {
+        lockedDuringInvalidation = lock.isCleanupLocked;
+      }
+    };
+
+    await expect(lock.readInventory(read)).rejects.toThrow("snapshot listener failed");
+    expect(start).not.toHaveBeenCalled();
+    expect(lockedDuringInvalidation).toBe(true);
+    expect(published).toEqual([true, false]);
+    expect(lock.isCleanupLocked).toBe(false);
+
+    expect(await lock.readInventory(read)).toBe("fresh");
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(lock.isCleanupLocked).toBe(false);
+  });
+
   it("releases a failed shared read before a later inventory or command starts", async () => {
     const gate = deferred<string>();
     let lockedDuringInvalidation = false;
