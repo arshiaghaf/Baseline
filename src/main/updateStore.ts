@@ -1050,6 +1050,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async cleanUpHomebrew(confirm: () => Promise<boolean>): Promise<string> {
+    const inventoryRequired = "Refresh installed packages before cleaning up Homebrew.";
+    if (this.homebrewCleanupRequiresInventory) return inventoryRequired;
     this.beginUserMutation();
     if (!this.state.isHomebrewInstalled) return "Homebrew is not available.";
     const release = this.reserveHomebrewCommandLock({ allowRefreshSupersession: true });
@@ -1083,6 +1085,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.patch({ homebrewCleanupMessage: message || undefined });
         if (confirmationRejected) throw confirmationError;
         return message;
+      }
+      if (this.homebrewCleanupRequiresInventory) {
+        this.patch({ homebrewCleanupMessage: inventoryRequired });
+        return inventoryRequired;
       }
       let message: string;
       try {

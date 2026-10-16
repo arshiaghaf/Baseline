@@ -12,6 +12,7 @@ import {
 import { OperationOutputTail } from "./operationOutputTail";
 import { CommandCapture, CommandOutputStream } from "./commandOutput";
 import { terminateCommandGroup } from "./commandProcessGroup";
+import { CommandPreflight, PreflightInterrupted } from "./commandPreflight";
 import {
   createAdminAskpassSession,
   releaseAdminAskpassSession,
@@ -347,75 +348,118 @@ export async function runBrewCommand(
   options: CommandOptions = {}
 ): Promise<CommandResult> {
   if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
-  const executable = await resolvedBrewExecutablePath();
-  // A concurrent command may have failed teardown during executable resolution.
-  if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
-  if (!executable) return missingExecutable("Homebrew");
   const read = homebrewReadCommand(args);
-  const commandOptions: CommandOptions = {
-    collectOutputTail: !read,
-    timeoutMs: read ? commandReadTimeoutMs : 0,
-    capture: read ? "complete" : "tail",
-    ...options,
-    env: homebrewEnvironment(executable, { ...process.env, ...options.env })
+  const preflight = new CommandPreflight(
+    options.timeoutMs ?? (read ? commandReadTimeoutMs : 0),
+    options.signal
+  );
+  let admin: AdminAskpassSession | undefined;
+  let outcome: CommandResult | undefined;
+  const respond = (result: CommandResult) => (outcome = result);
+  const disposeAdmin = async (session: AdminAskpassSession): Promise<boolean> => {
+    let confirmed = false;
+    try {
+      confirmed = (await session.coordinator.finish(true)).cleanupConfirmed;
+    } catch {
+      // Completion/absence evidence remains independent from cancellation.
+    } finally {
+      if (!confirmed) homebrewCleanupUnconfirmed = true;
+      releaseAdminAskpassSession(session);
+    }
+    return confirmed;
   };
-  const configuration = await checkHomebrewConfiguration(executable, commandOptions.env!);
-  if (!configuration.supported || !(await configuration.revalidate())) {
-    return {
+  try {
+    const executable = await preflight.run(resolvedBrewExecutablePath);
+    if (homebrewCleanupUnconfirmed) return respond(quarantinedHomebrew());
+    if (!executable) return respond(missingExecutable("Homebrew"));
+    const commandOptions: CommandOptions = {
+      collectOutputTail: !read,
+      timeoutMs: read ? commandReadTimeoutMs : 0,
+      capture: read ? "complete" : "tail",
+      ...options,
+      env: homebrewEnvironment(executable, { ...process.env, ...options.env })
+    };
+    const configuration = await preflight.run(() =>
+      checkHomebrewConfiguration(executable, commandOptions.env!, preflight.cancellationSignal)
+    );
+    const blocked = (): CommandResult => ({
       success: false,
       status: null,
       output: "",
       stdout: "",
       stderr: "",
       failure: { kind: "configuration-blocked", message: homebrewConfigurationBlockedMessage }
-    };
-  }
-  if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
-  let admin: AdminAskpassSession | undefined;
-  try {
-    admin = await createAdminAskpassSession(args, options.adminOperation);
-  } catch {
-    return {
-      success: false,
-      status: null,
-      output: "",
-      stdout: "",
-      stderr: "",
-      failure: {
-        kind: "admin-helper",
-        message: "The administrator password helper is unavailable."
-      }
-    };
-  }
-  if (admin) commandOptions.env = { ...commandOptions.env, ...admin.environment };
-  try {
-    // Socket setup is asynchronous: revalidate at the actual spawn boundary.
-    if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
-    if (!(await configuration.revalidate()))
-      return {
+    });
+    if (!configuration.supported || !(await preflight.run(configuration.revalidate)))
+      return respond(blocked());
+    if (homebrewCleanupUnconfirmed) return respond(quarantinedHomebrew());
+    const operation = options.adminOperation;
+    try {
+      admin = await preflight.run(
+        () =>
+          createAdminAskpassSession(
+            args,
+            operation && {
+              ...operation,
+              onWaitingChanged: (promptID) => {
+                if (!preflight.cancellationSignal.aborted && !options.signal?.aborted)
+                  operation.onWaitingChanged(promptID);
+              }
+            }
+          ),
+        {
+          dispose: async (session) => {
+            if (session) await disposeAdmin(session);
+          },
+          failed: () => {
+            homebrewCleanupUnconfirmed = true;
+          }
+        }
+      );
+    } catch (error) {
+      if (error instanceof PreflightInterrupted) throw error;
+      return respond({
         success: false,
         status: null,
         output: "",
-        failure: { kind: "configuration-blocked", message: homebrewConfigurationBlockedMessage }
-      };
-    return await executeCommand(
-      executable,
-      args,
-      onOutputLine,
-      commandOptions,
-      () => {
-        homebrewCleanupUnconfirmed = true;
-      },
-      admin
+        stdout: "",
+        stderr: "",
+        failure: {
+          kind: "admin-helper",
+          message: "The administrator password helper is unavailable."
+        }
+      });
+    }
+    if (admin) commandOptions.env = { ...commandOptions.env, ...admin.environment };
+    if (homebrewCleanupUnconfirmed) return respond(quarantinedHomebrew());
+    // Socket setup is asynchronous; the final revalidation shares the budget.
+    if (!(await preflight.run(configuration.revalidate))) return respond(blocked());
+    commandOptions.timeoutMs = preflight.remainingMs();
+    preflight.dispose();
+    return respond(
+      await executeCommand(
+        executable,
+        args,
+        onOutputLine,
+        commandOptions,
+        () => {
+          homebrewCleanupUnconfirmed = true;
+        },
+        admin
+      )
     );
+  } catch (error) {
+    if (error instanceof PreflightInterrupted) return respond(error.result());
+    throw error;
   } finally {
-    if (admin) {
-      try {
-        const evidence = await admin.coordinator.finish(true);
-        if (!evidence.cleanupConfirmed) homebrewCleanupUnconfirmed = true;
-      } finally {
-        releaseAdminAskpassSession(admin);
-      }
+    preflight.dispose();
+    if (admin && !(await disposeAdmin(admin)) && outcome) {
+      outcome.success = false;
+      outcome.failure = {
+        kind: "cleanup",
+        message:
+          "Could not confirm administrator helper cleanup. Restart Baseline after checking running Homebrew processes."
+      };
     }
   }
 }
