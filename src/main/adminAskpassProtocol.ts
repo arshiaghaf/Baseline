@@ -17,7 +17,8 @@ export const AskpassMessage = {
 export type AskpassFrame = { type: number; operationID: string; promptID: string };
 const messages = new Set<number>(Object.values(AskpassMessage));
 const validID = (value: string) => /^[a-f0-9]{32}$/u.test(value) && !/^0+$/u.test(value);
-const validType = (type: number) => messages.has(type) || (type >= 129 && type <= 135);
+const validType = (type: number) =>
+  Number.isInteger(type) && (messages.has(type) || (type >= 129 && type <= 135));
 
 export function encodeAskpassFrame(frame: AskpassFrame): Buffer {
   if (!validType(frame.type) || !validID(frame.operationID) || !validID(frame.promptID))
@@ -48,7 +49,7 @@ export class AskpassFrameReader {
         promptID: bytes.subarray(24, 40).toString("hex")
       };
       if (
-        bytes.subarray(0, 4).toString("ascii") !== "BAP1" ||
+        !bytes.subarray(0, 4).equals(Buffer.from("BAP1", "ascii")) ||
         bytes[4] !== 1 ||
         bytes[6] !== 0 ||
         bytes[7] !== 0 ||

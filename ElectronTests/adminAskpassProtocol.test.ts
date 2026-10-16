@@ -27,3 +27,12 @@ it("rejects oversized and incomplete transport without including bytes in errors
   reader.write(encodeAskpassFrame(frame).subarray(0, 39));
   expect(() => reader.end()).toThrow("Incomplete admin helper status frame.");
 });
+
+it("rejects high-bit magic and fractional message types without normalizing them", () => {
+  const bytes = encodeAskpassFrame(frame);
+  for (let i = 0; i < 4; i++) bytes[i] = bytes[i]! | 128;
+  expect(() => new AskpassFrameReader().write(bytes)).toThrow("Invalid admin helper status frame.");
+  expect(() => encodeAskpassFrame({ ...frame, type: 129.5 })).toThrow(
+    "Invalid admin helper status frame."
+  );
+});
