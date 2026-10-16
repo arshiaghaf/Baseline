@@ -228,6 +228,10 @@ describe("update store helpers", () => {
     expect(store.getSnapshot().profileStats.events).toEqual([]);
     blocked = false;
     await store.refreshToolStatus();
+    const confirmCleanup = vi.fn(async () => true);
+    expect(await store.cleanUpHomebrew(confirmCleanup)).toContain("Refresh");
+    expect(confirmCleanup).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
     await store.performHomebrewUpdate(formula.id);
     expect(run).toHaveBeenCalledTimes(1); // Probe success alone cannot restore authority.
     await store.refresh(false);
