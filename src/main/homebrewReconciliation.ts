@@ -49,7 +49,7 @@ export function homebrewIdentityReconciliationItems(
 
 export function preserveFormulaIdentityContinuity(
   items: HomebrewManagedItem[],
-  snapshot: PersistedSnapshot,
+  snapshot: Pick<PersistedSnapshot, "homebrewItems" | "homebrewFormulaIdentityContinuity">,
   readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"]
 ): HomebrewManagedItem[] | undefined {
   const incomplete =
