@@ -11,3 +11,8 @@ out/
 coverage/
 playwright-report/
 test-results/
+
+# Temporary PR288 telemetry artifacts must not enter Tailwind's source scan.
+ci-toolbar-probe/
+ci-original-capture/
+ci-original-evidence/
