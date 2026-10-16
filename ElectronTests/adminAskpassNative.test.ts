@@ -66,6 +66,8 @@ describe.skipIf(process.platform !== "darwin")(
 
     it.each([
       ["answer", [1, 2, 3, 6], 0],
+      ["delayed-admission", [1, 2, 3, 6], 0],
+      ["admission-peer-loss", [1, 2], 70],
       ["empty", [1, 2, 3, 6], 0],
       ["cancel", [1, 2, 4, 6], 1],
       ["error", [1, 2, 5, 6], 70],
@@ -77,6 +79,7 @@ describe.skipIf(process.platform !== "darwin")(
         const endpoint = path.join(directory, "status.sock");
         const seen: number[] = [];
         const peers = new Set<Socket>();
+        const acknowledgements = new Set<ReturnType<typeof setTimeout>>();
         const server = createServer((peer) => {
           peers.add(peer);
           peer.on("close", () => peers.delete(peer));
@@ -85,9 +88,21 @@ describe.skipIf(process.platform !== "darwin")(
           peer.on("data", (chunk: Buffer) => {
             for (const frame of reader.write(chunk)) {
               seen.push(frame.type);
-              peer.write(encodeAskpassFrame({ ...frame, type: frame.type | 128 }), () => {
-                if (scenario === "peer-loss" && frame.type === 2) peer.destroy();
-              });
+              if (scenario === "admission-peer-loss" && frame.type === 2) {
+                peer.destroy();
+                continue;
+              }
+              const acknowledge = () =>
+                peer.write(encodeAskpassFrame({ ...frame, type: frame.type | 128 }), () => {
+                  if (scenario === "peer-loss" && frame.type === 2) peer.destroy();
+                });
+              if (scenario === "delayed-admission" && frame.type === 2) {
+                const timer = setTimeout(() => {
+                  acknowledgements.delete(timer);
+                  acknowledge();
+                }, 3200);
+                acknowledgements.add(timer);
+              } else acknowledge();
             }
           });
         });
@@ -117,13 +132,17 @@ describe.skipIf(process.platform !== "darwin")(
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           const deadline = new Promise((_, reject) => {
-            timer = setTimeout(() => reject(new Error("Native fixture did not exit.")), 5000);
+            timer = setTimeout(
+              () => reject(new Error("Native fixture did not exit.")),
+              scenario === "delayed-admission" ? 10000 : 5000
+            );
           });
           expect(await Promise.race([closed, deadline])).toBe(exit);
           expect(seen).toEqual(expected);
           expect(Buffer.concat(output)).toHaveLength(0);
         } finally {
           clearTimeout(timer);
+          for (const acknowledgement of acknowledgements) clearTimeout(acknowledgement);
           if (child.exitCode === null) process.kill(-child.pid!, "SIGKILL");
           await closed;
           for (const peer of peers) peer.destroy();
@@ -131,7 +150,7 @@ describe.skipIf(process.platform !== "darwin")(
           await rm(endpoint, { force: true });
         }
       },
-      10_000
+      15_000
     );
   }
 );
