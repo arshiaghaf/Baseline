@@ -71,6 +71,19 @@ afterEach(async () => {
   );
 });
 
+it("retains explicit cancellation when cleanup uncertainty overrides the failure classification", async () => {
+  const controller = new AbortController();
+  control.failCleanup = true;
+  control.source = "setInterval(() => {}, 1000);";
+  control.onSpawn = () => queueMicrotask(() => controller.abort());
+  const { runBrewCommand, homebrewCleanupIsUnconfirmed } =
+    await import("../src/main/commandRunner");
+  const result = await runBrewCommand(["info"], undefined, { signal: controller.signal });
+  expect(result.cancelled).toBe(true);
+  expect(result.failure?.kind).toBe("cleanup");
+  expect(homebrewCleanupIsUnconfirmed()).toBe(true);
+});
+
 it.each(["EPERM", "ETIMEDOUT"])(
   "settles %s cleanup uncertainty with a live child and open pipes",
   async (code) => {

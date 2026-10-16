@@ -7,12 +7,18 @@ It is outside ASAR and built for the package's target architecture before signin
 The dormant lifecycle state machine tracks invocation completion independently
 from cancellation and cleanup evidence. Operation snapshots retain target IDs and
 waiting state through reconciliation, but are excluded from saved snapshots.
-The command runner still does not create a status endpoint or set `SUDO_ASKPASS`.
-An unused coordinator now implements a private operation socket and status-only
+App startup still does not configure the helper. After trusted main-process
+setup, the command runner can create a private operation endpoint and set
+`SUDO_ASKPASS` for a validated explicit cask install, upgrade or uninstall with a
+current operation context. Inherited metadata cannot grant eligibility.
+The coordinator implements a private operation socket and status-only
 admission, ACK, focus and drain handling. It never launches a helper or reads its
 stdout. Prompt cancellation denies further admission immediately while allowing
 the active invocation to complete its handshake within the existing cleanup
 budget. Group-absence evidence remains the command runner's responsibility.
+The runner drains completion before group teardown within its existing cleanup
+budget and retains cancellation independently when cleanup uncertainty requires
+quarantine. Read deadlines and the lack of a default mutation deadline remain.
 Cancellation results already bypass mutation failure rows, banners, timers, and
 saved failure details across update, batch, install and uninstall paths; inventory
 refresh remains inside the command reservation. Cleanup uncertainty keeps its

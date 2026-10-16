@@ -52,6 +52,8 @@ int main(int argc, char **argv) {
   const char *mode = argv[2];
   if (!strcmp(mode, "cached") || !strcmp(mode, "no-sudo")) return 0;
   if (!strcmp(mode, "crash")) return invoke(argv[1], "crash", "", 70) ? 71 : 70;
+  if (!strcmp(mode, "missing-completion")) return invoke(argv[1], "missing-completion", "", 0) ? 71 : 0;
+  if (!strcmp(mode, "hold")) return invoke(argv[1], "peer-loss", "", 70) ? 71 : 70;
   if (!strcmp(mode, "empty")) return invoke(argv[1], "empty", "\n", 0) ? 71 : 1;
   int rounds = !strcmp(mode, "exhaustion") ? 5 : !strcmp(mode, "wrong-then-correct") ? 2 : 1;
   if (!strcmp(mode, "cancel-after-rejection")) rounds = 2;
