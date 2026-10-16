@@ -74,9 +74,9 @@ describe("combined installed-info transport", () => {
     "info --cask --installed --json=v2",
     "list --cask --versions"
   ])("stops after unconfirmed cleanup from %s without further fallback", async (command) => {
-    const cleanup: CommandResult & { failure: { kind: string } } = {
+    const cleanup: CommandResult & { failure: { kind: "cleanup"; message: string } } = {
       ...failed,
-      failure: { kind: "cleanup" }
+      failure: { kind: "cleanup", message: "Fixture descendant cleanup could not be confirmed." }
     };
     const isFallback = command.includes("info --formula") || command.includes("info --cask");
     const source = transport({
