@@ -204,12 +204,11 @@ export class CatalogueCache<T> {
       const headers: Record<string, string> = {};
       if (this.entry?.etag) headers["If-None-Match"] = this.entry.etag;
       if (this.entry?.modified) headers["If-Modified-Since"] = this.entry.modified;
-      const signal = AbortSignal.timeout(12000);
-      response = await fetch(this.url, { headers, signal });
+      response = await fetch(this.url, { headers, signal: AbortSignal.timeout(12000) });
       // Recover from a server/proxy 304 when no validated body survived startup.
       if (response.status === 304 && !this.entry) {
         await response.body?.cancel();
-        response = await fetch(this.url, { headers: {}, signal });
+        response = await fetch(this.url, { headers: {}, signal: AbortSignal.timeout(12000) });
       }
       if (response.status !== 304 && !response.ok) {
         await response.body?.cancel();

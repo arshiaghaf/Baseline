@@ -175,52 +175,58 @@ describe("catalogue relevance across kinds", () => {
   });
 });
 
-it("keeps healthy installed formula/cask evidence with large or deep optional cask metadata", async () => {
-  let nested: unknown = "optional";
-  for (let depth = 0; depth < 100; depth++) nested = { child: nested };
-  const result = (output: unknown) => ({
-    success: true,
-    status: 0,
-    output: typeof output === "string" ? output : JSON.stringify(output)
-  });
-  const formulae = [
-    { name: "tool", full_name: "tool", tap: "homebrew/core", installed: [{ version: "1.0" }] }
-  ];
-  const casks = [
-    {
-      token: "desktop",
-      full_token: "desktop",
-      tap: "homebrew/cask",
-      version: "2.0",
-      installed: "1.0",
-      caveats: "x".repeat(256 * 1024 + 1),
-      optional: nested,
-      artifacts: [{ app: ["Desktop.app"] }]
-    }
-  ];
-  const fixtures: Record<string, ReturnType<typeof result>> = {
-    "list --formula --versions": result("tool 1.0\n"),
-    "list --cask --versions": result("desktop 1.0\n"),
-    "outdated --formula --json=v2": result({
-      formulae: [{ name: "tool", current_version: "2.0" }]
-    }),
-    "outdated --cask --greedy --json=v2": result({
-      casks: [{ token: "desktop", current_version: "2.0" }]
-    }),
-    "info --installed --json=v2": result({ formulae, casks }),
-    "info --formula --installed --json=v2": result({ formulae }),
-    "info --cask --installed --json=v2": result({ casks })
-  };
-  vi.mocked(runBrewCommand).mockImplementation(async (args) => {
-    const fixture = fixtures[args.join(" ")];
-    if (!fixture) throw new Error(`Unexpected fake command: ${args.join(" ")}`);
-    return fixture;
-  });
-  const inventory = await new HomebrewInventoryClient().fetchInventory();
-  expect(inventory.items.map(({ token, isOutdated }) => ({ token, isOutdated }))).toEqual([
-    { token: "desktop", isOutdated: true },
-    { token: "tool", isOutdated: true }
-  ]);
-  expect(inventory.outdatedDetectionSucceededByKind).toEqual({ formula: true, cask: true });
-  expect(inventory.warning).toBeUndefined();
-});
+it.each(["deep", "wide"])(
+  "keeps healthy installed formula/cask evidence with %s optional cask metadata",
+  async (kind) => {
+    let nested: unknown = "optional";
+    for (let depth = 0; depth < 100; depth++) nested = { child: nested };
+    const result = (output: unknown) => ({
+      success: true,
+      status: 0,
+      output: typeof output === "string" ? output : JSON.stringify(output)
+    });
+    const formulae = [
+      { name: "tool", full_name: "tool", tap: "homebrew/core", installed: [{ version: "1.0" }] }
+    ];
+    const casks = [
+      {
+        token: "desktop",
+        full_token: "desktop",
+        tap: "homebrew/cask",
+        version: "2.0",
+        installed: "1.0",
+        caveats: "x".repeat(256 * 1024 + 1),
+        optional: kind === "wide" ? Array.from({ length: 300_000 }, () => null) : nested,
+        artifacts: [{ app: ["Desktop.app"] }]
+      }
+    ];
+    const fixtures: Record<string, ReturnType<typeof result>> = {
+      "list --formula --versions": result("tool 1.0\n"),
+      "list --cask --versions": result("desktop 1.0\n"),
+      "outdated --formula --json=v2": result({
+        formulae: [{ name: "tool", current_version: "2.0" }]
+      }),
+      "outdated --cask --greedy --json=v2": result({
+        casks: [{ token: "desktop", current_version: "2.0" }]
+      }),
+      "info --installed --json=v2": result({ formulae, casks }),
+      "info --formula --installed --json=v2": result({ formulae }),
+      "info --cask --installed --json=v2": result({ casks })
+    };
+    vi.mocked(runBrewCommand).mockImplementation(async (args) => {
+      const fixture = fixtures[args.join(" ")];
+      if (!fixture) throw new Error(`Unexpected fake command: ${args.join(" ")}`);
+      return fixture;
+    });
+    const inventory = await new HomebrewInventoryClient().fetchInventory();
+    expect(inventory.items.map(({ token, isOutdated }) => ({ token, isOutdated }))).toEqual([
+      { token: "desktop", isOutdated: true },
+      { token: "tool", isOutdated: true }
+    ]);
+    expect(
+      inventory.items.find(({ token }) => token === "desktop")?.caskMetadata?.appBundleNames
+    ).toEqual(["desktop.app"]);
+    expect(inventory.outdatedDetectionSucceededByKind).toEqual({ formula: true, cask: true });
+    expect(inventory.warning).toBeUndefined();
+  }
+);
