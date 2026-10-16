@@ -8,7 +8,8 @@ int main(void) {
   const char *scenario = getenv("HOMEBREW_BASELINE_FIXTURE_CASE");
   if (!strcmp(scenario, "delivery-error")) return 0;
   const char *expected = !strcmp(scenario, "empty") ? "\n" :
-    (!strcmp(scenario, "cancel") || !strcmp(scenario, "error") || !strcmp(scenario, "peer-loss")) ?
+    (!strcmp(scenario, "cancel") || !strcmp(scenario, "error") || !strcmp(scenario, "peer-loss") ||
+     !strcmp(scenario, "admission-peer-loss")) ?
     "" : "fixture-native-answer\n";
   size_t at = 0, count = strlen(expected);
   char buffer[64];
