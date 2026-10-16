@@ -10,15 +10,37 @@
 
 ## Install
 
-### GitHub Releases
-
-Download: <https://github.com/arshiaghaf/Baseline/releases>
-
 ### Homebrew
 
 ```bash
 brew install --cask arshiaghaf/tap/baseline
 ```
+
+### First launch on macOS 15 and later
+
+Baseline is ad-hoc signed, without Developer ID or notarization. macOS Gatekeeper may block the first launch after either a Homebrew or DMG install.
+
+If you trust your official Baseline download:
+
+1. Try opening Baseline from Applications. If macOS blocks it, dismiss the alert.
+2. Open **System Settings > Privacy & Security**, scroll to **Security**, and click **Open Anyway** for Baseline.
+3. Confirm the warning by clicking **Open**. Authenticate if macOS asks, then open Baseline again if needed.
+
+![Apple's macOS Sequoia screenshot showing Privacy & Security and the Open Anyway button for Example App](docs/images/macos-sequoia-open-anyway.png)
+
+Apple's macOS Sequoia (macOS 15) example above shows “Example App”; it is not a Baseline dialog. [Screenshot source](https://cdsassets.apple.com/live/7WUAS350/images/macos/sequoia/macos-sequoia-system-settings-privacy-and-security-open-app-anyway.png) and [Apple's guidance on safely opening apps](https://support.apple.com/en-us/102445).
+
+Alternatively, after installing Baseline in `/Applications`, you can run this in Terminal **only for a trusted official download**:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Baseline.app
+```
+
+This removes quarantine from the app and its contents; it does not verify the app's safety. Try opening Baseline again afterward.
+
+### GitHub Releases (DMG)
+
+Download the DMG from [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases), open it, and drag Baseline into Applications. Then follow the first-launch steps above.
 
 ## Baseline
 
@@ -59,7 +81,7 @@ When the required local tooling is available, Baseline can run update and instal
 - Update detection is best-effort and depends on public update sources exposed by installed apps, Apple lookup endpoints, and Homebrew metadata.
 - Homebrew actions require Homebrew to be installed. Without it, Baseline opens external Homebrew or app pages instead.
 - App Store update actions use optional local `mas` support when available. Without `mas`, Baseline opens the App Store page externally.
-- Packaged releases are not signed or notarized yet, so macOS Gatekeeper may warn when opening them.
+- Packaged releases are ad-hoc signed, without Developer ID or notarization, so macOS Gatekeeper may warn when opening them. See [First launch on macOS 15 and later](#first-launch-on-macos-15-and-later).
 
 ## Privacy and Security
 
