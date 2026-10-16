@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import packageJSON from "./package.json";
 import { buildNumberForAppVersion, validBuildNumber } from "./src/shared/buildNumber";
 import { localAdHocSigningOptions, verifyPackagedMacSignatures } from "./macSigning.config";
+import { packageAdminAskpass } from "./adminAskpass.config";
 
 function macOSMajorVersion(): number | undefined {
   if (process.platform !== "darwin") {
@@ -47,6 +48,7 @@ const config: ForgeConfig = {
     }
   },
   hooks: {
+    packageAfterCopy: packageAdminAskpass,
     postPackage: verifyPackagedMacSignatures
   },
   rebuildConfig: {},

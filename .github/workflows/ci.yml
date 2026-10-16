@@ -49,6 +49,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare Electron runtime before parallel tests
+        run: node -e 'require("electron")'
+
       - name: Lint shell scripts
         run: |
           bash -n scripts/create-unsigned-dmg.sh

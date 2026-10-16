@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare Electron runtime before parallel tests
+        run: node -e 'require("electron")'
+
       - name: Derive version from tag
         id: version
         run: |
