@@ -6,6 +6,7 @@ import { runBrewCommand, runMasCommand, type CommandResult } from "./commandRunn
 export type ToolStatusPatch = {
   isChecking?: boolean;
   isHomebrewInstalled?: boolean;
+  homebrewConfigurationBlocked?: boolean;
   isMasInstalled?: boolean;
 };
 
@@ -93,7 +94,10 @@ export class ToolStatusService {
     try {
       if (brewResult.status === "fulfilled" && brewResult.value) {
         this.options.markHomebrewAvailabilityChecked();
-        status.isHomebrewInstalled = brewResult.value.success;
+        status.homebrewConfigurationBlocked =
+          brewResult.value.failure?.kind === "configuration-blocked";
+        status.isHomebrewInstalled =
+          status.homebrewConfigurationBlocked || brewResult.value.success;
       }
       if (masResult.status === "fulfilled") {
         status.isMasInstalled = masResult.value.success;

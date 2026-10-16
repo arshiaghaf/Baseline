@@ -112,6 +112,35 @@ const discoveryItem = {
 };
 
 describe("tool readiness lifecycle", () => {
+  it("distinguishes configuration refusal from executable absence and permits a later probe", async () => {
+    let blocked = true;
+    const h = statusHarness(
+      async () =>
+        blocked
+          ? {
+              success: false,
+              status: null,
+              output: "",
+              failure: { kind: "configuration-blocked", message: "fixture" }
+            }
+          : available,
+      async () => available
+    );
+    await h.service.check();
+    expect(h.state).toMatchObject({
+      isChecking: false,
+      isHomebrewInstalled: true,
+      homebrewConfigurationBlocked: true
+    });
+    blocked = false;
+    await h.service.check();
+    expect(h.state).toMatchObject({
+      isHomebrewInstalled: true,
+      homebrewConfigurationBlocked: false
+    });
+    expect(h.release).toHaveBeenCalledTimes(2);
+  });
+
   it("releases brew independently and keeps the successful mas result after brew rejects", async () => {
     const brew = deferred<CommandResult>();
     const mas = deferred<CommandResult>();
@@ -167,6 +196,7 @@ describe("tool readiness lifecycle", () => {
       expect(h.state).toEqual({
         isChecking: false,
         isHomebrewInstalled: true,
+        homebrewConfigurationBlocked: false,
         isMasInstalled: false
       });
       expect(h.markHomebrewAvailabilityChecked).toHaveBeenCalledOnce();
