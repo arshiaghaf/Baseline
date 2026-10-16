@@ -8,6 +8,10 @@ export type E2ECommandControl = { finish?: () => void; commands: string[][] };
 export function homebrewCleanupIsUnconfirmed(): boolean {
   return false;
 }
+
+export function commandWasCancelled(result: CommandResult): boolean {
+  return result.cancelled === true || result.failure?.kind === "cancelled";
+}
 const failedCommand: CommandResult = {
   success: false,
   status: 1,
