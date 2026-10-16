@@ -183,6 +183,21 @@ it("keeps healthy installed formula/cask evidence with large or deep optional ca
     status: 0,
     output: typeof output === "string" ? output : JSON.stringify(output)
   });
+  const formulae = [
+    { name: "tool", full_name: "tool", tap: "homebrew/core", installed: [{ version: "1.0" }] }
+  ];
+  const casks = [
+    {
+      token: "desktop",
+      full_token: "desktop",
+      tap: "homebrew/cask",
+      version: "2.0",
+      installed: "1.0",
+      caveats: "x".repeat(256 * 1024 + 1),
+      optional: nested,
+      artifacts: [{ app: ["Desktop.app"] }]
+    }
+  ];
   const fixtures: Record<string, ReturnType<typeof result>> = {
     "list --formula --versions": result("tool 1.0\n"),
     "list --cask --versions": result("desktop 1.0\n"),
@@ -192,29 +207,13 @@ it("keeps healthy installed formula/cask evidence with large or deep optional ca
     "outdated --cask --greedy --json=v2": result({
       casks: [{ token: "desktop", current_version: "2.0" }]
     }),
-    "info --formula --installed --json=v2": result({
-      formulae: [
-        { name: "tool", full_name: "tool", tap: "homebrew/core", installed: [{ version: "1.0" }] }
-      ]
-    }),
-    "info --cask --installed --json=v2": result({
-      casks: [
-        {
-          token: "desktop",
-          full_token: "desktop",
-          tap: "homebrew/cask",
-          version: "2.0",
-          installed: "1.0",
-          caveats: "x".repeat(256 * 1024 + 1),
-          optional: nested,
-          artifacts: [{ app: ["Desktop.app"] }]
-        }
-      ]
-    })
+    "info --installed --json=v2": result({ formulae, casks }),
+    "info --formula --installed --json=v2": result({ formulae }),
+    "info --cask --installed --json=v2": result({ casks })
   };
   vi.mocked(runBrewCommand).mockImplementation(async (args) => {
     const fixture = fixtures[args.join(" ")];
-    if (!fixture) throw new Error("Unexpected fake command");
+    if (!fixture) throw new Error(`Unexpected fake command: ${args.join(" ")}`);
     return fixture;
   });
   const inventory = await new HomebrewInventoryClient().fetchInventory();
