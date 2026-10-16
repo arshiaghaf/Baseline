@@ -12,17 +12,41 @@ import { emptyHomebrewCaskIndex, homebrewDiscoverID } from "../shared/domain";
 import { byteLimits, isValidHomebrewToken, sanitizeExternalURL } from "../shared/security";
 import { compareVersions, isVersionGreater, type VersionValue, version } from "../shared/version";
 import { CatalogueCache, type CatalogueFetchOptions } from "./catalogueCache";
+import {
+  catalogueEntryIsBounded,
+  decodeCatalogue,
+  decodeStatus,
+  requireUsableCatalogue,
+  type CatalogueDecodeStatus
+} from "./catalogueDecode";
+import {
+  compactCatalogueText,
+  catalogueSearchRank,
+  rankedCatalogueItem,
+  type CatalogueSearchTerms
+} from "./catalogueSearch";
+import type { CatalogueStorage } from "./catalogueStorage";
 
 export class HomebrewCaskClient {
-  private readonly cache = new CatalogueCache(
-    "https://formulae.brew.sh/api/cask.json",
-    emptyHomebrewCaskIndex,
-    byteLimits.homebrewCaskIndexMaxBytes,
-    (data) => this.parseIndex(data)
-  );
+  private decoded?: CatalogueDecodeStatus;
+  private readonly searchIndexes = new WeakMap<
+    HomebrewCaskIndex,
+    Array<{ entry: HomebrewCaskEntry; terms: CatalogueSearchTerms }>
+  >();
+  private readonly cache: CatalogueCache<HomebrewCaskIndex>;
+
+  constructor(options: { storage?: CatalogueStorage } = {}) {
+    this.cache = new CatalogueCache(
+      "https://formulae.brew.sh/api/cask.json",
+      emptyHomebrewCaskIndex,
+      byteLimits.homebrewCaskIndexMaxBytes,
+      (data) => this.parseIndex(data, { strictCatalogue: true }),
+      options.storage
+    );
+  }
 
   get cacheStatus() {
-    return this.cache.status;
+    return { ...this.cache.status, ...(this.decoded ? { decode: this.decoded } : {}) };
   }
 
   fetchIndex(options: CatalogueFetchOptions = {}): Promise<HomebrewCaskIndex> {
@@ -64,45 +88,83 @@ export class HomebrewCaskClient {
     index: HomebrewCaskIndex,
     excludingTokens: Set<string>
   ): HomebrewCaskDiscoveryItem[] {
-    const compactQuery = compactSearchText(query);
+    const compactQuery = compactCatalogueText(query);
     if (!compactQuery) {
       return [];
     }
 
-    return deduplicatedEntries(index)
-      .filter((entry) => !excludingTokens.has(entry.token.toLowerCase()))
-      .map((entry) => ({ entry, rank: searchRank(entry, compactQuery) }))
+    let entries = this.searchIndexes.get(index);
+    if (!entries) {
+      entries = deduplicatedEntries(index).map((entry) => ({
+        entry,
+        terms: {
+          token: compactCatalogueText(entry.token),
+          names: [
+            displayName(entry),
+            ...entry.appBundleNames.map((name) => name.replace(/\.app$/iu, ""))
+          ].map(compactCatalogueText)
+        }
+      }));
+      this.searchIndexes.set(index, entries);
+    }
+    return entries
+      .filter(({ entry }) => !excludingTokens.has(entry.token.toLowerCase()))
+      .map(({ entry, terms }) => ({ entry, rank: catalogueSearchRank(terms, compactQuery) }))
       .filter(({ rank }) => rank >= 0)
       .sort((lhs, rhs) => lhs.rank - rhs.rank || compareEntries(lhs.entry, rhs.entry))
       .slice(0, 12)
-      .map(({ entry }) => ({
-        id: homebrewDiscoverID("cask", entry.token),
-        kind: "cask",
-        token: entry.token,
-        displayName: displayName(entry),
-        presentation: entry.presentation,
-        version: entry.version,
-        homepageURL:
-          sanitizeExternalURL(`https://formulae.brew.sh/cask/${entry.token}`) ?? entry.homepageURL
-      }));
+      .map(({ entry, rank }) =>
+        rankedCatalogueItem(
+          {
+            id: homebrewDiscoverID("cask", entry.token),
+            kind: "cask",
+            token: entry.token,
+            displayName: displayName(entry),
+            presentation: entry.presentation,
+            version: entry.version,
+            homepageURL:
+              sanitizeExternalURL(`https://formulae.brew.sh/cask/${entry.token}`) ??
+              entry.homepageURL
+          },
+          compactQuery,
+          rank
+        )
+      );
   }
 
-  parseIndex(data: Buffer): HomebrewCaskIndex {
+  // Installed metadata also uses this mapper. Strict catalogue admission must not
+  // reject a healthy inventory kind because of unrelated optional installed fields.
+  parseIndex(data: Buffer, options: { strictCatalogue?: boolean } = {}): HomebrewCaskIndex {
     if (data.byteLength > byteLimits.homebrewCaskIndexMaxBytes) {
       return emptyHomebrewCaskIndex;
     }
 
-    const raw = JSON.parse(data.toString("utf8")) as any[];
-    if (!Array.isArray(raw)) throw new Error("Invalid cask catalogue");
-    const byToken: Record<string, HomebrewCaskEntry> = {};
-    const byBundleIdentifier: Record<string, HomebrewCaskEntry> = {};
-    const byAppBundleName: Record<string, HomebrewCaskEntry[]> = {};
+    const raw = decodeCatalogue(data);
+    const status = decodeStatus(raw.length);
+    const byToken: Record<string, HomebrewCaskEntry> = Object.create(null);
+    const byBundleIdentifier: Record<string, HomebrewCaskEntry> = Object.create(null);
+    const byAppBundleName: Record<string, HomebrewCaskEntry[]> = Object.create(null);
 
-    for (const item of raw) {
-      const token = item?.token;
-      if (typeof token !== "string" || !isValidHomebrewToken(token)) {
+    for (const rawItem of raw) {
+      const item = rawItem as any;
+      if (
+        !item ||
+        typeof item !== "object" ||
+        Array.isArray(item) ||
+        (options.strictCatalogue && !catalogueEntryIsBounded(item)) ||
+        typeof item.token !== "string" ||
+        !isValidHomebrewToken(item.token)
+      ) {
+        status.skippedEntries++;
         continue;
       }
+      const token = item.token;
+      if (
+        (item.version !== undefined && typeof item.version !== "string") ||
+        (item.artifacts !== undefined && !Array.isArray(item.artifacts)) ||
+        (item.homepage !== undefined && item.homepage !== null && typeof item.homepage !== "string")
+      )
+        status.schemaWarnings++;
 
       const entry: HomebrewCaskEntry = {
         token,
@@ -134,6 +196,8 @@ export class HomebrewCaskClient {
       byAppBundleName[key] = [...deduped.values()].sort(compareEntries);
     }
 
+    if (options.strictCatalogue) requireUsableCatalogue(status);
+    this.decoded = status;
     return { byToken, byBundleIdentifier, byAppBundleName };
   }
 
@@ -243,14 +307,16 @@ function extractAppBundleNames(object: any): string[] {
 }
 
 function walk(value: any, visitor: (key: string, value: any) => void): void {
-  if (Array.isArray(value)) {
-    value.forEach((entry) => walk(entry, visitor));
-    return;
-  }
-  if (value && typeof value === "object") {
-    for (const [key, child] of Object.entries(value)) {
-      visitor(key, child);
-      walk(child, visitor);
+  const pending = [value];
+  let visited = 0;
+  while (pending.length && ++visited <= 20_000) {
+    const current = pending.pop();
+    if (Array.isArray(current)) pending.push(...current);
+    else if (current && typeof current === "object") {
+      for (const [key, child] of Object.entries(current)) {
+        visitor(key, child);
+        pending.push(child);
+      }
     }
   }
 }
@@ -439,22 +505,7 @@ function deduplicatedEntries(index: HomebrewCaskIndex): HomebrewCaskEntry[] {
   return [...map.values()];
 }
 
-function searchRank(entry: HomebrewCaskEntry, compactQuery: string): number {
-  const token = compactSearchText(entry.token);
-  const names = [displayName(entry), ...entry.appBundleNames].map(compactSearchText);
-  if (token === compactQuery) return 0;
-  if (token.startsWith(compactQuery)) return 1;
-  if (names.some((name) => name.startsWith(compactQuery))) return 2;
-  if (token.includes(compactQuery)) return 3;
-  if (names.some((name) => name.includes(compactQuery))) return 4;
-  return -1;
-}
-
 function displayName(entry: HomebrewCaskEntry): string {
   const appName = entry.appBundleNames[0]?.replace(/\.app$/iu, "");
   return appName || entry.token;
-}
-
-function compactSearchText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/gu, "");
 }

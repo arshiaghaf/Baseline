@@ -2,12 +2,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { realpath } from "node:fs/promises";
-import type { HomebrewManagedItem, HomebrewManagedItemKind } from "../shared/domain";
+import type {
+  HomebrewCaskEntry,
+  HomebrewManagedItem,
+  HomebrewManagedItemKind
+} from "../shared/domain";
 import { homebrewItemID } from "../shared/domain";
 import { maxVersion, version } from "../shared/version";
 import { runBrewCommand, type CommandResult } from "./commandRunner";
 import { HomebrewCaskClient } from "./homebrewCaskClient";
 import { homebrewCommandToken } from "../shared/homebrewIdentity";
+import { installedInfoSection } from "./homebrewInstalledInfo";
+import {
+  buildInstalledMetadata,
+  type HomebrewInstalledMetadata
+} from "./homebrewInstalledMetadata";
 
 type OutdatedMetadata = {
   latestVersion: ReturnType<typeof version>;
@@ -25,23 +34,47 @@ export type HomebrewInventoryResult = {
   outdatedDetectionSucceededByKind: Record<HomebrewManagedItemKind, boolean>;
   inventoryReadSucceededByKind?: Record<HomebrewManagedItemKind, boolean>;
   warning?: string;
+  cleanupUnconfirmed?: boolean;
+  /** Read-only installed evidence. Keep out of persisted snapshots and automatic exports. */
+  installedMetadataByItemID?: Record<string, HomebrewInstalledMetadata>;
 };
 
 export class HomebrewInventoryClient {
   private readonly parser = new HomebrewInventoryParser();
 
+  constructor(private readonly run: (args: string[]) => Promise<CommandResult> = runBrewCommand) {}
+
   async fetchInventory(options: HomebrewInventoryOptions = {}): Promise<HomebrewInventoryResult> {
-    const updateResult = options.updateMetadata ? await runBrewCommand(["update"]) : undefined;
-    const [formulaVersions, caskVersions] = await Promise.all([
-      runBrewCommand(["list", "--formula", "--versions"]),
-      runBrewCommand(["list", "--cask", "--versions"])
+    const updateResult = options.updateMetadata ? await this.run(["update"]) : undefined;
+    if (updateResult && cleanupUnconfirmed(updateResult)) return cleanupFailure();
+    const [combinedInfo, formulaVersions, caskVersions, formulaOutdated, caskOutdated] =
+      await Promise.all([
+        this.run(["info", "--installed", "--json=v2"]),
+        // Info exposes canonical formula names, not the rack names used by saved IDs.
+        // Keep this read for renames, revision/HEAD versions and multiple installed kegs.
+        this.run(["list", "--formula", "--versions"]),
+        // Info can silently omit unloadable casks; list preserves independent
+        // inventory failure evidence instead of treating those casks as removed.
+        this.run(["list", "--cask", "--versions"]),
+        this.run(["outdated", "--formula", "--json=v2"]),
+        // Info's ordinary outdated flag is not equivalent for latest/auto-update casks.
+        this.run(["outdated", "--cask", "--greedy", "--json=v2"])
+      ]);
+    if (
+      [combinedInfo, formulaVersions, caskVersions, formulaOutdated, caskOutdated].some(
+        cleanupUnconfirmed
+      )
+    )
+      return cleanupFailure();
+    const formulaSection = installedInfoSection(combinedInfo, "formula");
+    const caskSection = installedInfoSection(combinedInfo, "cask");
+    // A combined failure must not couple the two inventories. Retry only unusable
+    // sections through the established per-kind info transport.
+    const [formulaInfo, caskInfo] = await Promise.all([
+      formulaSection ? combinedInfo : this.run(["info", "--formula", "--installed", "--json=v2"]),
+      caskSection ? combinedInfo : this.run(["info", "--cask", "--installed", "--json=v2"])
     ]);
-    const [formulaOutdated, caskOutdated, caskInfo, formulaInfo] = await Promise.all([
-      runBrewCommand(["outdated", "--formula", "--json=v2"]),
-      runBrewCommand(["outdated", "--cask", "--greedy", "--json=v2"]),
-      runBrewCommand(["info", "--cask", "--installed", "--json=v2"]),
-      runBrewCommand(["info", "--formula", "--installed", "--json=v2"])
-    ]);
+    if ([formulaInfo, caskInfo].some(cleanupUnconfirmed)) return cleanupFailure();
 
     const metadataReady = !updateResult || updateResult.success;
     const parsed = this.parser.buildInventoryWithStatus(
@@ -56,6 +89,7 @@ export class HomebrewInventoryClient {
       metadataReady && formulaOutdated.success ? commandStdout(formulaOutdated) : "{}"
     );
     const caskMetadataReady = await applyInstalledCaskMetadata(parsed.items, caskInfo);
+    const installedMetadataByItemID = buildInstalledMetadata(parsed.items, formulaInfo, caskInfo);
     const commandSucceeded =
       metadataReady &&
       formulaVersions.success &&
@@ -65,6 +99,7 @@ export class HomebrewInventoryClient {
 
     return {
       items: parsed.items,
+      installedMetadataByItemID,
       inventoryReadSucceededByKind: {
         formula: formulaVersions.success,
         cask: caskVersions.success
@@ -99,6 +134,23 @@ export class HomebrewInventoryClient {
           .join(" ") || undefined
     };
   }
+}
+
+// Structural compatibility while the runner failure contract rolls out independently.
+function cleanupUnconfirmed(result: CommandResult): boolean {
+  return (result as CommandResult & { failure?: { kind?: string } }).failure?.kind === "cleanup";
+}
+
+function cleanupFailure(): HomebrewInventoryResult {
+  return {
+    items: [],
+    inventoryReadSucceededByKind: { formula: false, cask: false },
+    outdatedDetectionSucceeded: false,
+    outdatedDetectionSucceededByKind: { formula: false, cask: false },
+    cleanupUnconfirmed: true,
+    warning:
+      "Homebrew process cleanup could not be confirmed. Inspect running Homebrew processes before restarting Baseline."
+  };
 }
 
 function commandStdout(result: CommandResult): string {
@@ -346,9 +398,15 @@ async function applyInstalledCaskMetadata(
     if (item.kind !== "cask") continue;
     const matches = casks.filter((cask) => cask?.token === item.token && cask.installed != null);
     const raw = matches.length === 1 ? matches[0] : undefined;
-    const entry = raw
-      ? client.parseIndex(Buffer.from(JSON.stringify([raw]))).byToken[item.token.toLowerCase()]
-      : undefined;
+    let entry: HomebrewCaskEntry | undefined;
+    try {
+      entry = raw
+        ? client.parseIndex(Buffer.from(JSON.stringify([raw]))).byToken[item.token.toLowerCase()]
+        : undefined;
+    } catch {
+      // Catalogue validation also protects installed metadata. A rejected cask
+      // must not abort healthy formula inventory or authorize an unverified cask.
+    }
     const candidate = { ...item, fullToken: raw?.full_token, tap: raw?.tap, caskMetadata: entry };
     if (
       typeof candidate.fullToken !== "string" ||

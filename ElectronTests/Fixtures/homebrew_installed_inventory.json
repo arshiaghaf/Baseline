@@ -1,0 +1,111 @@
+{
+  "formulaVersions": "old-tool 1.0_1 1.0_2\nhead-tool HEAD-aabbcc_1\nshared 5.0\nlibshared 2.0_3\n",
+  "caskVersions": "auto-tool 1.2,100\nlatest-tool latest\nrenamed-tool 3.0\n",
+  "info": {
+    "formulae": [
+      {
+        "name": "new-tool",
+        "full_name": "example/tools/new-tool",
+        "tap": "example/tools",
+        "oldnames": ["example/tools/old-tool"],
+        "aliases": ["tool-alias"],
+        "versions": { "stable": "1.1", "head": null },
+        "revision": 4,
+        "version_scheme": 1,
+        "pinned": true,
+        "outdated": false,
+        "caveats": "Read the manual before enabling this tool.",
+        "deprecated": true,
+        "deprecation_date": "2026-01-01",
+        "deprecation_reason": "unmaintained",
+        "disabled": false,
+        "dependencies": ["libshared"],
+        "build_dependencies": ["cmake"],
+        "test_dependencies": ["pytest"],
+        "optional_dependencies": ["optional-lib"],
+        "recommended_dependencies": ["recommended-lib"],
+        "installed": [
+          { "version": "1.0_1", "installed_on_request": false, "installed_as_dependency": true },
+          {
+            "version": "1.0_2",
+            "installed_on_request": true,
+            "installed_as_dependency": false,
+            "time": 1700000000,
+            "runtime_dependencies": [
+              { "full_name": "libshared", "version": "2.0", "revision": 3, "pkg_version": "2.0_3", "declared_directly": true }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "head-tool",
+        "full_name": "head-tool",
+        "tap": "homebrew/core",
+        "versions": { "stable": "1.0", "head": "HEAD" },
+        "installed": [{ "version": "HEAD-aabbcc_1", "installed_on_request": true }]
+      },
+      {
+        "name": "shared",
+        "full_name": "other/tools/shared",
+        "tap": "other/tools",
+        "installed": [{ "version": "5.0", "runtime_dependencies": [{ "full_name": "example/tools/libshared", "version": "2" }] }]
+      },
+      {
+        "name": "libshared",
+        "full_name": "libshared",
+        "tap": "homebrew/core",
+        "disabled": true,
+        "disable_date": "2026-02-01",
+        "disable_reason": "unsupported",
+        "installed": [{ "version": "2.0_3", "installed_on_request": false, "installed_as_dependency": true }]
+      }
+    ],
+    "casks": [
+      {
+        "token": "auto-tool",
+        "full_token": "auto-tool",
+        "tap": "homebrew/cask",
+        "installed": "1.2,100",
+        "version": "1.3,110",
+        "auto_updates": true,
+        "outdated": false,
+        "pinned": true,
+        "artifacts": [{ "app": ["Auto Tool.app"] }],
+        "depends_on": { "formula": ["libshared"], "cask": ["latest-tool"] }
+      },
+      {
+        "token": "latest-tool",
+        "full_token": "latest-tool",
+        "tap": "homebrew/cask",
+        "installed": "latest",
+        "version": "latest",
+        "outdated": false,
+        "artifacts": [{ "app": ["Latest Tool.app"] }]
+      },
+      {
+        "token": "renamed-tool",
+        "full_token": "example/tools/historical-tool",
+        "tap": "example/tools",
+        "old_tokens": ["historical-tool"],
+        "installed": "3.0",
+        "version": "4.0",
+        "artifacts": [{ "app": ["Renamed Tool.app"] }]
+      }
+    ]
+  },
+  "formulaOutdated": {
+    "formulae": [
+      { "name": "example/tools/new-tool", "current_version": "1.1_4", "pinned": true },
+      { "name": "head-tool", "current_version": "HEAD-ddeeff_2" },
+      { "name": "shared", "current_version": "99.0" },
+      { "name": "other/tools/shared", "current_version": "6.0" }
+    ]
+  },
+  "caskOutdated": {
+    "casks": [
+      { "name": "auto-tool", "current_version": "1.3,110" },
+      { "name": "latest-tool", "current_version": "latest" },
+      { "name": "renamed-tool", "current_version": "4.0" }
+    ]
+  }
+}
