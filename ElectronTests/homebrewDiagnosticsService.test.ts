@@ -15,6 +15,8 @@ import {
 } from "../src/main/homebrewDiagnosticsService";
 import type { HomebrewDiagnosticsRequest } from "../src/shared/homebrewDiagnostics";
 
+const noEnvironment = () => ({ proxyConfigured: false, certificateConfigured: false });
+
 function result(stdout: string, status = 0, stderr = ""): DiagnosticCommandResult {
   return { success: status === 0, status, stdout, stderr, output: stdout + stderr };
 }
@@ -23,7 +25,11 @@ function fixture(outputs: DiagnosticCommandResult[] = [result("HOMEBREW_VERSION:
   const release = vi.fn();
   const runBrew = vi.fn(async () => outputs.shift() ?? result(""));
   const reserveHomebrewWork = vi.fn(() => release);
-  const service = new HomebrewDiagnosticsService({ runBrew, reserveHomebrewWork });
+  const service = new HomebrewDiagnosticsService({
+    environmentPresence: noEnvironment,
+    runBrew,
+    reserveHomebrewWork
+  });
   return { service, runBrew, release, reserveHomebrewWork };
 }
 
@@ -58,8 +64,8 @@ describe("on-demand Homebrew diagnostics", () => {
 
   it("uses an inherited-environment overlay, deadlines and complete bounded capture", async () => {
     const calls: { args: string[]; options: DiagnosticCommandOptions }[] = [];
-    const before = process.env.HTTPS_PROXY;
     const service = new HomebrewDiagnosticsService({
+      environmentPresence: noEnvironment,
       reserveHomebrewWork: () => () => undefined,
       runBrew: async (args, callback, options) => {
         expect(callback).toBeUndefined();
@@ -86,8 +92,58 @@ describe("on-demand Homebrew diagnostics", () => {
         HOMEBREW_NO_ENV_HINTS: "1"
       });
     }
-    expect(process.env.HTTPS_PROXY).toBe(before);
   });
+
+  it("samples only injected environment-presence booleans once per explicit request", async () => {
+    const environmentPresence = vi.fn(() => ({
+      proxyConfigured: true,
+      certificateConfigured: true
+    }));
+    const service = new HomebrewDiagnosticsService({
+      environmentPresence,
+      reserveHomebrewWork: () => () => undefined,
+      runBrew: async () => result("HOMEBREW_VERSION: 7.0.4")
+    });
+    expect(environmentPresence).not.toHaveBeenCalled();
+    const report = await service.collect();
+    expect(environmentPresence).toHaveBeenCalledOnce();
+    expect(report.config).toMatchObject({ proxyConfigured: true, certificateConfigured: true });
+    expect(JSON.stringify(report)).not.toContain("SSL_CERT_FILE");
+    const output = renderHomebrewDiagnostics(report);
+    expect(output).toContain("Certificate configuration detected: true");
+  });
+
+  it.each(["SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"])(
+    "detects inherited %s without retaining its value",
+    async (name) => {
+      for (const setting of [
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "CURL_CA_BUNDLE",
+        "NODE_EXTRA_CA_CERTS"
+      ])
+        vi.stubEnv(setting, undefined);
+      vi.stubEnv(name, privateText);
+      try {
+        // Only this fixture deliberately exercises the default presence reader.
+        const service = new HomebrewDiagnosticsService({
+          reserveHomebrewWork: () => () => undefined,
+          runBrew: async () => result("HOMEBREW_VERSION: 7.0.4")
+        });
+        const report = await service.collect();
+        expect(report.config?.certificateConfigured).toBe(true);
+        expect(JSON.stringify(report)).not.toMatch(/SECRET|private Person|Bearer/u);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }
+  );
 
   it("holds the real shared reservation until runner settlement, blocking overlap", async () => {
     const lock = new HomebrewWorkLock<string>({
@@ -100,6 +156,7 @@ describe("on-demand Homebrew diagnostics", () => {
       () => new Promise<DiagnosticCommandResult>((resolve) => (finish = resolve))
     );
     const service = new HomebrewDiagnosticsService({
+      environmentPresence: noEnvironment,
       runBrew,
       reserveHomebrewWork: () => lock.reserveCommand()
     });
@@ -121,6 +178,7 @@ describe("on-demand Homebrew diagnostics", () => {
     });
     const runBrew = vi.fn(async () => result(""));
     const service = new HomebrewDiagnosticsService({
+      environmentPresence: noEnvironment,
       runBrew,
       reserveHomebrewWork: () => lock.reserveCommand()
     });
@@ -176,6 +234,7 @@ describe("on-demand Homebrew diagnostics", () => {
   it("releases the reservation and drops exception messages", async () => {
     const release = vi.fn();
     const service = new HomebrewDiagnosticsService({
+      environmentPresence: noEnvironment,
       reserveHomebrewWork: () => release,
       runBrew: async () => {
         throw new Error(privateText);
@@ -202,7 +261,11 @@ describe("on-demand Homebrew diagnostics", () => {
     const runBrew = vi.fn(
       () => new Promise<DiagnosticCommandResult>((resolve) => (finish = resolve))
     );
-    const service = new HomebrewDiagnosticsService({ runBrew, reserveHomebrewWork: () => release });
+    const service = new HomebrewDiagnosticsService({
+      environmentPresence: noEnvironment,
+      runBrew,
+      reserveHomebrewWork: () => release
+    });
     const pending = service.collect({ doctor: true, services: true }, controller.signal);
     controller.abort();
     expect(release).not.toHaveBeenCalled();
@@ -241,16 +304,15 @@ describe("private bounded diagnostic projections", () => {
           "Xcode: 27.0 => /Users/private Person/Xcode",
           "Curl: 8.0.1 => https://user:password@private.example",
           "Git: 2.50.0 => /private/git",
-          "HOMEBREW_PROCESSOR: arm64",
           "Rosetta 2: false",
           "HTTPS_PROXY: https://user:password@private.example/api?token=SECRET",
-          "SSL_CERT_FILE: /Users/private Person/cert.pem",
           "HOMEBREW_PREFIX: /private/prefix",
           "ORIGIN: ssh://git@private.example/repo",
           "HOMEBREW_GITHUB_API_TOKEN: SECRET",
           privateText
         ].join("\n")
-      )
+      ),
+      { proxyConfigured: false, certificateConfigured: true }
     );
     expect(report).toMatchObject({
       status: "ok",
@@ -268,6 +330,33 @@ describe("private bounded diagnostic projections", () => {
       certificateConfigured: true
     });
     expect(JSON.stringify(report)).not.toMatch(/private|SECRET|password|https|ssh|Bearer/u);
+  });
+
+  it.each(["arm64", "x86_64"])("reads the actual Homebrew macOS suffix: %s", (architecture) => {
+    const report = parseConfigDiagnostics(result(`macOS: 26.0.1-${architecture}\nCLT: 17.0.0`));
+    expect(report.architecture).toBe(architecture);
+    expect(report.versions.macOS).toBe("26.0.1");
+  });
+
+  it.each(["macOS: 26.0-arm64-secret", "macOS: 26.0-aarch64", "HOMEBREW_PROCESSOR: arm64"])(
+    "does not infer architecture from unprinted or unknown values: %s",
+    (text) => {
+      expect(parseConfigDiagnostics(result(text)).architecture).toBeUndefined();
+    }
+  );
+
+  it("does not depend on config echoing certificate environment variables", () => {
+    const report = parseConfigDiagnostics(result("HOMEBREW_VERSION: 7.0.4"), {
+      proxyConfigured: true,
+      certificateConfigured: true
+    });
+    expect(report).toMatchObject({ proxyConfigured: true, certificateConfigured: true });
+    // Config is not a source of certificate-presence evidence.
+    expect(
+      parseConfigDiagnostics(result(`HOMEBREW_VERSION: 7.0.4\nSSL_CERT_FILE: ${privateText}`))
+        .certificateConfigured
+    ).toBe(false);
+    expect(JSON.stringify(report)).not.toContain("SECRET");
   });
 
   it("rejects unknown config schemas and secrets under known keys", () => {
@@ -412,6 +501,25 @@ describe("private bounded diagnostic projections", () => {
     expect(report).toMatchObject({ status: "unavailable", failure: "cleanup" });
   });
 
+  it("does not classify recovered running services by their previous exit code", () => {
+    const report = parseServiceDiagnostics(
+      result(
+        JSON.stringify([
+          { running: true, status: "started", exit_code: 256 },
+          { running: false, status: "error", exit_code: 256 }
+        ])
+      )
+    );
+    expect(report).toMatchObject({ running: 1, failed: 1, unknown: 0 });
+  });
+
+  it("marks contradictory running/error data partial without counting it failed", () => {
+    const report = parseServiceDiagnostics(
+      result(JSON.stringify([{ running: true, status: "error", exit_code: 256 }]))
+    );
+    expect(report).toMatchObject({ status: "partial", running: 1, failed: 0, unknown: 1 });
+  });
+
   it("counts an explicit service error when no exit code was reported", () => {
     const report = parseServiceDiagnostics(
       result(JSON.stringify([{ status: "error", running: false }]))
@@ -420,7 +528,8 @@ describe("private bounded diagnostic projections", () => {
   });
 
   it("distinguishes empty services, command failure, malformed data and capped counts", () => {
-    expect(parseServiceDiagnostics(result("")).status).toBe("ok");
+    expect(parseServiceDiagnostics(result("")).status).toBe("invalid");
+    expect(parseServiceDiagnostics(result("  \n\t")).status).toBe("invalid");
     expect(parseServiceDiagnostics(result("[]")).total).toBe(0);
     expect(parseServiceDiagnostics(result("{} ")).status).toBe("invalid");
     expect(parseServiceDiagnostics(result("not JSON")).status).toBe("invalid");

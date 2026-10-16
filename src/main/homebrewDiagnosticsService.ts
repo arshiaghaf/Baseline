@@ -31,7 +31,13 @@ export type DiagnosticCommandResult = Omit<CommandResult, "failure"> & {
   failure?: { kind: DiagnosticFailure };
   outputTruncated?: boolean;
 };
+export type DiagnosticEnvironmentPresence = {
+  proxyConfigured: boolean;
+  certificateConfigured: boolean;
+};
 export type HomebrewDiagnosticsDependencies = {
+  // Inject presence booleans only; never inject or retain raw environment values.
+  environmentPresence?(): DiagnosticEnvironmentPresence;
   runBrew(
     args: string[],
     onOutputLine: undefined,
@@ -54,10 +60,11 @@ export class HomebrewDiagnosticsService {
     const release = this.dependencies.reserveHomebrewWork();
     if (!release) return { status: "busy" };
     try {
+      const environment = (this.dependencies.environmentPresence ?? inheritedEnvironmentPresence)();
       const configResult = await this.run(["config"], signal);
       const report: HomebrewDiagnosticsReport = {
         status: "complete",
-        config: parseConfigDiagnostics(configResult)
+        config: parseConfigDiagnostics(configResult, environment)
       };
       if (cancelled(configResult, signal)) return { ...report, status: "cancelled" };
       if (configResult.failure?.kind === "cleanup") return { ...report, status: "unavailable" };
@@ -115,6 +122,25 @@ export class HomebrewDiagnosticsService {
   }
 }
 
+function inheritedEnvironmentPresence(): DiagnosticEnvironmentPresence {
+  return {
+    proxyConfigured: [
+      "http_proxy",
+      "https_proxy",
+      "all_proxy",
+      "HTTP_PROXY",
+      "HTTPS_PROXY",
+      "ALL_PROXY"
+    ].some((name) => Boolean(process.env[name])),
+    certificateConfigured: [
+      "SSL_CERT_FILE",
+      "SSL_CERT_DIR",
+      "CURL_CA_BUNDLE",
+      "NODE_EXTRA_CA_CERTS"
+    ].some((name) => Boolean(process.env[name]))
+  };
+}
+
 function validRequest(request: HomebrewDiagnosticsRequest): boolean {
   if (!request || typeof request !== "object" || Array.isArray(request)) return false;
   const prototype = Object.getPrototypeOf(request);
@@ -169,13 +195,16 @@ function plainText(text: string): string {
   return text.replace(/\u001b\[[0-?]*[ -/]*[@-~]/gu, "").replace(/\r/gu, "");
 }
 
-export function parseConfigDiagnostics(result: DiagnosticCommandResult): HomebrewConfigDiagnostics {
+export function parseConfigDiagnostics(
+  result: DiagnosticCommandResult,
+  environment?: DiagnosticEnvironmentPresence
+): HomebrewConfigDiagnostics {
   const base = baseSection(result);
   const report: HomebrewConfigDiagnostics = {
     ...base,
     versions: {},
-    proxyConfigured: false,
-    certificateConfigured: false
+    proxyConfigured: environment?.proxyConfigured === true,
+    certificateConfigured: environment?.certificateConfigured === true
   };
   if (base.status !== "ok") return report;
   if (!result.success) return { ...report, status: "unavailable" };
@@ -206,16 +235,14 @@ export function parseConfigDiagnostics(result: DiagnosticCommandResult): Homebre
       report.rosetta = value === "true";
       recognized = true;
     }
-    if (key === "HOMEBREW_PROCESSOR" && /^(arm64|x86_64)$/u.test(value)) {
-      report.architecture = value as "arm64" | "x86_64";
-      recognized = true;
+    if (key === "macOS") {
+      // SystemConfig.macos_config emits full_version-kernel, including Rosetta's
+      // process architecture. HOMEBREW_PROCESSOR is not a printed config key.
+      const architecture = /^\d+(?:\.\d+){0,5}-(arm64|x86_64)$/u.exec(value)?.[1];
+      if (architecture) report.architecture = architecture as "arm64" | "x86_64";
     }
     if (/^(?:https?|all)_proxy$/iu.test(key)) {
       report.proxyConfigured ||= value.length > 0;
-      recognized = true;
-    }
-    if (/^(?:SSL_CERT_FILE|SSL_CERT_DIR|CURL_CA_BUNDLE|NODE_EXTRA_CA_CERTS)$/u.test(key)) {
-      report.certificateConfigured ||= value.length > 0;
       recognized = true;
     }
   }
@@ -315,7 +342,8 @@ export function parseServiceDiagnostics(
   if (base.status !== "ok") return report;
   if (!result.success) return { ...report, status: "unavailable" };
   const text = stdout(result).trim();
-  if (!text) return report; // Homebrew prints nothing when there are no services.
+  // --json always prints an array, including [] when there are no targets.
+  if (!text) return { ...report, status: "invalid" };
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -332,9 +360,13 @@ export function parseServiceDiagnostics(
     }
     if (service.running) report.running += 1;
     if (service.registered === true) report.registered += 1;
+    // Homebrew prioritizes a live PID over its historical exit code. A
+    // simultaneous error status contradicts running and is schema uncertainty.
+    if (service.running && service.status === "error") report.unknown += 1;
     if (
-      service.status === "error" ||
-      (Number.isSafeInteger(service.exit_code) && service.exit_code !== 0)
+      !service.running &&
+      (service.status === "error" ||
+        (Number.isSafeInteger(service.exit_code) && service.exit_code !== 0))
     ) {
       report.failed += 1;
     }
@@ -354,8 +386,8 @@ export function renderHomebrewDiagnostics(report: HomebrewDiagnosticsReport): st
     if (report.config.architecture) lines.push(`Architecture: ${report.config.architecture}`);
     if (report.config.rosetta !== undefined) lines.push(`Rosetta: ${report.config.rosetta}`);
     lines.push(
-      `Proxy configuration reported: ${report.config.proxyConfigured}`,
-      `Certificate configuration reported: ${report.config.certificateConfigured}`
+      `Proxy configuration detected: ${report.config.proxyConfigured}`,
+      `Certificate configuration detected: ${report.config.certificateConfigured}`
     );
   }
   if (report.doctor) {

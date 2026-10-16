@@ -29,7 +29,10 @@ const diagnostics = new HomebrewDiagnosticsService({
 const report = await diagnostics.collect({ doctor: true }, abortSignal);
 ```
 
-This adapter targets the coordinated runner options API:
+This service depends on the bounded runner work in PR #284. Its merge base must
+contain that runner and the minimum cleanup-quarantine wiring before production
+composition; a legacy two-argument runner silently ignores safety options and
+must not be used. The adapter targets
 `runBrewCommand(args, onOutputLine?, options?)`. It requires complete capture with
 128 KiB maximum output, a 15-second config/services deadline and 60-second Doctor
 deadline, and awaited process-group settlement before returning. Complete capture
@@ -56,18 +59,27 @@ focused tests and this document.
 
 Reports project an allowlist instead of attempting to scrub arbitrary secret
 formats out of free text. Config retains recognized numeric tool versions,
-known processor architecture, Rosetta boolean, and whether proxy/certificate
-settings were **reported**. False means not observed in config output; it does
-not prove an environment setting is absent. Unknown keys, values, suffixes,
-paths, remotes, build hostnames and environment values are discarded.
+known architecture from the emitted `macOS: version-kernel` suffix, Rosetta
+boolean, and whether known proxy/certificate settings are present. The optional
+injected `environmentPresence()` boundary returns only
+`{ proxyConfigured: boolean, certificateConfigured: boolean }`; its default reads
+presence of inherited proxy and certificate variables on explicit invocation,
+without retaining their values. Config output is not expected to echo certificate
+variables. Tests inject deterministic booleans except explicit fake-environment
+fixtures. False does not exclude indirect curl configuration or system trust
+settings. Unknown keys, values, suffixes, paths, remotes, build hostnames and
+environment values are discarded.
 
 Doctor maps messages to fixed categories and known support tiers. Unknown
 messages become `other`; arbitrary prose, affected package names, remediation
 commands and links are discarded. Support tier is Homebrew support metadata,
 not an invented severity. The text fallback similarly reports only categories
 from Warning/Error headings. Services retain totals, running/registered counts,
-nonzero exit-code count, unknown rows and omitted counts. Service names, usernames,
-PIDs, files and log paths are never included.
+nonzero exit-code count for services that are not currently running, unknown rows
+and omitted counts. Running services with historical nonzero exits do not count
+as failed. Contradictory running/error rows make the result partial. JSON `[]` is
+required for a known empty service list; blank stdout is invalid. Service names,
+usernames, PIDs, files and log paths are never included.
 
 The runner receives an **overlay** containing NONINTERACTIVE,
 HOMEBREW_NO_AUTO_UPDATE, HOMEBREW_NO_ANALYTICS and HOMEBREW_NO_ENV_HINTS. Inherited
@@ -75,6 +87,13 @@ proxy, certificate and Homebrew configuration must remain intact; neither the
 service nor its tests replaces `process.env` or disables TLS validation. This is
 not a sandbox for arbitrary third-party Homebrew code: it is an allowlisted
 read-only diagnostics caller with metadata auto-update disabled.
+
+These schema decisions follow Homebrew primary sources:
+[macOS config formatter](https://github.com/Homebrew/brew/blob/7.0.4/Library/Homebrew/extend/os/mac/system_config.rb#L55-L57),
+[config environment loop](https://github.com/Homebrew/brew/blob/7.0.4/Library/Homebrew/system_config.rb#L158-L180),
+[recognized environment keys](https://github.com/Homebrew/brew/blob/7.0.4/Library/Homebrew/env_config.rb#L795-L814),
+[service JSON output](https://docs.brew.sh/rubydoc/Homebrew/Cmd/Services/InfoSubcommand.html#run-instance_method)
+and [service error precedence](https://docs.brew.sh/rubydoc/Homebrew/Services/FormulaWrapper.html#error%3F-instance_method).
 
 ## Self-update provenance and outcome recovery plan
 
