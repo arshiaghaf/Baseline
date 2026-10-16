@@ -17,6 +17,7 @@ import type { HomebrewCaskClient } from "./homebrewCaskClient";
 import type { HomebrewFormulaClient } from "./homebrewFormulaClient";
 import type { HomebrewInventoryResult } from "./homebrewInventoryClient";
 import type { CatalogueStatus } from "./catalogueCache";
+import { mergeCatalogueSearchResults } from "./catalogueSearch";
 import { lookupAppUpdates, mergeRecentlyUpdated } from "./appUpdateLookupService";
 import {
   canUseHomebrewAppUpdate,
@@ -356,7 +357,7 @@ export class RefreshComputationService {
       this.latestFormulaIndex,
       installedFormulae
     );
-    this.ports.patch({ homebrewDiscoverItems: [...casks, ...formulae].slice(0, 18) });
+    this.ports.patch({ homebrewDiscoverItems: mergeCatalogueSearchResults(term, casks, formulae) });
   }
 }
 

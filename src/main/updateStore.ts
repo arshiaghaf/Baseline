@@ -31,6 +31,14 @@ import {
 } from "./commandRunner";
 import { HomebrewCaskClient } from "./homebrewCaskClient";
 import { HomebrewFormulaClient } from "./homebrewFormulaClient";
+import { FileCatalogueStorage } from "./catalogueStorage";
+import { HomebrewDiagnosticsService } from "./homebrewDiagnosticsService";
+import type {
+  HomebrewDiagnosticsRequest,
+  HomebrewDiagnosticsReport
+} from "../shared/homebrewDiagnostics";
+import type { HomebrewInstalledMetadata } from "./homebrewInstalledMetadata";
+import type { HomebrewInstalledContext } from "../shared/homebrewInstalledContext";
 import { HomebrewInventoryClient, type HomebrewInventoryResult } from "./homebrewInventoryClient";
 import { HomebrewWorkLock } from "./homebrewWorkLock";
 import {
@@ -110,6 +118,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly homebrewOperations: HomebrewOperationsService;
   private readonly toolStatus: ToolStatusService;
   private readonly refreshComputation: RefreshComputationService;
+  private readonly homebrewDiagnostics: HomebrewDiagnosticsService;
+  private installedMetadataByItemID: Record<string, HomebrewInstalledMetadata> = {};
 
   private state: BaselineSnapshot;
   private snapshotRevision = 0;
@@ -143,19 +153,37 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     runMasCommand?: typeof defaultRunMasCommand;
     profileStatsIntegrity?: ProfileStatsIntegrity;
     successRefreshDelayMS?: number;
+    catalogueCacheRoot?: string;
   }) {
     super();
     this.persistence = options.persistence;
     this.scanner = options.clients?.scanner ?? new BundleScannerClient();
     this.appStore = options.clients?.appStore ?? new AppStoreLookupClient();
     this.sparkle = options.clients?.sparkle ?? new SparkleAppcastClient();
-    this.homebrew = options.clients?.homebrew ?? new HomebrewCaskClient();
-    this.homebrewFormula = options.clients?.homebrewFormula ?? new HomebrewFormulaClient();
+    this.homebrew =
+      options.clients?.homebrew ??
+      new HomebrewCaskClient({
+        storage: options.catalogueCacheRoot
+          ? new FileCatalogueStorage(options.catalogueCacheRoot, "cask")
+          : undefined
+      });
+    this.homebrewFormula =
+      options.clients?.homebrewFormula ??
+      new HomebrewFormulaClient({
+        storage: options.catalogueCacheRoot
+          ? new FileCatalogueStorage(options.catalogueCacheRoot, "formula")
+          : undefined
+      });
     this.homebrewInventory = options.clients?.homebrewInventory ?? new HomebrewInventoryClient();
     this.selfUpdate = options.clients?.selfUpdate ?? new SelfUpdateClient();
     this.currentAppVersion = version(options.currentAppVersion);
     this.currentAppIdentity = options.currentAppIdentity;
-    this.runBrewCommand = options.runBrewCommand ?? defaultRunBrewCommand;
+    const runBrew = options.runBrewCommand ?? defaultRunBrewCommand;
+    this.runBrewCommand = async (...args) => {
+      const result = await runBrew(...args);
+      if (result.failure?.kind === "cleanup") this.blockHomebrewAfterUnconfirmedCleanup();
+      return result;
+    };
     this.runMasCommand = options.runMasCommand ?? defaultRunMasCommand;
     this.openExternalURL = options.openExternalURL;
     this.openAppBundle = options.openAppBundle;
@@ -200,6 +228,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.state.homebrewDiscoverInstallingItemIDs.length > 0,
       onLockStateChange: () => this.updateHomebrewCommandLockState(),
       onCommandReleased: () => void this.homebrewOperations.processHomebrewUpdateQueue()
+    });
+    this.homebrewDiagnostics = new HomebrewDiagnosticsService({
+      runBrew: this.runBrewCommand,
+      reserveHomebrewWork: () => this.reserveHomebrewCommandLock()
     });
     this.profileStatsService = new ProfileStatsService({
       integrity: options.profileStatsIntegrity ?? new KeychainProfileStatsIntegrity(),
@@ -454,7 +486,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     return (
       this.homebrewWorkLock.activeCommandCount > 0 ||
       this.state.isRunningHomebrewMaintenance ||
-      this.state.isHomebrewCleanupLocked ||
+      (this.state.isHomebrewCleanupLocked && !this.homebrewWorkLock.hasUnconfirmedCleanup) ||
       this.state.appUpdatingIDs.length > 0 ||
       this.state.homebrewUpdatingItemIDs.length > 0 ||
       this.state.homebrewQueuedItemIDs.length > 0 ||
@@ -537,7 +569,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       id: `${operation}:${entityID}`,
       entityID,
       operation,
-      reason: reason ?? failureReason(result.stderr || result.output),
+      reason:
+        reason ??
+        (result.failure &&
+        ["cancelled", "timeout", "signal", "cleanup"].includes(result.failure.kind)
+          ? "interrupted"
+          : failureReason(result.stderr || result.output)),
       status: result.status,
       occurredAt
     }));
@@ -689,10 +726,81 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.homebrewOperations.uninstallHomebrewItem(itemID);
   }
 
+  collectHomebrewDiagnostics(
+    request: HomebrewDiagnosticsRequest = {}
+  ): Promise<HomebrewDiagnosticsReport> {
+    return this.homebrewDiagnostics.collect(request);
+  }
+
+  getCatalogueDiagnostics(): string {
+    const lines = (
+      [
+        ["Casks", this.homebrew.cacheStatus?.decode],
+        ["Formulae", this.homebrewFormula.cacheStatus?.decode]
+      ] as const
+    ).flatMap(([kind, status]) => {
+      if (
+        !status ||
+        ![status.totalEntries, status.skippedEntries, status.schemaWarnings].every(
+          (value) => Number.isSafeInteger(value) && value >= 0 && value <= 100_000
+        )
+      )
+        return [];
+      return [
+        `${kind}: ${status.totalEntries} entries, ${status.skippedEntries} skipped, ${status.schemaWarnings} schema warnings.`
+      ];
+    });
+    return lines.length ? `\n\nHomebrew catalogue parsing\n${lines.join("\n")}` : "";
+  }
+
+  getHomebrewInstalledContext(itemID: string): HomebrewInstalledContext | undefined {
+    if (typeof itemID !== "string" || this.homebrewWorkLock.hasUnconfirmedCleanup) return undefined;
+    const item = this.state.homebrewItems.find((candidate) => candidate.id === itemID);
+    const metadata = this.installedMetadataByItemID[itemID];
+    if (
+      !item ||
+      !metadata ||
+      metadata.kind !== item.kind ||
+      metadata.identity !== homebrewCommandToken(item)
+    )
+      return undefined;
+    return {
+      deprecated: metadata.deprecated,
+      disabled: metadata.disabled,
+      autoUpdates: metadata.autoUpdates,
+      installedOnRequest: metadata.installedOnRequest,
+      installedAsDependency: metadata.installedAsDependency,
+      caveatsAvailable: Boolean(metadata.caveats),
+      installedReceiptCount: metadata.installedReceipts.length,
+      declaredDependencyCount: new Set(
+        metadata.dependencies
+          .filter((dependency) => dependency.source === "declaration")
+          .map((dependency) => `${dependency.kind}:${dependency.token}`)
+      ).size,
+      observedRuntimeDependencyCount: new Set(
+        metadata.dependencies
+          .filter((dependency) => dependency.source === "receipt" && dependency.scope === "runtime")
+          .map((dependency) => `${dependency.kind}:${dependency.token}`)
+      ).size,
+      observedInstalledDependentCount: metadata.installedDependents.length
+    };
+  }
+
   private reserveHomebrewCommandLock(
     options: { allowRefreshSupersession?: boolean } = {}
   ): (() => void) | undefined {
     return this.homebrewWorkLock.reserveCommand(options);
+  }
+
+  private blockHomebrewAfterUnconfirmedCleanup(): void {
+    this.installedMetadataByItemID = {};
+    this.homebrewWorkLock.blockAfterUnconfirmedCleanup();
+    this.homebrewOperations.cancelQueuedHomebrewUpdates();
+    this.invalidateHomebrewUpdateTargets();
+    this.patch({
+      lastRefreshNoticeMessage:
+        "Homebrew process cleanup could not be confirmed. Check running Homebrew processes before restarting Baseline."
+    });
   }
 
   private async lookupSelfUpdate(now: string): Promise<SelfUpdateRecord | undefined> {
@@ -711,16 +819,35 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       allowDuringMutation: Boolean(options.allowHomebrewInventoryDuringActiveCommand),
       blocked: () => ({
         items: this.state.homebrewItems,
+        ...(this.homebrewWorkLock.hasUnconfirmedCleanup
+          ? {
+              inventoryReadSucceededByKind: { formula: false, cask: false },
+              cleanupUnconfirmed: true,
+              warning:
+                "Homebrew process cleanup could not be confirmed. Check running Homebrew processes before restarting Baseline."
+            }
+          : {}),
         outdatedDetectionSucceeded: false,
         outdatedDetectionSucceededByKind: { formula: false, cask: false }
       }),
       start: (updateMetadata) => this.fetchFreshHomebrewInventory(updateMetadata),
       reconcileBeforeRelease: (result) => {
+        if (result.cleanupUnconfirmed) this.blockHomebrewAfterUnconfirmedCleanup();
+        // Replace rather than merge: failed or absent metadata never inherits
+        // authority from a prior successful read, and it never enters snapshots.
+        this.installedMetadataByItemID = Object.fromEntries(
+          Object.entries(result.installedMetadataByItemID ?? {}).filter(
+            ([, metadata]) => result.inventoryReadSucceededByKind?.[metadata.kind] !== false
+          )
+        );
         if (result.inventoryReadSucceededByKind?.formula === false) {
           this.invalidateFormulaMembership();
         }
       },
-      invalidateBeforeRelease: () => this.invalidateFormulaMembership()
+      invalidateBeforeRelease: () => {
+        this.installedMetadataByItemID = {};
+        this.invalidateFormulaMembership();
+      }
     });
   }
 

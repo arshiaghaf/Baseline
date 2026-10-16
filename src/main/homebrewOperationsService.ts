@@ -752,6 +752,9 @@ export class HomebrewOperationsService {
           this.applyOperationNotice(statsNotice);
         } else {
           this.scheduleHomebrewDiscoverFailureClear(itemID);
+          // A failed or interrupted installation can still have installed
+          // dependencies or the target. Reconcile while holding the reservation.
+          await this.refresh(true);
         }
       } finally {
         if (this.state.homebrewDiscoverInstallingItemIDs.includes(itemID)) {
@@ -794,12 +797,12 @@ export class HomebrewOperationsService {
       homebrewUninstallingItemIDs: addToArray(this.state.homebrewUninstallingItemIDs, itemID)
     });
     try {
-      const outputLines: string[] = [];
+      let outputTail = "";
       const result = await this.runBrewWithResultEvents(
         ["uninstall", "--cask", homebrewCommandToken(item)!],
         (event) => {
           if (event.type === "outputLine") {
-            outputLines.push(event.line);
+            outputTail = `${outputTail}\n${event.line}`.slice(-4096);
           }
         }
       );
@@ -809,7 +812,7 @@ export class HomebrewOperationsService {
       await this.refresh(true);
       if (!result.success) {
         await this.recordOperationFailure(itemID, "uninstall", result);
-        const output = (outputLines.join("\n") || result.output).trim();
+        const output = (outputTail || result.output).trim();
         this.patch({
           refreshErrorMessage: homebrewUninstallFailureMessage(item, output)
         });

@@ -6,7 +6,11 @@ import { ToolStatusService, type ToolStatusPatch } from "../src/main/toolStatusS
 import { UpdateStore } from "../src/main/updateStore";
 import { SnapshotPersistence } from "../src/main/persistence";
 import { ProgressPublisher } from "../src/main/progressPublisher";
-import { defaultPersistedSnapshot } from "../src/shared/domain";
+import {
+  defaultPersistedSnapshot,
+  emptyHomebrewCaskIndex,
+  emptyHomebrewFormulaIndex
+} from "../src/shared/domain";
 import { version } from "../src/shared/version";
 import type { CommandResult } from "../src/main/commandRunner";
 
@@ -73,7 +77,29 @@ function store(
       verifyOrInitialize: async (stats) => stats,
       seal: async (stats) => stats
     },
-    successRefreshDelayMS: 0
+    successRefreshDelayMS: 0,
+    clients: {
+      scanner: { scanApplications: async () => [] },
+      appStore: { lookupOutcome: async () => ({ type: "completed" }) },
+      sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
+      homebrew: {
+        fetchIndex: async () => emptyHomebrewCaskIndex,
+        lookupUpdate: () => undefined,
+        searchCasks: () => []
+      },
+      homebrewFormula: {
+        fetchIndex: async () => emptyHomebrewFormulaIndex,
+        searchFormulae: () => []
+      },
+      homebrewInventory: {
+        fetchInventory: async () => ({
+          items: [],
+          outdatedDetectionSucceeded: true,
+          outdatedDetectionSucceededByKind: { formula: true, cask: true },
+          inventoryReadSucceededByKind: { formula: true, cask: true }
+        })
+      }
+    }
   });
 }
 

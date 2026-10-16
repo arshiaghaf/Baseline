@@ -17,6 +17,7 @@ import {
 } from "electron";
 import path from "node:path";
 import { realpath } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { appMetadata } from "./appMetadata";
 import { renderDiagnostics } from "../shared/diagnostics";
 import type {
@@ -34,6 +35,9 @@ import { isAllowedExternalURL } from "../shared/security";
 import { SnapshotPersistence } from "./persistence";
 import { calculateTrayWindowPosition } from "./trayWindowPosition";
 import { UpdateStore } from "./updateStore";
+import { catalogueCacheDirectory } from "./catalogueCacheDirectory";
+import { isTrustedBackendSender } from "./backendIpcAuthorization";
+import type { HomebrewDiagnosticsRequest } from "../shared/homebrewDiagnostics";
 import { trayMenuTemplate } from "./trayMenu";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -92,6 +96,11 @@ if (hasSingleInstanceLock) {
     store = new UpdateStore({
       persistence,
       persisted,
+      catalogueCacheRoot: catalogueCacheDirectory(
+        app.getPath("home"),
+        app.getPath("userData"),
+        Boolean(process.env.BASELINE_USER_DATA_DIR)
+      ),
       openExternalURL: async (url) => {
         if (!isAllowedExternalURL(url)) {
           return false;
@@ -553,9 +562,23 @@ function trayUpdateTitle(snapshot: BaselineSnapshot): string {
 function wireIpc(): void {
   ipcMain.handle(ipcChannels.getSnapshot, () => store.getSnapshot());
   ipcMain.handle(ipcChannels.getAppMetadata, () => metadata);
-  ipcMain.handle(ipcChannels.getDiagnostics, () =>
-    renderDiagnostics(store.getSnapshot(), metadata, process.platform)
+  ipcMain.handle(
+    ipcChannels.getDiagnostics,
+    () =>
+      renderDiagnostics(store.getSnapshot(), metadata, process.platform) +
+      store.getCatalogueDiagnostics()
   );
+  ipcMain.handle(
+    ipcChannels.collectHomebrewDiagnostics,
+    (event, request: HomebrewDiagnosticsRequest) => {
+      requireBackendSender(event);
+      return store.collectHomebrewDiagnostics(request);
+    }
+  );
+  ipcMain.handle(ipcChannels.getHomebrewInstalledContext, (event, itemID: string) => {
+    requireBackendSender(event);
+    return store.getHomebrewInstalledContext(itemID);
+  });
   ipcMain.handle(ipcChannels.getToolStatus, () => {
     const snapshot = store.getSnapshot();
     return {
@@ -627,8 +650,29 @@ function wireIpc(): void {
     store.removeDirectory(String(directory))
   );
   ipcMain.handle(ipcChannels.copyDiagnostics, () => {
-    clipboard.writeText(renderDiagnostics(store.getSnapshot(), metadata, process.platform));
+    clipboard.writeText(
+      renderDiagnostics(store.getSnapshot(), metadata, process.platform) +
+        store.getCatalogueDiagnostics()
+    );
   });
   ipcMain.handle(ipcChannels.showMainWindow, () => showMainWindow("main"));
   ipcMain.handle(ipcChannels.showSettings, () => showMainWindow("settings"));
+}
+
+function requireBackendSender(event: Electron.IpcMainInvokeEvent): void {
+  const windows = [mainWindow, menuWindow].filter((window): window is BrowserWindow =>
+    Boolean(window && !window.isDestroyed())
+  );
+  const documentURL =
+    MAIN_WINDOW_VITE_DEV_SERVER_URL ||
+    pathToFileURL(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)).href;
+  if (
+    !isTrustedBackendSender(
+      event,
+      windows.map((window) => window.webContents),
+      documentURL
+    )
+  ) {
+    throw new Error("Untrusted diagnostics caller");
+  }
 }

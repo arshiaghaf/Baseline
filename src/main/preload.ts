@@ -19,6 +19,10 @@ const api: BaselineAPI = {
   getSnapshot: () => ipcRenderer.invoke(ipcChannels.getSnapshot),
   getAppMetadata: () => ipcRenderer.invoke(ipcChannels.getAppMetadata),
   getDiagnostics: () => ipcRenderer.invoke(ipcChannels.getDiagnostics),
+  collectHomebrewDiagnostics: (request) =>
+    ipcRenderer.invoke(ipcChannels.collectHomebrewDiagnostics, request),
+  getHomebrewInstalledContext: (itemID) =>
+    ipcRenderer.invoke(ipcChannels.getHomebrewInstalledContext, itemID),
   getToolStatus: () => ipcRenderer.invoke(ipcChannels.getToolStatus),
   cleanUpHomebrew: () => ipcRenderer.invoke(ipcChannels.cleanUpHomebrew),
   refreshToolStatus: () => ipcRenderer.invoke(ipcChannels.refreshToolStatus),

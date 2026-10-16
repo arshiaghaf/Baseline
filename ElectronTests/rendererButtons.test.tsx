@@ -103,6 +103,8 @@ function installBaselineMock() {
       })
     ),
     getDiagnostics: vi.fn(),
+    collectHomebrewDiagnostics: vi.fn(),
+    getHomebrewInstalledContext: vi.fn(),
     getToolStatus: vi.fn(),
     refreshToolStatus: vi.fn(),
     cleanUpHomebrew: vi.fn(async () => "Homebrew cleanup completed."),
