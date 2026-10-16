@@ -32,12 +32,29 @@ export class ToolStatusService {
       resolve = yes;
       reject = no;
     });
+    // A snapshot listener may request a check and discard the returned promise.
+    void task.catch(() => undefined);
     this.task = task;
-    const release = this.options.reserveHomebrewCommandLock();
+    let release: (() => void) | undefined;
+    let checkingPublicationAttempted = false;
     try {
+      release = this.options.reserveHomebrewCommandLock();
+      checkingPublicationAttempted = true;
       this.options.patch({ isChecking: true });
     } catch (error) {
-      release?.();
+      // Keep the initiating error while attempting both cleanup callbacks.
+      try {
+        release?.();
+      } catch {
+        // The lock owns rollback and idempotent release.
+      }
+      if (checkingPublicationAttempted) {
+        try {
+          this.options.patch({ isChecking: false });
+        } catch {
+          // A second publication failure must not strand the registered task.
+        }
+      }
       this.task = undefined;
       reject(error);
       return task;
@@ -59,10 +76,17 @@ export class ToolStatusService {
   private async runProbes(release: (() => void) | undefined): Promise<void> {
     const mas = Promise.resolve().then(() => this.options.runMasCommand(["version"]));
     // Release Homebrew as soon as its own probe settles, even if mas is still pending.
+    let releaseFailure: { reason: unknown } | undefined;
     const brew: Promise<CommandResult | undefined> = release
       ? Promise.resolve()
           .then(() => this.options.runBrewCommand(["--version"]))
-          .finally(release)
+          .finally(() => {
+            try {
+              release();
+            } catch (error) {
+              releaseFailure = { reason: error };
+            }
+          })
       : Promise.resolve(undefined);
     const [brewResult, masResult] = await Promise.allSettled([brew, mas]);
     const status: ToolStatusPatch = {};
@@ -74,6 +98,7 @@ export class ToolStatusService {
       if (masResult.status === "fulfilled") {
         status.isMasInstalled = masResult.value.success;
       }
+      if (releaseFailure) throw releaseFailure.reason;
       if (brewResult.status === "rejected") throw brewResult.reason;
       if (masResult.status === "rejected") throw masResult.reason;
     } finally {

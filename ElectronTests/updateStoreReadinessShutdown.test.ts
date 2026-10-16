@@ -172,6 +172,113 @@ describe("tool readiness lifecycle", () => {
     }
   });
 
+  it("settles a failed lock reservation and permits a later check", async () => {
+    let reservations = 0;
+    let isChecking = false;
+    const runBrewCommand = vi.fn(async () => available);
+    const runMasCommand = vi.fn(async () => available);
+    const service = new ToolStatusService({
+      patch: (patch) => {
+        if (patch.isChecking !== undefined) isChecking = patch.isChecking;
+      },
+      reserveHomebrewCommandLock: () => {
+        if (++reservations === 1) throw new Error("reservation publication failed");
+        return () => undefined;
+      },
+      runBrewCommand,
+      runMasCommand,
+      markHomebrewAvailabilityChecked: () => undefined
+    });
+
+    await expect(service.check()).rejects.toThrow("reservation publication failed");
+    expect(isChecking).toBe(false);
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(runMasCommand).not.toHaveBeenCalled();
+
+    await expect(service.check()).resolves.toBeUndefined();
+    expect(reservations).toBe(2);
+    expect(runBrewCommand).toHaveBeenCalledOnce();
+    expect(runMasCommand).toHaveBeenCalledOnce();
+    expect(isChecking).toBe(false);
+  });
+
+  it("settles the original checking-publication error even when lock release throws", async () => {
+    let failPublication = true;
+    let failRelease = true;
+    let isChecking = false;
+    const release = vi.fn(() => {
+      if (failRelease) throw new Error("release publication failed");
+    });
+    const runBrewCommand = vi.fn(async () => available);
+    const runMasCommand = vi.fn(async () => available);
+    const service = new ToolStatusService({
+      patch: (patch) => {
+        if (patch.isChecking !== undefined) isChecking = patch.isChecking;
+        if (patch.isChecking && failPublication) {
+          throw new Error("checking publication failed");
+        }
+      },
+      reserveHomebrewCommandLock: () => release,
+      runBrewCommand,
+      runMasCommand,
+      markHomebrewAvailabilityChecked: () => undefined
+    });
+
+    await expect(service.check()).rejects.toThrow("checking publication failed");
+    expect(release).toHaveBeenCalledOnce();
+    expect(isChecking).toBe(false);
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    expect(runMasCommand).not.toHaveBeenCalled();
+
+    failPublication = false;
+    failRelease = false;
+    await expect(service.check()).resolves.toBeUndefined();
+    expect(release).toHaveBeenCalledTimes(2);
+    expect(isChecking).toBe(false);
+  });
+
+  it("observes both probes and retains their results when release publication throws", async () => {
+    const mas = deferred<CommandResult>();
+    let isChecking = false;
+    let homebrewInstalled = false;
+    let masInstalled = false;
+    let failRelease = true;
+    const release = vi.fn(() => {
+      if (failRelease) throw new Error("release publication failed");
+    });
+    const service = new ToolStatusService({
+      patch: (patch) => {
+        if (patch.isChecking !== undefined) isChecking = patch.isChecking;
+        if (patch.isHomebrewInstalled !== undefined) homebrewInstalled = patch.isHomebrewInstalled;
+        if (patch.isMasInstalled !== undefined) masInstalled = patch.isMasInstalled;
+      },
+      reserveHomebrewCommandLock: () => release,
+      runBrewCommand: async () => available,
+      runMasCommand: () => mas.promise,
+      markHomebrewAvailabilityChecked: () => undefined
+    });
+    const checking = service.check();
+
+    try {
+      await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
+      expect(isChecking).toBe(true);
+      mas.resolve(available);
+      await expect(checking).rejects.toThrow("release publication failed");
+      expect({ isChecking, homebrewInstalled, masInstalled }).toEqual({
+        isChecking: false,
+        homebrewInstalled: true,
+        masInstalled: true
+      });
+
+      failRelease = false;
+      await expect(service.check()).resolves.toBeUndefined();
+      expect(release).toHaveBeenCalledTimes(2);
+    } finally {
+      mas.resolve(available);
+      await Promise.allSettled([checking]);
+    }
+  });
+
   it.each(["brew", "mas"] as const)(
     "clears the store checking state when the %s probe rejects",
     async (rejecting) => {
