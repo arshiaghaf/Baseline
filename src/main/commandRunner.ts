@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename } from "node:path";
+import { OperationOutputTail } from "./operationOutputTail";
 import { CommandCapture, CommandOutputStream } from "./commandOutput";
 import { terminateCommandGroup } from "./commandProcessGroup";
 import {
@@ -33,6 +34,8 @@ export type CommandResult = {
   success: boolean;
   status: number | null;
   output: string;
+  /** Sanitized ephemeral support tail; never derived from truncated raw capture. */
+  outputTail?: string;
   stdout?: string;
   stderr?: string;
   signal?: NodeJS.Signals | null;
@@ -47,6 +50,7 @@ export type CommandFailure = {
 };
 
 export type CommandOptions = {
+  collectOutputTail?: boolean;
   signal?: AbortSignal;
   /** Zero disables the deadline. Generic commands have no default deadline. */
   timeoutMs?: number;
@@ -130,6 +134,7 @@ async function executeCommand(
     throw new RangeError("Invalid command capture limit or deadline.");
   }
   return new Promise((resolve) => {
+    const supportTail = options.collectOutputTail ? new OperationOutputTail() : undefined;
     const output = new CommandCapture(maxBytes, tail);
     const stdout = new CommandCapture(maxBytes, tail);
     const stderr = new CommandCapture(maxBytes, tail);
@@ -155,6 +160,7 @@ async function executeCommand(
         status: failure?.kind === "spawn" ? null : status,
         signal,
         failure,
+        outputTail: supportTail?.text(),
         outputTruncated: output.truncated,
         stdout: invalidCapture ? "" : stdout.text(),
         stderr: stderr.text(),
@@ -206,10 +212,22 @@ async function executeCommand(
       }, onLine);
     const stdoutStream = stream(stdout);
     const stderrStream = stream(stderr);
-    child.stdout.on("data", (chunk: Buffer) => stdoutStream.write(chunk));
-    child.stderr.on("data", (chunk: Buffer) => stderrStream.write(chunk));
-    child.stdout.on("end", () => stdoutStream.end());
-    child.stderr.on("end", () => stderrStream.end());
+    child.stdout.on("data", (chunk: Buffer) => {
+      supportTail?.write("stdout", chunk);
+      stdoutStream.write(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      supportTail?.write("stderr", chunk);
+      stderrStream.write(chunk);
+    });
+    child.stdout.on("end", () => {
+      supportTail?.end("stdout");
+      stdoutStream.end();
+    });
+    child.stderr.on("end", () => {
+      supportTail?.end("stderr");
+      stderrStream.end();
+    });
     child.on("error", (error: NodeJS.ErrnoException) => {
       // Never expose args, environment, or the error's potentially private path.
       failure ??= {
@@ -251,6 +269,7 @@ export async function runBrewCommand(
   if (!executable) return missingExecutable("Homebrew");
   const read = homebrewReadCommand(args);
   const commandOptions: CommandOptions = {
+    collectOutputTail: !read,
     timeoutMs: read ? commandReadTimeoutMs : 0,
     capture: read ? "complete" : "tail",
     ...options,
@@ -268,6 +287,7 @@ export async function runMasCommand(
   const executable = await resolvedMasExecutablePath();
   if (!executable) return missingExecutable("mas");
   return runCommand(executable, args, undefined, {
+    collectOutputTail: args[0] === "upgrade",
     timeoutMs: args[0] === "version" ? commandReadTimeoutMs : 0,
     capture: args[0] === "version" ? "complete" : "tail",
     ...options

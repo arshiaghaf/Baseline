@@ -64,6 +64,7 @@ const expectedBaselineAPI = [
   "cleanUpHomebrew",
   "collectHomebrewDiagnostics",
   "copyDiagnostics",
+  "copyOperationFailure",
   "dismissOperationFailure",
   "getAppMetadata",
   "getDiagnostics",
@@ -1230,4 +1231,87 @@ test("shows the installed suite pin for every owned app", async () => {
   } finally {
     await closeApp(application);
   }
+});
+
+test("keeps failure support collapsed and previews exact bounded report text with reduced motion", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  const failure = {
+    id: "update:fixture-failure",
+    entityID: "fixture-failure",
+    operation: "update",
+    reason: "command",
+    status: 1,
+    occurredAt: "2026-10-16T12:00:00.000Z"
+  };
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({
+      ...defaultPersistedSnapshot(),
+      autoRefreshEnabled: false,
+      operationFailures: [failure]
+    })
+  );
+  const application = await launchBaseline({ userData });
+  const page = await application.firstWindow();
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await application.evaluate(({ shell }) => {
+    const probe = globalThis as typeof globalThis & { failureReportURLs?: string[] };
+    probe.failureReportURLs = [];
+    shell.openExternal = async (url) => {
+      probe.failureReportURLs!.push(url);
+    };
+  });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const details = page.locator(".operation-failure");
+  await expect(details).toBeVisible();
+  await expect(details).not.toHaveAttribute("open");
+  await details.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(details).toHaveAttribute("open");
+  await expect(details.getByLabel("Command output")).toContainText("No command output");
+  expect(
+    await details
+      .locator(".operation-failure-content")
+      .evaluate((element) => getComputedStyle(element).animationName)
+  ).toBe("none");
+  await expect(
+    page.evaluate(() => window.baseline.copyOperationFailure("missing", "missing"))
+  ).resolves.toBe(false);
+  for (const width of [800, 1280]) {
+    await application.evaluate(({ BrowserWindow }, width) => {
+      const window = BrowserWindow.getAllWindows()[0]!;
+      window.setMinimumSize(600, 600);
+      window.setContentSize(width, 900);
+    }, width);
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+    await details.getByRole("button", { name: "Report issue", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Report issue", exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+    expect(
+      await application.evaluate(
+        () => (globalThis as typeof globalThis & { failureReportURLs?: string[] }).failureReportURLs
+      )
+    ).toEqual([]);
+    await page.screenshot({ path: test.info().outputPath(`failure-report-${width}.png`) });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(details.getByRole("button", { name: "Report issue", exact: true })).toBeFocused();
+  }
+  await details.getByRole("button", { name: "Report issue", exact: true }).click();
+  const preview = await page.getByLabel("Report text").textContent();
+  await page.getByRole("button", { name: "Open on GitHub" }).click();
+  await expect(page.getByRole("dialog", { name: "Report issue", exact: true })).not.toBeVisible();
+  const urls = await application.evaluate(
+    () => (globalThis as typeof globalThis & { failureReportURLs?: string[] }).failureReportURLs!
+  );
+  expect(urls).toHaveLength(1);
+  expect(new URL(urls[0]!).searchParams.get("logs")).toBe(preview);
+  expect(Buffer.byteLength(urls[0]!)).toBeLessThanOrEqual(6 * 1024);
+  expect(errors).toEqual([]);
+  await closeApp(application);
 });

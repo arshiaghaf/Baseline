@@ -48,6 +48,8 @@ const api: BaselineAPI = {
   openExternal: (url: string) => ipcRenderer.invoke(ipcChannels.openExternal, url),
   chooseDirectory: () => ipcRenderer.invoke(ipcChannels.chooseDirectory),
   removeDirectory: (path: string) => ipcRenderer.invoke(ipcChannels.removeDirectory, path),
+  copyOperationFailure: (id, attemptID) =>
+    ipcRenderer.invoke(ipcChannels.copyOperationFailure, id, attemptID),
   copyDiagnostics: () => ipcRenderer.invoke(ipcChannels.copyDiagnostics),
   showMainWindow: () => ipcRenderer.invoke(ipcChannels.showMainWindow),
   showSettings: () => ipcRenderer.invoke(ipcChannels.showSettings),

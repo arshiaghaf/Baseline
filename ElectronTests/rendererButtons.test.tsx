@@ -11,6 +11,7 @@ import {
   DiscoverRow,
   HomebrewRow,
   HomebrewSection,
+  OperationFailures,
   SettingsView,
   UpdateActionButton
 } from "../src/renderer/main";
@@ -124,6 +125,7 @@ function installBaselineMock() {
     openExternal: vi.fn(),
     chooseDirectory: vi.fn(),
     removeDirectory: vi.fn(),
+    copyOperationFailure: vi.fn(async () => true),
     copyDiagnostics: vi.fn(),
     showMainWindow: vi.fn(),
     showSettings: vi.fn(),
@@ -3417,4 +3419,66 @@ describe("Homebrew pin presentation", () => {
       expect(screen.queryByRole("button", { name: "Update Brews" })).not.toBeInTheDocument();
     }
   );
+});
+
+describe("operation failure support", () => {
+  const failure = {
+    id: "update:cask:example",
+    entityID: cask.id,
+    operation: "update" as const,
+    reason: "command" as const,
+    status: 1,
+    occurredAt: "2026-10-16T12:00:00.000Z"
+  };
+  const withDetails = (attemptID: string) =>
+    snapshot({
+      operationFailures: [failure],
+      operationFailureDetails: {
+        [failure.id]: { attemptID, outputTail: "Sanitized fixture output 🧪" }
+      }
+    });
+
+  it("starts collapsed, copies directly, and resets disclosure and preview for the same failure ID", async () => {
+    const { container, rerender } = render(<OperationFailures snapshot={withDetails("one")} />);
+    const details = container.querySelector("details")!;
+    expect(details.open).toBe(false);
+    fireEvent.click(details.querySelector("summary")!);
+    expect(details.open).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    await screen.findByText("Copied");
+    expect(window.baseline.copyOperationFailure).toHaveBeenCalledWith(failure.id, "one");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Report issue" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    rerender(<OperationFailures snapshot={withDetails("two")} />);
+    expect(container.querySelector("details")!.open).toBe(false);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText("Copied")).not.toBeInTheDocument();
+  });
+
+  it("previews the exact URL text, sends only on Open, traps keys and restores focus", async () => {
+    vi.mocked(window.baseline.openExternal).mockResolvedValue(true);
+    const { container } = render(<OperationFailures snapshot={withDetails("one")} />);
+    fireEvent.click(container.querySelector("summary")!);
+    const trigger = screen.getByRole("button", { name: "Report issue" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+    expect(window.baseline.openExternal).not.toHaveBeenCalled();
+    const text = within(dialog).getByLabelText("Report text").textContent;
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    const open = screen.getByRole("button", { name: "Open on GitHub" });
+    open.focus();
+    fireEvent.keyDown(window, { key: "Tab" });
+    expect(screen.getByLabelText("Report text")).toHaveFocus();
+    fireEvent.click(open);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    const url = new URL(vi.mocked(window.baseline.openExternal).mock.calls[0]![0]);
+    expect(url.searchParams.get("logs")).toBe(text);
+    expect(url.searchParams.get("template")).toBe("bug_report.yml");
+  });
 });

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -17,6 +17,8 @@ import {
   type PersistedSnapshot
 } from "../src/shared/domain";
 import { version } from "../src/shared/version";
+import { renderDiagnostics } from "../src/shared/diagnostics";
+import type { CommandResult } from "../src/main/commandRunner";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -295,5 +297,154 @@ describe("cached lookup responses still compare current local versions", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     await client.lookupOutcome("com.example.two", version("1"));
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("ephemeral operation failure projection", () => {
+  async function quitStores(stores: UpdateStore[]) {
+    const outcomes = await Promise.allSettled(stores.map((store) => store.prepareToQuit()));
+    for (const outcome of outcomes) expect(outcome).toEqual({ status: "fulfilled", value: true });
+  }
+  const item = {
+    id: "formula:example",
+    token: "example",
+    name: "Example",
+    kind: "formula" as const,
+    formulaIdentity: { name: "example", fullName: "example", tap: "homebrew/core", oldNames: [] },
+    installedVersion: version("1"),
+    isOutdated: true,
+    latestVersion: version("2")
+  };
+  const persisted = { ...defaultPersistedSnapshot(), homebrewItems: [item] };
+  const failed = {
+    success: false,
+    status: 1,
+    output: "raw fixture only",
+    outputTail: "SAFE_EPHEMERAL_FIXTURE"
+  };
+  const id = `update:${item.id}`;
+
+  it("retains tails during reconciliation, excludes disk/export/relaunch, and changes every retry identity", async () => {
+    vi.spyOn(Date.prototype, "toISOString").mockReturnValue("2026-10-16T12:00:00.000Z");
+    const { store, persistence } = await fixture({ persisted, runBrewCommand: async () => failed });
+    let restored: Awaited<ReturnType<typeof fixture>> | undefined;
+    try {
+      await store.refresh(true);
+      await store.performHomebrewUpdate(item.id);
+      const first = store.getSnapshot().operationFailureDetails![id]!;
+      const firstOccurredAt = store.getSnapshot().operationFailures![0]!.occurredAt;
+      expect(first.outputTail).toBe(failed.outputTail);
+      expect(store.operationFailureText(id, first.attemptID)).toContain(failed.outputTail);
+      await store.refresh(false);
+      expect(store.getSnapshot().operationFailureDetails![id]).toEqual(first);
+      expect(renderDiagnostics(store.getSnapshot())).not.toContain(failed.outputTail);
+      const saved = await persistence.load();
+      expect(saved).not.toHaveProperty("operationFailureDetails");
+      expect(JSON.stringify(saved)).not.toContain(failed.outputTail);
+      const snapshotPath = path.join(directories.at(-1)!, "baseline-snapshot.json");
+      for (const suffix of ["", ".backup"])
+        expect(await readFile(snapshotPath + suffix, "utf8")).not.toContain(failed.outputTail);
+      restored = await fixture({
+        persisted: { ...saved, operationFailureDetails: { [id]: first } } as PersistedSnapshot
+      });
+      expect(restored.store.getSnapshot().operationFailureDetails).toEqual({});
+      expect(
+        restored.store.operationFailureText(id, saved.operationFailures![0]!.occurredAt)
+      ).toContain("No command output");
+      await store.performHomebrewUpdate(item.id);
+      expect(store.getSnapshot().operationFailures![0]!.occurredAt).toBe(firstOccurredAt);
+      expect(store.getSnapshot().operationFailureDetails![id]!.attemptID).not.toBe(first.attemptID);
+      expect(store.operationFailureText(id, first.attemptID)).toBeUndefined();
+      await store.uninstallHomebrewItem("missing");
+      expect(store.getSnapshot().operationFailureDetails).toEqual({});
+    } finally {
+      await quitStores([store, ...(restored ? [restored.store] : [])]);
+    }
+  });
+
+  it.each(["invalid", "same-item", "cleanup"])(
+    "prevents an older in-flight result restoring a tail after %s user attempt",
+    async (attempt) => {
+      let finish!: () => void;
+      let launched = false;
+      const gate = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const { store } = await fixture({
+        persisted,
+        runBrewCommand: async () => {
+          launched = true;
+          await gate;
+          return failed;
+        }
+      });
+      let running: Promise<void> | undefined;
+      try {
+        await store.refresh(true);
+        running = store.performHomebrewUpdate(item.id);
+        await vi.waitFor(() => expect(launched).toBe(true));
+        if (attempt === "same-item") await store.performHomebrewUpdate(item.id);
+        else if (attempt === "cleanup") await store.cleanUpHomebrew(async () => false);
+        else
+          await store.installHomebrewItem({
+            id: "bad",
+            token: "bad;token",
+            displayName: "Bad",
+            kind: "formula"
+          } as Parameters<UpdateStore["installHomebrewItem"]>[0]);
+        expect(store.getSnapshot().operationFailureDetails).toEqual({});
+        finish();
+        await running;
+        expect(store.getSnapshot().operationFailureDetails![id]!.outputTail).toBeUndefined();
+      } finally {
+        finish();
+        await Promise.allSettled(running ? [running] : []);
+        await quitStores([store]);
+      }
+    }
+  );
+
+  it("gives only the latest queued user attempt its new tail", async () => {
+    const second = {
+      ...item,
+      id: "formula:second",
+      token: "second",
+      name: "Second",
+      formulaIdentity: { ...item.formulaIdentity, name: "second", fullName: "second" }
+    };
+    let finish!: () => void;
+    let launched = false;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const runBrewCommand = vi.fn(async (): Promise<CommandResult> => {
+      if (runBrewCommand.mock.calls.length === 1) {
+        launched = true;
+        await gate;
+      }
+      return failed;
+    });
+    const { store } = await fixture({
+      persisted: { ...persisted, homebrewItems: [item, second] },
+      runBrewCommand
+    });
+    let running: Promise<void> | undefined;
+    let queued: Promise<void> | undefined;
+    try {
+      await store.refresh(true);
+      running = store.performHomebrewUpdate(item.id);
+      await vi.waitFor(() => expect(launched).toBe(true));
+      queued = store.performHomebrewUpdate(second.id);
+      finish();
+      await Promise.all([running, queued]);
+      expect(store.getSnapshot().operationFailureDetails![id]!.outputTail).toBeUndefined();
+      expect(store.getSnapshot().operationFailureDetails![`update:${second.id}`]!.outputTail).toBe(
+        failed.outputTail
+      );
+    } finally {
+      finish();
+      await Promise.allSettled([...(running ? [running] : []), ...(queued ? [queued] : [])]);
+      await quitStores([store]);
+    }
   });
 });

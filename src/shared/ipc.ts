@@ -41,6 +41,7 @@ export const ipcChannels = {
   openExternal: "baseline:openExternal",
   chooseDirectory: "baseline:chooseDirectory",
   removeDirectory: "baseline:removeDirectory",
+  copyOperationFailure: "baseline:copyOperationFailure",
   copyDiagnostics: "baseline:copyDiagnostics",
   showMainWindow: "baseline:showMainWindow",
   showSettings: "baseline:showSettings",
@@ -88,6 +89,7 @@ export type BaselineAPI = {
   openExternal(url: string): Promise<boolean>;
   chooseDirectory(): Promise<string | undefined>;
   removeDirectory(path: string): Promise<void>;
+  copyOperationFailure(id: string, attemptID: string): Promise<boolean>;
   copyDiagnostics(): Promise<void>;
   showMainWindow(): Promise<void>;
   showSettings(): Promise<void>;

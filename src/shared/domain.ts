@@ -245,6 +245,8 @@ export type RefreshState = {
 export type BaselineSnapshot = PersistedSnapshot &
   ToolStatus &
   RefreshState & {
+    /** Runtime only; excluded from persistence and diagnostics export. */
+    operationFailureDetails?: Record<string, { attemptID: string; outputTail?: string }>;
     snapshotRevision?: number;
     searchText: string;
     isRunningHomebrewMaintenance: boolean;
