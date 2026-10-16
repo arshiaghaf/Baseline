@@ -31,6 +31,7 @@ import {
 } from "./commandRunner";
 import { HomebrewCaskClient } from "./homebrewCaskClient";
 import { HomebrewFormulaClient } from "./homebrewFormulaClient";
+import { FileCatalogueStorage } from "./catalogueStorage";
 import { HomebrewInventoryClient, type HomebrewInventoryResult } from "./homebrewInventoryClient";
 import { HomebrewWorkLock } from "./homebrewWorkLock";
 import {
@@ -143,14 +144,27 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     runMasCommand?: typeof defaultRunMasCommand;
     profileStatsIntegrity?: ProfileStatsIntegrity;
     successRefreshDelayMS?: number;
+    catalogueCacheRoot?: string;
   }) {
     super();
     this.persistence = options.persistence;
     this.scanner = options.clients?.scanner ?? new BundleScannerClient();
     this.appStore = options.clients?.appStore ?? new AppStoreLookupClient();
     this.sparkle = options.clients?.sparkle ?? new SparkleAppcastClient();
-    this.homebrew = options.clients?.homebrew ?? new HomebrewCaskClient();
-    this.homebrewFormula = options.clients?.homebrewFormula ?? new HomebrewFormulaClient();
+    this.homebrew =
+      options.clients?.homebrew ??
+      new HomebrewCaskClient({
+        storage: options.catalogueCacheRoot
+          ? new FileCatalogueStorage(options.catalogueCacheRoot, "cask")
+          : undefined
+      });
+    this.homebrewFormula =
+      options.clients?.homebrewFormula ??
+      new HomebrewFormulaClient({
+        storage: options.catalogueCacheRoot
+          ? new FileCatalogueStorage(options.catalogueCacheRoot, "formula")
+          : undefined
+      });
     this.homebrewInventory = options.clients?.homebrewInventory ?? new HomebrewInventoryClient();
     this.selfUpdate = options.clients?.selfUpdate ?? new SelfUpdateClient();
     this.currentAppVersion = version(options.currentAppVersion);
@@ -687,6 +701,27 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   async uninstallHomebrewItem(itemID: string): Promise<void> {
     await this.homebrewOperations.uninstallHomebrewItem(itemID);
+  }
+
+  getCatalogueDiagnostics(): string {
+    const lines = (
+      [
+        ["Casks", this.homebrew.cacheStatus?.decode],
+        ["Formulae", this.homebrewFormula.cacheStatus?.decode]
+      ] as const
+    ).flatMap(([kind, status]) => {
+      if (
+        !status ||
+        ![status.totalEntries, status.skippedEntries, status.schemaWarnings].every(
+          (value) => Number.isSafeInteger(value) && value >= 0 && value <= 100_000
+        )
+      )
+        return [];
+      return [
+        `${kind}: ${status.totalEntries} entries, ${status.skippedEntries} skipped, ${status.schemaWarnings} schema warnings.`
+      ];
+    });
+    return lines.length ? `\n\nHomebrew catalogue parsing\n${lines.join("\n")}` : "";
   }
 
   private reserveHomebrewCommandLock(
