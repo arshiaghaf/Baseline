@@ -8,12 +8,9 @@ import type {
   AppRecord,
   BaselineSnapshot,
   HomebrewCaskDiscoveryItem,
-  HomebrewCaskEntry,
   HomebrewCaskIndex,
   HomebrewFormulaIndex,
   HomebrewManagedItem,
-  HomebrewManagedItemKind,
-  HomebrewRecentlyUpdatedRecord,
   MenuTab,
   PersistedSnapshot,
   SelfUpdateRecord,
@@ -30,18 +27,11 @@ import type { HomebrewMaintenanceRunEvent } from "../shared/homebrewProgress";
 import {
   caskIndexForInstalledItems,
   homebrewCommandToken,
-  homebrewItemIdentity,
   installedCaskEntry
 } from "../shared/homebrewIdentity";
 import type { PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
-import {
-  compareVersions,
-  isVersionEmpty,
-  isVersionGreater,
-  version,
-  type VersionValue
-} from "../shared/version";
+import { isVersionEmpty, version, type VersionValue } from "../shared/version";
 import { AppStoreLookupClient } from "./appStoreLookupClient";
 import { BundleScannerClient } from "./bundleScanner";
 import {
@@ -70,7 +60,31 @@ import {
   type OperationFailure
 } from "../shared/operationFailures";
 import type { CatalogueStatus } from "./catalogueCache";
-import { isSparkleVersionNewer, sparkleMarketingVersion } from "../shared/sparkleVersion";
+
+import {
+  isAppUpdateNewerThanInstalledApp,
+  lookupAppUpdates,
+  mergeRecentlyUpdated
+} from "./appUpdateLookupService";
+import {
+  canUseHomebrewAppUpdate,
+  detectLaggingHomebrewCaskTokens,
+  emptyHomebrewInventoryResult,
+  homebrewCaskItemProvesAppOwnership,
+  homebrewIdentityReconciliationItems,
+  homebrewItemCanRunAppUpdate,
+  installedCaskIdentifiesSelf,
+  mergeHomebrewRecentlyUpdatedRecords,
+  preserveFormulaIdentityContinuity,
+  preservePreviousHomebrewInventoryMembership,
+  preservePreviousHomebrewOutdatedState,
+  reconcileHomebrewInventory
+} from "./homebrewReconciliation";
+import { RefreshLifecycle } from "./refreshLifecycle";
+export {
+  mergeHomebrewRecentlyUpdatedRecords,
+  preservePreviousHomebrewOutdatedState
+} from "./homebrewReconciliation";
 
 type StoreEvents = {
   snapshot: [BaselineSnapshot];
@@ -84,7 +98,6 @@ type RefreshOptions = {
   onHomebrewInventoryReconciled?: (inventory: HomebrewInventoryResult) => void;
 };
 
-type AppLookupSource = Extract<UpdateRecord["source"], "appStore" | "sparkle">;
 type HomebrewCaskSource = Pick<HomebrewCaskClient, "fetchIndex" | "lookupUpdate" | "searchCasks"> &
   Partial<Pick<HomebrewCaskClient, "cacheStatus">>;
 type HomebrewFormulaSource = Pick<HomebrewFormulaClient, "fetchIndex" | "searchFormulae"> &
@@ -110,13 +123,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly openAppBundle: (bundlePath: string) => Promise<void>;
   private readonly profileStatsService: ProfileStatsService;
   private readonly successRefreshDelayMS: number;
-  private refreshTask?: Promise<void>;
-  private cleanupRefreshTask?: Promise<void>;
-  private cleanupRefreshRequested = false;
   private homebrewCleanupRequiresInventory = false;
-  private refreshSequence = 0;
-  private refreshController?: AbortController;
-  private autoRefreshTimer?: NodeJS.Timeout;
   private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
   private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
   private hasCheckedHomebrewAvailability = false;
@@ -127,6 +134,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private snapshotRevision = 0;
   private readonly progressPublisher = new ProgressPublisher((event) =>
     this.emit("progress", event)
+  );
+
+  private readonly refreshLifecycle = new RefreshLifecycle<RefreshOptions>(
+    (lightweight, sequence, options, signal) =>
+      this.computeRefresh(lightweight, sequence, options, signal),
+    () => void this.refresh(true)
   );
 
   constructor(options: {
@@ -343,46 +356,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
-    if (this.cleanupRefreshTask) {
-      this.cleanupRefreshRequested = true;
-      await this.cleanupRefreshTask;
-      if (lightweight) return;
-      // A mutation after cleanup's scan began still needs its own full scan.
-      return this.refresh(false, options);
-    }
-    if (this.refreshTask && lightweight) {
-      return this.waitForRefreshCompletion(this.refreshTask);
-    }
-    const sequence = ++this.refreshSequence;
-    this.refreshController?.abort();
-    const controller = new AbortController();
-    this.refreshController = controller;
-    const task = this.computeRefresh(lightweight, sequence, options, controller.signal).finally(
-      () => {
-        if (this.refreshTask === task) {
-          this.refreshTask = undefined;
-          this.refreshController = undefined;
-        }
-      }
-    );
-    this.refreshTask = task;
-    return this.waitForRefreshCompletion(task);
-  }
-
-  private async waitForRefreshCompletion(task: Promise<void>): Promise<void> {
-    // Superseded callers must observe the winning scan's commit, not merely the
-    // completion of their own aborted generation.
-    for (;;) {
-      try {
-        await task;
-      } catch (error) {
-        if (!this.refreshTask || this.refreshTask === task) throw error;
-      }
-      if (this.cleanupRefreshTask) await this.cleanupRefreshTask;
-      const next = this.refreshTask;
-      if (!next || next === task) return;
-      task = next;
-    }
+    return this.refreshLifecycle.refresh(lightweight, options);
   }
 
   async refreshToolStatus(): Promise<void> {
@@ -464,9 +438,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.profileStatsService.drain();
     await this.persist();
     if (this.hasActiveUpdateOperation()) return false;
-    if (this.autoRefreshTimer) clearInterval(this.autoRefreshTimer);
-    ++this.refreshSequence;
-    this.refreshController?.abort();
+    this.refreshLifecycle.stop();
     return true;
   }
 
@@ -718,7 +690,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           homebrewInventoryTask,
           this.lookupSelfUpdate(now)
         ]);
-      if (sequence !== this.refreshSequence) {
+      if (!this.refreshLifecycle.isCurrent(sequence)) {
         return;
       }
       const homebrewItems = preservePreviousHomebrewInventoryMembership(
@@ -731,120 +703,24 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.latestHomebrewIndex = homebrewIndex;
       this.latestHomebrewFormulaIndex = homebrewFormulaIndex;
       const previousUpdates = new Map(this.state.updates.map((update) => [update.appID, update]));
-      const updates: UpdateRecord[] = [];
-
-      for (const appRecord of apps) {
-        if (this.isSelfApp(appRecord)) continue;
-        if (signal.aborted || sequence !== this.refreshSequence) return;
-        if (appRecord.bundleIdentifier) {
-          const outcome = await this.appStore.lookupOutcome(
-            appRecord.bundleIdentifier,
-            appRecord.localVersion,
-            {
-              signal,
-              force,
-              includeIOSAppStoreSoftware:
-                appRecord.isIOSAppOnMac === true && appRecord.hasAppStoreEvidence === true,
-              includeMacCapableAppStoreSoftware:
-                appRecord.isIOSAppOnMac !== true && appRecord.hasSafariWebExtension === true
-            }
-          );
-          if (signal.aborted || sequence !== this.refreshSequence) return;
-          if (outcome.type === "completed" && outcome.value) {
-            updates.push({
-              id: appRecord.id,
-              appID: appRecord.id,
-              source: "appStore",
-              supportLevel: "supported",
-              localVersion: appRecord.localVersion,
-              remoteVersion: outcome.value.remoteVersion,
-              updateURL: outcome.value.updateURL,
-              appStoreItemID: outcome.value.appStoreItemID,
-              releaseNotesSummary: outcome.value.releaseNotesSummary,
-              releaseDate: outcome.value.releaseDate,
-              checkedAt: outcome.checkedAt ?? now
-            });
-            continue;
-          }
-          if (outcome.type === "transientFailure") {
-            const previousUpdate = previousAppUpdateForTransientLookup(
-              previousUpdates,
-              appRecord,
-              "appStore"
-            );
-            if (previousUpdate) {
-              updates.push(previousUpdate);
-              continue;
-            }
-          }
+      const updates = await lookupAppUpdates(
+        { appStore: this.appStore, sparkle: this.sparkle, homebrew: this.homebrew },
+        {
+          apps,
+          previousUpdates,
+          homebrewItems,
+          homebrewIndex,
+          now,
+          force,
+          signal,
+          isCurrent: () => this.refreshLifecycle.isCurrent(sequence),
+          isSelfApp: (app) => this.isSelfApp(app),
+          canUseHomebrewAppUpdate
         }
+      );
+      if (!updates) return;
 
-        if (appRecord.sparkleFeedURL) {
-          const outcome = await this.sparkle.lookupOutcome(
-            appRecord.sparkleFeedURL,
-            appRecord.localVersion,
-            appRecord.bundleVersion,
-            { signal, force }
-          );
-          if (signal.aborted || sequence !== this.refreshSequence) return;
-          if (outcome.type === "completed" && outcome.value) {
-            updates.push({
-              id: appRecord.id,
-              appID: appRecord.id,
-              source: "sparkle",
-              supportLevel: "limited",
-              localVersion: appRecord.localVersion,
-              remoteVersion: outcome.value.remoteVersion,
-              localBuildVersion: appRecord.bundleVersion,
-              remoteBuildVersion: outcome.value.remoteBuildVersion,
-              sparkleVersionComparison: outcome.value.versionComparison,
-              updateURL: outcome.value.updateURL,
-              releaseNotesURL: outcome.value.releaseNotesURL,
-              releaseDate: outcome.value.releaseDate,
-              checkedAt: outcome.checkedAt ?? now
-            });
-            continue;
-          }
-          if (outcome.type === "transientFailure") {
-            const previousUpdate = previousAppUpdateForTransientLookup(
-              previousUpdates,
-              appRecord,
-              "sparkle"
-            );
-            if (previousUpdate) {
-              updates.push(previousUpdate);
-              continue;
-            }
-          }
-        }
-
-        const homebrewUpdate = this.homebrew.lookupUpdate(
-          appRecord.bundleIdentifier,
-          path.basename(appRecord.bundlePath),
-          appRecord.localVersion,
-          homebrewIndex
-        );
-        if (homebrewUpdate && isValidHomebrewToken(homebrewUpdate.token)) {
-          if (
-            canUseHomebrewAppUpdate(appRecord, homebrewUpdate.token, homebrewItems, homebrewIndex)
-          ) {
-            updates.push({
-              id: appRecord.id,
-              appID: appRecord.id,
-              source: "homebrew",
-              supportLevel: "limited",
-              localVersion: appRecord.localVersion,
-              remoteVersion: homebrewUpdate.remoteVersion,
-              homebrewToken: homebrewUpdate.token,
-              updateURL: homebrewUpdate.homepageURL,
-              releaseNotesSummary: `Token: ${homebrewUpdate.token}`,
-              checkedAt: now
-            });
-          }
-        }
-      }
-
-      if (sequence !== this.refreshSequence) {
+      if (!this.refreshLifecycle.isCurrent(sequence)) {
         return;
       }
       const previousHomebrewItems = this.state.homebrewItems;
@@ -865,7 +741,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.state,
         homebrewInventory.inventoryReadSucceededByKind
       );
-      const recentlyUpdated = this.mergeRecentlyUpdated(apps, updates, previousUpdates, now);
+      const recentlyUpdated = mergeRecentlyUpdated(
+        this.state.recentlyUpdated,
+        apps,
+        updates,
+        previousUpdates,
+        now
+      );
       const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
         this.state.homebrewRecentlyUpdated,
         homebrewIdentityReconciliationItems(this.state),
@@ -923,17 +805,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.invalidateHomebrewUpdateTargets();
       }
       await this.persist();
-      if (sequence !== this.refreshSequence) return;
+      if (!this.refreshLifecycle.isCurrent(sequence)) return;
       options.onHomebrewInventoryReconciled?.(homebrewInventory);
       void this.homebrewOperations.processHomebrewUpdateQueue();
     } catch (error) {
-      if (sequence !== this.refreshSequence) {
+      if (!this.refreshLifecycle.isCurrent(sequence)) {
         return;
       }
       // Keep this refresh's task even after the shared inventory lock is released.
       // An unrelated provider failure must not discard fresh membership evidence.
       const recoveredHomebrewInventory = await homebrewInventoryTask?.catch(() => undefined);
-      if (sequence !== this.refreshSequence) {
+      if (!this.refreshLifecycle.isCurrent(sequence)) {
         return;
       }
       const patch: Partial<BaselineSnapshot> = {
@@ -1096,12 +978,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!this.state.isHomebrewInstalled) return "Homebrew is not available.";
     const release = this.reserveHomebrewCommandLock({ allowRefreshSupersession: true });
     if (!release) return "Homebrew is busy. Try again when the current operation finishes.";
-    const refreshWasActive = Boolean(this.refreshTask);
-    this.cleanupRefreshRequested = false;
-    let finish!: () => void;
-    this.cleanupRefreshTask = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
+    const reservation = this.refreshLifecycle.beginCleanup();
+    const refreshWasActive = reservation.refreshWasActive;
     this.patch({ isCleaningUpHomebrew: true, homebrewCleanupMessage: undefined });
     try {
       let confirmed = false;
@@ -1118,7 +996,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         // membership without committing them. Reconcile before releasing work,
         // even when no cleanup command was run.
         const refreshed =
-          !(refreshWasActive || this.cleanupRefreshRequested) ||
+          !(refreshWasActive || this.refreshLifecycle.wasRefreshRequestedDuringCleanup) ||
           (await this.refreshHomebrewCleanupInventory());
         let message = confirmationRejected
           ? "Homebrew cleanup could not run. Please try again."
@@ -1150,31 +1028,26 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return message;
     } finally {
       this.patch({ isCleaningUpHomebrew: false });
-      this.cleanupRefreshTask = undefined;
-      finish();
+      reservation.finish();
       release();
     }
   }
 
   private async refreshHomebrewCleanupInventory(): Promise<boolean> {
-    // Own this generation so obsolete provider lookups cannot replace the
-    // inventory commit required before cleanup's reservation is released.
-    const sequence = ++this.refreshSequence;
-    this.refreshController?.abort();
-    const controller = new AbortController();
-    this.refreshController = controller;
     let refreshed = false;
     try {
-      await this.computeRefresh(
-        true,
-        sequence,
-        {
-          allowHomebrewInventoryDuringActiveCommand: true,
-          onHomebrewInventoryReconciled: (inventory) => {
-            refreshed = this.homebrewInventoryIsComplete(inventory);
-          }
-        },
-        controller.signal
+      await this.refreshLifecycle.runCleanupGeneration((sequence, signal) =>
+        this.computeRefresh(
+          true,
+          sequence,
+          {
+            allowHomebrewInventoryDuringActiveCommand: true,
+            onHomebrewInventoryReconciled: (inventory) => {
+              refreshed = this.homebrewInventoryIsComplete(inventory);
+            }
+          },
+          signal
+        )
       );
       if (!refreshed) {
         this.homebrewCleanupRequiresInventory = true;
@@ -1188,11 +1061,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.homebrewOperations.cancelQueuedHomebrewUpdates();
       this.invalidateHomebrewUpdateTargets();
       await this.persist().catch(() => undefined);
-    } finally {
-      if (this.refreshController === controller) {
-        this.refreshTask = undefined;
-        this.refreshController = undefined;
-      }
     }
     return refreshed;
   }
@@ -1245,49 +1113,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     return this.homebrewWorkLock.isMutationActive;
   }
 
-  private mergeRecentlyUpdated(
-    apps: AppRecord[],
-    updates: UpdateRecord[],
-    previousUpdates: Map<string, UpdateRecord>,
-    now: string
-  ) {
-    const currentUpdateIDs = new Set(updates.map((update) => update.appID));
-    const appByID = new Map(apps.map((app) => [app.id, app]));
-    const records = [...this.state.recentlyUpdated];
-    for (const [appID, previousUpdate] of previousUpdates.entries()) {
-      if (currentUpdateIDs.has(appID)) {
-        continue;
-      }
-      const appRecord = appByID.get(appID);
-      if (!appRecord) {
-        continue;
-      }
-      if (!hasInstalledAppAdvanced(appRecord, previousUpdate)) {
-        continue;
-      }
-      records.unshift({
-        id: appID,
-        appID,
-        displayName: appRecord.displayName,
-        source: previousUpdate.source,
-        fromVersion: previousUpdate.localVersion,
-        toVersion: appRecord.localVersion,
-        fromBuildVersion: previousUpdate.localBuildVersion,
-        toBuildVersion: previousUpdate.localBuildVersion ? appRecord.bundleVersion : undefined,
-        updatedAt: now
-      });
-    }
-    const retentionMs = 14 * 24 * 60 * 60 * 1000;
-    const cutoff = Date.now() - retentionMs;
-    const deduped = new Map<string, (typeof records)[number]>();
-    for (const record of records) {
-      if (new Date(record.updatedAt).getTime() >= cutoff && !deduped.has(record.appID)) {
-        deduped.set(record.appID, record);
-      }
-    }
-    return [...deduped.values()].slice(0, 40);
-  }
-
   private async withAppUpdating(appID: string, operation: () => Promise<void>): Promise<void> {
     if (this.state.appUpdatingIDs.includes(appID)) {
       return;
@@ -1308,15 +1133,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private restartAutoRefreshLoop(): void {
-    if (this.autoRefreshTimer) {
-      clearInterval(this.autoRefreshTimer);
-    }
-    if (!this.state.autoRefreshEnabled) {
-      return;
-    }
-    this.autoRefreshTimer = setInterval(
-      () => void this.refresh(true),
-      this.state.refreshIntervalMinutes * 60 * 1000
+    this.refreshLifecycle.restartAutoRefreshLoop(
+      this.state.autoRefreshEnabled,
+      this.state.refreshIntervalMinutes
     );
   }
 
@@ -1458,730 +1277,6 @@ function removeFromArray<T>(values: T[], value: T): T[] {
   return values.filter((candidate) => candidate !== value);
 }
 
-function previousAppUpdateForTransientLookup(
-  previousUpdates: Map<string, UpdateRecord>,
-  appRecord: AppRecord,
-  source: AppLookupSource
-): UpdateRecord | undefined {
-  const previousUpdate = previousUpdates.get(appRecord.id);
-  if (!previousUpdate || previousUpdate.source !== source) {
-    return undefined;
-  }
-  if (!canPreservePreviousAppUpdate(appRecord, previousUpdate)) {
-    return undefined;
-  }
-  return previousUpdate;
-}
-
-function canPreservePreviousAppUpdate(appRecord: AppRecord, previousUpdate: UpdateRecord): boolean {
-  if (previousUpdate.appID !== appRecord.id) {
-    return false;
-  }
-  if (compareVersions(previousUpdate.localVersion, appRecord.localVersion) !== 0) {
-    return false;
-  }
-  if (
-    previousUpdate.localBuildVersion &&
-    (!appRecord.bundleVersion ||
-      compareVersions(previousUpdate.localBuildVersion, appRecord.bundleVersion) !== 0)
-  ) {
-    return false;
-  }
-  return isAppUpdateNewerThanInstalledApp(previousUpdate, appRecord);
-}
-
-function isAppUpdateNewerThanInstalledApp(update: UpdateRecord, appRecord: AppRecord): boolean {
-  if (update.source === "sparkle") {
-    const candidate = {
-      parsedVersion: sparkleMarketingVersion(update.remoteVersion, update.remoteBuildVersion),
-      buildVersion: update.remoteBuildVersion ?? version(),
-      hasMarketingVersion: update.sparkleVersionComparison !== "build"
-    };
-    const localVersion = sparkleMarketingVersion(appRecord.localVersion, appRecord.bundleVersion);
-    if (isSparkleVersionNewer(candidate, localVersion, appRecord.bundleVersion)) {
-      return true;
-    }
-    // Legacy records did not preserve the feed's comparison domain. Equal
-    // display/build values are ambiguous: retain an eligible machine-version
-    // interpretation until a successful lookup supplies explicit metadata.
-    return (
-      update.sparkleVersionComparison === undefined &&
-      update.remoteBuildVersion !== undefined &&
-      compareVersions(update.remoteVersion, update.remoteBuildVersion) === 0 &&
-      isSparkleVersionNewer(
-        { ...candidate, hasMarketingVersion: false },
-        localVersion,
-        appRecord.bundleVersion
-      )
-    );
-  }
-  const versionComparison = compareVersions(update.remoteVersion, appRecord.localVersion);
-  if (versionComparison > 0) {
-    return true;
-  }
-  if (versionComparison < 0) {
-    return false;
-  }
-  if (!update.remoteBuildVersion || !update.localBuildVersion || !appRecord.bundleVersion) {
-    return false;
-  }
-  return (
-    compareVersions(update.localBuildVersion, appRecord.bundleVersion) === 0 &&
-    isVersionGreater(update.remoteBuildVersion, appRecord.bundleVersion)
-  );
-}
-
-function emptyHomebrewInventoryResult(): HomebrewInventoryResult {
-  return {
-    items: [],
-    outdatedDetectionSucceeded: true,
-    outdatedDetectionSucceededByKind: { formula: true, cask: true }
-  };
-}
-
-function homebrewIdentityReconciliationItems(
-  snapshot: Pick<PersistedSnapshot, "homebrewItems" | "homebrewFormulaIdentityContinuity">
-): HomebrewManagedItem[] {
-  // Visible inventory wins by saved ID; hidden records only provide identity evidence.
-  return [
-    ...new Map([
-      ...(snapshot.homebrewFormulaIdentityContinuity ?? []).map((item) => [item.id, item] as const),
-      ...snapshot.homebrewItems.map((item) => [item.id, item] as const)
-    ]).values()
-  ];
-}
-
-function preserveFormulaIdentityContinuity(
-  items: HomebrewManagedItem[],
-  snapshot: PersistedSnapshot,
-  readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"]
-): HomebrewManagedItem[] | undefined {
-  const incomplete =
-    readSucceeded?.formula === false ||
-    items.some((item) => item.kind === "formula" && !homebrewCommandToken(item));
-  if (!incomplete) return undefined;
-  const visibleByID = new Map(items.map((item) => [item.id, item]));
-  // Freeze one complete prior inventory generation, rather than accumulating removed packages
-  // across failures. No aliases are guessed from the new rack names.
-  return (snapshot.homebrewFormulaIdentityContinuity ?? snapshot.homebrewItems)
-    .filter(formulaHasContinuityIdentity)
-    .map((item) => {
-      const visible = visibleByID.get(item.id);
-      // Refresh members of the frozen generation only: later generations cannot grow it.
-      return visible && formulaHasContinuityIdentity(visible) ? visible : item;
-    })
-    .map((item) => ({
-      ...item,
-      formulaIdentityVerified: false,
-      isOutdated: false,
-      latestVersion: undefined,
-      releaseDate: undefined
-    }));
-}
-
-function preservePreviousHomebrewInventoryMembership(
-  currentItems: HomebrewManagedItem[],
-  previousItems: HomebrewManagedItem[],
-  readSucceeded: HomebrewInventoryResult["inventoryReadSucceededByKind"],
-  continuity: HomebrewManagedItem[] = []
-): HomebrewManagedItem[] {
-  const identityItems = homebrewIdentityReconciliationItems({
-    homebrewItems: previousItems,
-    homebrewFormulaIdentityContinuity: continuity
-  });
-  // Retain saved Ignore/history IDs when installed metadata proves a same-tap rename.
-  // Ambiguous aliases or a tap switch cannot inherit another package's identity.
-  const occupiedIDs = new Set(currentItems.map((item) => item.id));
-  currentItems = currentItems.map((item) => {
-    if (item.kind !== "formula") return item;
-    if (!homebrewCommandToken(item)) {
-      const matches = identityItems.filter(
-        (previous) =>
-          previous.kind === "formula" &&
-          previous.token === item.token &&
-          formulaHasContinuityIdentity(previous)
-      );
-      const previous = matches.length === 1 ? matches[0] : undefined;
-      if (!previous || (previous.id !== item.id && occupiedIDs.has(previous.id))) return item;
-      occupiedIDs.add(previous.id);
-      // A transient metadata failure must not detach saved preferences/history.
-      // Retain identity only as continuity evidence; all commands stay blocked.
-      return {
-        ...item,
-        id: previous.id,
-        formulaIdentity: previous.formulaIdentity,
-        formulaIdentityVerified: false,
-        isOutdated: false,
-        latestVersion: undefined,
-        releaseDate: undefined
-      };
-    }
-    const identity = item.formulaIdentity!;
-    const matches = identityItems.filter(
-      (previous) =>
-        previous.kind === "formula" &&
-        formulaHasContinuityIdentity(previous) &&
-        previous.formulaIdentity?.tap === identity.tap &&
-        (previous.formulaIdentity.fullName === identity.fullName ||
-          identity.oldNames.includes(previous.formulaIdentity.name) ||
-          identity.oldNames.includes(`${identity.tap}/${previous.formulaIdentity.name}`))
-    );
-    const previous = matches.length === 1 ? matches[0] : undefined;
-    if (!previous || (previous.id !== item.id && occupiedIDs.has(previous.id))) return item;
-    occupiedIDs.add(previous.id);
-    const observations = previousItems.filter(
-      (candidate) =>
-        candidate.kind === "formula" &&
-        candidate.token === item.token &&
-        typeof candidate.unverifiedPinObservation === "boolean" &&
-        (!candidate.tap || candidate.tap === identity.tap)
-    );
-    const observation = observations.length === 1 ? observations[0] : undefined;
-    // Apply a raw rack's observation only after fresh unique same-tap identity
-    // proves its relationship to the saved package. Fresh explicit fields win.
-    return {
-      ...item,
-      id: previous.id,
-      pinned: item.pinned ?? observation?.unverifiedPinObservation,
-      unverifiedPinObservation: undefined
-    };
-  });
-  if (!readSucceeded || (readSucceeded.formula && readSucceeded.cask)) {
-    return currentItems;
-  }
-  return [
-    ...currentItems.filter((item) => readSucceeded[item.kind]),
-    ...previousItems
-      .filter((item) => !readSucceeded[item.kind])
-      .map((item) =>
-        item.kind === "formula"
-          ? {
-              ...item,
-              formulaIdentityVerified: false,
-              isOutdated: false,
-              latestVersion: undefined,
-              releaseDate: undefined
-            }
-          : item
-      )
-  ].sort((lhs, rhs) => lhs.kind.localeCompare(rhs.kind) || lhs.name.localeCompare(rhs.name));
-}
-
-function knownPinIdentity(item: HomebrewManagedItem): string | undefined {
-  const identity =
-    homebrewItemIdentity(item) ??
-    (formulaHasContinuityIdentity(item)
-      ? homebrewItemIdentity({ ...item, formulaIdentityVerified: undefined })
-      : item.pinnedIdentity);
-  return identity && isValidHomebrewToken(identity) ? identity : undefined;
-}
-
-function pinIdentityCanContinue(
-  item: HomebrewManagedItem,
-  previous: HomebrewManagedItem,
-  previousIdentity: string,
-  candidates: HomebrewManagedItem[]
-): boolean {
-  if (item.kind !== previous.kind) return false;
-  const identity = homebrewItemIdentity(item);
-  if (identity) {
-    if (identity === previousIdentity) return true;
-    const currentFormula = item.formulaIdentity;
-    if (item.kind !== "formula" || !currentFormula) return false;
-    const matches = candidates.filter(
-      (candidate) =>
-        formulaHasContinuityIdentity(candidate) &&
-        candidate.formulaIdentity?.tap === currentFormula.tap &&
-        (candidate.formulaIdentity.fullName === currentFormula.fullName ||
-          currentFormula.oldNames.includes(candidate.formulaIdentity.name) ||
-          currentFormula.oldNames.includes(
-            `${currentFormula.tap}/${candidate.formulaIdentity.name}`
-          ))
-    );
-    return matches.length === 1 && matches[0]?.id === previous.id;
-  }
-  // Unknown identity may retain a pin only under the existing saved ID and rack.
-  // It supplies no execution capability, alias inference, or cross-tap transfer.
-  return (
-    item.id === previous.id &&
-    item.token === previous.token &&
-    (!item.tap ||
-      previousIdentity.startsWith(`${item.tap}/`) ||
-      (item.tap === "homebrew/core" && !previousIdentity.includes("/"))) &&
-    (!item.formulaIdentity ||
-      (formulaHasContinuityIdentity(item) &&
-        homebrewItemIdentity({ ...item, formulaIdentityVerified: undefined }) === previousIdentity))
-  );
-}
-
-export function preservePreviousHomebrewOutdatedState(
-  currentItems: HomebrewManagedItem[],
-  previousItems: HomebrewManagedItem[],
-  outdatedDetectionSucceededByKind: Record<HomebrewManagedItemKind, boolean>
-): HomebrewManagedItem[] {
-  const previousByID = new Map(previousItems.map((item) => [item.id, item]));
-  currentItems = currentItems.map((item) => {
-    const previous = previousByID.get(item.id);
-    const identity = homebrewItemIdentity(item);
-    const previousIdentity = previous && knownPinIdentity(previous);
-    if (!identity) {
-      const observation =
-        typeof item.pinned === "boolean"
-          ? item.pinned
-          : previous?.kind === item.kind && previous.token === item.token
-            ? previous.unverifiedPinObservation
-            : undefined;
-      if (typeof observation === "boolean") {
-        return {
-          ...item,
-          pinned: observation,
-          unverifiedPinObservation: observation,
-          pinnedIdentity:
-            previous &&
-            previousIdentity &&
-            pinIdentityCanContinue(item, previous, previousIdentity, previousItems)
-              ? previousIdentity
-              : undefined
-        };
-      }
-    }
-    if (
-      identity &&
-      item.pinned === undefined &&
-      previous &&
-      previousIdentity &&
-      typeof previous.unverifiedPinObservation === "boolean" &&
-      pinIdentityCanContinue(item, previous, previousIdentity, previousItems)
-    ) {
-      return {
-        ...item,
-        pinned: previous.unverifiedPinObservation,
-        pinnedIdentity: previous.unverifiedPinObservation ? identity : undefined,
-        unverifiedPinObservation: undefined
-      };
-    }
-    if (item.pinned !== undefined && identity) {
-      return {
-        ...item,
-        pinnedIdentity: item.pinned ? identity : undefined,
-        unverifiedPinObservation: undefined
-      };
-    }
-    if (
-      item.pinned !== false &&
-      previous?.pinned &&
-      previousIdentity &&
-      pinIdentityCanContinue(item, previous, previousIdentity, previousItems)
-    ) {
-      // Retain pin evidence even when identity is not executable. Recovery still
-      // requires fresh same-package proof; explicit false is authoritative.
-      return { ...item, pinned: true, pinnedIdentity: identity ?? previousIdentity };
-    }
-    return item;
-  });
-  if (outdatedDetectionSucceededByKind.formula && outdatedDetectionSucceededByKind.cask) {
-    return currentItems;
-  }
-
-  return currentItems.map((item) => {
-    const previous = previousByID.get(item.id);
-    if (outdatedDetectionSucceededByKind[item.kind]) {
-      return item;
-    }
-    if (
-      !homebrewCommandToken(item) ||
-      !previous ||
-      !homebrewCommandToken(previous) ||
-      homebrewItemIdentity(item) !== homebrewItemIdentity(previous)
-    )
-      return item;
-    if (!previous?.isOutdated) {
-      return item;
-    }
-    const preserveSameVersionCaskUpdate =
-      previous.latestVersion !== undefined &&
-      homebrewReportedSameVersionCaskUpdate(
-        previous,
-        item.installedVersion,
-        previous.latestVersion
-      );
-    if (
-      previous.latestVersion &&
-      !isVersionGreater(previous.latestVersion, item.installedVersion) &&
-      !preserveSameVersionCaskUpdate
-    ) {
-      return item;
-    }
-    return {
-      ...item,
-      latestVersion: previous.latestVersion ?? item.latestVersion,
-      isOutdated: true,
-      releaseDate: previous.releaseDate ?? item.releaseDate,
-      iconDataURL: previous.iconDataURL ?? item.iconDataURL
-    };
-  });
-}
-
-function canUseHomebrewAppUpdate(
-  appRecord: AppRecord,
-  homebrewToken: string,
-  homebrewItems: HomebrewManagedItem[],
-  caskIndex: HomebrewCaskIndex
-): boolean {
-  const token = homebrewToken.toLowerCase();
-  return homebrewItems.some(
-    (item) =>
-      item.kind === "cask" &&
-      item.token.toLowerCase() === token &&
-      homebrewCaskItemProvesAppOwnership(item, appRecord, installedCaskEntry(item, caskIndex))
-  );
-}
-
-function homebrewItemCanRunAppUpdate(item: HomebrewManagedItem, update: UpdateRecord): boolean {
-  return (
-    !item.pinned &&
-    (item.isOutdated || isVersionGreater(update.remoteVersion, item.installedVersion))
-  );
-}
-
-function homebrewCaskItemProvesAppOwnership(
-  item: HomebrewManagedItem,
-  appRecord: AppRecord,
-  caskEntry: HomebrewCaskEntry | undefined
-): boolean {
-  if (!homebrewCommandToken(item)) return false;
-  if (item.appID === appRecord.id) {
-    return true;
-  }
-  if (item.kind !== "cask" || !caskEntry) {
-    return false;
-  }
-  return appMatchesCaskEntry(appRecord, caskEntry);
-}
-
-function reconcileHomebrewInventory(
-  items: HomebrewManagedItem[],
-  updates: UpdateRecord[],
-  apps: AppRecord[] = [],
-  caskIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex,
-  previousItems: HomebrewManagedItem[] = [],
-  isSelfApp?: (app: AppRecord) => boolean
-): HomebrewManagedItem[] {
-  const updatesByToken = new Map<string, UpdateRecord>();
-  for (const update of updates) {
-    if (update.source === "homebrew" && update.homebrewToken) {
-      const key = update.homebrewToken.toLowerCase();
-      const existing = updatesByToken.get(key);
-      if (!existing || compareVersions(update.remoteVersion, existing.remoteVersion) > 0) {
-        updatesByToken.set(key, update);
-      }
-    }
-  }
-  const appsByID = new Map(apps.map((app) => [app.id, app]));
-  const previousItemsByID = new Map(previousItems.map((item) => [item.id, item]));
-  return items.map((item) => {
-    if (item.kind !== "cask") {
-      return item;
-    }
-    if (!homebrewCommandToken(item))
-      return {
-        ...item,
-        appID: undefined,
-        presentation: "cask" as const,
-        iconDataURL: undefined,
-        isOutdated: false,
-        latestVersion: undefined
-      };
-    const caskEntry = installedCaskEntry(item, caskIndex);
-    const matchingApp = matchingHomebrewApp(
-      updatesByToken,
-      appsByID,
-      apps,
-      item,
-      caskEntry,
-      isSelfApp
-    );
-    const iconDataURL =
-      matchingApp?.iconDataURL ??
-      (caskEntry ? undefined : matchingHomebrewAppIcon(item, updatesByToken, appsByID, apps));
-    const preservedIconDataURL = caskEntry && !matchingApp ? undefined : item.iconDataURL;
-    const update = updatesByToken.get(item.token.toLowerCase());
-    const installedVersion =
-      matchingApp && isVersionGreater(matchingApp.localVersion, item.installedVersion)
-        ? matchingApp.localVersion
-        : item.installedVersion;
-    const latestVersion = bestHomebrewCaskLatestVersion(item, update, caskEntry);
-    const previousItem = previousItemsByID.get(item.id);
-    const previousAppID = previousItem?.appID;
-    const preservedAppID =
-      !caskEntry &&
-      !matchingApp &&
-      previousAppID &&
-      appsByID.has(previousAppID) &&
-      !isSelfApp?.(appsByID.get(previousAppID)!) &&
-      homebrewItemIdentity(previousItem) === homebrewItemIdentity(item)
-        ? previousAppID
-        : undefined;
-    const appID = matchingApp?.id ?? preservedAppID;
-    const presentation: HomebrewManagedItem["presentation"] = appID
-      ? "app"
-      : (caskEntry?.presentation ?? previousItem?.presentation ?? item.presentation);
-    const latestVersionComparison = latestVersion
-      ? compareVersions(latestVersion, installedVersion)
-      : undefined;
-    const keepHomebrewReportedSameVersionUpdate =
-      latestVersion !== undefined &&
-      homebrewReportedSameVersionCaskUpdate(item, installedVersion, latestVersion);
-
-    if (
-      !latestVersion ||
-      ((latestVersionComparison ?? 0) <= 0 && !keepHomebrewReportedSameVersionUpdate)
-    ) {
-      return {
-        ...item,
-        appID,
-        presentation,
-        name: matchingApp?.displayName ?? item.name,
-        iconDataURL: iconDataURL ?? preservedIconDataURL,
-        installedVersion,
-        latestVersion: undefined,
-        isOutdated: false,
-        releaseDate: undefined
-      };
-    }
-    return {
-      ...item,
-      appID,
-      presentation,
-      name: matchingApp?.displayName ?? item.name,
-      iconDataURL: iconDataURL ?? preservedIconDataURL,
-      installedVersion,
-      latestVersion,
-      isOutdated: true
-    };
-  });
-}
-
-function hasInstalledAppAdvanced(appRecord: AppRecord, previousUpdate: UpdateRecord): boolean {
-  if (isVersionGreater(appRecord.localVersion, previousUpdate.localVersion)) {
-    return true;
-  }
-  if (!previousUpdate.localBuildVersion || !appRecord.bundleVersion) {
-    return false;
-  }
-  return isVersionGreater(appRecord.bundleVersion, previousUpdate.localBuildVersion);
-}
-
-export function mergeHomebrewRecentlyUpdatedRecords(
-  existingRecords: HomebrewRecentlyUpdatedRecord[],
-  previousItems: HomebrewManagedItem[],
-  currentItems: HomebrewManagedItem[],
-  now: string,
-  options: { completedItemIDs?: string[]; currentDate?: Date } = {}
-): HomebrewRecentlyUpdatedRecord[] {
-  const records = [...existingRecords];
-  const previousByID = new Map(previousItems.map((item) => [item.id, item]));
-  const completedItemIDs = new Set(options.completedItemIDs ?? []);
-
-  for (const currentItem of currentItems) {
-    const previousItem = previousByID.get(currentItem.id);
-    if (!previousItem) {
-      continue;
-    }
-    const versionComparison = compareVersions(
-      currentItem.installedVersion,
-      previousItem.installedVersion
-    );
-    const completedSameVersionCaskUpdate =
-      versionComparison === 0 &&
-      currentItem.kind === "cask" &&
-      previousItem.kind === "cask" &&
-      previousItem.isOutdated &&
-      !currentItem.isOutdated &&
-      completedItemIDs.has(currentItem.id);
-    if (versionComparison < 0 || (versionComparison === 0 && !completedSameVersionCaskUpdate)) {
-      continue;
-    }
-    records.unshift({
-      id: currentItem.id,
-      itemID: currentItem.id,
-      token: currentItem.token,
-      kind: currentItem.kind,
-      displayName: currentItem.name,
-      fromVersion: previousItem.installedVersion,
-      toVersion: currentItem.installedVersion,
-      updatedAt: now
-    });
-  }
-
-  const retentionMs = 14 * 24 * 60 * 60 * 1000;
-  const cutoff = (options.currentDate?.getTime() ?? Date.now()) - retentionMs;
-  const currentByID = new Map(currentItems.map((item) => [item.id, item]));
-  const deduped = new Map<string, HomebrewRecentlyUpdatedRecord>();
-  for (const record of records) {
-    const currentItem = currentByID.get(record.itemID);
-    if (
-      currentItem &&
-      compareVersions(record.toVersion, currentItem.installedVersion) === 0 &&
-      new Date(record.updatedAt).getTime() >= cutoff &&
-      !deduped.has(record.itemID)
-    ) {
-      deduped.set(record.itemID, record);
-    }
-  }
-  return [...deduped.values()].slice(0, 40);
-}
-
-function bestHomebrewCaskLatestVersion(
-  item: HomebrewManagedItem,
-  update: UpdateRecord | undefined,
-  caskEntry: HomebrewCaskEntry | undefined
-): HomebrewManagedItem["latestVersion"] {
-  const caskIndexVersion = item.isOutdated ? caskEntry?.version : undefined;
-  const candidates = [item.latestVersion, update?.remoteVersion, caskIndexVersion].filter(
-    (candidate): candidate is NonNullable<HomebrewManagedItem["latestVersion"]> =>
-      Boolean(candidate) && !isVersionEmpty(candidate)
-  );
-  if (candidates.length === 0) {
-    return undefined;
-  }
-  return candidates.reduce((latest, candidate) =>
-    compareVersions(candidate, latest) > 0 ? candidate : latest
-  );
-}
-
-function homebrewReportedSameVersionCaskUpdate(
-  item: HomebrewManagedItem,
-  installedVersion: VersionValue,
-  latestVersion: VersionValue
-): boolean {
-  return (
-    item.kind === "cask" &&
-    item.isOutdated &&
-    compareVersions(latestVersion, installedVersion) === 0 &&
-    compareVersions(installedVersion, item.installedVersion) === 0
-  );
-}
-
-function matchingHomebrewApp(
-  updatesByToken: Map<string, UpdateRecord>,
-  appsByID: Map<string, AppRecord>,
-  apps: AppRecord[],
-  item: HomebrewManagedItem,
-  caskEntry: HomebrewCaskEntry | undefined,
-  isSelfApp?: (app: AppRecord) => boolean
-): AppRecord | undefined {
-  const matches = (app: AppRecord) =>
-    (!isSelfApp?.(app) || Boolean(caskEntry && installedCaskIdentifiesSelf(app, caskEntry))) &&
-    appMatchesCaskEntry(app, caskEntry);
-  const update = updatesByToken.get(item.token.toLowerCase());
-  const appFromUpdate = update ? appsByID.get(update.appID) : undefined;
-  if (appFromUpdate && matches(appFromUpdate)) {
-    return appFromUpdate;
-  }
-
-  if (caskEntry) {
-    const byCaskMetadata = apps.find(matches);
-    if (byCaskMetadata) {
-      return byCaskMetadata;
-    }
-  }
-
-  return undefined;
-}
-
-function installedCaskIdentifiesSelf(app: AppRecord, entry: HomebrewCaskEntry): boolean {
-  const identifier = app.bundleIdentifier?.toLowerCase();
-  if (
-    identifier &&
-    entry.bundleIdentifiers.some((candidate) => candidate.toLowerCase() === identifier)
-  )
-    return true;
-  // appID and artifact basenames may come from generic name matching; they cannot prove self ownership.
-  return (entry.installedAppPaths ?? []).some(
-    (target) => path.resolve(target) === path.resolve(app.bundlePath)
-  );
-}
-
-function appMatchesCaskEntry(app: AppRecord, caskEntry: HomebrewCaskEntry | undefined): boolean {
-  if (!caskEntry) {
-    return true;
-  }
-
-  const bundleIdentifiers = new Set(
-    caskEntry.bundleIdentifiers.map((identifier) => identifier.toLowerCase())
-  );
-  const bundleIdentifier = app.bundleIdentifier?.toLowerCase();
-  if (bundleIdentifier && bundleIdentifiers.size > 0) {
-    return bundleIdentifiers.has(bundleIdentifier);
-  }
-  const matchesAppBundleName = new Set(caskEntry.appBundleNames).has(
-    normalizedAppBundleName(app.bundlePath)
-  );
-  const inferredBundleIdentifiers = new Set(
-    (caskEntry.inferredBundleIdentifiers ?? []).map((identifier) => identifier.toLowerCase())
-  );
-  if (bundleIdentifier && inferredBundleIdentifiers.has(bundleIdentifier)) {
-    return matchesAppBundleName;
-  }
-
-  return matchesAppBundleName;
-}
-
-function matchingHomebrewAppIcon(
-  item: HomebrewManagedItem,
-  updatesByToken: Map<string, UpdateRecord>,
-  appsByID: Map<string, AppRecord>,
-  apps: AppRecord[]
-): string | undefined {
-  const update = updatesByToken.get(item.token.toLowerCase());
-  const appFromUpdate = update ? appsByID.get(update.appID) : undefined;
-  if (appFromUpdate?.iconDataURL) {
-    return appFromUpdate.iconDataURL;
-  }
-
-  const token = normalizedName(item.token);
-  const name = normalizedName(item.name);
-  return apps.find((app) => {
-    const candidates = normalizedAppCandidates(app);
-    return candidates.has(token) || candidates.has(name);
-  })?.iconDataURL;
-}
-
-function normalizedAppBundleName(bundlePath: string): string {
-  const fileName = bundlePath.split("/").pop() ?? bundlePath;
-  return fileName.toLowerCase().endsWith(".app")
-    ? fileName.toLowerCase()
-    : `${fileName.toLowerCase()}.app`;
-}
-
-function normalizedAppCandidates(app: AppRecord): Set<string> {
-  const fileName = app.bundlePath
-    .split("/")
-    .pop()
-    ?.replace(/\.app$/iu, "");
-  const candidates = [app.displayName, app.bundleIdentifier, fileName]
-    .filter((value): value is string => Boolean(value))
-    .map(normalizedName);
-  return new Set(candidates.flatMap((value) => [value, value.replace(/^com/u, "")]));
-}
-
-function normalizedName(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/gu, "");
-}
-
-function detectLaggingHomebrewCaskTokens(
-  items: HomebrewManagedItem[],
-  updates: UpdateRecord[],
-  apps: AppRecord[] = [],
-  caskIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex
-): string[] {
-  const reconciled = reconcileHomebrewInventory(items, updates, apps, caskIndex);
-  return reconciled
-    .filter((item, index) => item.kind === "cask" && item.isOutdated && !items[index]?.isOutdated)
-    .map((item) => item.token.toLowerCase());
-}
-
 function catalogueCacheNotice(...statuses: Array<CatalogueStatus | undefined>): string | undefined {
   if (statuses.some((status) => status?.unavailable)) {
     return "Homebrew catalogue metadata is unavailable. Refresh to retry.";
@@ -2193,13 +1288,4 @@ function catalogueCacheNotice(...statuses: Array<CatalogueStatus | undefined>): 
     .filter(Boolean)
     .sort()[0];
   return `Using cached Homebrew catalogue metadata${checkedAt ? ` (last checked ${checkedAt})` : ""}. Refresh to retry.`;
-}
-
-function formulaHasContinuityIdentity(item: HomebrewManagedItem): boolean {
-  // Validate saved structural identity independently of its current verification.
-  // This helper is for ID reconciliation only; execution uses homebrewCommandToken.
-  return (
-    item.kind === "formula" &&
-    Boolean(homebrewCommandToken({ ...item, formulaIdentityVerified: undefined }))
-  );
 }
