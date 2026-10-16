@@ -366,8 +366,8 @@ export function parseServiceDiagnostics(
 }
 
 // Homebrew FormulaWrapper.to_hash always emits these state fields. Validate
-// their types and status_symbol's complete precedence before claiming failure
-// or health. Keep independently typed counts when a row is otherwise uncertain.
+// unsigned exit codes and the full status_symbol precedence before claiming
+// failure or health. Keep independently typed counts for uncertain rows.
 function projectServiceState(service: unknown): {
   running: boolean;
   registered: boolean;
@@ -386,7 +386,11 @@ function projectServiceState(service: unknown): {
     typeof service.registered !== "boolean" ||
     typeof service.loaded !== "boolean" ||
     typeof service.schedulable !== "boolean" ||
-    (service.exit_code !== null && !Number.isSafeInteger(service.exit_code))
+    (service.exit_code !== null &&
+      (typeof service.exit_code !== "number" ||
+        !Number.isSafeInteger(service.exit_code) ||
+        service.exit_code < 0 ||
+        Object.is(service.exit_code, -0)))
   )
     return projection;
 

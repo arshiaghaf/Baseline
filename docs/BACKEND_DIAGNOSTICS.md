@@ -77,8 +77,9 @@ not an invented severity. The text fallback similarly reports only categories
 from Warning/Error headings. Services retain totals, running/registered counts,
 confirmed failure counts, unknown rows and omitted counts. The decoder validates
 all projected fields that `FormulaWrapper.to_hash` always emits: boolean running,
-loaded, schedulable and registered values; a nullable safe-integer exit code; and
-a status consistent with the complete producer precedence below.
+loaded, schedulable and registered values; a nullable nonnegative safe-integer
+exit code (excluding negative zero); and a status consistent with the complete
+producer precedence below.
 
 | Observed producer state, in precedence order | Status | Aggregate contribution |
 |---|---|---|

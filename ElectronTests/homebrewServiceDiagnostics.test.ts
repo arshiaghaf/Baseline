@@ -103,16 +103,7 @@ const officialCases = [
     failed: 1,
     unknown: 0
   },
-  {
-    status: "error",
-    running: false,
-    loaded: true,
-    schedulable: true,
-    exit_code: -1,
-    aggregate: "findings",
-    failed: 1,
-    unknown: 0
-  },
+
   {
     status: "unknown",
     running: false,
@@ -264,6 +255,8 @@ describe("Homebrew service producer-state projection", () => {
     { schedulable: 0 },
     { registered: "true" },
     { registered: null },
+    { exit_code: -1 },
+    { exit_code: -Number.MAX_SAFE_INTEGER },
     { exit_code: "17" },
     { exit_code: false },
     { exit_code: 1.5 },
@@ -278,6 +271,43 @@ describe("Homebrew service producer-state projection", () => {
       registered: Number(service.registered === true)
     });
   });
+
+  it.each(["-0", "1e400", "-1e400", "9007199254740992"])(
+    "rejects unobserved wire-number boundaries without inventing a failure: %s",
+    (literal) => {
+      const stdout = JSON.stringify([row({ status: "error", exit_code: 17 })]).replace(
+        '"exit_code":17',
+        `"exit_code":${literal}`
+      );
+      const report = parseServiceDiagnostics({
+        success: true,
+        status: 0,
+        stdout,
+        stderr: "",
+        output: stdout
+      });
+      expect(report).toMatchObject({ status: "partial", unknown: 1, failed: 0 });
+    }
+  );
+
+  it.each(["NaN", "Infinity", "-Infinity"])("rejects invalid JSON numeric token %s", (literal) => {
+    const stdout = JSON.stringify([row()]).replace('"exit_code":null', `"exit_code":${literal}`);
+    expect(
+      parseServiceDiagnostics({ success: true, status: 0, stdout, stderr: "", output: stdout })
+    ).toMatchObject({ status: "invalid", total: 0, unknown: 0, failed: 0 });
+  });
+
+  it.each([0, 1, Number.MAX_SAFE_INTEGER])(
+    "accepts producer-compatible nonnegative exit %s",
+    (exit_code) => {
+      const report = parse(row({ status: exit_code === 0 ? "stopped" : "error", exit_code }));
+      expect(report).toMatchObject({
+        status: exit_code === 0 ? "ok" : "findings",
+        failed: Number(exit_code !== 0),
+        unknown: 0
+      });
+    }
+  );
 
   it.each([null, false, 17, "private fixture", []])(
     "handles malformed scalar row %j",
