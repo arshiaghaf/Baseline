@@ -4,7 +4,8 @@ import { AskpassMessage as Message, type AskpassFrame } from "./adminAskpassProt
 
 type PromptPhase =
   "hello" | "waiting" | "answered" | "cancelled" | "dialogError" | "complete" | "error";
-type Prompt = { phase: PromptPhase; terminatedByCoordinator: boolean };
+type TerminationReason = "cancelled" | "error" | "command-exit";
+type Prompt = { phase: PromptPhase; terminationReason?: TerminationReason };
 export type AdminInvocationEvidence = {
   cancelled: boolean;
   helperError: boolean;
@@ -42,7 +43,7 @@ export class AdminAskpassLifecycle {
     if (frame.type === Message.hello) {
       if (this.cancellation || this.error) return "deny";
       if (prompt) return prompt.phase === "hello" ? "ack" : this.invalid();
-      this.prompts.set(frame.promptID, { phase: "hello", terminatedByCoordinator: false });
+      this.prompts.set(frame.promptID, { phase: "hello" });
       return "ack";
     }
     if (!prompt) return this.invalid();
@@ -91,22 +92,23 @@ export class AdminAskpassLifecycle {
     if (!this.sealed) this.cancellation = true;
   }
 
-  disconnected(promptID: string, terminatedByCoordinator = false): void {
+  disconnected(promptID: string, terminationReason?: TerminationReason): void {
     if (this.sealed) return;
     const prompt = this.prompts.get(promptID);
     if (!prompt) {
       this.error = true;
       return;
     }
-    prompt.terminatedByCoordinator = terminatedByCoordinator;
-    if (!terminatedByCoordinator && !["complete", "error"].includes(prompt.phase))
+    prompt.terminationReason = terminationReason;
+    if (terminationReason === "error") this.error = true;
+    if (!this.expectedTermination(prompt) && !["complete", "error"].includes(prompt.phase))
       this.error = true;
     this.clearWaiting(promptID);
   }
 
   finish(cleanupConfirmed: boolean): AdminInvocationEvidence {
     for (const prompt of this.prompts.values()) {
-      if (!prompt.terminatedByCoordinator && !["complete", "error"].includes(prompt.phase))
+      if (!this.expectedTermination(prompt) && !["complete", "error"].includes(prompt.phase))
         this.error = true;
     }
     this.sealed = true;
@@ -121,6 +123,13 @@ export class AdminAskpassLifecycle {
     if (this.waiting !== promptID) return;
     this.waiting = undefined;
     this.changed(undefined);
+  }
+
+  private expectedTermination(prompt: Prompt): boolean {
+    return (
+      (prompt.terminationReason === "cancelled" && this.cancellation) ||
+      (prompt.terminationReason === "error" && this.error)
+    );
   }
 
   private invalid(): "deny" {

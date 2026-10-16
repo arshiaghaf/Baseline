@@ -110,6 +110,94 @@ function harness(
 }
 
 describe("HomebrewOperationsService", () => {
+  it.each(["formula", "cask"] as const)(
+    "limits %s waiting targets to the actual command kind when installed tokens collide",
+    async (kind) => {
+      const h = harness(async (_args, _line, options) => {
+        options?.adminOperation?.onWaitingChanged("a".repeat(32));
+        expect(h.state.homebrewOperation).toMatchObject({
+          phase: "waiting",
+          itemIDs: [`${kind}:example`],
+          appIDs: kind === "cask" ? ["fixture-app"] : []
+        });
+        return { success: false, status: 1, output: "", cancelled: true };
+      });
+      h.setState({
+        homebrewItems: [
+          formula(),
+          formula({
+            id: "cask:example",
+            kind: "cask",
+            formulaIdentity: undefined,
+            fullToken: "example",
+            tap: "homebrew/cask",
+            appID: "fixture-app"
+          })
+        ]
+      });
+      await h.service.performHomebrewUpdate(`${kind}:example`);
+      expect(h.runCommand).toHaveBeenCalledOnce();
+    }
+  );
+
+  it.each(["batch", "queued"] as const)(
+    "preserves prior formula success and explicit cask completion when a later %s step is cancelled",
+    async (scenario) => {
+      const h = harness(async (args, onLine) => {
+        if (args.includes("--cask")) {
+          onLine?.("Cask completed was successfully installed!");
+          onLine?.("Installing pending");
+          return { success: false, status: 1, output: "", cancelled: true };
+        }
+        return { success: true, status: 0, output: "" };
+      });
+      const cask = (token: string) =>
+        formula({
+          id: `cask:${token}`,
+          kind: "cask",
+          token,
+          fullToken: token,
+          formulaIdentity: undefined,
+          tap: "homebrew/cask"
+        });
+      h.setState({ homebrewItems: [formula(), cask("completed"), cask("pending")] });
+      h.refresh.mockImplementation(async () => {
+        expect(h.lock.activeCommandCount).toBe(1);
+        expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual([
+          "formula:example",
+          "cask:completed"
+        ]);
+        expect(h.stats).toHaveBeenCalledOnce();
+        expect(h.stats).toHaveBeenCalledWith([
+          expect.objectContaining({ targetID: "formula:example" }),
+          expect.objectContaining({ targetID: "cask:completed" })
+        ]);
+        expect(h.state.homebrewUpdatingItemIDs).toEqual([]);
+        expect(h.state.homebrewBatchProgressByItemID).toEqual({});
+      });
+      if (scenario === "batch") await h.service.performHomebrewUpdateAll();
+      else {
+        h.lock.beginRefresh(19);
+        const pending = h.state.homebrewItems.map((item) =>
+          h.service.performHomebrewUpdate(item.id)
+        );
+        try {
+          h.lock.endRefresh(19);
+          await h.service.processHomebrewUpdateQueue();
+        } finally {
+          await Promise.all(pending);
+        }
+      }
+      expect(h.refresh).toHaveBeenCalledOnce();
+      expect(h.failure).not.toHaveBeenCalled();
+      expect(h.failures).not.toHaveBeenCalled();
+      expect(h.state.homebrewBatchFailedItemIDs).toEqual([]);
+      expect(h.state.refreshErrorMessage).toBeUndefined();
+      expect(h.state.homebrewOperation).toBeUndefined();
+      expect(h.lock.activeCommandCount).toBe(0);
+    }
+  );
+
   it("retains an independent helper fault alongside reconciliation errors after cancellation", async () => {
     const h = harness(async () => ({
       success: false,

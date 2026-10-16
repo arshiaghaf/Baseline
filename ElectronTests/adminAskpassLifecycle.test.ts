@@ -85,13 +85,27 @@ it("keeps cancellation and cleanup uncertainty independent of intentional termin
   const h = harness();
   h.begin();
   h.send(M.cancelled);
-  h.lifecycle.disconnected(first, true);
+  h.lifecycle.disconnected(first, "cancelled");
   expect(h.lifecycle.finish(false)).toEqual({
     cancelled: true,
     helperError: false,
     cleanupConfirmed: false
   });
 });
+
+it.each(["command-exit", "cancelled"] as const)(
+  "does not treat coordinator %s teardown as proof of a completed noncancelled invocation",
+  (reason) => {
+    const h = harness();
+    h.begin();
+    h.lifecycle.disconnected(first, reason);
+    expect(h.lifecycle.finish(true)).toEqual({
+      cancelled: false,
+      helperError: true,
+      cleanupConfirmed: true
+    });
+  }
+);
 
 it("treats unexplained peer death and missing completion after cancellation as helper errors", () => {
   const h = harness();

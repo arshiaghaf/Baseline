@@ -375,7 +375,16 @@ export class HomebrewOperationsService {
           completedItemIDs
         );
       });
-      if (await this.reconcileCancellation(commandResult, affectedIDs)) return;
+      if (
+        await this.reconcileCancellation(
+          commandResult,
+          affectedIDs,
+          itemsWithEvents
+            .filter(({ item }) => completedItemIDs.has(item.id))
+            .map(({ item, entry }) => ({ item, profileStatsEvent: entry.profileStatsEvent }))
+        )
+      )
+        return;
       const result = commandResult.success;
       if (result) {
         const upgradedKind = homebrewUpgradeKindForCommand(command);
@@ -539,7 +548,14 @@ export class HomebrewOperationsService {
             completedItemIDs
           );
         });
-        if (await this.reconcileCancellation(commandResult, affectedIDs)) return;
+        if (
+          await this.reconcileCancellation(
+            commandResult,
+            affectedIDs,
+            affected.filter((item) => completedItemIDs.has(item.id)).map((item) => ({ item }))
+          )
+        )
+          return;
         const result = commandResult.success;
         if (result) {
           const upgradedKind = homebrewUpgradeKindForCommand(command);
@@ -938,17 +954,16 @@ export class HomebrewOperationsService {
     onEvent(started);
     const tracked = ["upgrade", "install", "uninstall"].includes(command[0] ?? "");
     const tokens = new Set(command.slice(1).filter((arg) => !arg.startsWith("-")));
-    const items = this.state.homebrewItems.filter((item) =>
-      tokens.has(homebrewCommandToken(item) ?? "")
+    const kind = command.includes("--cask") ? "cask" : "formula";
+    const items = this.state.homebrewItems.filter(
+      (item) => item.kind === kind && tokens.has(homebrewCommandToken(item) ?? "")
     );
     const operation: HomebrewRuntimeOperation | undefined = tracked
       ? {
           id: randomBytes(16).toString("hex"),
           itemIDs:
             command[0] === "install"
-              ? [...tokens].map((token) =>
-                  homebrewItemID(command.includes("--cask") ? "cask" : "formula", token)
-                )
+              ? [...tokens].map((token) => homebrewItemID(kind, token))
               : items.map((item) => item.id),
           appIDs: [...new Set(items.flatMap((item) => (item.appID ? [item.appID] : [])))],
           phase: "running"
@@ -1018,8 +1033,29 @@ export class HomebrewOperationsService {
     this.patch({ homebrewOperation: undefined });
   }
 
-  private async reconcileCancellation(result: CommandResult, itemIDs: string[]): Promise<boolean> {
+  private async reconcileCancellation(
+    result: CommandResult,
+    itemIDs: string[],
+    completedUpdates: { item: HomebrewManagedItem; profileStatsEvent?: ProfileStatsEvent }[] = []
+  ): Promise<boolean> {
     if (!commandWasCancelled(result)) return false;
+    if (completedUpdates.length > 0) {
+      const occurredAt = new Date().toISOString();
+      await this.recordProfileStatsEvents(
+        completedUpdates.map(
+          ({ item, profileStatsEvent }) =>
+            profileStatsEvent ?? homebrewUpdateProfileStatsEvent({ item, occurredAt })
+        )
+      );
+      this.patch({
+        homebrewUpdatedPendingRefreshItemIDs: [
+          ...new Set([
+            ...this.state.homebrewUpdatedPendingRefreshItemIDs,
+            ...completedUpdates.map(({ item }) => item.id)
+          ])
+        ]
+      });
+    }
     const affected = new Set(itemIDs);
     const retain = (ids: string[]) => ids.filter((id) => !affected.has(id));
     const progress = (values: Record<string, number>) =>
@@ -1040,7 +1076,8 @@ export class HomebrewOperationsService {
       homebrewDiscoverProgressByItemID: progress(this.state.homebrewDiscoverProgressByItemID)
     });
     // A cancelled command may have made changes. Never imply rollback or emit
-    // failure/success history; the fresh inventory is authoritative.
+    // failure history or infer success for unconfirmed targets. Preserve already
+    // confirmed completions; fresh inventory is authoritative for remaining state.
     try {
       await this.refresh(true);
     } finally {
