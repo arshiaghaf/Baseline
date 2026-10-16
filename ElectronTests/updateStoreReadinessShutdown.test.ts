@@ -5,7 +5,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ToolStatusService, type ToolStatusPatch } from "../src/main/toolStatusService";
 import { UpdateStore } from "../src/main/updateStore";
 import { SnapshotPersistence } from "../src/main/persistence";
+import { ProgressPublisher } from "../src/main/progressPublisher";
 import { defaultPersistedSnapshot } from "../src/shared/domain";
+import { version } from "../src/shared/version";
 import type { CommandResult } from "../src/main/commandRunner";
 
 afterEach(() => vi.useRealTimers());
@@ -74,6 +76,14 @@ function store(
     successRefreshDelayMS: 0
   });
 }
+
+const discoveryItem = {
+  id: "formula:sample-tool",
+  token: "sample-tool",
+  kind: "formula" as const,
+  displayName: "Sample tool",
+  version: version("1")
+};
 
 describe("tool readiness lifecycle", () => {
   it("releases brew independently and keeps the successful mas result after brew rejects", async () => {
@@ -327,5 +337,54 @@ describe("tool readiness lifecycle", () => {
       mas.resolve(available);
       await Promise.allSettled([first, second]);
     }
+  });
+});
+
+describe("accepted shutdown disposal", () => {
+  it("cancels a failed Discover install's transient clear without a post-quit snapshot", async () => {
+    vi.useFakeTimers();
+    const updateStore = store(async () => ({ success: false, status: 1, output: "failed" }));
+    await updateStore.installHomebrewItem(discoveryItem);
+    expect(updateStore.getSnapshot().homebrewDiscoverFailedItemIDs).toContain(discoveryItem.id);
+    expect(await updateStore.prepareToQuit()).toBe(true);
+
+    const snapshot = vi.fn();
+    updateStore.on("snapshot", snapshot);
+    await vi.advanceTimersByTimeAsync(4100);
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(updateStore.getSnapshot().homebrewDiscoverFailedItemIDs).toContain(discoveryItem.id);
+  });
+
+  it("refuses quit during an active command, then disposes failure timers after acceptance", async () => {
+    vi.useFakeTimers();
+    const command = deferred<CommandResult>();
+    const updateStore = store(() => command.promise);
+    const installing = updateStore.installHomebrewItem(discoveryItem);
+
+    try {
+      expect(await updateStore.prepareToQuit()).toBe(false);
+      expect(updateStore.getSnapshot().isHomebrewCommandLocked).toBe(true);
+      command.resolve({ success: false, status: 1, output: "failed" });
+      await installing;
+      expect(await updateStore.prepareToQuit()).toBe(true);
+      const snapshot = vi.fn();
+      updateStore.on("snapshot", snapshot);
+      await vi.advanceTimersByTimeAsync(4100);
+      expect(snapshot).not.toHaveBeenCalled();
+    } finally {
+      command.resolve({ success: false, status: 1, output: "failed" });
+      await Promise.allSettled([installing]);
+    }
+  });
+
+  it("discards pending progress and refuses new progress after disposal", async () => {
+    vi.useFakeTimers();
+    const emit = vi.fn();
+    const publisher = new ProgressPublisher(emit);
+    publisher.publish({ homebrewBatchProgressByItemID: { "formula:sample-tool": 0.3 } }, 1, false);
+    publisher.dispose();
+    await vi.advanceTimersByTimeAsync(100);
+    publisher.publish({ homebrewBatchProgressByItemID: { "formula:sample-tool": 1 } }, 2, true);
+    expect(emit).not.toHaveBeenCalled();
   });
 });

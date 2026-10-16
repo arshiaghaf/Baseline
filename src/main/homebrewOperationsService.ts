@@ -88,6 +88,7 @@ const successfulUpdateHoldMs = 2000;
 export class HomebrewOperationsService {
   private readonly homebrewBatchFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private readonly homebrewDiscoverFailureClearTimers = new Map<string, NodeJS.Timeout>();
+  private disposed = false;
   private readonly homebrewUpdateQueue: HomebrewUpdateQueueEntry[] = [];
   private isProcessingHomebrewUpdateQueue = false;
   private readonly getState: () => HomebrewOperationsState;
@@ -164,6 +165,15 @@ export class HomebrewOperationsService {
 
   private get state(): HomebrewOperationsState {
     return this.getState();
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const timer of this.homebrewBatchFailureClearTimers.values()) clearTimeout(timer);
+    for (const timer of this.homebrewDiscoverFailureClearTimers.values()) clearTimeout(timer);
+    this.homebrewBatchFailureClearTimers.clear();
+    this.homebrewDiscoverFailureClearTimers.clear();
   }
 
   async performHomebrewUpdate(itemID: string): Promise<void> {
@@ -1040,10 +1050,12 @@ export class HomebrewOperationsService {
   }
 
   private scheduleHomebrewBatchFailureClear(itemIDs: string[]): void {
+    if (this.disposed) return;
     for (const itemID of itemIDs) {
       this.clearHomebrewBatchFailureTimer(itemID);
       const timer = setTimeout(() => {
         this.homebrewBatchFailureClearTimers.delete(itemID);
+        if (this.disposed) return;
         if (!this.state.homebrewBatchFailedItemIDs.includes(itemID)) {
           return;
         }
@@ -1064,9 +1076,11 @@ export class HomebrewOperationsService {
   }
 
   private scheduleHomebrewDiscoverFailureClear(itemID: string): void {
+    if (this.disposed) return;
     this.clearHomebrewDiscoverFailureTimer(itemID);
     const timer = setTimeout(() => {
       this.homebrewDiscoverFailureClearTimers.delete(itemID);
+      if (this.disposed) return;
       if (!this.state.homebrewDiscoverFailedItemIDs.includes(itemID)) {
         return;
       }
