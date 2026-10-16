@@ -354,26 +354,66 @@ export function parseServiceDiagnostics(
   report.total = raw.length;
   report.omittedServices = Math.max(0, raw.length - serviceLimit);
   for (const service of raw.slice(0, serviceLimit)) {
-    if (!object(service) || typeof service.running !== "boolean") {
-      report.unknown += 1;
-      continue;
-    }
-    if (service.running) report.running += 1;
-    if (service.registered === true) report.registered += 1;
-    // Homebrew prioritizes a live PID over its historical exit code. A
-    // simultaneous error status contradicts running and is schema uncertainty.
-    if (service.running && service.status === "error") report.unknown += 1;
-    if (
-      !service.running &&
-      (service.status === "error" ||
-        (Number.isSafeInteger(service.exit_code) && service.exit_code !== 0))
-    ) {
-      report.failed += 1;
-    }
+    const projection = projectServiceState(service);
+    report.running += Number(projection.running);
+    report.registered += Number(projection.registered);
+    report.failed += Number(projection.failed);
+    report.unknown += Number(projection.unknown);
   }
   report.status =
     report.unknown || report.omittedServices ? "partial" : report.failed ? "findings" : "ok";
   return report;
+}
+
+// Homebrew FormulaWrapper.to_hash always emits these state fields. Validate
+// unsigned exit codes and the full status_symbol precedence before claiming
+// failure or health. Keep independently typed counts for uncertain rows.
+function projectServiceState(service: unknown): {
+  running: boolean;
+  registered: boolean;
+  failed: boolean;
+  unknown: boolean;
+} {
+  const projection = {
+    running: object(service) && service.running === true,
+    registered: object(service) && service.registered === true,
+    failed: false,
+    unknown: true
+  };
+  if (
+    !object(service) ||
+    typeof service.running !== "boolean" ||
+    typeof service.registered !== "boolean" ||
+    typeof service.loaded !== "boolean" ||
+    typeof service.schedulable !== "boolean" ||
+    (service.exit_code !== null &&
+      (typeof service.exit_code !== "number" ||
+        !Number.isSafeInteger(service.exit_code) ||
+        service.exit_code < 0 ||
+        Object.is(service.exit_code, -0)))
+  )
+    return projection;
+
+  const status = service.status;
+  let consistent: boolean;
+  if (service.running) {
+    // A live PID wins over loaded state and any historical exit code.
+    consistent = status === "started";
+  } else if (!service.loaded) {
+    // An unloaded service is none, even with a historical nonzero exit.
+    consistent = status === "none";
+  } else if (service.exit_code === 0) {
+    consistent = status === (service.schedulable ? "scheduled" : "stopped");
+  } else if (service.exit_code !== null) {
+    consistent = status === "error";
+  } else {
+    // The raw daemon output distinguishes these two inconclusive states.
+    // It is deliberately not part of this privacy projection.
+    consistent = status === "unknown" || status === "other";
+  }
+  projection.unknown = !consistent || status === "unknown" || status === "other";
+  projection.failed = consistent && status === "error";
+  return projection;
 }
 
 export function renderHomebrewDiagnostics(report: HomebrewDiagnosticsReport): string {

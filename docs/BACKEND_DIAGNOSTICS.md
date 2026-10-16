@@ -75,11 +75,28 @@ messages become `other`; arbitrary prose, affected package names, remediation
 commands and links are discarded. Support tier is Homebrew support metadata,
 not an invented severity. The text fallback similarly reports only categories
 from Warning/Error headings. Services retain totals, running/registered counts,
-nonzero exit-code count for services that are not currently running, unknown rows
-and omitted counts. Running services with historical nonzero exits do not count
-as failed. Contradictory running/error rows make the result partial. JSON `[]` is
-required for a known empty service list; blank stdout is invalid. Service names,
-usernames, PIDs, files and log paths are never included.
+confirmed failure counts, unknown rows and omitted counts. The decoder validates
+all projected fields that `FormulaWrapper.to_hash` always emits: boolean running,
+loaded, schedulable and registered values; a nullable nonnegative safe-integer
+exit code (excluding negative zero); and a status consistent with the complete
+producer precedence below.
+
+| Observed producer state, in precedence order | Status | Aggregate contribution |
+|---|---|---|
+| Running | `started` | Running; ignore historical exit code |
+| Not running and not loaded | `none` | No failure, including historical nonzero exits |
+| Loaded, not running, exit zero, schedulable | `scheduled` | Known state |
+| Loaded, not running, exit zero, not schedulable | `stopped` | Known state |
+| Loaded, not running, nonzero exit | `error` | Confirmed failure |
+| Loaded, not running, exit unavailable | `unknown` or `other` | Unknown; partial |
+
+Missing, malformed, unrecognized or contradictory state counts the row as unknown
+once. Independently typed running and registration observations remain usable;
+uncertain rows do not invent confirmed failures. Unknown/omitted rows take partial
+precedence over known findings. Capture overflow takes truncated precedence and
+publishes no decoded counts. JSON `[]` is required for a known empty list; blank
+stdout is invalid. Service names, usernames, PIDs, files and log paths are never
+included. Extra unprojected fields are ignored rather than exported.
 
 The runner receives an **overlay** containing NONINTERACTIVE,
 HOMEBREW_NO_AUTO_UPDATE, HOMEBREW_NO_ANALYTICS and HOMEBREW_NO_ENV_HINTS. Inherited

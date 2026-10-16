@@ -21,6 +21,18 @@ function result(stdout: string, status = 0, stderr = ""): DiagnosticCommandResul
   return { success: status === 0, status, stdout, stderr, output: stdout + stderr };
 }
 
+function serviceRow(overrides: Record<string, unknown> = {}) {
+  return {
+    running: true,
+    loaded: true,
+    schedulable: false,
+    registered: true,
+    status: "started",
+    exit_code: null,
+    ...overrides
+  };
+}
+
 function fixture(outputs: DiagnosticCommandResult[] = [result("HOMEBREW_VERSION: 6.0.0")]) {
   const release = vi.fn();
   const runBrew = vi.fn(async () => outputs.shift() ?? result(""));
@@ -463,19 +475,28 @@ describe("private bounded diagnostic projections", () => {
     const report = parseServiceDiagnostics(
       result(
         JSON.stringify([
-          {
+          serviceRow({
             name: privateText,
-            status: privateText,
-            running: true,
-            registered: true,
             pid: 12345,
             user: privateText,
             file: privateText,
             log_path: privateText,
             exit_code: 0
-          },
-          { name: "postgresql", running: false, registered: false, exit_code: 256 },
-          { name: privateText, running: false, exit_code: "SECRET" }
+          }),
+          serviceRow({
+            name: "postgresql",
+            running: false,
+            status: "error",
+            registered: false,
+            exit_code: 256
+          }),
+          serviceRow({
+            name: privateText,
+            running: false,
+            status: "none",
+            loaded: false,
+            registered: false
+          })
         ])
       )
     );
@@ -505,8 +526,8 @@ describe("private bounded diagnostic projections", () => {
     const report = parseServiceDiagnostics(
       result(
         JSON.stringify([
-          { running: true, status: "started", exit_code: 256 },
-          { running: false, status: "error", exit_code: 256 }
+          serviceRow({ exit_code: 256 }),
+          serviceRow({ running: false, status: "error", exit_code: 256 })
         ])
       )
     );
@@ -515,16 +536,16 @@ describe("private bounded diagnostic projections", () => {
 
   it("marks contradictory running/error data partial without counting it failed", () => {
     const report = parseServiceDiagnostics(
-      result(JSON.stringify([{ running: true, status: "error", exit_code: 256 }]))
+      result(JSON.stringify([serviceRow({ status: "error", exit_code: 256 })]))
     );
     expect(report).toMatchObject({ status: "partial", running: 1, failed: 0, unknown: 1 });
   });
 
-  it("counts an explicit service error when no exit code was reported", () => {
-    const report = parseServiceDiagnostics(
-      result(JSON.stringify([{ status: "error", running: false }]))
-    );
-    expect(report).toMatchObject({ status: "findings", failed: 1 });
+  it("does not claim a confirmed failure when an error row omits its exit code", () => {
+    const row: Record<string, unknown> = serviceRow({ status: "error", running: false });
+    delete row.exit_code;
+    const report = parseServiceDiagnostics(result(JSON.stringify([row])));
+    expect(report).toMatchObject({ status: "partial", failed: 0, unknown: 1 });
   });
 
   it("distinguishes empty services, command failure, malformed data and capped counts", () => {
@@ -535,7 +556,7 @@ describe("private bounded diagnostic projections", () => {
     expect(parseServiceDiagnostics(result("not JSON")).status).toBe("invalid");
     expect(parseServiceDiagnostics(result("[]", 1)).status).toBe("unavailable");
     const report = parseServiceDiagnostics(
-      result(JSON.stringify([null, {}, ...Array.from({ length: 300 }, () => ({ running: true }))]))
+      result(JSON.stringify([null, {}, ...Array.from({ length: 300 }, () => serviceRow())]))
     );
     expect(report).toMatchObject({
       status: "partial",
