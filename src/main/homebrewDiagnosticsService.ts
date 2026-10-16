@@ -26,7 +26,8 @@ export type DiagnosticCommandOptions = {
   maxOutputBytes: number;
   capture: "complete";
 };
-export type DiagnosticCommandResult = CommandResult & {
+// Raw runner failure messages are intentionally outside this privacy boundary.
+export type DiagnosticCommandResult = Omit<CommandResult, "failure"> & {
   failure?: { kind: DiagnosticFailure };
   outputTruncated?: boolean;
 };
