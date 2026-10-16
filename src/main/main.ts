@@ -34,6 +34,7 @@ import { isAllowedExternalURL } from "../shared/security";
 import { SnapshotPersistence } from "./persistence";
 import { calculateTrayWindowPosition } from "./trayWindowPosition";
 import { UpdateStore } from "./updateStore";
+import { catalogueCacheDirectory } from "./catalogueCacheDirectory";
 import { trayMenuTemplate } from "./trayMenu";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
@@ -92,6 +93,11 @@ if (hasSingleInstanceLock) {
     store = new UpdateStore({
       persistence,
       persisted,
+      catalogueCacheRoot: catalogueCacheDirectory(
+        app.getPath("home"),
+        app.getPath("userData"),
+        Boolean(process.env.BASELINE_USER_DATA_DIR)
+      ),
       openExternalURL: async (url) => {
         if (!isAllowedExternalURL(url)) {
           return false;
@@ -553,8 +559,11 @@ function trayUpdateTitle(snapshot: BaselineSnapshot): string {
 function wireIpc(): void {
   ipcMain.handle(ipcChannels.getSnapshot, () => store.getSnapshot());
   ipcMain.handle(ipcChannels.getAppMetadata, () => metadata);
-  ipcMain.handle(ipcChannels.getDiagnostics, () =>
-    renderDiagnostics(store.getSnapshot(), metadata, process.platform)
+  ipcMain.handle(
+    ipcChannels.getDiagnostics,
+    () =>
+      renderDiagnostics(store.getSnapshot(), metadata, process.platform) +
+      store.getCatalogueDiagnostics()
   );
   ipcMain.handle(ipcChannels.getToolStatus, () => {
     const snapshot = store.getSnapshot();
@@ -627,7 +636,10 @@ function wireIpc(): void {
     store.removeDirectory(String(directory))
   );
   ipcMain.handle(ipcChannels.copyDiagnostics, () => {
-    clipboard.writeText(renderDiagnostics(store.getSnapshot(), metadata, process.platform));
+    clipboard.writeText(
+      renderDiagnostics(store.getSnapshot(), metadata, process.platform) +
+        store.getCatalogueDiagnostics()
+    );
   });
   ipcMain.handle(ipcChannels.showMainWindow, () => showMainWindow("main"));
   ipcMain.handle(ipcChannels.showSettings, () => showMainWindow("settings"));
