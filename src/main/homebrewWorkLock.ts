@@ -29,6 +29,7 @@ export class HomebrewWorkLock<Inventory> {
   private inventoryCount = 0;
   private refreshSequence?: number;
   private activeInventoryTask?: InventoryTask<Inventory>;
+  private cleanupUnconfirmed = false;
 
   constructor(private readonly callbacks: HomebrewWorkLockCallbacks) {}
 
@@ -36,8 +37,17 @@ export class HomebrewWorkLock<Inventory> {
     return this.commandCount;
   }
 
+  get hasUnconfirmedCleanup(): boolean {
+    return this.cleanupUnconfirmed;
+  }
+
+  blockAfterUnconfirmedCleanup(): void {
+    this.cleanupUnconfirmed = true;
+    this.callbacks.onLockStateChange();
+  }
+
   get isMutationActive(): boolean {
-    return this.commandCount > 0 || this.callbacks.hasOtherMutation();
+    return this.cleanupUnconfirmed || this.commandCount > 0 || this.callbacks.hasOtherMutation();
   }
 
   get isCommandActive(): boolean {
@@ -45,7 +55,12 @@ export class HomebrewWorkLock<Inventory> {
   }
 
   get isCommandLocked(): boolean {
-    return this.commandCount > 0 || this.inventoryCount > 0 || this.refreshSequence !== undefined;
+    return (
+      this.cleanupUnconfirmed ||
+      this.commandCount > 0 ||
+      this.inventoryCount > 0 ||
+      this.refreshSequence !== undefined
+    );
   }
 
   get isCleanupLocked(): boolean {
@@ -118,6 +133,7 @@ export class HomebrewWorkLock<Inventory> {
   }
 
   async readInventory(read: HomebrewInventoryRead<Inventory>): Promise<Inventory> {
+    if (this.cleanupUnconfirmed) return read.blocked();
     for (;;) {
       const active = this.activeInventoryTask;
       if (!active) break;
@@ -127,6 +143,7 @@ export class HomebrewWorkLock<Inventory> {
       // task after the weaker read finishes instead of starting in parallel.
     }
     if (this.isMutationActive && !read.allowDuringMutation) return read.blocked();
+    if (this.cleanupUnconfirmed) return read.blocked();
 
     let resolveTask!: (result: Inventory) => void;
     let rejectTask!: (error: unknown) => void;
