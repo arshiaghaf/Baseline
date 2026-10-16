@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { operationDetailsText } from "../shared/operationReport";
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
@@ -125,6 +127,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private state: BaselineSnapshot;
   private snapshotRevision = 0;
+  private mutationGeneration = 0;
+  private readonly failureGenerations = new Map<string, number>();
+  private readonly resultGenerations = new WeakMap<CommandResult, number>();
   private readonly progressPublisher = new ProgressPublisher((event) =>
     this.emit("progress", event)
   );
@@ -185,13 +190,21 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       options.isHomebrewCleanupUnconfirmed ?? homebrewCleanupIsUnconfirmed;
     const runBrew = options.runBrewCommand ?? defaultRunBrewCommand;
     this.runBrewCommand = async (...args) => {
-      const result = await runBrew(...args);
+      const generation = this.mutationGeneration;
+      const result = { ...(await runBrew(...args)) };
+      this.resultGenerations.set(result, generation);
       if (result.failure?.kind === "cleanup" || this.isHomebrewCleanupUnconfirmed()) {
         this.blockHomebrewAfterUnconfirmedCleanup();
       }
       return result;
     };
-    this.runMasCommand = options.runMasCommand ?? defaultRunMasCommand;
+    const runMas = options.runMasCommand ?? defaultRunMasCommand;
+    this.runMasCommand = async (...args) => {
+      const generation = this.mutationGeneration;
+      const result = { ...(await runMas(...args)) };
+      this.resultGenerations.set(result, generation);
+      return result;
+    };
     this.openExternalURL = options.openExternalURL;
     this.openAppBundle = options.openAppBundle;
     this.successRefreshDelayMS = options.successRefreshDelayMS ?? successfulUpdateHoldMs;
@@ -201,6 +214,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.state = {
       ...persisted,
       operationFailures: normalizeOperationFailures(persisted.operationFailures),
+      operationFailureDetails: {},
       isMasInstalled: false,
       isHomebrewInstalled: false,
       isChecking: false,
@@ -535,21 +549,43 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.persist();
   }
 
+  operationFailureText(id: string, attemptID: string): string | undefined {
+    const failure = this.state.operationFailures?.find((failure) => failure.id === id);
+    const details = this.state.operationFailureDetails?.[id];
+    if (!failure || (details?.attemptID ?? failure.occurredAt) !== attemptID) return;
+    return operationDetailsText(failure, details?.outputTail);
+  }
+
   async dismissOperationFailure(id: string): Promise<void> {
     const failures = this.state.operationFailures ?? [];
     const remaining = failures.filter((failure) => failure.id !== id);
     if (remaining.length === failures.length) return;
-    this.patch({ operationFailures: remaining });
+    this.patch({
+      operationFailures: remaining,
+      operationFailureDetails: Object.fromEntries(
+        Object.entries(this.state.operationFailureDetails ?? {}).filter(([key]) =>
+          remaining.some((failure) => failure.id === key)
+        )
+      )
+    });
     await this.persistFailureDetails();
   }
 
   private clearOperationFailure(entityID: string, operation: OperationFailure["operation"]): void {
+    this.failureGenerations.set(`${operation}:${entityID}`, this.mutationGeneration);
     const failures = this.state.operationFailures ?? [];
     const remaining = failures.filter(
       (failure) => failure.entityID !== entityID || failure.operation !== operation
     );
     if (remaining.length === failures.length) return;
-    this.patch({ operationFailures: remaining });
+    this.patch({
+      operationFailures: remaining,
+      operationFailureDetails: Object.fromEntries(
+        Object.entries(this.state.operationFailureDetails ?? {}).filter(([key]) =>
+          remaining.some((failure) => failure.id === key)
+        )
+      )
+    });
     void this.persistFailureDetails();
   }
 
@@ -586,11 +622,28 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       occurredAt
     }));
     const ids = new Set(records.map((record) => record.id));
+    const details = { ...this.state.operationFailureDetails };
+    failures.forEach(({ entityID, operation, result }) => {
+      const id = `${operation}:${entityID}`;
+      const current =
+        this.failureGenerations.get(id) === this.mutationGeneration &&
+        this.resultGenerations.get(result) === this.mutationGeneration;
+      details[id] = {
+        attemptID: randomUUID(),
+        outputTail: current ? result.outputTail : undefined
+      };
+    });
+    const operationFailures = normalizeOperationFailures([
+      ...records,
+      ...(this.state.operationFailures ?? []).filter((previous) => !ids.has(previous.id))
+    ]);
     this.patch({
-      operationFailures: normalizeOperationFailures([
-        ...records,
-        ...(this.state.operationFailures ?? []).filter((previous) => !ids.has(previous.id))
-      ])
+      operationFailureDetails: Object.fromEntries(
+        Object.entries(details).filter(([key]) =>
+          operationFailures.some((failure) => failure.id === key)
+        )
+      ),
+      operationFailures
     });
     return this.persistFailureDetails();
   }
@@ -649,7 +702,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     return this.openExternalURL(url);
   }
 
+  private beginUserMutation(): void {
+    this.mutationGeneration++;
+    this.failureGenerations.clear();
+    this.patch({ operationFailureDetails: {} });
+  }
+
   async performAppUpdate(appID: string): Promise<void> {
+    this.beginUserMutation();
     const appRecord = this.state.apps.find((app) => app.id === appID);
     if (!appRecord) {
       return;
@@ -718,18 +778,22 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async performHomebrewUpdate(itemID: string): Promise<void> {
+    this.beginUserMutation();
     await this.homebrewOperations.performHomebrewUpdate(itemID);
   }
 
   async performHomebrewUpdateAll(itemIDs?: string[]): Promise<void> {
+    this.beginUserMutation();
     await this.homebrewOperations.performHomebrewUpdateAll(itemIDs);
   }
 
   async installHomebrewItem(item: HomebrewCaskDiscoveryItem): Promise<void> {
+    this.beginUserMutation();
     await this.homebrewOperations.installHomebrewItem(item);
   }
 
   async uninstallHomebrewItem(itemID: string): Promise<void> {
+    this.beginUserMutation();
     await this.homebrewOperations.uninstallHomebrewItem(itemID);
   }
 
@@ -953,6 +1017,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async cleanUpHomebrew(confirm: () => Promise<boolean>): Promise<string> {
+    this.beginUserMutation();
     if (!this.state.isHomebrewInstalled) return "Homebrew is not available.";
     const release = this.reserveHomebrewCommandLock({ allowRefreshSupersession: true });
     if (!release) return "Homebrew is busy. Try again when the current operation finishes.";

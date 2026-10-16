@@ -649,6 +649,13 @@ function wireIpc(): void {
   ipcMain.handle(ipcChannels.removeDirectory, (_event, directory: string) =>
     store.removeDirectory(String(directory))
   );
+  ipcMain.handle(ipcChannels.copyOperationFailure, (event, id: string, attemptID: string) => {
+    requireBackendSender(event);
+    const text = store.operationFailureText(String(id), String(attemptID));
+    if (!text) return false;
+    clipboard.writeText(text);
+    return true;
+  });
   ipcMain.handle(ipcChannels.copyDiagnostics, () => {
     clipboard.writeText(
       renderDiagnostics(store.getSnapshot(), metadata, process.platform) +
