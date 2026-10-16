@@ -101,7 +101,7 @@ export class HomebrewCaskClient {
           token: compactCatalogueText(entry.token),
           names: [
             displayName(entry),
-            ...entry.appBundleNames.map((name) => name.replace(/\.app$/iu, ""))
+            ...entry.appBundleNames.flatMap((name) => [name, name.replace(/\.app$/iu, "")])
           ].map(compactCatalogueText)
         }
       }));
@@ -229,13 +229,13 @@ function extractBundleIdentifierMetadata(
       if (typeof value === "string") {
         explicit.add(value);
       } else if (Array.isArray(value)) {
-        value.filter((entry) => typeof entry === "string").forEach((entry) => explicit.add(entry));
+        stringValues(value).forEach((entry) => explicit.add(entry));
       }
     } else if (key === "quit") {
       if (typeof value === "string") {
         quit.add(value);
       } else if (Array.isArray(value)) {
-        value.filter((entry) => typeof entry === "string").forEach((entry) => quit.add(entry));
+        stringValues(value).forEach((entry) => quit.add(entry));
       }
     }
   });
@@ -262,7 +262,9 @@ function indexBundleIdentifier(
 
 function extractInstalledAppPaths(object: any): Pick<HomebrewCaskEntry, "installedAppPaths"> {
   const paths = new Set<string>();
-  for (const artifact of Array.isArray(object?.artifacts) ? object.artifacts : []) {
+  for (const artifact of Array.isArray(object?.artifacts)
+    ? object.artifacts.slice(0, maxEvidenceChildren)
+    : []) {
     if (!artifact || typeof artifact !== "object" || (!artifact.app && !artifact.apps)) continue;
     // Only installed app artifact targets are ownership evidence; delete/zap paths are not.
     const add = (value: unknown) => {
@@ -295,7 +297,7 @@ function extractAppBundleNames(object: any): string[] {
       if (typeof value === "string") {
         addNormalized(value);
       } else if (Array.isArray(value)) {
-        value.filter((entry) => typeof entry === "string").forEach((entry) => addNormalized(entry));
+        stringValues(value).forEach((entry) => addNormalized(entry));
       }
     } else if (key === "target") {
       stringValues(value).forEach((entry) => addNormalized(entry, { requireAppSuffix: true }));
@@ -306,25 +308,74 @@ function extractAppBundleNames(object: any): string[] {
   return [...found].sort();
 }
 
+const evidenceKeys = [
+  "artifacts",
+  "app",
+  "apps",
+  "bundle_id",
+  "bundle_ids",
+  "bundle_identifier",
+  "bundleIdentifier",
+  "uninstall",
+  "zap",
+  "artifact",
+  "target",
+  "delete",
+  "quit",
+  "login_item"
+];
+const evidenceKeySet = new Set(evidenceKeys);
+const maxEvidenceNodes = 20_000;
+const maxEvidenceDepth = 32;
+const maxEvidenceChildren = 2048;
+
 function walk(value: any, visitor: (key: string, value: any) => void): void {
-  const pending = [value];
+  type Frame = { value: any; depth: number; evidence: boolean };
+  const primary: Array<Frame | undefined> = [];
+  const fallback: Array<Frame | undefined> = [];
+  let primaryHead = 0;
+  let fallbackHead = 0;
+  const enqueue = (child: any, depth: number, evidence: boolean) => {
+    if (!child || typeof child !== "object" || depth > maxEvidenceDepth) return;
+    evidence ||= !Array.isArray(child) && evidenceKeys.some((key) => Object.hasOwn(child, key));
+    const queue = evidence ? primary : fallback;
+    const head = evidence ? primaryHead : fallbackHead;
+    if (queue.length - head < maxEvidenceNodes) queue.push({ value: child, depth, evidence });
+  };
+  enqueue(value, 0, true);
   let visited = 0;
-  while (pending.length && ++visited <= 20_000) {
-    const current = pending.pop();
+  while (visited++ < maxEvidenceNodes) {
+    const known = primaryHead < primary.length;
+    const queue = known ? primary : fallback;
+    const head = known ? primaryHead++ : fallbackHead++;
+    const frame = queue[head];
+    if (!frame) break;
+    queue[head] = undefined;
+    const { value: current, depth, evidence } = frame;
     if (Array.isArray(current)) {
-      // Installed metadata bypasses strict catalogue admission. Bound both
-      // queued work and traversal without spreading an untrusted array into call arguments.
-      const count = Math.min(current.length, 20_000 - visited - pending.length);
-      for (let index = 0; index < count; index++) pending.push(current[index]);
-    } else if (current && typeof current === "object") {
-      for (const key in current) {
-        if (visited + pending.length >= 20_000) break;
+      for (let index = 0; index < Math.min(current.length, maxEvidenceChildren); index++) {
+        enqueue(current[index], depth + 1, evidence);
+      }
+    } else {
+      // Inspect known fields directly, independently of JSON key order. Their
+      // branches have a separate queue so optional data cannot reserve their slots.
+      for (const key of evidenceKeys) {
         if (!Object.hasOwn(current, key)) continue;
         const child = current[key];
         visitor(key, child);
-        pending.push(child);
+        enqueue(child, depth + 1, true);
+      }
+      let siblings = 0;
+      for (const key in current) {
+        if (!Object.hasOwn(current, key) || evidenceKeySet.has(key)) continue;
+        if (siblings++ >= maxEvidenceChildren) break;
+        const child = current[key];
+        visitor(key, child);
+        enqueue(child, depth + 1, false);
       }
     }
+    // FIFO within each tier prevents one deep optional subtree from consuming
+    // the fallback budget before its siblings' nested evidence can be inspected.
   }
 }
 
@@ -337,7 +388,7 @@ function hasExplicitAppArtifactName(object: any): boolean {
     if (typeof value === "string") {
       found = normalizeAppBundleName(value) !== undefined;
     } else if (Array.isArray(value)) {
-      found = value.some((entry) => typeof entry === "string" && normalizeAppBundleName(entry));
+      found = stringValues(value).some((entry) => normalizeAppBundleName(entry));
     }
   });
   return found;
@@ -352,7 +403,7 @@ function hasPackageBackedAppNameHint(object: any): boolean {
     if (typeof value === "string") {
       found = normalizeAppBundleName(value) !== undefined;
     } else if (Array.isArray(value)) {
-      found = value.some((entry) => typeof entry === "string" && normalizeAppBundleName(entry));
+      found = stringValues(value).some((entry) => normalizeAppBundleName(entry));
     }
   });
   return found;
@@ -437,9 +488,11 @@ function hasTargetArtifactName(object: any): boolean {
 
 function hasArtifactKey(object: any, artifactKey: string): boolean {
   return Array.isArray(object?.artifacts)
-    ? object.artifacts.some(
-        (artifact: unknown) => artifact && typeof artifact === "object" && artifactKey in artifact
-      )
+    ? object.artifacts
+        .slice(0, maxEvidenceChildren)
+        .some(
+          (artifact: unknown) => artifact && typeof artifact === "object" && artifactKey in artifact
+        )
     : false;
 }
 
@@ -448,7 +501,9 @@ function stringValues(value: unknown): string[] {
     return [value];
   }
   if (Array.isArray(value)) {
-    return value.filter((entry): entry is string => typeof entry === "string");
+    return value
+      .slice(0, maxEvidenceChildren)
+      .filter((entry): entry is string => typeof entry === "string");
   }
   return [];
 }

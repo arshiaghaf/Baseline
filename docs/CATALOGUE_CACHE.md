@@ -19,7 +19,11 @@ upstream `Age`/`Date`. `no-cache` and zero max-age trigger revalidation on the n
 request, retaining the existing last-good fallback policy. `must-revalidate`
 forbids fallback once freshness expires. `no-store` removes stored payloads and
 validators and delivers only the current response. A 304 without a validated body
-gets one unconditional retry. Concurrent startup/network requests share work.
+gets one unconditional retry with a fresh 12-second request timeout. Startup
+preparation shares one promise independently of network revalidation. Cache-only
+returns are never shared as a revalidation task: every forced caller bypasses
+freshness/retry gates after preparation, while actual in-flight network work and
+its atomic publication still coalesce.
 Wall-clock rollback behind the checked time invalidates reusable metadata.
 
 Downloads reject excessive `Content-Length` and stop/cancel the body reader when
@@ -36,11 +40,22 @@ malformed nonempty replacement cannot erase a valid cache. Client
 `skippedEntries`, `schemaWarnings`), with no rejected values or error transcripts.
 The installed-cask mapper retains its tolerant behavior separately from strict
 remote catalogue admission, so unrelated optional installed metadata cannot fail
-an otherwise healthy inventory kind.
+an otherwise healthy inventory kind. Its evidence walker inspects known artifact,
+app, target and identifier fields before unrelated branches, independently of JSON
+key order. Known branches use a separate priority queue; bounded unknown maps and arrays
+retain schema-drift support through a separate breadth-first fallback queue. It visits at most 20,000 containers, descends at most 32 container
+levels, and inspects at most 2,048 array entries or unknown object fields per
+container. Direct string-valued evidence arrays and artifact lists use the same
+2,048-entry cap. Each queue holds at most 20,000 pending containers; optional data cannot occupy
+known-evidence slots. Intrinsically oversized/deep evidence branches can be
+truncated; traversal limits do not create new ownership evidence or reject other
+healthy inventory entries.
 
 `mergeCatalogueSearchResults` compares cask and formula relevance on one scale
 before truncation, so exact formula matches precede unrelated cask prefixes.
-Search scores stay in the main process and do not extend shared UI contracts.
+Both original app bundle filenames and suffix-stripped names remain indexed, so
+`.app` queries retain their matches while ordinary names can receive exact-match
+ranking. Search scores stay in the main process and do not extend shared UI contracts.
 Catalogue entries remain public lookup/discovery metadata. Installed ownership,
 tap/alias verification, reservations and mutation authorization continue to use
 installed inventory evidence.
