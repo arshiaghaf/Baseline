@@ -59,6 +59,11 @@ function stall(stage: string, promise: Promise<void>) {
       await promise;
       return true;
     });
+  if (stage === "final revalidation")
+    revalidate.mockResolvedValueOnce(true).mockImplementationOnce(async () => {
+      await promise;
+      return true;
+    });
 }
 beforeEach(() => {
   vi.useFakeTimers();
@@ -96,7 +101,7 @@ it("rejects an already-aborted command before executable resolution", async () =
   expect(mocks.spawn).not.toHaveBeenCalled();
 });
 
-it.each(["resolution", "check", "revalidate"])(
+it.each(["resolution", "check", "revalidate", "final revalidation"])(
   "times out stalled %s and prevents late spawn",
   async (stage) => {
     const deferred = gate();
@@ -111,7 +116,7 @@ it.each(["resolution", "check", "revalidate"])(
   }
 );
 
-it.each(["resolution", "check", "revalidate"])(
+it.each(["resolution", "check", "revalidate", "final revalidation"])(
   "cancels stalled %s and prevents late spawn",
   async (stage) => {
     const deferred = gate();
@@ -139,25 +144,29 @@ it("does not add a default deadline to mutation preflight", async () => {
   expect(result()?.success).toBe(true);
 });
 
-it("subtracts preflight time from execution instead of restarting the deadline", async () => {
-  const delay = () => new Promise<void>((resolve) => setTimeout(resolve, 8));
-  mocks.access.mockImplementation(delay);
-  mocks.check.mockImplementation(async () => {
-    await delay();
-    return { supported: true, revalidate };
-  });
-  revalidate.mockImplementation(async () => {
-    await delay();
-    return true;
-  });
-  autoExit = false;
-  const result = observe(runBrewCommand(["--version"], undefined, { timeoutMs: 30 }));
-  await vi.advanceTimersByTimeAsync(29);
-  expect(result()).toBeUndefined();
-  await vi.advanceTimersByTimeAsync(2);
-  expect(result()?.failure?.kind).toBe("timeout");
-  expect(mocks.spawn).toHaveBeenCalledTimes(1);
-});
+it.each([6, 8])(
+  "spends the budget once across preflight and execution (stage delay %s)",
+  async (delayMs) => {
+    const delay = () => new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    mocks.access.mockImplementation(delay);
+    mocks.check.mockImplementation(async () => {
+      await delay();
+      return { supported: true, revalidate };
+    });
+    revalidate.mockImplementation(async () => {
+      await delay();
+      return true;
+    });
+    autoExit = false;
+    const result = observe(runBrewCommand(["--version"], undefined, { timeoutMs: 30 }));
+    await vi.advanceTimersByTimeAsync(29);
+    expect(result()).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(2);
+    expect(result()?.failure?.kind).toBe("timeout");
+    expect(mocks.spawn).toHaveBeenCalledTimes(delayMs === 6 ? 1 : 0);
+    await vi.advanceTimersByTimeAsync(3);
+  }
+);
 
 it.each(["abort", "timeout"])(
   "keeps %s as the first interruption and consumes late rejection",
