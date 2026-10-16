@@ -56,7 +56,6 @@ import {
   homebrewItemMatchesApp,
   isCask
 } from "../shared/homebrewAppLinking";
-import { HomebrewMaintenanceProgressStage } from "../shared/homebrewProgress";
 import { operationFailureDescription, type OperationFailure } from "../shared/operationFailures";
 import { operationIssueReport } from "../shared/operationReport";
 import "./styles.css";
@@ -71,6 +70,13 @@ import type {
   SettingsSectionID,
   TogglePatch
 } from "./types";
+import {
+  clearCompactPopoverControlFocus,
+  setElementInert,
+  suppressCompactPopoverControlFocus,
+  hasOpenNestedMenu,
+  trapFocusWithin
+} from "./helpers/focus";
 import {
   toolbarIconStrokeWidth,
   sidebarIconStrokeWidth,
@@ -92,6 +98,13 @@ import {
   hasLongVersionLabel
 } from "./helpers/labels";
 import { uninstallableHomebrewItemForApp } from "./helpers/sections";
+import {
+  rowActionMenuEstimatedWidth,
+  rowActionMenuEstimatedHeight,
+  rowActionMenuPopoverClassName,
+  floatingRowActionMenuStyle
+} from "./helpers/rowMenu";
+import { clampProgress, syntheticProgressTarget, easedProgress } from "./helpers/progress";
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
 
@@ -534,114 +547,6 @@ export function Dashboard({
   );
 }
 
-function clearCompactPopoverControlFocus(
-  target: EventTarget | Element | null,
-  compactShell: HTMLElement | null
-): void {
-  const focusTarget = compactPopoverControlFocusTarget(target, compactShell);
-  if (!focusTarget) {
-    return;
-  }
-  focusTarget.blur();
-}
-
-function suppressCompactPopoverControlFocus(
-  target: EventTarget | Element | null,
-  compactShell: HTMLElement | null,
-  event: React.MouseEvent
-): void {
-  if (compactPopoverControlFocusTarget(target, compactShell)) {
-    event.preventDefault();
-  }
-}
-
-function compactPopoverControlFocusTarget(
-  target: EventTarget | Element | null,
-  compactShell: HTMLElement | null
-): HTMLElement | undefined {
-  if (!(target instanceof Element)) {
-    return undefined;
-  }
-  const focusTarget = target.closest("button, input, textarea, [contenteditable='true']");
-  if (!(focusTarget instanceof HTMLElement)) {
-    return undefined;
-  }
-  if (compactShell && !compactShell.contains(focusTarget)) {
-    return undefined;
-  }
-  if (focusTarget.matches("input, textarea, [contenteditable='true']")) {
-    return undefined;
-  }
-  return focusTarget;
-}
-
-function setElementInert(element: HTMLElement, inert: boolean): void {
-  (element as HTMLElement & { inert: boolean }).inert = inert;
-}
-
-const focusableSelector = [
-  "a[href]:not([tabindex='-1'])",
-  "button:not(:disabled):not([tabindex='-1'])",
-  "input:not(:disabled):not([tabindex='-1'])",
-  "select:not(:disabled):not([tabindex='-1'])",
-  "textarea:not(:disabled):not([tabindex='-1'])",
-  "[tabindex]:not([tabindex='-1'])"
-].join(",");
-
-function focusableElementsIn(container: HTMLElement): HTMLElement[] {
-  return Array.from(container.querySelectorAll<HTMLElement>(focusableSelector))
-    .filter(
-      (element) =>
-        !element.closest("[aria-hidden='true']") &&
-        element.getAttribute("tabindex") !== "-1" &&
-        element.tabIndex >= 0
-    )
-    .sort(compareDocumentOrder);
-}
-
-function compareDocumentOrder(lhs: HTMLElement, rhs: HTMLElement): number {
-  if (lhs === rhs) {
-    return 0;
-  }
-  const position = lhs.compareDocumentPosition(rhs);
-  if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
-    return -1;
-  }
-  if (position & Node.DOCUMENT_POSITION_PRECEDING) {
-    return 1;
-  }
-  return 0;
-}
-
-function trapFocusWithin(event: KeyboardEvent, container: HTMLElement | null): void {
-  if (!container) {
-    return;
-  }
-
-  const focusableElements = focusableElementsIn(container);
-  if (focusableElements.length === 0) {
-    event.preventDefault();
-    container.focus();
-    return;
-  }
-
-  const firstElement = focusableElements[0]!;
-  const lastElement = focusableElements[focusableElements.length - 1]!;
-  const activeElement = document.activeElement;
-  if (event.shiftKey) {
-    if (activeElement === firstElement || !container.contains(activeElement)) {
-      event.preventDefault();
-      lastElement.focus();
-    }
-    return;
-  }
-
-  if (activeElement === lastElement || !container.contains(activeElement)) {
-    event.preventDefault();
-    firstElement.focus();
-  }
-}
-
 function Sidebar({
   snapshot,
   derived,
@@ -943,16 +848,6 @@ function SearchPalette({
         </section>
       </div>
     </div>
-  );
-}
-
-const searchPaletteFloatingRowMenuSelector =
-  "[data-search-palette-floating-row-menu='true'][role='menu']";
-
-function hasOpenNestedMenu(container: HTMLElement | null): boolean {
-  return Boolean(
-    container?.querySelector("[role='menu']") ||
-    document.querySelector(searchPaletteFloatingRowMenuSelector)
   );
 }
 
@@ -3011,76 +2906,6 @@ function RowMoreActionButton({
       {popoverPlacement === "floating" && popover ? createPortal(popover, document.body) : popover}
     </div>
   );
-}
-
-const rowActionMenuEstimatedWidth = 142;
-
-function rowActionMenuPopoverClassName(placement: RowActionMenuPlacement): string {
-  if (placement === "above") {
-    return "row-action-menu-popover row-action-menu-popover-above";
-  }
-  if (placement === "floating") {
-    return "row-action-menu-popover row-action-menu-popover-floating";
-  }
-  return "row-action-menu-popover";
-}
-
-function floatingRowActionMenuStyle(
-  position: RowActionMenuFloatingPosition | undefined
-): React.CSSProperties {
-  return {
-    left: position?.left ?? 0,
-    top: position?.top ?? 0,
-    visibility: position ? "visible" : "hidden"
-  };
-}
-
-function rowActionMenuEstimatedHeight(
-  updateAction: RowUpdateMenuAction | undefined,
-  canUninstall: boolean
-): number {
-  const itemCount = 1 + (updateAction ? 1 : 0) + (canUninstall ? 1 : 0);
-  return itemCount * 28 + 10;
-}
-
-type SyntheticProgressTarget = {
-  cap: number;
-  speedMs: number;
-};
-
-const syntheticProgressRanges = {
-  starting: { cap: 0.28, speedMs: 5000 },
-  downloading: { cap: 0.58, speedMs: 9000 },
-  installing: { cap: 0.84, speedMs: 6500 },
-  finalizing: { cap: 0.96, speedMs: 3500 }
-} as const;
-
-function syntheticProgressTarget(value: number): SyntheticProgressTarget {
-  const clamped = clampProgress(value);
-  if (clamped >= HomebrewMaintenanceProgressStage.completed) {
-    return { cap: 1, speedMs: 1 };
-  }
-  if (clamped >= HomebrewMaintenanceProgressStage.finalizing) {
-    return syntheticProgressRanges.finalizing;
-  }
-  if (clamped >= HomebrewMaintenanceProgressStage.installing) {
-    return syntheticProgressRanges.installing;
-  }
-  if (clamped >= HomebrewMaintenanceProgressStage.downloading) {
-    return syntheticProgressRanges.downloading;
-  }
-  return syntheticProgressRanges.starting;
-}
-
-function clampProgress(value: number): number {
-  return Math.max(0, Math.min(value, 1));
-}
-
-function easedProgress(start: number, target: SyntheticProgressTarget, elapsedMs: number): number {
-  if (target.cap <= start) {
-    return start;
-  }
-  return start + (target.cap - start) * (1 - Math.exp(-elapsedMs / target.speedMs));
 }
 
 function useSyntheticProgress(value: number): number {
