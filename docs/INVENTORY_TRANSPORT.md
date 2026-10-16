@@ -49,12 +49,17 @@ retained. Public catalogue data never repairs an unverified installed identity.
 
 `installedMetadataByItemID` is an optional typed backend sidecar containing only
 verified installed nodes. It retains caveats, deprecation/disable reasons,
-receipt install reasons, version/revision/HEAD context, declared dependencies and
+observed per-keg install intent, current formula version/revision/HEAD context, declared dependencies and
 receipt runtime dependencies. Reverse dependent IDs resolve only unambiguous,
 exact verified receipt full names; bare names never substitute for custom taps.
 Declarations remain distinct from observed receipt edges. Multiple installed
 receipts and unresolved references are retained. This is partial observed
 dependency context, never an uninstall-safety guarantee.
+
+The [installed metadata contract](INSTALLED_METADATA_CONTRACT.md) crosswalks every
+consumed sidecar field against pinned Formula, Cask and Tab serializers. It also
+documents stable/HEAD/mixed declaration provenance, unknown values, actual keg
+records versus cask info, and the limits of observed counts.
 
 The sidecar belongs in memory only. It must not enter persisted snapshots,
 ordinary renderer snapshots or automatic diagnostic exports: caveats can contain
