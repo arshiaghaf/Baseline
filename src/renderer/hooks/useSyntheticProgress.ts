@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { clampProgress, syntheticProgressTarget, easedProgress } from "../helpers/progress";
 
-export function useSyntheticProgress(value: number): number {
+export function useSyntheticProgress(value: number, paused = false): number {
   const initialProgress = Math.min(clampProgress(value), syntheticProgressTarget(value).cap);
   const [renderedProgress, setRenderedProgress] = useState(initialProgress);
   const renderedProgressRef = useRef(renderedProgress);
@@ -16,7 +16,7 @@ export function useSyntheticProgress(value: number): number {
   const target = syntheticProgressTarget(value);
   useEffect(() => {
     const start = renderedProgressRef.current;
-    if (target.cap <= start) {
+    if (paused || target.cap <= start) {
       return;
     }
     const startedAt = Date.now();
@@ -28,7 +28,7 @@ export function useSyntheticProgress(value: number): number {
       }
     }, 120);
     return () => window.clearInterval(timer);
-  }, [target.cap, target.speedMs]);
+  }, [target.cap, target.speedMs, paused]);
 
   return Math.min(renderedProgress, target.cap);
 }

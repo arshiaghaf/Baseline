@@ -1,13 +1,13 @@
-# Administrator prompt helper (dormant)
+# Administrator password prompts
 
-The package includes an unused native `Contents/Resources/admin-askpass`
-executable. No Homebrew command or renderer action currently enables it.
-It is outside ASAR and built for the package's target architecture before signing.
+Packaged startup configures the native `Contents/Resources/admin-askpass`
+executable using its absolute bundled path. It is outside ASAR and built for the
+package's target architecture before signing. Development startup does not enable it.
 
-The dormant lifecycle state machine tracks invocation completion independently
+The lifecycle state machine tracks invocation completion independently
 from cancellation and cleanup evidence. Operation snapshots retain target IDs and
 waiting state through reconciliation, but are excluded from saved snapshots.
-App startup still does not configure the helper. After trusted main-process
+After trusted main-process
 setup, the command runner can create a private operation endpoint and set
 `SUDO_ASKPASS` for a validated explicit cask install, upgrade or uninstall with a
 current operation context. Inherited metadata cannot grant eligibility.
@@ -48,11 +48,19 @@ the owning helper on lost/invalid transport and handles correlated focus request
 only while its dialog is active. These mechanisms still require native desktop
 verification; fixture tests do not prove actual dialog removal or foregrounding.
 
-Before activation, the command coordinator must enforce admission, correlation,
-status draining, orderly cancellation, process cleanup and reconciliation under
-the Homebrew work reservation. Cancellation must immediately deny later prompts
-for the operation without routinely killing an orderly completion handshake.
-Cleanup uncertainty remains independent and must quarantine further work.
+The coordinator enforces admission, correlation, status draining and orderly
+cancellation; the runner owns process cleanup, and the operation service holds the
+Homebrew work reservation through reconciliation. Cleanup uncertainty remains
+independent and quarantines further work.
+
+The renderer derives “Waiting for admin password” from the current operation
+snapshot, including when a main window or menu bar view reopens. Only affected
+rows pause synthetic progress. Answer submission resumes progress without counting
+time spent waiting; sudo still determines whether authentication succeeded.
+Opening a window or menu bar view requests focus for the correlated active dialog.
+Quit retains the existing wait-for-operation policy: while waiting, it brings the
+dialog forward so the user can answer or cancel, then quit after reconciliation.
+It does not introduce a password or mutation deadline.
 
 Every Homebrew command now checks configuration before launch and revalidates
 file fingerprints immediately before execution. Homebrew's launcher filters

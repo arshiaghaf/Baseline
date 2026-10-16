@@ -78,6 +78,7 @@ export function homebrewControlState(
       queued,
       updating: isUpdating,
       progress,
+      waitingForAdmin: isWaitingForAdmin(snapshot, { itemID: item.id }),
       done
     }),
     homebrewUninstallBlocked
@@ -89,12 +90,14 @@ export function actionStateFromFlags({
   queued = false,
   updating,
   progress,
+  waitingForAdmin = false,
   done
 }: {
   failed: boolean;
   queued?: boolean;
   updating: boolean;
   progress?: number;
+  waitingForAdmin?: boolean;
   done: boolean;
 }): ActionState {
   if (failed) {
@@ -107,7 +110,11 @@ export function actionStateFromFlags({
     return { type: "queued" };
   }
   if (updating) {
-    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
+    return {
+      type: "updating",
+      ...(progress === undefined ? {} : { progress }),
+      ...(waitingForAdmin ? { waitingForAdmin: true } : {})
+    };
   }
   return { type: "ready" };
 }
@@ -124,7 +131,7 @@ export function isHomebrewCommandActive(snapshot: BaselineSnapshot): boolean {
 
 export function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): string {
   if (state.type === "updating") {
-    return "Updating";
+    return state.waitingForAdmin ? "Waiting for admin password" : "Updating";
   }
   if (state.type === "queued") {
     return "Queued";
@@ -173,9 +180,26 @@ export function appUpdateActionState(
       queued,
       updating: isUpdating,
       progress,
+      waitingForAdmin: isWaitingForAdmin(snapshot, {
+        appID: app.id,
+        itemID: matchedHomebrewItem?.id
+      }),
       done
     })
   };
+}
+
+export function isWaitingForAdmin(
+  snapshot: BaselineSnapshot,
+  target: { itemID?: string; appID?: string }
+): boolean {
+  const operation = snapshot.homebrewOperation;
+  return Boolean(
+    operation?.phase === "waiting" &&
+    operation.waitingPromptID &&
+    ((target.itemID && operation.itemIDs.includes(target.itemID)) ||
+      (target.appID && operation.appIDs.includes(target.appID)))
+  );
 }
 
 export function homebrewBatchActionState(

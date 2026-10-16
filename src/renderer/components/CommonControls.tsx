@@ -76,7 +76,7 @@ export function UpdateActionButton({
         state.progress === undefined ? (
           <RefreshCcw className="spin" size={14} />
         ) : (
-          <ProgressRing value={state.progress} />
+          <ProgressRing value={state.progress} paused={state.waitingForAdmin} />
         )
       ) : state.type === "done" ? (
         <DoneTransitionGlyph />
@@ -255,7 +255,10 @@ export function RowMoreActionButton({
             updateAction.state.progress === undefined ? (
               <RefreshCcw className="spin" size={14} />
             ) : (
-              <ProgressRing value={updateAction.state.progress} />
+              <ProgressRing
+                value={updateAction.state.progress}
+                paused={updateAction.state.waitingForAdmin}
+              />
             )
           ) : updateAction.state.type === "done" ? (
             <Check className="done-glyph" size={14} strokeWidth={3} />
@@ -306,10 +309,10 @@ export function RowMoreActionButton({
   );
 }
 
-export function ProgressRing({ value }: { value: number }) {
+export function ProgressRing({ value, paused = false }: { value: number; paused?: boolean }) {
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
-  const progress = useSyntheticProgress(value);
+  const progress = useSyntheticProgress(value, paused);
   return (
     <svg className="progress-ring" viewBox="0 0 16 16" aria-hidden="true">
       <circle className="progress-ring-track" cx="8" cy="8" r={radius} />
