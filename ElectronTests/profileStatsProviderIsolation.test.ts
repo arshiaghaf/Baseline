@@ -17,6 +17,7 @@ import { defaultPersistedSnapshot, defaultProfileStats } from "../src/shared/dom
 
 const runCommandMock = vi.hoisted(() => vi.fn());
 vi.mock("../src/main/commandRunner", () => ({
+  homebrewCleanupIsUnconfirmed: () => false,
   runCommand: runCommandMock,
   runBrewCommand: vi.fn(),
   runMasCommand: vi.fn()

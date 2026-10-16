@@ -4,6 +4,10 @@
 import type { CommandResult } from "../src/main/commandRunner";
 
 export type E2ECommandControl = { finish?: () => void; commands: string[][] };
+
+export function homebrewCleanupIsUnconfirmed(): boolean {
+  return false;
+}
 const failedCommand: CommandResult = {
   success: false,
   status: 1,
