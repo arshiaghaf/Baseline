@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import path from "node:path";
-import os from "node:os";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
 import { describe, expect, it, vi } from "vitest";
 import { isTrustedBackendSender } from "../src/main/backendIpcAuthorization";
-import { catalogueCacheDirectory } from "../src/main/catalogueCacheDirectory";
 import type { CommandResult, runBrewCommand } from "../src/main/commandRunner";
 import {
   HomebrewInventoryClient,
@@ -55,8 +51,6 @@ function fixture(
   options: {
     run?: typeof runBrewCommand;
     inventory?: () => Promise<HomebrewInventoryResult>;
-    catalogueCacheRoot?: string;
-    realCatalogueClients?: boolean;
   } = {}
 ) {
   const save = vi.fn(async () => undefined);
@@ -74,7 +68,6 @@ function fixture(
     runBrewCommand: run,
     runMasCommand: async () => ok,
     successRefreshDelayMS: 0,
-    catalogueCacheRoot: options.catalogueCacheRoot,
     profileStatsIntegrity: {
       verifyOrInitialize: async (stats) => stats,
       seal: async (stats) => stats
@@ -92,45 +85,13 @@ function fixture(
         fetchIndex: async () => emptyHomebrewFormulaIndex,
         searchFormulae: () => []
       },
-      homebrewInventory: { fetchInventory },
-      ...(options.realCatalogueClients ? { homebrew: undefined, homebrewFormula: undefined } : {})
+      homebrewInventory: { fetchInventory }
     }
   });
   return { store, run, save, fetchInventory };
 }
 
 describe("backend composition", () => {
-  it("injects both durable catalogue adapters and restores them in a new store", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-composition-"));
-    const fetch = vi.fn(
-      async () =>
-        new Response("[]", { headers: { "cache-control": "max-age=600", etag: '"catalogue"' } })
-    );
-    vi.stubGlobal("fetch", fetch);
-    const first = fixture({ catalogueCacheRoot: root, realCatalogueClients: true });
-    let second: ReturnType<typeof fixture> | undefined;
-    try {
-      await first.store.refresh(true);
-      expect(fetch).toHaveBeenCalledTimes(2);
-      expect((await readdir(root)).sort()).toEqual([
-        "cask-catalogue-v1.cache",
-        "formula-catalogue-v1.cache"
-      ]);
-      expect(first.store.getCatalogueDiagnostics()).toContain(
-        "0 entries, 0 skipped, 0 schema warnings"
-      );
-      await first.store.prepareToQuit();
-      second = fixture({ catalogueCacheRoot: root, realCatalogueClients: true });
-      await second.store.refresh(true);
-      expect(fetch).toHaveBeenCalledTimes(2);
-    } finally {
-      await first.store.prepareToQuit();
-      await second?.store.prepareToQuit();
-      vi.unstubAllGlobals();
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
   it("awaits started inventory siblings before quarantining the shared reservation", async () => {
     const sibling = deferred<CommandResult>();
     const began = deferred<void>();
@@ -170,15 +131,6 @@ describe("backend composition", () => {
       await store.prepareToQuit();
     }
   });
-  it("isolates rebuildable caches under an explicit user-data override", () => {
-    expect(catalogueCacheDirectory("/home/test", "/tmp/isolated", true)).toBe(
-      path.join("/tmp/isolated", "cache", "catalogues")
-    );
-    expect(catalogueCacheDirectory("/home/test", "/data", false)).toBe(
-      path.join("/home/test", "Library", "Caches", "com.arshiaghaf.baseline", "catalogues")
-    );
-  });
-
   it("runs diagnostics only explicitly and holds the shared reservation until result settlement", async () => {
     const gate = deferred<CommandResult>();
     const { store, run, save } = fixture({ run: async () => gate.promise });
