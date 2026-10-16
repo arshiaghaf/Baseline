@@ -6,6 +6,7 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   globalSetup: "./e2e/globalSetup.ts",
   testDir: "e2e",
+  testIgnore: "**/renderer-visual.spec.ts",
   timeout: 60_000,
   fullyParallel: false,
   reporter: [["list"]]

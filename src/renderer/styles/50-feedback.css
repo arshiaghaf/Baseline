@@ -1,0 +1,206 @@
+.ghost-button {
+  padding: 0 10px;
+  border: 1px solid rgba(60, 60, 67, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #0d0d0d;
+}
+
+.primary-button,
+.danger-button {
+  min-width: 54px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(var(--update-accent-rgb));
+  color: white;
+}
+
+.primary-button.outline-button {
+  border: 0;
+  background: transparent;
+  color: #007aff;
+}
+
+.update-action-button {
+  font-size: 13px;
+}
+
+.danger-button {
+  background: #ff3b30;
+}
+
+.destructive-text-button {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 59, 48, 0.32);
+  border-radius: 999px;
+  background: rgba(255, 59, 48, 0.14);
+  color: #ff3b30;
+}
+
+.failure-glyph {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.done-glyph {
+  animation: done-fade-in 180ms ease-out both;
+}
+
+.progress-ring {
+  width: 16px;
+  height: 16px;
+  transform: rotate(-90deg);
+}
+
+.progress-ring-track,
+.progress-ring-value {
+  fill: none;
+  stroke-width: 2.2;
+}
+
+.progress-ring-track {
+  stroke: rgba(255, 255, 255, 0.32);
+}
+
+.progress-ring-value {
+  stroke: currentColor;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 220ms ease-out;
+}
+
+.uninstall-glyph {
+  animation:
+    uninstall-spin 1.05s linear infinite,
+    uninstall-pulse 0.6s ease-in-out infinite alternate;
+}
+
+.action-surface {
+  width: 100vw;
+  height: 100vh;
+}
+
+.action-surface-disabled {
+  pointer-events: none;
+}
+
+.confirmation-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.confirmation-card {
+  display: grid;
+  gap: 14px;
+  width: 270px;
+  padding: 16px;
+  border: 0;
+  border-radius: 18px;
+  background: rgba(246, 246, 246, 0.9);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+.confirmation-card h2 {
+  margin: 0;
+  color: #0d0d0d;
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 500;
+}
+
+.confirmation-card p {
+  margin: 6px 0 0;
+  color: rgba(60, 60, 67, 0.72);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.confirmation-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.wide {
+  width: 100%;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 16px 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 149, 0, 0.28);
+  border-radius: 8px;
+  background: rgba(255, 204, 0, 0.14);
+  color: #7a4b00;
+  font-size: 12px;
+}
+
+.notice.danger {
+  border-color: rgba(255, 59, 48, 0.28);
+  background: rgba(255, 59, 48, 0.1);
+  color: #9f1f18;
+}
+
+.operation-failures {
+  flex-shrink: 0;
+  max-height: min(50vh, 28rem);
+  overflow-y: auto;
+  margin: 8px 14px;
+  font-size: 12px;
+}
+
+.operation-failure {
+  padding: 8px;
+  border: 1px solid rgba(255, 59, 48, 0.28);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+
+.operation-failure summary {
+  cursor: pointer;
+}
+
+.operation-failure p {
+  margin: 8px 0;
+}
+
+.operation-failure button {
+  margin-left: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.inspector {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.settings-row-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  color: #0d0d0d;
+}
+
+.good {
+  color: #34c759;
+}
+
+.muted-icon {
+  color: rgba(60, 60, 67, 0.42);
+}
