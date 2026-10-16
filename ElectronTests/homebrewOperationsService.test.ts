@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { describe, expect, it, vi } from "vitest";
-import { defaultPersistedSnapshot, type HomebrewManagedItem } from "../src/shared/domain";
+import {
+  defaultPersistedSnapshot,
+  type HomebrewManagedItem,
+  type ProfileStatsEvent
+} from "../src/shared/domain";
 import { version } from "../src/shared/version";
 import { HomebrewWorkLock } from "../src/main/homebrewWorkLock";
 import {
@@ -110,6 +114,94 @@ function harness(
 }
 
 describe("HomebrewOperationsService", () => {
+  it.each([
+    ["single", true, false, false],
+    ["queued", true, false, false],
+    ["single", false, false, false],
+    ["queued", false, false, false],
+    ["single", true, true, false],
+    ["queued", true, true, false],
+    ["single", true, true, true],
+    ["queued", true, true, true]
+  ] as const)(
+    "preserves only confirmed same-version %s completion on cancellation (complete:%s, save rejection:%s, helper fault:%s)",
+    async (scenario, completed, saveRejects, helperFault) => {
+      const item = formula({
+        id: "cask:example",
+        kind: "cask",
+        formulaIdentity: undefined,
+        fullToken: "example",
+        tap: "homebrew/cask",
+        latestVersion: version("1.0")
+      });
+      const queuedEvent: ProfileStatsEvent = {
+        id: "fixture-update-event",
+        type: "appUpdate",
+        targetID: "fixture-app",
+        displayName: "Fixture",
+        channel: "homebrew",
+        occurredAt: "2026-10-16T12:00:00Z"
+      };
+      const h = harness(async (_args, onLine) => {
+        onLine?.("Installing example");
+        if (completed) {
+          onLine?.("Cask example was successfully installed!");
+          onLine?.("Cask example was successfully installed!");
+        }
+        return {
+          success: false,
+          status: 1,
+          output: "",
+          cancelled: true,
+          failure: helperFault ? { kind: "admin-helper", message: "fixture" } : undefined
+        };
+      });
+      h.setState({ homebrewItems: [item] });
+      if (saveRejects) h.stats.mockRejectedValueOnce(new Error("fixture persistence failure"));
+      h.refresh.mockImplementation(async () => {
+        expect(h.lock.activeCommandCount).toBe(1);
+        expect(h.state.homebrewOperation?.phase).toBe("reconciling");
+        expect(h.state.homebrewUpdatingItemIDs).toEqual([]);
+        expect(h.state.homebrewQueuedItemIDs).toEqual([]);
+        expect(h.state.homebrewBatchProgressByItemID).toEqual({});
+        expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual(completed ? [item.id] : []);
+        expect(h.stats).toHaveBeenCalledTimes(completed ? 1 : 0);
+      });
+      if (scenario === "single") await h.service.performHomebrewUpdate(item.id);
+      else {
+        h.lock.beginRefresh(37);
+        const pending = h.service.performHomebrewItemUpdate(item, {
+          profileStatsEvent: queuedEvent
+        });
+        try {
+          expect(h.runCommand).not.toHaveBeenCalled();
+          h.lock.endRefresh(37);
+          await h.service.processHomebrewUpdateQueue();
+        } finally {
+          await pending;
+        }
+      }
+      if (completed)
+        expect(h.stats).toHaveBeenCalledWith([
+          scenario === "queued"
+            ? queuedEvent
+            : expect.objectContaining({ type: "homebrewUpdate", targetID: item.id })
+        ]);
+      expect(h.runCommand).toHaveBeenCalledOnce();
+      expect(h.refresh).toHaveBeenCalledOnce();
+      expect(h.failure).not.toHaveBeenCalled();
+      expect(h.failures).not.toHaveBeenCalled();
+      expect(h.state.homebrewBatchFailedItemIDs).toEqual([]);
+      expect(h.state.homebrewOperation).toBeUndefined();
+      expect(h.lock.activeCommandCount).toBe(0);
+      if (saveRejects)
+        expect(h.state.lastRefreshNoticeMessage).toContain("could not be saved to history");
+      if (helperFault)
+        expect(h.state.refreshErrorMessage).toContain("administrator password helper failed");
+      else expect(h.state.refreshErrorMessage).toBeUndefined();
+    }
+  );
+
   it.each([
     ["batch", false],
     ["queued", false],
