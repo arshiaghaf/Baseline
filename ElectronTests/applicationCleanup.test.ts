@@ -103,20 +103,18 @@ test("an exit race retains a close error after all owned applications have been 
     return originalKill(pid, signal);
   });
   try {
+    // This case verifies error retention, not a shutdown deadline. Give the
+    // healthy IPC child the helper's normal graceful-close budget under CI load.
     await expect(
-      cleanupApplications(
-        [
-          {
-            process: () => failed,
-            close: async () => {
-              throw closeError;
-            }
-          },
-          gracefulApplication(healthy)
-        ],
-        undefined,
-        100
-      )
+      cleanupApplications([
+        {
+          process: () => failed,
+          close: async () => {
+            throw closeError;
+          }
+        },
+        gracefulApplication(healthy)
+      ])
     ).rejects.toMatchObject({
       message: expect.stringContaining(closeError.message),
       errors: [closeError]

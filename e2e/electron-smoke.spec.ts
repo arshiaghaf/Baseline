@@ -62,10 +62,12 @@ const expectedBaselineAPI = [
   "acknowledgeProfileStatsReset",
   "chooseDirectory",
   "cleanUpHomebrew",
+  "collectHomebrewDiagnostics",
   "copyDiagnostics",
   "dismissOperationFailure",
   "getAppMetadata",
   "getDiagnostics",
+  "getHomebrewInstalledContext",
   "getSnapshot",
   "getToolStatus",
   "installHomebrewItem",
@@ -205,6 +207,30 @@ test("launches the Electron shell and renders the dashboard", async () => {
   await expect
     .poll(() => page.evaluate(async () => (await window.baseline.getSnapshot()).profileStats))
     .toMatchObject({ integrityStatus: "verified", events: [], signature: expect.any(String) });
+
+  // Exercise the real preload/IPC/store boundary with the disposable command
+  // provider. These explicit reads must never reach host Homebrew or persist CLI text.
+  await expect(
+    page.evaluate(() => window.baseline.getHomebrewInstalledContext("missing"))
+  ).resolves.toBeUndefined();
+  await expect(
+    page.evaluate(() => window.baseline.collectHomebrewDiagnostics())
+  ).resolves.toMatchObject({ status: "unavailable", config: { status: "unavailable" } });
+  await expect(
+    page.evaluate(async () => {
+      try {
+        await window.baseline.collectHomebrewDiagnostics({ doctor: "yes" } as unknown as {
+          doctor: boolean;
+        });
+        return false;
+      } catch {
+        return true;
+      }
+    })
+  ).resolves.toBe(true);
+  await expect(page.evaluate(() => window.baseline.getDiagnostics())).resolves.not.toContain(
+    "Test command unavailable"
+  );
 
   await closeApp(app);
 });

@@ -12,11 +12,15 @@ import type {
 import type { SnapshotProgressEvent } from "./domain";
 import type { HomebrewMaintenanceRunEvent } from "./homebrewProgress";
 import type { AppMetadata } from "./appMetadata";
+import type { HomebrewDiagnosticsRequest, HomebrewDiagnosticsReport } from "./homebrewDiagnostics";
+import type { HomebrewInstalledContext } from "./homebrewInstalledContext";
 
 export const ipcChannels = {
   getSnapshot: "baseline:getSnapshot",
   getAppMetadata: "baseline:getAppMetadata",
   getDiagnostics: "baseline:getDiagnostics",
+  collectHomebrewDiagnostics: "baseline:collectHomebrewDiagnostics",
+  getHomebrewInstalledContext: "baseline:getHomebrewInstalledContext",
   getToolStatus: "baseline:getToolStatus",
   refreshToolStatus: "baseline:refreshToolStatus",
   cleanUpHomebrew: "baseline:cleanUpHomebrew",
@@ -60,6 +64,10 @@ export type BaselineAPI = {
   getSnapshot(): Promise<BaselineSnapshot>;
   getAppMetadata(): Promise<AppMetadata>;
   getDiagnostics(): Promise<string>;
+  collectHomebrewDiagnostics(
+    request?: HomebrewDiagnosticsRequest
+  ): Promise<HomebrewDiagnosticsReport>;
+  getHomebrewInstalledContext(itemID: string): Promise<HomebrewInstalledContext | undefined>;
   getToolStatus(): Promise<ToolStatus>;
   refreshToolStatus(): Promise<void>;
   cleanUpHomebrew(): Promise<string>;

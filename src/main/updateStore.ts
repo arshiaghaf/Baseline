@@ -33,6 +33,13 @@ import {
 import { HomebrewCaskClient } from "./homebrewCaskClient";
 import { HomebrewFormulaClient } from "./homebrewFormulaClient";
 import { FileCatalogueStorage } from "./catalogueStorage";
+import { HomebrewDiagnosticsService } from "./homebrewDiagnosticsService";
+import type {
+  HomebrewDiagnosticsRequest,
+  HomebrewDiagnosticsReport
+} from "../shared/homebrewDiagnostics";
+import type { HomebrewInstalledMetadata } from "./homebrewInstalledMetadata";
+import type { HomebrewInstalledContext } from "../shared/homebrewInstalledContext";
 import { HomebrewInventoryClient, type HomebrewInventoryResult } from "./homebrewInventoryClient";
 import { HomebrewWorkLock } from "./homebrewWorkLock";
 import {
@@ -113,6 +120,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly homebrewOperations: HomebrewOperationsService;
   private readonly toolStatus: ToolStatusService;
   private readonly refreshComputation: RefreshComputationService;
+  private readonly homebrewDiagnostics: HomebrewDiagnosticsService;
+  private installedMetadataByItemID: Record<string, HomebrewInstalledMetadata> = {};
 
   private state: BaselineSnapshot;
   private snapshotRevision = 0;
@@ -226,6 +235,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         this.state.homebrewDiscoverInstallingItemIDs.length > 0,
       onLockStateChange: () => this.updateHomebrewCommandLockState(),
       onCommandReleased: () => void this.homebrewOperations.processHomebrewUpdateQueue()
+    });
+    this.homebrewDiagnostics = new HomebrewDiagnosticsService({
+      runBrew: this.runBrewCommand,
+      reserveHomebrewWork: () => this.reserveHomebrewCommandLock()
     });
     this.profileStatsService = new ProfileStatsService({
       integrity: options.profileStatsIntegrity ?? new KeychainProfileStatsIntegrity(),
@@ -545,8 +558,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     operation: OperationFailure["operation"],
     result: CommandResult,
     reason?: OperationFailure["reason"]
-  ): Promise<void> {
-    await this.recordOperationFailures([{ entityID, operation, result, reason }]);
+  ): Promise<string | undefined> {
+    return this.recordOperationFailures([{ entityID, operation, result, reason }]);
   }
 
   private async recordOperationFailures(
@@ -556,14 +569,19 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       result: CommandResult;
       reason?: OperationFailure["reason"];
     }>
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     if (failures.length === 0) return;
     const occurredAt = new Date().toISOString();
     const records = failures.map(({ entityID, operation, result, reason }): OperationFailure => ({
       id: `${operation}:${entityID}`,
       entityID,
       operation,
-      reason: reason ?? failureReason(result.stderr || result.output),
+      reason:
+        reason ??
+        (result.failure &&
+        ["cancelled", "timeout", "signal", "cleanup"].includes(result.failure.kind)
+          ? "interrupted"
+          : failureReason(result.stderr || result.output)),
       status: result.status,
       occurredAt
     }));
@@ -574,17 +592,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ...(this.state.operationFailures ?? []).filter((previous) => !ids.has(previous.id))
       ])
     });
-    await this.persistFailureDetails();
+    return this.persistFailureDetails();
   }
 
-  private async persistFailureDetails(): Promise<void> {
+  private async persistFailureDetails(): Promise<string | undefined> {
     try {
       await this.persist();
     } catch {
-      this.patch({
-        lastRefreshNoticeMessage:
-          "Failure details could not be saved. They remain available until Baseline quits."
-      });
+      const notice =
+        "Failure details could not be saved. They remain available until Baseline quits.";
+      this.patch({ lastRefreshNoticeMessage: notice });
+      return notice;
     }
   }
 
@@ -715,6 +733,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.homebrewOperations.uninstallHomebrewItem(itemID);
   }
 
+  collectHomebrewDiagnostics(
+    request: HomebrewDiagnosticsRequest = {}
+  ): Promise<HomebrewDiagnosticsReport> {
+    return this.homebrewDiagnostics.collect(request);
+  }
+
   getCatalogueDiagnostics(): string {
     const lines = (
       [
@@ -736,6 +760,47 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     return lines.length ? `\n\nHomebrew catalogue parsing\n${lines.join("\n")}` : "";
   }
 
+  getHomebrewInstalledContext(itemID: string): HomebrewInstalledContext | undefined {
+    if (typeof itemID !== "string" || this.homebrewWorkLock.hasUnconfirmedCleanup) return undefined;
+    const items = this.state.homebrewItems.filter((candidate) => candidate.id === itemID);
+    if (items.length !== 1) return undefined;
+    const item = items[0]!;
+    const identity = homebrewCommandToken(item);
+    if (!identity) return undefined;
+    // Reconciliation can retain a saved ID across a proven rename. Bind only
+    // unique current verified identities, never the historical ID or bare token.
+    if (
+      this.state.homebrewItems.filter(
+        (candidate) => candidate.kind === item.kind && homebrewCommandToken(candidate) === identity
+      ).length !== 1
+    )
+      return undefined;
+    const matches = Object.values(this.installedMetadataByItemID).filter(
+      (metadata) => metadata.kind === item.kind && metadata.identity === identity
+    );
+    if (matches.length !== 1) return undefined;
+    const metadata = matches[0]!;
+    return {
+      deprecated: metadata.deprecated,
+      disabled: metadata.disabled,
+      autoUpdates: metadata.autoUpdates,
+      installedOnRequest: metadata.installedOnRequest,
+      caveatsAvailable: Boolean(metadata.caveats),
+      installedReceiptCount: metadata.installedReceipts.length,
+      declaredDependencyCount: new Set(
+        metadata.dependencies
+          .filter((dependency) => dependency.source === "declaration")
+          .map((dependency) => `${dependency.kind}:${dependency.token}`)
+      ).size,
+      observedRuntimeDependencyCount: new Set(
+        metadata.dependencies
+          .filter((dependency) => dependency.source === "receipt" && dependency.scope === "runtime")
+          .map((dependency) => `${dependency.kind}:${dependency.token}`)
+      ).size,
+      observedInstalledDependentCount: metadata.installedDependents.length
+    };
+  }
+
   private reserveHomebrewCommandLock(
     options: { allowRefreshSupersession?: boolean } = {}
   ): (() => void) | undefined {
@@ -743,6 +808,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private blockHomebrewAfterUnconfirmedCleanup(): void {
+    this.installedMetadataByItemID = {};
     this.homebrewWorkLock.blockAfterUnconfirmedCleanup();
     this.homebrewOperations.cancelQueuedHomebrewUpdates();
     this.invalidateHomebrewUpdateTargets();
@@ -795,11 +861,30 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ) {
           this.blockHomebrewAfterUnconfirmedCleanup();
         }
+        // Metadata is an ephemeral projection, revoked on uncertain cleanup
+        // or a failed kind read before the shared reservation is released.
+        const identityCounts = new Map<string, number>();
+        for (const item of result.items) {
+          const identity = homebrewCommandToken(item);
+          if (!identity) continue;
+          const key = `${item.kind}:${identity}`;
+          identityCounts.set(key, (identityCounts.get(key) ?? 0) + 1);
+        }
+        this.installedMetadataByItemID = this.homebrewWorkLock.hasUnconfirmedCleanup
+          ? {}
+          : Object.fromEntries(
+              Object.entries(result.installedMetadataByItemID ?? {}).filter(
+                ([, metadata]) =>
+                  result.inventoryReadSucceededByKind?.[metadata.kind] !== false &&
+                  identityCounts.get(`${metadata.kind}:${metadata.identity}`) === 1
+              )
+            );
         if (result.inventoryReadSucceededByKind?.formula === false) {
           this.invalidateFormulaMembership();
         }
       },
       invalidateBeforeRelease: () => {
+        this.installedMetadataByItemID = {};
         if (this.isHomebrewCleanupUnconfirmed()) this.blockHomebrewAfterUnconfirmedCleanup();
         this.invalidateFormulaMembership();
       }
