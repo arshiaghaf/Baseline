@@ -85,29 +85,50 @@ export class HomebrewWorkLock<Inventory> {
   }
 
   async readInventory(read: HomebrewInventoryRead<Inventory>): Promise<Inventory> {
-    const active = this.activeInventoryTask;
-    if (active) {
+    for (;;) {
+      const active = this.activeInventoryTask;
+      if (!active) break;
       const result = await active.task;
       if (!read.updateMetadata || active.updateMetadata) return result;
+      // Another waiter may already have started the stronger read. Recheck its
+      // task after the weaker read finishes instead of starting in parallel.
     }
     if (this.isMutationActive && !read.allowDuringMutation) return read.blocked();
 
+    let resolveTask!: (result: Inventory) => void;
+    let rejectTask!: (error: unknown) => void;
+    const task = new Promise<Inventory>((resolve, reject) => {
+      resolveTask = resolve;
+      rejectTask = reject;
+    });
+    // The initiating caller may be the only waiter when a read fails.
+    void task.catch(() => undefined);
+    this.activeInventoryTask = { updateMetadata: read.updateMetadata, task };
     this.inventoryCount += 1;
-    this.callbacks.onLockStateChange();
-    let task: Promise<Inventory> | undefined;
     try {
-      task = read.start(read.updateMetadata);
-      this.activeInventoryTask = { updateMetadata: read.updateMetadata, task };
-      const result = await task;
-      read.reconcileBeforeRelease(result);
-      return result;
-    } catch (error) {
-      read.invalidateBeforeRelease();
-      throw error;
-    } finally {
-      if (task && this.activeInventoryTask?.task === task) this.activeInventoryTask = undefined;
-      this.inventoryCount = Math.max(0, this.inventoryCount - 1);
       this.callbacks.onLockStateChange();
+    } catch (error) {
+      this.activeInventoryTask = undefined;
+      this.inventoryCount -= 1;
+      rejectTask(error);
+      throw error;
     }
+
+    const run = async () => {
+      try {
+        const result = await read.start(read.updateMetadata);
+        read.reconcileBeforeRelease(result);
+        return result;
+      } catch (error) {
+        read.invalidateBeforeRelease();
+        throw error;
+      } finally {
+        if (this.activeInventoryTask?.task === task) this.activeInventoryTask = undefined;
+        this.inventoryCount = Math.max(0, this.inventoryCount - 1);
+        this.callbacks.onLockStateChange();
+      }
+    };
+    void run().then(resolveTask, rejectTask);
+    return task;
   }
 }
