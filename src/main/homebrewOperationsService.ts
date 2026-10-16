@@ -262,14 +262,24 @@ export class HomebrewOperationsService {
         : ["upgrade", homebrewCommandToken(item)!];
     const progressTokens = homebrewItemProgressTokens(item);
     const parser = new HomebrewMaintenanceOutputParser(progressTokens);
+    const completedItemIDs = new Set<string>();
     const commandResult = await this.runBrewWithResultEvents(command, (event) => {
       this.applyHomebrewProgressEvent(
         event,
         parser,
-        new Map(progressTokens.map((token) => [token, [itemID]]))
+        new Map(progressTokens.map((token) => [token, [itemID]])),
+        new Map([[itemID, item.kind]]),
+        completedItemIDs
       );
     });
-    if (await this.reconcileCancellation(commandResult, [itemID])) return;
+    if (
+      await this.reconcileCancellation(
+        commandResult,
+        [itemID],
+        completedItemIDs.has(itemID) ? [{ item, profileStatsEvent }] : []
+      )
+    )
+      return;
     if (commandResult.success) {
       this.patch({
         refreshErrorMessage: undefined,
