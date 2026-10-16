@@ -92,6 +92,56 @@ function caskIndexForSelfUpdatingApp(latestVersion: ReturnType<typeof version>):
 }
 
 describe("update store helpers", () => {
+  it.each([false, true])(
+    "keeps cancellation out of persisted failures/runtime state (cleanup uncertain: %s)",
+    async (uncertain) => {
+      let userData = "";
+      const item = homebrewItem({
+        id: "cask:fixture",
+        token: "fixture",
+        name: "Fixture",
+        kind: "cask",
+        isOutdated: true,
+        latestVersion: version("2")
+      });
+      const store = await makeVerifiedStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+        onUserData: (directory) => {
+          userData = directory;
+        },
+        runBrewCommand: async () => ({
+          success: false,
+          status: 1,
+          output: "fixture rejection",
+          cancelled: true,
+          ...(uncertain
+            ? { failure: { kind: "cleanup" as const, message: "fixture cleanup uncertainty" } }
+            : {})
+        }),
+        clients: {
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items: [item],
+              inventoryReadSucceededByKind: { formula: true, cask: true },
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true }
+            })
+          }
+        }
+      });
+      await store.performHomebrewUpdate(item.id);
+      const snapshot = store.getSnapshot();
+      expect(snapshot.operationFailures).toEqual([]);
+      expect(snapshot.operationFailureDetails).toEqual({});
+      expect(snapshot.homebrewOperation).toBeUndefined();
+      expect(snapshot.isHomebrewCommandLocked).toBe(uncertain);
+      // Force a normal saved-snapshot path; runtime operation metadata must not leak.
+      await store.updatePreferences({ autoRefreshEnabled: false });
+      const persisted = await new SnapshotPersistence(userData).load();
+      expect(persisted.operationFailures).toEqual([]);
+      expect(persisted).not.toHaveProperty("homebrewOperation");
+    }
+  );
   it("records Homebrew formulas and casks whose installed version advanced", () => {
     const now = "2026-04-30T12:00:00.000Z";
     const records = mergeHomebrewRecentlyUpdatedRecords(
@@ -2834,7 +2884,8 @@ describe("update store helpers", () => {
     expect(runBrewCommand).toHaveBeenCalledTimes(1);
     expect(runBrewCommand).toHaveBeenCalledWith(
       ["uninstall", "--cask", "notion"],
-      expect.any(Function)
+      expect.any(Function),
+      expect.objectContaining({ adminOperation: expect.any(Object) })
     );
     expect(store.getSnapshot().refreshErrorMessage).toContain("Error: still running");
   });
@@ -4280,7 +4331,11 @@ describe("update store helpers", () => {
     const secondInstall = store.installHomebrewItem(item);
 
     expect(runBrewCommand).toHaveBeenCalledOnce();
-    expect(runBrewCommand).toHaveBeenCalledWith(["install", "ripgrep"], expect.any(Function));
+    expect(runBrewCommand).toHaveBeenCalledWith(
+      ["install", "ripgrep"],
+      expect.any(Function),
+      expect.objectContaining({ adminOperation: expect.any(Object) })
+    );
 
     resolveCommand({ success: true, status: 0, output: "" });
     await Promise.all([firstInstall, secondInstall]);
@@ -6273,7 +6328,8 @@ describe("verified formula identity and Homebrew pins", () => {
     await store.performHomebrewUpdateAll();
     expect(runBrewCommand).toHaveBeenCalledWith(
       ["upgrade", "example/tools/new-tool", "failed-tool"],
-      expect.any(Function)
+      expect.any(Function),
+      expect.objectContaining({ adminOperation: expect.any(Object) })
     );
     expect(store.getSnapshot().homebrewBatchFailedItemIDs).toContain(failed.id);
     expect(store.getSnapshot().homebrewBatchFailedItemIDs).not.toContain(renamed.id);
@@ -6337,7 +6393,8 @@ describe("verified formula identity and Homebrew pins", () => {
     await store.performHomebrewUpdate(item.id);
     expect(runBrewCommand).toHaveBeenCalledWith(
       ["upgrade", "example/tools/utility"],
-      expect.any(Function)
+      expect.any(Function),
+      expect.objectContaining({ adminOperation: expect.any(Object) })
     );
     expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([item.id]);
   });

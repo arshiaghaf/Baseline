@@ -843,7 +843,11 @@ describe("Homebrew cleanup inventory barrier", () => {
     runBrewCommand.mockClear();
     const update = track(store.performHomebrewUpdate(item.id));
     await vi.waitFor(() =>
-      expect(runBrewCommand).toHaveBeenCalledWith(["upgrade", "unused-tool"], expect.any(Function))
+      expect(runBrewCommand).toHaveBeenCalledWith(
+        ["upgrade", "unused-tool"],
+        expect.any(Function),
+        expect.objectContaining({ adminOperation: expect.any(Object) })
+      )
     );
     const confirm = vi.fn(async () => true);
     try {

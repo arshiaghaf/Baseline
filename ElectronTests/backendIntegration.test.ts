@@ -385,7 +385,7 @@ describe("backend composition", () => {
     }
   });
 
-  it("reconciles an interrupted install before releasing the mutation reservation", async () => {
+  it("reconciles a cancelled install without recording failure before releasing the mutation reservation", async () => {
     const inventory = deferred<HomebrewInventoryResult>();
     const beganInventory = deferred<void>();
     const { store } = fixture({
@@ -415,7 +415,10 @@ describe("backend composition", () => {
       inventory.resolve(healthyInventory);
       await install;
       expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
-      expect(store.getSnapshot().operationFailures?.[0]?.reason).toBe("interrupted");
+      expect(store.getSnapshot().operationFailures).toEqual([]);
+      expect(store.getSnapshot().operationFailureDetails).toEqual({});
+      expect(store.getSnapshot().homebrewDiscoverFailedItemIDs).toEqual([]);
+      expect(store.getSnapshot().refreshErrorMessage).toBeUndefined();
       expect(JSON.stringify(store.getSnapshot())).not.toContain("/private/output");
     } finally {
       inventory.resolve(healthyInventory);

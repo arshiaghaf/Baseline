@@ -7,7 +7,14 @@ export type HomebrewDiagnosticsRequest = { doctor?: boolean; services?: boolean 
 export type DiagnosticSectionStatus =
   "ok" | "findings" | "partial" | "unavailable" | "invalid" | "truncated";
 export type DiagnosticFailure =
-  "spawn" | "signal" | "cancelled" | "timeout" | "output-limit" | "callback" | "cleanup";
+  | "spawn"
+  | "signal"
+  | "cancelled"
+  | "timeout"
+  | "output-limit"
+  | "callback"
+  | "cleanup"
+  | "admin-helper";
 export type DiagnosticSection = {
   status: DiagnosticSectionStatus;
   exitStatus: number | null;

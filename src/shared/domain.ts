@@ -247,6 +247,8 @@ export type BaselineSnapshot = PersistedSnapshot &
   RefreshState & {
     /** Runtime only; excluded from persistence and diagnostics export. */
     operationFailureDetails?: Record<string, { attemptID: string; outputTail?: string }>;
+    /** Current command and reconciliation only; excluded by persistence's allowlist. */
+    homebrewOperation?: HomebrewRuntimeOperation;
     snapshotRevision?: number;
     searchText: string;
     isRunningHomebrewMaintenance: boolean;
@@ -273,6 +275,14 @@ export type BaselineSnapshot = PersistedSnapshot &
     defaultScanDirectories: string[];
     selfUpdate?: SelfUpdateRecord;
   };
+
+export type HomebrewRuntimeOperation = {
+  id: string;
+  itemIDs: string[];
+  appIDs: string[];
+  phase: "running" | "waiting" | "reconciling";
+  waitingPromptID?: string;
+};
 
 export type SnapshotProgress = Pick<
   BaselineSnapshot,

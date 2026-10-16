@@ -4,6 +4,15 @@ The package includes an unused native `Contents/Resources/admin-askpass`
 executable. No Homebrew command or renderer action currently enables it.
 It is outside ASAR and built for the package's target architecture before signing.
 
+The dormant lifecycle state machine tracks invocation completion independently
+from cancellation and cleanup evidence. Operation snapshots retain target IDs and
+waiting state through reconciliation, but are excluded from saved snapshots.
+The command runner still does not create a status endpoint or set `SUDO_ASKPASS`.
+Cancellation results already bypass mutation failure rows, banners, timers, and
+saved failure details across update, batch, install and uninstall paths; inventory
+refresh remains inside the command reservation. Cleanup uncertainty keeps its
+separate safety notice and quarantine.
+
 The helper uses a static AppleScript hidden-answer dialog. This is an
 app-provided masked dialog, not the system authorization interface. Only the
 native helper accesses the answer; its stdout must be connected directly to

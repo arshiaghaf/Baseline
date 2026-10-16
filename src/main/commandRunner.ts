@@ -32,6 +32,8 @@ export function homebrewCleanupIsUnconfirmed(): boolean {
 
 export type CommandResult = {
   success: boolean;
+  /** Independent of helper/cleanup failure; never infer cancellation from exit status. */
+  cancelled?: boolean;
   status: number | null;
   output: string;
   /** Sanitized ephemeral support tail; never derived from truncated raw capture. */
@@ -44,12 +46,25 @@ export type CommandResult = {
 };
 
 export type CommandFailure = {
-  kind: "spawn" | "signal" | "cancelled" | "timeout" | "output-limit" | "callback" | "cleanup";
+  kind:
+    | "spawn"
+    | "signal"
+    | "cancelled"
+    | "timeout"
+    | "output-limit"
+    | "callback"
+    | "cleanup"
+    | "admin-helper";
   message: string;
   code?: string;
 };
 
 export type CommandOptions = {
+  /** Status metadata only. Supplying this does not enable the dormant helper. */
+  adminOperation?: {
+    operationID: string;
+    onWaitingChanged(waitingPromptID: string | undefined): void;
+  };
   collectOutputTail?: boolean;
   signal?: AbortSignal;
   /** Zero disables the deadline. Generic commands have no default deadline. */
@@ -63,6 +78,10 @@ export type CommandOptions = {
   /** Total TERM/KILL/verification budget; uncertainty returns a cleanup failure. */
   cleanupTimeoutMs?: number;
 };
+
+export function commandWasCancelled(result: CommandResult): boolean {
+  return result.cancelled === true || result.failure?.kind === "cancelled";
+}
 
 export async function isExecutable(path: string): Promise<boolean> {
   try {
