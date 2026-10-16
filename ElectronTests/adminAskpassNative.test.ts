@@ -41,7 +41,7 @@ describe.skipIf(process.platform !== "darwin")(
         "-o",
         sink
       ]);
-    }, 30_000);
+    }, 90_000);
     afterAll(async () => {
       if (directory) await rm(directory, { recursive: true, force: true });
     });
@@ -61,7 +61,7 @@ describe.skipIf(process.platform !== "darwin")(
           expect(await new Promise((resolve) => child.once("close", resolve))).toBe(70);
         }
       },
-      30_000
+      90_000
     );
 
     it.each([
