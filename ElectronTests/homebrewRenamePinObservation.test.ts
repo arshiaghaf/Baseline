@@ -7,6 +7,7 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 const state = vi.hoisted(() => ({ phase: 0, observation: false, recovery: "same" }));
 vi.mock("../src/main/commandRunner", () => ({
+  homebrewCleanupIsUnconfirmed: () => false,
   runMasCommand: vi.fn(),
   runBrewCommand: vi.fn(async (args: string[]) => {
     const cmd = args.join(" ");
