@@ -138,36 +138,41 @@ describe.skipIf(process.platform !== "darwin" || existsSync("/etc/homebrew/brew.
       15000
     );
 
-    it("cancels an open fixture under the existing cleanup budget and removes its status endpoint", async () => {
-      const controller = new AbortController();
-      let seen = false;
-      const command = api.runBrewCommand(["install", "--cask", "fixture"], undefined, {
-        env: { ...env, HOMEBREW_BASELINE_TEST_MODE: "hold" },
-        signal: controller.signal,
-        adminOperation: {
-          operationID: "2".repeat(32),
-          onWaitingChanged: (id) => {
-            if (id && !seen) {
-              seen = true;
-              queueMicrotask(() => controller.abort());
+    it.each(["synchronous", "deferred"] as const)(
+      "cancels during %s waiting publication under the existing cleanup budget",
+      async (timing) => {
+        const controller = new AbortController();
+        let seen = false;
+        const command = api.runBrewCommand(["install", "--cask", "fixture"], undefined, {
+          env: { ...env, HOMEBREW_BASELINE_TEST_MODE: "hold" },
+          signal: controller.signal,
+          adminOperation: {
+            operationID: "2".repeat(32),
+            onWaitingChanged: (id) => {
+              if (id && !seen) {
+                seen = true;
+                if (timing === "synchronous") controller.abort();
+                else queueMicrotask(() => controller.abort());
+              }
             }
           }
+        });
+        const timer = setTimeout(() => controller.abort(), 8000);
+        try {
+          const result = await command;
+          expect(seen).toBe(true);
+          expect(result.cancelled).toBe(true);
+          expect(result.failure?.kind).toBe("cancelled");
+          expect(api.homebrewCleanupIsUnconfirmed()).toBe(false);
+          expect(runtime.focusAdminAskpass("2".repeat(32), "3".repeat(32))).toBe(false);
+        } finally {
+          clearTimeout(timer);
+          controller.abort();
+          await command;
         }
-      });
-      const timer = setTimeout(() => controller.abort(), 8000);
-      try {
-        const result = await command;
-        expect(seen).toBe(true);
-        expect(result.cancelled).toBe(true);
-        expect(result.failure?.kind).toBe("cancelled");
-        expect(api.homebrewCleanupIsUnconfirmed()).toBe(false);
-        expect(runtime.focusAdminAskpass("2".repeat(32), "3".repeat(32))).toBe(false);
-      } finally {
-        clearTimeout(timer);
-        controller.abort();
-        await command;
-      }
-    }, 15000);
+      },
+      15000
+    );
 
     it.each([["--version"], ["list", "--cask"], ["upgrade", "fixture"], ["update"], ["cleanup"]])(
       "never enables askpass for noneligible command %j",
