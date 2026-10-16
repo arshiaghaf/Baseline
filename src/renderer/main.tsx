@@ -11,7 +11,6 @@ import {
   Beer,
   Check,
   CheckCircle2,
-  CircleUserRound,
   ChevronRight,
   ClockArrowDown,
   Download,
@@ -21,16 +20,13 @@ import {
   Info,
   Link2,
   LockKeyhole,
-  Monitor,
   MoreHorizontal,
-  Moon,
   Package,
   RefreshCcw,
   Search,
   Server,
   Settings,
   ShieldCogCorner,
-  Sun,
   Terminal,
   Trash2,
   X,
@@ -46,7 +42,6 @@ import type {
   MenuTab,
   ProfileStatsChannel,
   ProfileStatsEvent,
-  RecentlyUpdatedRecord,
   UpdateRecord
 } from "../shared/domain";
 import {
@@ -62,52 +57,43 @@ import {
   isCask
 } from "../shared/homebrewAppLinking";
 import { HomebrewMaintenanceProgressStage } from "../shared/homebrewProgress";
-import { compareVersions } from "../shared/version";
 import { operationFailureDescription, type OperationFailure } from "../shared/operationFailures";
 import { operationIssueReport } from "../shared/operationReport";
 import "./styles.css";
-
-type Route = "main" | "menubar" | "settings";
-type ActionState =
-  | { type: "ready" }
-  | { type: "queued" }
-  | { type: "updating"; progress?: number }
-  | { type: "done" }
-  | { type: "failed" };
-type ActionConfirmation =
-  | { type: "install"; item: HomebrewCaskDiscoveryItem }
-  | { type: "uninstall"; item: HomebrewManagedItem };
-type RequestActionConfirmation = (confirmation: ActionConfirmation) => void;
-type RowUpdateMenuAction = {
-  state: ActionState;
-  disabled?: boolean;
-  readyLabel?: string;
-  onAction: () => void;
-};
-type RowActionMenuPlacement = "below" | "above" | "floating";
-type RowActionMenuFloatingPosition = {
-  left: number;
-  top: number;
-};
-type SettingsSectionID = "general" | "profile" | "appearance" | "diagnostics";
+import type {
+  RequestActionConfirmation,
+  Route,
+  ActionConfirmation,
+  ActionState,
+  RowUpdateMenuAction,
+  RowActionMenuPlacement,
+  RowActionMenuFloatingPosition,
+  SettingsSectionID,
+  TogglePatch
+} from "./types";
+import {
+  toolbarIconStrokeWidth,
+  sidebarIconStrokeWidth,
+  settingsSidebarItems,
+  primarySettingsSidebarItems,
+  appearanceOptions
+} from "./constants";
+import {
+  selectedTabTitle,
+  appSourceLabel,
+  appUpdateReadyLabel,
+  appUpdateVersionChange,
+  updatedRelativeLabel,
+  homebrewItemLabel,
+  homebrewReadyDetail,
+  defaultScanDirectoryLabel,
+  clampRefreshIntervalMinutes,
+  sectionTitleLabel,
+  hasLongVersionLabel
+} from "./helpers/labels";
+import { uninstallableHomebrewItemForApp } from "./helpers/sections";
 
 const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
-const sidebarIconStrokeWidth = 1.5;
-const toolbarIconStrokeWidth = 1.5;
-const compactVersionLabelMaxLength = 9;
-const settingsSidebarItems: Array<{
-  id: SettingsSectionID;
-  label: string;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
-}> = [
-  { id: "general", label: "General", icon: Settings },
-  { id: "profile", label: "Profile", icon: CircleUserRound },
-  { id: "appearance", label: "Appearance", icon: Monitor },
-  { id: "diagnostics", label: "Diagnostics", icon: Terminal }
-];
-const primarySettingsSidebarItems = settingsSidebarItems.filter(
-  (item) => item.id !== "diagnostics"
-);
 
 const initialSnapshot: BaselineSnapshot = {
   ...defaultPersistedSnapshot(),
@@ -3825,21 +3811,6 @@ function ProfileMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-type TogglePatch = Exclude<
-  keyof Parameters<typeof window.baseline.updatePreferences>[0],
-  "selectedTab" | "refreshIntervalMinutes" | "appearancePreference"
->;
-
-const appearanceOptions: Array<{
-  value: AppearancePreference;
-  label: string;
-  icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
-}> = [
-  { value: "system", label: "System", icon: Monitor },
-  { value: "light", label: "Light", icon: Sun },
-  { value: "dark", label: "Dark", icon: Moon }
-];
-
 function AppearanceSelector({ value }: { value: AppearancePreference }) {
   return (
     <div className="appearance-options" role="group" aria-label="Appearance">
@@ -3863,13 +3834,6 @@ function AppearanceSelector({ value }: { value: AppearancePreference }) {
       })}
     </div>
   );
-}
-
-function defaultScanDirectoryLabel(directory: string): string {
-  if (directory === "/Applications") {
-    return "System Applications";
-  }
-  return "User Applications";
 }
 
 function RefreshIntervalInput({ value, disabled }: { value: number; disabled: boolean }) {
@@ -3936,10 +3900,6 @@ function RefreshIntervalInput({ value, disabled }: { value: number; disabled: bo
       />
     </label>
   );
-}
-
-function clampRefreshIntervalMinutes(value: number): number {
-  return Math.min(Math.max(Math.trunc(value), 5), 1440);
 }
 
 function Toggle({
@@ -4034,11 +3994,6 @@ function PanelTitle({
   );
 }
 
-function sectionTitleLabel(title: string): string {
-  const match = /^(?<label>.+?)\s+\((?<count>\d+)\)$/u.exec(title);
-  return match?.groups?.label ?? title;
-}
-
 function Empty({ text }: { text: string }) {
   return <p className="empty">{text}</p>;
 }
@@ -4069,38 +4024,6 @@ function VersionChange({
   );
 }
 
-function hasLongVersionLabel(...labels: string[]): boolean {
-  return labels.some((label) => label.length > compactVersionLabelMaxLength);
-}
-
-function appUpdateVersionChange(update: UpdateRecord): { from: string; to: string } {
-  if (shouldShowAppBuildVersion(update)) {
-    return {
-      from: versionLabelWithBuild(update.localVersion.raw, update.localBuildVersion?.raw),
-      to: versionLabelWithBuild(update.remoteVersion.raw, update.remoteBuildVersion?.raw)
-    };
-  }
-  return {
-    from: update.localVersion.raw || "unknown",
-    to: update.remoteVersion.raw || "unknown"
-  };
-}
-
-function shouldShowAppBuildVersion(update: UpdateRecord): boolean {
-  return Boolean(
-    update.localBuildVersion?.raw.trim() &&
-    update.remoteBuildVersion?.raw.trim() &&
-    compareVersions(update.localVersion, update.remoteVersion) === 0 &&
-    compareVersions(update.localBuildVersion, update.remoteBuildVersion) !== 0
-  );
-}
-
-function versionLabelWithBuild(versionRaw: string, buildRaw?: string): string {
-  const displayVersion = versionRaw.trim() || "unknown";
-  const buildVersion = buildRaw?.trim();
-  return buildVersion ? `${displayVersion} (${buildVersion})` : displayVersion;
-}
-
 function ToolStatus({
   label,
   description,
@@ -4128,35 +4051,6 @@ function ToolStatus({
       </span>
     </div>
   );
-}
-
-function homebrewReadyDetail(snapshot: BaselineSnapshot): string {
-  const caskCount = snapshot.homebrewItems.filter((item) => item.kind === "cask").length;
-  const formulaCount = snapshot.homebrewItems.filter((item) => item.kind === "formula").length;
-  const appLinkedCaskCount = snapshot.homebrewItems.filter(
-    (item) => item.kind === "cask" && item.appID
-  ).length;
-
-  if (caskCount === 0) {
-    return `Homebrew detected with 0 installed casks and ${countLabel(
-      formulaCount,
-      "formula",
-      "formulae"
-    )}; app updates will not use Homebrew unless a matching cask is installed.`;
-  }
-
-  return `Homebrew detected with ${countLabel(
-    caskCount,
-    "installed cask"
-  )}, ${countLabel(appLinkedCaskCount, "app-linked cask")}, and ${countLabel(
-    formulaCount,
-    "formula",
-    "formulae"
-  )}.`;
-}
-
-function countLabel(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 type ProfileSummary = {
@@ -4408,93 +4302,6 @@ function startedUsingSummary(createdAt: string): ProfileSummary["startedUsing"] 
   };
 }
 
-function sourceLabel(update: UpdateRecord): string {
-  if (update.source === "unknown") return "Update";
-  return sourceDisplayName(update.source);
-}
-
-function appUpdateReadyLabel(
-  app: AppRecord,
-  snapshot: BaselineSnapshot,
-  update: UpdateRecord
-): string {
-  if (update.source === "homebrew" && !uninstallableHomebrewItemForApp(app, snapshot)) {
-    return "Open app";
-  }
-  if (update.source === "sparkle") {
-    return "Open updater";
-  }
-  if (update.source === "web") {
-    return "Open website";
-  }
-  return "Update";
-}
-
-function appSourceLabel(
-  app: AppRecord,
-  snapshot: BaselineSnapshot,
-  recentRecord?: RecentlyUpdatedRecord
-): string | undefined {
-  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  if (update) {
-    if (
-      update.source === "homebrew" &&
-      app.sourceHint === "sparkle" &&
-      !uninstallableHomebrewItemForApp(app, snapshot)
-    ) {
-      return sourceDisplayName(app.sourceHint);
-    }
-    return sourceLabel(update);
-  }
-
-  if (recentRecord?.source && recentRecord.source !== "unknown") {
-    if (recentRecord.source === "homebrew") {
-      const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
-      if (uninstallableItem?.presentation && uninstallableItem.presentation !== "app") {
-        return homebrewItemLabel(uninstallableItem);
-      }
-    }
-    return sourceDisplayName(recentRecord.source);
-  }
-
-  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
-  if (uninstallableItem) {
-    return uninstallableItem.presentation === "app" || uninstallableItem.appID === app.id
-      ? "Homebrew"
-      : homebrewItemLabel(uninstallableItem);
-  }
-
-  return app.sourceHint === "unknown" ? undefined : sourceDisplayName(app.sourceHint);
-}
-
-function homebrewItemLabel(item: HomebrewManagedItem, appCaskLabel?: string): string {
-  if (item.presentation === "app" && appCaskLabel) {
-    return appCaskLabel;
-  }
-  return homebrewPresentationLabel(item.kind, item.presentation);
-}
-
-function selectedTabTitle(tab: MenuTab): string {
-  if (tab === "all") return "All";
-  if (tab === "apps") return "Apps";
-  if (tab === "installed") return "Installed";
-  if (tab === "ignored") return "Ignored";
-  return "Homebrew";
-}
-
-function updatedRelativeLabel(updatedAt: string, now = Date.now()): string {
-  const updatedTime = new Date(updatedAt).getTime();
-  if (!Number.isFinite(updatedTime)) {
-    return "Updated recently";
-  }
-
-  const days = Math.max(0, Math.floor((now - updatedTime) / 86_400_000));
-  if (days === 0) {
-    return "Updated today";
-  }
-  return `Updated ${days} ${days === 1 ? "day" : "days"} ago`;
-}
-
 function compareRecentRows(
   lhs: { updatedAt: string; id: string },
   rhs: { updatedAt: string; id: string }
@@ -4674,20 +4481,6 @@ function matchingAppForHomebrewItem(
   return undefined;
 }
 
-function uninstallableHomebrewItemForApp(
-  app: AppRecord,
-  snapshot: BaselineSnapshot
-): HomebrewManagedItem | undefined {
-  const matchedByExplicitLink = snapshot.homebrewItems.find(
-    (item) => item.kind === "cask" && item.appID === app.id
-  );
-  if (matchedByExplicitLink) {
-    return matchedByExplicitLink;
-  }
-
-  return undefined;
-}
-
 function sortByName(lhs: AppRecord, rhs: AppRecord): number {
   return lhs.displayName.localeCompare(rhs.displayName, undefined, { sensitivity: "base" });
 }
@@ -4728,9 +4521,13 @@ function currentRoute(): Route {
 }
 
 const root = document.getElementById("root");
+
 if (root) {
   createRoot(root).render(<App />);
 }
 
-export { ActionConfirmationContext, actionStateFromFlags, uninstallableHomebrewItemForApp };
-export type { ActionConfirmation, ActionState };
+export { ActionConfirmationContext, actionStateFromFlags };
+
+export { uninstallableHomebrewItemForApp } from "./helpers/sections";
+
+export type { ActionConfirmation, ActionState } from "./types";
