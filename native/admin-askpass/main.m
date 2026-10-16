@@ -79,7 +79,11 @@ static BOOL phase(uint8_t type) {
   clock_gettime(CLOCK_REALTIME, &deadline);
   deadline.tv_sec += 3;
   while (!ackReceived) {
-    if (pthread_cond_timedwait(&acknowledgement, &stateLock, &deadline)) _exit(70);
+    // Admission may wait behind another dialog. It has no password deadline;
+    // the independent monitor still exits immediately on peer loss/denial.
+    int status = type == APBegin ? pthread_cond_wait(&acknowledgement, &stateLock) :
+      pthread_cond_timedwait(&acknowledgement, &stateLock, &deadline);
+    if (status) _exit(70);
   }
   pthread_mutex_unlock(&stateLock);
   return YES;
