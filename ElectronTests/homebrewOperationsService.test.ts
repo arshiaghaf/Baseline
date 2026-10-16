@@ -110,6 +110,75 @@ function harness(
 }
 
 describe("HomebrewOperationsService", () => {
+  it.each([
+    ["batch", false],
+    ["queued", false],
+    ["batch", true],
+    ["queued", true]
+  ] as const)(
+    "reconciles %s cancellation despite history persistence rejection (helper fault: %s)",
+    async (scenario, helperFault) => {
+      const h = harness(async (args) =>
+        args.includes("--cask")
+          ? {
+              success: false,
+              status: 1,
+              output: "",
+              cancelled: true,
+              failure: helperFault ? { kind: "admin-helper", message: "fixture" } : undefined
+            }
+          : { success: true, status: 0, output: "" }
+      );
+      h.setState({
+        homebrewItems: [
+          formula(),
+          formula({
+            id: "cask:other",
+            kind: "cask",
+            token: "other",
+            fullToken: "other",
+            formulaIdentity: undefined,
+            tap: "homebrew/cask"
+          })
+        ]
+      });
+      h.stats.mockRejectedValueOnce(new Error("fixture persistence failure"));
+      h.refresh.mockImplementation(async () => {
+        expect(h.lock.activeCommandCount).toBe(1);
+        expect(h.state.isRunningHomebrewMaintenance).toBe(false);
+        expect(h.state.homebrewUpdatingItemIDs).toEqual([]);
+        expect(h.state.homebrewQueuedItemIDs).toEqual([]);
+        expect(h.state.homebrewBatchProgressByItemID).toEqual({});
+        expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual(["formula:example"]);
+        expect(h.state.homebrewOperation?.phase).toBe("reconciling");
+      });
+      if (scenario === "batch") await h.service.performHomebrewUpdateAll();
+      else {
+        h.lock.beginRefresh(29);
+        const pending = h.state.homebrewItems.map((item) =>
+          h.service.performHomebrewUpdate(item.id)
+        );
+        try {
+          h.lock.endRefresh(29);
+          await h.service.processHomebrewUpdateQueue();
+        } finally {
+          await Promise.all(pending);
+        }
+      }
+      expect(h.stats).toHaveBeenCalledOnce();
+      expect(h.refresh).toHaveBeenCalledOnce();
+      expect(h.state.lastRefreshNoticeMessage).toContain("could not be saved to history");
+      if (helperFault)
+        expect(h.state.refreshErrorMessage).toContain("administrator password helper failed");
+      else expect(h.state.refreshErrorMessage).toBeUndefined();
+      expect(h.failure).not.toHaveBeenCalled();
+      expect(h.failures).not.toHaveBeenCalled();
+      expect(h.state.homebrewBatchFailedItemIDs).toEqual([]);
+      expect(h.state.homebrewOperation).toBeUndefined();
+      expect(h.lock.activeCommandCount).toBe(0);
+    }
+  );
+
   it.each(["formula", "cask"] as const)(
     "limits %s waiting targets to the actual command kind when installed tokens collide",
     async (kind) => {

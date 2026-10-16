@@ -1040,13 +1040,6 @@ export class HomebrewOperationsService {
   ): Promise<boolean> {
     if (!commandWasCancelled(result)) return false;
     if (completedUpdates.length > 0) {
-      const occurredAt = new Date().toISOString();
-      await this.recordProfileStatsEvents(
-        completedUpdates.map(
-          ({ item, profileStatsEvent }) =>
-            profileStatsEvent ?? homebrewUpdateProfileStatsEvent({ item, occurredAt })
-        )
-      );
       this.patch({
         homebrewUpdatedPendingRefreshItemIDs: [
           ...new Set([
@@ -1075,12 +1068,31 @@ export class HomebrewOperationsService {
       homebrewBatchProgressByItemID: progress(this.state.homebrewBatchProgressByItemID),
       homebrewDiscoverProgressByItemID: progress(this.state.homebrewDiscoverProgressByItemID)
     });
+    let completionHistoryFailed = false;
+    if (completedUpdates.length > 0) {
+      const occurredAt = new Date().toISOString();
+      try {
+        await this.recordProfileStatsEvents(
+          completedUpdates.map(
+            ({ item, profileStatsEvent }) =>
+              profileStatsEvent ?? homebrewUpdateProfileStatsEvent({ item, occurredAt })
+          )
+        );
+      } catch {
+        // History persistence cannot prevent cancellation reconciliation or leave
+        // mutation state active after the reservation is released.
+        completionHistoryFailed = true;
+      }
+    }
     // A cancelled command may have made changes. Never imply rollback or emit
     // failure history or infer success for unconfirmed targets. Preserve already
     // confirmed completions; fresh inventory is authoritative for remaining state.
     try {
       await this.refresh(true);
     } finally {
+      if (completionHistoryFailed) {
+        this.applyOperationNotice("Some completed Homebrew updates could not be saved to history.");
+      }
       if (result.failure?.kind === "admin-helper") {
         this.patch({
           refreshErrorMessage: [
