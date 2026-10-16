@@ -28,6 +28,29 @@ vi.mock("../src/main/commandRunner", () => ({
 }));
 
 describe("HomebrewInventoryClient", () => {
+  it.each([true, false])(
+    "propagates configuration refusal without empty-success evidence (metadata update: %s)",
+    async (updateMetadata) => {
+      const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+      const run = vi.fn(async () => ({
+        success: false,
+        status: null,
+        output: "",
+        failure: { kind: "configuration-blocked" as const, message: "fixture refusal" }
+      }));
+      const result = await new HomebrewInventoryClient(run).fetchInventory({ updateMetadata });
+      expect(result).toMatchObject({
+        configurationBlocked: true,
+        items: [],
+        inventoryReadSucceededByKind: { formula: false, cask: false },
+        outdatedDetectionSucceeded: false,
+        outdatedDetectionSucceededByKind: { formula: false, cask: false }
+      });
+      expect(run).toHaveBeenCalledTimes(updateMetadata ? 1 : 5);
+      expect(result.warning).toContain("Homebrew configuration");
+    }
+  );
+
   beforeEach(() => {
     commandMock.calls = [];
     commandMock.results = new Map([

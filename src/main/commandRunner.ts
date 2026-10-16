@@ -5,6 +5,10 @@ import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename } from "node:path";
+import {
+  checkHomebrewConfiguration,
+  homebrewConfigurationBlockedMessage
+} from "./homebrewConfiguration";
 import { OperationOutputTail } from "./operationOutputTail";
 import { CommandCapture, CommandOutputStream } from "./commandOutput";
 import { terminateCommandGroup } from "./commandProcessGroup";
@@ -54,7 +58,8 @@ export type CommandFailure = {
     | "output-limit"
     | "callback"
     | "cleanup"
-    | "admin-helper";
+    | "admin-helper"
+    | "configuration-blocked";
   message: string;
   code?: string;
 };
@@ -294,6 +299,18 @@ export async function runBrewCommand(
     ...options,
     env: homebrewEnvironment(executable, { ...process.env, ...options.env })
   };
+  const configuration = await checkHomebrewConfiguration(executable, commandOptions.env!);
+  if (!configuration.supported || !(await configuration.revalidate())) {
+    return {
+      success: false,
+      status: null,
+      output: "",
+      stdout: "",
+      stderr: "",
+      failure: { kind: "configuration-blocked", message: homebrewConfigurationBlockedMessage }
+    };
+  }
+  if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
   return executeCommand(executable, args, onOutputLine, commandOptions, () => {
     homebrewCleanupUnconfirmed = true;
   });

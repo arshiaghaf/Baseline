@@ -10,6 +10,7 @@ import type {
 } from "../shared/domain";
 import { homebrewItemID, type HomebrewRuntimeOperation } from "../shared/domain";
 import { randomBytes } from "node:crypto";
+import { homebrewConfigurationBlockedMessage } from "./homebrewConfiguration";
 import {
   HomebrewMaintenanceOutputParser,
   HomebrewMaintenanceProgressStage,
@@ -269,7 +270,7 @@ export class HomebrewOperationsService {
         new Map(progressTokens.map((token) => [token, [itemID]]))
       );
     });
-    if (await this.reconcileCancellation(commandResult, [itemID])) return;
+    if (await this.reconcileStoppedOperation(commandResult, [itemID])) return;
     if (commandResult.success) {
       this.patch({
         refreshErrorMessage: undefined,
@@ -376,7 +377,7 @@ export class HomebrewOperationsService {
         );
       });
       if (
-        await this.reconcileCancellation(
+        await this.reconcileStoppedOperation(
           commandResult,
           affectedIDs,
           itemsWithEvents
@@ -549,7 +550,7 @@ export class HomebrewOperationsService {
           );
         });
         if (
-          await this.reconcileCancellation(
+          await this.reconcileStoppedOperation(
             commandResult,
             affectedIDs,
             affected.filter((item) => completedItemIDs.has(item.id)).map((item) => ({ item }))
@@ -681,6 +682,7 @@ export class HomebrewOperationsService {
   }
 
   async installHomebrewItem(item: HomebrewCaskDiscoveryItem): Promise<void> {
+    if (this.requiresInventory()) return;
     if (!isValidHomebrewToken(item.token)) {
       this.patch({ refreshErrorMessage: `Blocked unsafe Homebrew token for ${item.displayName}.` });
       return;
@@ -718,7 +720,9 @@ export class HomebrewOperationsService {
                 itemID
               ),
               refreshErrorMessage:
-                "Homebrew is not installed. Install Homebrew to install Discover items."
+                brew.failure?.kind === "configuration-blocked"
+                  ? homebrewConfigurationBlockedMessage
+                  : "Homebrew is not installed. Install Homebrew to install Discover items."
             });
             return;
           }
@@ -730,7 +734,7 @@ export class HomebrewOperationsService {
         const commandResult = await this.runBrewWithResultEvents(command, (event) => {
           this.applyDiscoverInstallEvent(event, parser, itemID, item.token.toLowerCase());
         });
-        if (await this.reconcileCancellation(commandResult, [itemID])) return;
+        if (await this.reconcileStoppedOperation(commandResult, [itemID])) return;
         const success = commandResult.success;
         // Carry only this operation's persistence notice, not unrelated old state.
         const failureNotice = success
@@ -818,6 +822,7 @@ export class HomebrewOperationsService {
   }
 
   async uninstallHomebrewItem(itemID: string): Promise<void> {
+    if (this.requiresInventory()) return;
     const item = this.state.homebrewItems.find((candidate) => candidate.id === itemID);
     if (!item || item.kind !== "cask") {
       return;
@@ -850,7 +855,7 @@ export class HomebrewOperationsService {
           }
         }
       );
-      if (await this.reconcileCancellation(result, [itemID])) return;
+      if (await this.reconcileStoppedOperation(result, [itemID])) return;
       this.patch({
         homebrewUninstallingItemIDs: removeFromArray(this.state.homebrewUninstallingItemIDs, itemID)
       });
@@ -1033,12 +1038,13 @@ export class HomebrewOperationsService {
     this.patch({ homebrewOperation: undefined });
   }
 
-  private async reconcileCancellation(
+  private async reconcileStoppedOperation(
     result: CommandResult,
     itemIDs: string[],
     completedUpdates: { item: HomebrewManagedItem; profileStatsEvent?: ProfileStatsEvent }[] = []
   ): Promise<boolean> {
-    if (!commandWasCancelled(result)) return false;
+    const configurationBlocked = result.failure?.kind === "configuration-blocked";
+    if (!commandWasCancelled(result) && !configurationBlocked) return false;
     if (completedUpdates.length > 0) {
       this.patch({
         homebrewUpdatedPendingRefreshItemIDs: [
@@ -1090,6 +1096,7 @@ export class HomebrewOperationsService {
     try {
       await this.refresh(true);
     } finally {
+      if (configurationBlocked) this.applyOperationNotice(homebrewConfigurationBlockedMessage);
       if (completionHistoryFailed) {
         this.applyOperationNotice("Some completed Homebrew updates could not be saved to history.");
       }

@@ -10,6 +10,7 @@ import type {
 import { homebrewItemID } from "../shared/domain";
 import { maxVersion, version } from "../shared/version";
 import { runBrewCommand, type CommandResult } from "./commandRunner";
+import { homebrewConfigurationBlockedMessage } from "./homebrewConfiguration";
 import { HomebrewCaskClient } from "./homebrewCaskClient";
 import { homebrewCommandToken } from "../shared/homebrewIdentity";
 import { installedInfoSection } from "./homebrewInstalledInfo";
@@ -35,6 +36,7 @@ export type HomebrewInventoryResult = {
   inventoryReadSucceededByKind?: Record<HomebrewManagedItemKind, boolean>;
   warning?: string;
   cleanupUnconfirmed?: boolean;
+  configurationBlocked?: boolean;
   /** Read-only installed evidence. Keep out of persisted snapshots and automatic exports. */
   installedMetadataByItemID?: Record<string, HomebrewInstalledMetadata>;
 };
@@ -47,6 +49,8 @@ export class HomebrewInventoryClient {
   async fetchInventory(options: HomebrewInventoryOptions = {}): Promise<HomebrewInventoryResult> {
     const updateResult = options.updateMetadata ? await this.run(["update"]) : undefined;
     if (updateResult && cleanupUnconfirmed(updateResult)) return cleanupFailure();
+    if (updateResult?.failure?.kind === "configuration-blocked")
+      return configurationBlockedInventory();
     const [combinedInfo, formulaVersions, caskVersions, formulaOutdated, caskOutdated] =
       await Promise.all([
         this.run(["info", "--installed", "--json=v2"]),
@@ -66,6 +70,12 @@ export class HomebrewInventoryClient {
       )
     )
       return cleanupFailure();
+    if (
+      [combinedInfo, formulaVersions, caskVersions, formulaOutdated, caskOutdated].some(
+        (result) => result.failure?.kind === "configuration-blocked"
+      )
+    )
+      return configurationBlockedInventory();
     const formulaSection = installedInfoSection(combinedInfo, "formula");
     const caskSection = installedInfoSection(combinedInfo, "cask");
     // A combined failure must not couple the two inventories. Retry only unusable
@@ -75,6 +85,8 @@ export class HomebrewInventoryClient {
       caskSection ? combinedInfo : this.run(["info", "--cask", "--installed", "--json=v2"])
     ]);
     if ([formulaInfo, caskInfo].some(cleanupUnconfirmed)) return cleanupFailure();
+    if ([formulaInfo, caskInfo].some((result) => result.failure?.kind === "configuration-blocked"))
+      return configurationBlockedInventory();
 
     const metadataReady = !updateResult || updateResult.success;
     const parsed = this.parser.buildInventoryWithStatus(
@@ -134,6 +146,17 @@ export class HomebrewInventoryClient {
           .join(" ") || undefined
     };
   }
+}
+
+export function configurationBlockedInventory(): HomebrewInventoryResult {
+  return {
+    items: [],
+    configurationBlocked: true,
+    inventoryReadSucceededByKind: { formula: false, cask: false },
+    outdatedDetectionSucceeded: false,
+    outdatedDetectionSucceededByKind: { formula: false, cask: false },
+    warning: homebrewConfigurationBlockedMessage
+  };
 }
 
 // Structural compatibility while the runner failure contract rolls out independently.

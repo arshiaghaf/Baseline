@@ -232,6 +232,7 @@ export type PersistedSnapshot = {
 export type ToolStatus = {
   isMasInstalled: boolean;
   isHomebrewInstalled: boolean;
+  homebrewConfigurationBlocked?: boolean;
   isChecking: boolean;
 };
 
