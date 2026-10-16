@@ -35,7 +35,9 @@ export function appControlState(app: AppRecord, snapshot: BaselineSnapshot): App
   const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
   const homebrewCommandActive = isHomebrewCommandActive(snapshot);
   const homebrewUninstallBlocked = Boolean(
-    uninstallableItem && homebrewCommandActive && !isUninstalling
+    uninstallableItem &&
+    (snapshot.homebrewConfigurationBlocked || homebrewCommandActive) &&
+    !isUninstalling
   );
   return {
     update,
@@ -68,7 +70,8 @@ export function homebrewControlState(
   const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
   const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
   const progress = snapshot.homebrewBatchProgressByItemID[item.id];
-  const homebrewUninstallBlocked = isHomebrewCommandActive(snapshot) && !isUninstalling;
+  const homebrewUninstallBlocked =
+    (snapshot.homebrewConfigurationBlocked || isHomebrewCommandActive(snapshot)) && !isUninstalling;
   return {
     isUpdating,
     isUninstalling,

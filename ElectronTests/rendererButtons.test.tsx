@@ -15,7 +15,12 @@ import {
   SettingsView,
   UpdateActionButton
 } from "../src/renderer/main";
-import { AppUpdateCard, RecentAppCard, IgnoredAppCard } from "../src/renderer/components/ItemViews";
+import {
+  AppUpdateCard,
+  HomebrewUpdateCard,
+  RecentAppCard,
+  IgnoredAppCard
+} from "../src/renderer/components/ItemViews";
 import type {
   AppRecord,
   BaselineSnapshot,
@@ -654,6 +659,43 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Uninstall" })).toBeInTheDocument();
   });
+
+  it.each([
+    [
+      "app row",
+      (state: BaselineSnapshot) => <AppRow app={app} snapshot={state} recentlyUpdated={false} />
+    ],
+    ["cask row", (state: BaselineSnapshot) => <HomebrewRow item={cask} snapshot={state} />],
+    ["app card", (state: BaselineSnapshot) => <AppUpdateCard app={app} snapshot={state} />],
+    ["cask card", (state: BaselineSnapshot) => <HomebrewUpdateCard item={cask} snapshot={state} />]
+  ] as const)(
+    "blocks %s uninstall during configuration refusal and restores it after recovery",
+    (_name, view) => {
+      const state = snapshot({ homebrewConfigurationBlocked: true, updates: [] });
+      const request = vi.fn();
+      const { rerender } = render(
+        <ActionConfirmationContext.Provider value={request}>
+          {view(state)}
+        </ActionConfirmationContext.Provider>
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+      const uninstall = screen.getByRole("menuitem", { name: "Uninstall" });
+      expect(uninstall).toBeDisabled();
+      fireEvent.click(uninstall);
+      expect(request).not.toHaveBeenCalled();
+      expect(window.baseline.uninstallHomebrewItem).not.toHaveBeenCalled();
+      rerender(
+        <ActionConfirmationContext.Provider value={request}>
+          {view({ ...state, homebrewConfigurationBlocked: false })}
+        </ActionConfirmationContext.Provider>
+      );
+      if (!screen.queryByRole("menuitem", { name: "Uninstall" }))
+        fireEvent.click(screen.getByRole("button", { name: "Actions" }));
+      expect(screen.getByRole("menuitem", { name: "Uninstall" })).toBeEnabled();
+      fireEvent.click(screen.getByRole("menuitem", { name: "Uninstall" }));
+      expect(request).toHaveBeenCalledWith({ type: "uninstall", item: cask });
+    }
+  );
 
   it("shows global search results regardless of the selected tab", () => {
     const formula: HomebrewManagedItem = {
