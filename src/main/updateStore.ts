@@ -27,6 +27,7 @@ import { BundleScannerClient } from "./bundleScanner";
 import {
   runBrewCommand as defaultRunBrewCommand,
   runMasCommand as defaultRunMasCommand,
+  homebrewCleanupIsUnconfirmed,
   type CommandResult
 } from "./commandRunner";
 import { HomebrewCaskClient } from "./homebrewCaskClient";
@@ -108,6 +109,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly currentAppIdentity?: { bundlePath?: string; bundleIdentifier?: string };
   private readonly runBrewCommand: typeof defaultRunBrewCommand;
   private readonly runMasCommand: typeof defaultRunMasCommand;
+  private readonly isHomebrewCleanupUnconfirmed: () => boolean;
   private readonly openExternalURL: (url: string) => Promise<boolean>;
   private readonly openAppBundle: (bundlePath: string) => Promise<void>;
   private readonly profileStatsService: ProfileStatsService;
@@ -151,6 +153,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     currentAppIdentity?: { bundlePath?: string; bundleIdentifier?: string };
     runBrewCommand?: typeof defaultRunBrewCommand;
     runMasCommand?: typeof defaultRunMasCommand;
+    isHomebrewCleanupUnconfirmed?: () => boolean;
     profileStatsIntegrity?: ProfileStatsIntegrity;
     successRefreshDelayMS?: number;
     catalogueCacheRoot?: string;
@@ -178,10 +181,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.selfUpdate = options.clients?.selfUpdate ?? new SelfUpdateClient();
     this.currentAppVersion = version(options.currentAppVersion);
     this.currentAppIdentity = options.currentAppIdentity;
+    this.isHomebrewCleanupUnconfirmed =
+      options.isHomebrewCleanupUnconfirmed ?? homebrewCleanupIsUnconfirmed;
     const runBrew = options.runBrewCommand ?? defaultRunBrewCommand;
     this.runBrewCommand = async (...args) => {
       const result = await runBrew(...args);
-      if (result.failure?.kind === "cleanup") this.blockHomebrewAfterUnconfirmedCleanup();
+      if (result.failure?.kind === "cleanup" || this.isHomebrewCleanupUnconfirmed()) {
+        this.blockHomebrewAfterUnconfirmedCleanup();
+      }
       return result;
     };
     this.runMasCommand = options.runMasCommand ?? defaultRunMasCommand;
@@ -803,6 +810,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
   }
 
+  private quarantinedHomebrewInventory(): HomebrewInventoryResult {
+    return {
+      items: [],
+      inventoryReadSucceededByKind: { formula: false, cask: false },
+      outdatedDetectionSucceeded: false,
+      outdatedDetectionSucceededByKind: { formula: false, cask: false },
+      warning:
+        "Homebrew process cleanup could not be confirmed. Check running Homebrew processes before restarting Baseline."
+    };
+  }
+
   private async lookupSelfUpdate(now: string): Promise<SelfUpdateRecord | undefined> {
     if (isVersionEmpty(this.currentAppVersion)) {
       return undefined;
@@ -817,35 +835,40 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     return this.homebrewWorkLock.readInventory({
       updateMetadata: !lightweight,
       allowDuringMutation: Boolean(options.allowHomebrewInventoryDuringActiveCommand),
-      blocked: () => ({
-        items: this.state.homebrewItems,
-        ...(this.homebrewWorkLock.hasUnconfirmedCleanup
-          ? {
-              inventoryReadSucceededByKind: { formula: false, cask: false },
-              cleanupUnconfirmed: true,
-              warning:
-                "Homebrew process cleanup could not be confirmed. Check running Homebrew processes before restarting Baseline."
-            }
-          : {}),
-        outdatedDetectionSucceeded: false,
-        outdatedDetectionSucceededByKind: { formula: false, cask: false }
-      }),
+      blocked: () =>
+        this.homebrewWorkLock.hasUnconfirmedCleanup
+          ? this.quarantinedHomebrewInventory()
+          : {
+              items: this.state.homebrewItems,
+              outdatedDetectionSucceeded: false,
+              outdatedDetectionSucceededByKind: { formula: false, cask: false }
+            },
       start: (updateMetadata) => this.fetchFreshHomebrewInventory(updateMetadata),
       reconcileBeforeRelease: (result) => {
-        if (result.cleanupUnconfirmed) this.blockHomebrewAfterUnconfirmedCleanup();
-        // Replace rather than merge: failed or absent metadata never inherits
-        // authority from a prior successful read, and it never enters snapshots.
-        this.installedMetadataByItemID = Object.fromEntries(
-          Object.entries(result.installedMetadataByItemID ?? {}).filter(
-            ([, metadata]) => result.inventoryReadSucceededByKind?.[metadata.kind] !== false
-          )
-        );
+        // Older inventory transports do not preserve individual runner failure
+        // details. Observe the process-wide latch as well as newer producers.
+        if (
+          this.isHomebrewCleanupUnconfirmed() ||
+          ("cleanupUnconfirmed" in result && result.cleanupUnconfirmed === true)
+        ) {
+          this.blockHomebrewAfterUnconfirmedCleanup();
+        }
+        // Metadata is an ephemeral projection, revoked on uncertain cleanup
+        // or a failed kind read before the shared reservation is released.
+        this.installedMetadataByItemID = this.homebrewWorkLock.hasUnconfirmedCleanup
+          ? {}
+          : Object.fromEntries(
+              Object.entries(result.installedMetadataByItemID ?? {}).filter(
+                ([, metadata]) => result.inventoryReadSucceededByKind?.[metadata.kind] !== false
+              )
+            );
         if (result.inventoryReadSucceededByKind?.formula === false) {
           this.invalidateFormulaMembership();
         }
       },
       invalidateBeforeRelease: () => {
         this.installedMetadataByItemID = {};
+        if (this.isHomebrewCleanupUnconfirmed()) this.blockHomebrewAfterUnconfirmedCleanup();
         this.invalidateFormulaMembership();
       }
     });
@@ -874,6 +897,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private async fetchFreshHomebrewInventory(
     updateMetadata: boolean
   ): Promise<HomebrewInventoryResult> {
+    if (this.isHomebrewCleanupUnconfirmed()) {
+      this.blockHomebrewAfterUnconfirmedCleanup();
+      return this.quarantinedHomebrewInventory();
+    }
     if (this.hasCheckedHomebrewAvailability && !this.state.isHomebrewInstalled) {
       const brew = await this.runBrewCommand(["--version"]);
       this.hasCheckedHomebrewAvailability = true;
@@ -882,7 +909,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       }
       this.patch({ isHomebrewInstalled: true });
     }
-    return this.homebrewInventory.fetchInventory({ updateMetadata });
+    const result = await this.homebrewInventory.fetchInventory({ updateMetadata });
+    if (
+      this.isHomebrewCleanupUnconfirmed() ||
+      ("cleanupUnconfirmed" in result && result.cleanupUnconfirmed === true)
+    ) {
+      this.blockHomebrewAfterUnconfirmedCleanup();
+      return { ...result, ...this.quarantinedHomebrewInventory() };
+    }
+    return result;
   }
 
   private scanDirectories(): string[] {

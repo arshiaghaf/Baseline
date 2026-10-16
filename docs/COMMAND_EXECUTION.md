@@ -33,8 +33,10 @@ cleanup without exposing the exception text.
 On macOS/POSIX each command owns a detached process group. Cancellation, deadline,
 output-limit failure, callback failure, and parent exit all await group cleanup.
 Cleanup sends TERM, waits the grace period, then sends KILL and verifies exit
-within a total 3-second cleanup budget. Normal settlement awaits disappearance of
-the process group. Signalling errors or a group that persists beyond the budget
+within a total 3-second cleanup budget. Normal settlement requires ESRCH to confirm group absence. On Darwin an unreaped
+zombie-only group can transiently report EPERM: re-probe within the same budget,
+without treating EPERM as cleanup success. Persistent permission errors, other
+signalling errors, or a group that persists beyond the budget
 return an explicit `cleanup` failure with unknown status, immediately quarantine
 Homebrew, destroy the runner's owned pipe handles, and unreference the child
 handle. This releases local execution handles without claiming the process exited.
@@ -44,7 +46,10 @@ must quarantine its work lock and warn users to inspect remaining processes.
 This boundary covers foreground CLI descendants, including
 children holding inherited pipes open. Processes that deliberately start a new
 session escape this boundary; do not use the runner to manage daemon lifetimes.
-Baseline is macOS-only; the Windows fallback kills only the direct child.
+After ESRCH no further group signal is sent. POSIX numeric process-group APIs
+cannot prevent ID reuse before the first signal; the runner keeps one shared
+cleanup task and clears its deadline on settlement to avoid later signals to a
+stale group. Baseline is macOS-only; the Windows fallback kills only the direct child.
 
 Homebrew receives inherited proxy, certificate, locale, and custom configuration
 variables, with the resolved executable directory prepended to PATH and system
@@ -70,7 +75,8 @@ quarantine the work lock, warn about remaining processes, and permit quitting af
 local work settles. Do not attempt reconciliation while Homebrew is quarantined.
 Abort signals are a backend capability; this change adds no UI cancellation control.
 The Homebrew runner immediately latches a process-lifetime quarantine when cleanup
-fails. Subsequent Homebrew reads and mutations fail closed, including requests
+fails. `homebrewCleanupIsUnconfirmed()` exposes that latch to reservation owners,
+including wrappers around legacy inventory callers that discard detailed failures. Subsequent Homebrew reads and mutations fail closed, including requests
 already awaiting executable resolution. Restart clears only the in-process latch and does not prove that an orphaned
 Homebrew process stopped. Inspect and stop any remaining Homebrew processes before
 restarting and retrying. Commands already launched before quarantine still need
