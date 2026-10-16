@@ -20,26 +20,44 @@ export async function terminateCommandGroup(
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
     return;
   }
-  const signal = (value: NodeJS.Signals | 0): boolean => {
+  let permissionError: NodeJS.ErrnoException | undefined;
+  const signal = (value: NodeJS.Signals | 0): boolean | undefined => {
     try {
       process.kill(-pid, value);
       return true;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+      const failure = error as NodeJS.ErrnoException;
+      if (failure.code === "ESRCH") return false;
+      // Darwin killpg can return EPERM for a group containing only unreaped
+      // zombies. This is uncertainty, never absence: re-probe within the same
+      // budget and require ESRCH before reporting confirmed cleanup.
+      if (failure.code === "EPERM") {
+        permissionError = failure;
+        return undefined;
+      }
       throw error;
     }
   };
   const cleanupDeadline = performance.now() + cleanupTimeoutMs;
-  if (!signal("SIGTERM")) return;
-  const deadline = Math.min(cleanupDeadline, performance.now() + graceMs);
-  while (signal(0) && performance.now() < deadline) await delay(20);
-  if (!signal(0)) return;
-  signal("SIGKILL");
-  while (signal(0)) {
-    if (performance.now() >= cleanupDeadline) {
-      const error = new Error("Process group cleanup could not be confirmed within its budget.");
-      throw Object.assign(error, { code: "ETIMEDOUT" });
+  const graceDeadline = Math.min(cleanupDeadline, performance.now() + graceMs);
+  if (signal("SIGTERM") === false) return;
+  let forced = false;
+  while (true) {
+    if (signal(0) === false) return;
+    const now = performance.now();
+    if (!forced && now >= graceDeadline) {
+      forced = true;
+      if (signal("SIGKILL") === false) return;
     }
-    await delay(20);
+    if (now >= cleanupDeadline) {
+      throw (
+        permissionError ??
+        Object.assign(
+          new Error("Process group cleanup could not be confirmed within its budget."),
+          { code: "ETIMEDOUT" }
+        )
+      );
+    }
+    await delay(Math.min(20, Math.max(1, cleanupDeadline - performance.now())));
   }
 }

@@ -24,6 +24,11 @@ import {
 // callers and operation wrappers. Only restarting the process clears quarantine.
 let homebrewCleanupUnconfirmed = false;
 
+/** Also covers direct inventory callers that do not retain CommandResult.failure. */
+export function homebrewCleanupIsUnconfirmed(): boolean {
+  return homebrewCleanupUnconfirmed;
+}
+
 export type CommandResult = {
   success: boolean;
   status: number | null;

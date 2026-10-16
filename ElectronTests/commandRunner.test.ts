@@ -299,7 +299,9 @@ describe("command lifecycle", () => {
       const grandchildPid = Number(await waitForFile(ready));
       if (mode === "cancelled") controller.abort();
       const result = await resultPromise;
-      expect(result.failure?.kind).toBe(mode === "parent-exit" ? undefined : mode);
+      expect(result.failure?.kind, JSON.stringify(result.failure)).toBe(
+        mode === "parent-exit" ? undefined : mode
+      );
       expect(result.success).toBe(mode === "parent-exit");
       expect(pids).toHaveLength(2);
       for (const pid of [...pids, grandchildPid]) expect(alive(pid)).toBe(false);

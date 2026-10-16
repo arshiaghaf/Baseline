@@ -70,14 +70,17 @@ it.each(["EPERM", "ETIMEDOUT"])(
     control.failCleanup = true;
     control.cleanupCode = code;
     control.source = "setInterval(() => {}, 1000);";
-    const { runBrewCommand } = await import("../src/main/commandRunner");
+    const { runBrewCommand, homebrewCleanupIsUnconfirmed } =
+      await import("../src/main/commandRunner");
     const { spawn } = await import("node:child_process");
+    expect(homebrewCleanupIsUnconfirmed()).toBe(false);
     const started = performance.now();
     const result = await runBrewCommand(["info"], undefined, {
       timeoutMs: 20,
       cleanupTimeoutMs: 50
     });
     expect(result.failure).toMatchObject({ kind: "cleanup", code });
+    expect(homebrewCleanupIsUnconfirmed()).toBe(true);
     expect(result.success).toBe(false);
     expect(result.status).toBeNull();
     expect(result.stdout).toBe("");
