@@ -8,6 +8,11 @@ The dormant lifecycle state machine tracks invocation completion independently
 from cancellation and cleanup evidence. Operation snapshots retain target IDs and
 waiting state through reconciliation, but are excluded from saved snapshots.
 The command runner still does not create a status endpoint or set `SUDO_ASKPASS`.
+An unused coordinator now implements a private operation socket and status-only
+admission, ACK, focus and drain handling. It never launches a helper or reads its
+stdout. Prompt cancellation denies further admission immediately while allowing
+the active invocation to complete its handshake within the existing cleanup
+budget. Group-absence evidence remains the command runner's responsibility.
 Cancellation results already bypass mutation failure rows, banners, timers, and
 saved failure details across update, batch, install and uninstall paths; inventory
 refresh remains inside the command reservation. Cleanup uncertainty keeps its
@@ -66,3 +71,6 @@ filter and config overrides without running Ruby, sudo or any package operation.
 
 Real credentials, native GUI lifecycle, sudo policy, and full Homebrew integration
 remain explicit acceptance checks. Automated fixtures never establish those checks.
+The native policy stand-in tests retries, five-attempt exhaustion, empty answers,
+cancellation after rejection and denied further prompts through native pipes;
+none of these cases uses actual sudo or validates a real credential.
