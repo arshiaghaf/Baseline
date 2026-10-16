@@ -776,7 +776,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       disabled: metadata.disabled,
       autoUpdates: metadata.autoUpdates,
       installedOnRequest: metadata.installedOnRequest,
-      installedAsDependency: metadata.installedAsDependency,
       caveatsAvailable: Boolean(metadata.caveats),
       installedReceiptCount: metadata.installedReceipts.length,
       declaredDependencyCount: new Set(

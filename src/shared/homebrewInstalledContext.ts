@@ -7,9 +7,10 @@ export type HomebrewInstalledContext = {
   deprecated?: boolean;
   disabled?: boolean;
   autoUpdates?: boolean;
+  /** Observed Homebrew flag; false does not prove a historical dependency cause. */
   installedOnRequest?: boolean;
-  installedAsDependency?: boolean;
   caveatsAvailable: boolean;
+  /** Formula installed-keg records; cask info is not a formula receipt. */
   installedReceiptCount: number;
   declaredDependencyCount: number;
   observedRuntimeDependencyCount: number;

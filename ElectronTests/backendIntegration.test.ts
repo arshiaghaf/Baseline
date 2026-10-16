@@ -246,7 +246,7 @@ describe("backend composition", () => {
       kind: "formula",
       caveats: "secret /Users/private/config",
       deprecated: true,
-      installedAsDependency: true,
+      installedOnRequest: false,
       installedReceipts: [{ version: "1", runtimeDependencies: [] }],
       dependencies: [{ kind: "formula", token: "dependency", scope: "runtime", source: "receipt" }],
       installedDependents: ["formula:dependent"]
@@ -262,11 +262,12 @@ describe("backend composition", () => {
       const context = store.getHomebrewInstalledContext(formula.id);
       expect(context).toMatchObject({
         deprecated: true,
-        installedAsDependency: true,
+        installedOnRequest: false,
         caveatsAvailable: true,
         observedRuntimeDependencyCount: 1,
         observedInstalledDependentCount: 1
       });
+      expect(context).not.toHaveProperty("installedAsDependency");
       expect(JSON.stringify(context)).not.toContain("secret");
       expect(JSON.stringify(save.mock.calls)).not.toContain("secret");
       expect(JSON.stringify(store.getSnapshot())).not.toContain("installedReceipts");

@@ -23,7 +23,9 @@ Homebrew diagnostics. Renderer source and visual behavior are unchanged.
   without copying its potentially private prose. Full receipt/dependency data is
   an ephemeral main-process sidecar. Failed reads revoke context, and current
   installed identity must still match. Counts are partial observations, never
-  authorization for uninstall or update operations.
+  authorization for uninstall or update operations. `installedOnRequest` exposes
+  only Homebrew's observed flag; false does not establish a historical dependency
+  cause. Receipt counts describe formula keg records, not cask info versions.
 - Existing diagnostic copy/export includes bounded catalogue decode counts.
   Rejected payloads and parser error text are excluded.
 
