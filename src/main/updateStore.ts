@@ -16,7 +16,6 @@ import type {
   HomebrewRecentlyUpdatedRecord,
   MenuTab,
   PersistedSnapshot,
-  ProfileStats,
   ProfileStatsEvent,
   SelfUpdateRecord,
   SnapshotProgress,
@@ -24,7 +23,6 @@ import type {
   UpdateRecord
 } from "../shared/domain";
 import {
-  defaultProfileStatsAfterTamper,
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
   normalizeAppearancePreference
@@ -62,6 +60,12 @@ import { HomebrewFormulaClient } from "./homebrewFormulaClient";
 import { HomebrewInventoryClient, type HomebrewInventoryResult } from "./homebrewInventoryClient";
 import { SnapshotPersistence } from "./persistence";
 import { KeychainProfileStatsIntegrity, type ProfileStatsIntegrity } from "./profileStatsIntegrity";
+import {
+  ProfileStatsService,
+  appUpdateProfileStatsEvent,
+  homebrewInstallProfileStatsEvent,
+  homebrewUpdateProfileStatsEvent
+} from "./profileStatsService";
 import { SelfUpdateClient } from "./selfUpdateClient";
 import { normalizeAppVisibility } from "../shared/appVisibility";
 import { SparkleAppcastClient } from "./sparkleAppcastClient";
@@ -121,7 +125,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly runMasCommand: typeof defaultRunMasCommand;
   private readonly openExternalURL: (url: string) => Promise<boolean>;
   private readonly openAppBundle: (bundlePath: string) => Promise<void>;
-  private readonly profileStatsIntegrity: ProfileStatsIntegrity;
+  private readonly profileStatsService: ProfileStatsService;
   private readonly successRefreshDelayMS: number;
   private refreshTask?: Promise<void>;
   private cleanupRefreshTask?: Promise<void>;
@@ -135,7 +139,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
   private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
   private hasCheckedHomebrewAvailability = false;
-  private profileStatsMutationQueue: Promise<void> = Promise.resolve();
   private activeHomebrewCommandCount = 0;
   private activeHomebrewInventoryCount = 0;
   private homebrewRefreshLockSequence?: number;
@@ -188,8 +191,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.runMasCommand = options.runMasCommand ?? defaultRunMasCommand;
     this.openExternalURL = options.openExternalURL;
     this.openAppBundle = options.openAppBundle;
-    this.profileStatsIntegrity =
-      options.profileStatsIntegrity ?? new KeychainProfileStatsIntegrity();
     this.successRefreshDelayMS = options.successRefreshDelayMS ?? successfulUpdateHoldMs;
     const persisted = this.excludeSelfUpdates(
       sanitizePersistedSnapshotForRuntime(options.persisted)
@@ -224,6 +225,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       laggingHomebrewCaskTokens: [],
       defaultScanDirectories: this.defaultScanDirectories()
     };
+    this.profileStatsService = new ProfileStatsService({
+      integrity: options.profileStatsIntegrity ?? new KeychainProfileStatsIntegrity(),
+      getStats: () => this.state.profileStats,
+      publishStats: (profileStats) => this.patch({ profileStats }),
+      persist: () => this.persist()
+    });
   }
 
   private isSelfApp(app: AppRecord): boolean {
@@ -284,18 +291,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async verifyProfileStatsIntegrity(): Promise<void> {
-    await this.runProfileStatsMutation(async () => {
-      const profileStatsBeforeVerification = this.state.profileStats;
-      const verifiedProfileStats = await this.profileStatsIntegrity.verifyOrInitialize(
-        profileStatsBeforeVerification
-      );
-      const profileStats = await this.reconcileVerifiedProfileStats(
-        profileStatsBeforeVerification,
-        verifiedProfileStats
-      );
-      this.patch({ profileStats });
-      await this.persist();
-    });
+    await this.profileStatsService.verifyIntegrity();
   }
 
   async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
@@ -417,7 +413,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async prepareToQuit(): Promise<boolean> {
-    await this.profileStatsMutationQueue;
+    await this.profileStatsService.drain();
     await this.persist();
     if (this.hasActiveUpdateOperation()) return false;
     if (this.autoRefreshTimer) clearInterval(this.autoRefreshTimer);
@@ -581,7 +577,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           this.patch({
             appUpdatedPendingRefreshIDs: addToArray(this.state.appUpdatedPendingRefreshIDs, appID)
           });
-          await this.recordProfileStatsEvents([
+          await this.profileStatsService.recordEvents([
             appUpdateProfileStatsEvent({
               appRecord,
               update,
@@ -724,7 +720,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           [itemID]: HomebrewMaintenanceProgressStage.finalizing
         }
       });
-      await this.recordProfileStatsEvents([
+      await this.profileStatsService.recordEvents([
         profileStatsEvent ??
           homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
       ]);
@@ -884,7 +880,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
     if (completedIDs.length > 0) {
       const occurredAt = new Date().toISOString();
-      await this.recordProfileStatsEvents(
+      await this.profileStatsService.recordEvents(
         itemsWithEvents
           .filter(({ item }) => completedIDs.includes(item.id))
           .map(
@@ -1059,7 +1055,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       }
       if (completedIDs.length > 0) {
         const occurredAt = new Date().toISOString();
-        await this.recordProfileStatsEvents(
+        await this.profileStatsService.recordEvents(
           affected
             .filter((item) => completedIDs.includes(item.id))
             .map((item) => homebrewUpdateProfileStatsEvent({ item, occurredAt }))
@@ -1183,7 +1179,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           this.patch({ isHomebrewInstalled: true });
           let statsNotice: string | undefined;
           try {
-            await this.recordProfileStatsEvents([homebrewInstallProfileStatsEvent(item)]);
+            await this.profileStatsService.recordEvents([homebrewInstallProfileStatsEvent(item)]);
           } catch {
             statsNotice =
               "Homebrew install completed, but local update history could not be saved.";
@@ -2251,72 +2247,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.persistence.save(snapshotForPersistence(this.state));
   }
 
-  private async recordProfileStatsEvents(events: ProfileStatsEvent[]): Promise<void> {
-    await this.runProfileStatsMutation(async () => {
-      const profileStats = await this.profileStatsWithEvents(events);
-      this.patch({ profileStats });
-      await this.persist();
-    });
-  }
-
-  private async runProfileStatsMutation(operation: () => Promise<void>): Promise<void> {
-    const mutation = this.profileStatsMutationQueue.then(operation, operation);
-    this.profileStatsMutationQueue = mutation.catch(() => undefined);
-    await mutation;
-  }
-
-  private async profileStatsWithEvents(events: ProfileStatsEvent[]): Promise<ProfileStats> {
-    const currentProfileStats =
-      this.state.profileStats.signature || this.state.profileStats.events.length === 0
-        ? this.state.profileStats
-        : {
-            ...defaultProfileStatsAfterTamper(),
-            events: [],
-            signature: undefined
-          };
-    const eventIDs = new Set(currentProfileStats.events.map((event) => event.id));
-    const newEvents = events.filter((event) => !eventIDs.has(event.id));
-    if (newEvents.length === 0) {
-      return currentProfileStats;
-    }
-    const sealed = await this.profileStatsIntegrity.seal({
-      ...currentProfileStats,
-      events: [...newEvents, ...currentProfileStats.events].slice(0, 1000),
-      integrityStatus:
-        currentProfileStats.integrityStatus === "resetAfterTamper" ? "resetAfterTamper" : "verified"
-    });
-    if (sealed.integrityStatus === "unavailable") {
-      return { ...currentProfileStats, integrityStatus: "unavailable" };
-    }
-    return sealed;
-  }
-
-  private async reconcileVerifiedProfileStats(
-    statsBeforeVerification: ProfileStats,
-    verifiedStats: ProfileStats
-  ): Promise<ProfileStats> {
-    const previousEventIDs = new Set(statsBeforeVerification.events.map((event) => event.id));
-    const currentStats = this.state.profileStats;
-    const concurrentEvents = currentStats.events.filter((event) => !previousEventIDs.has(event.id));
-    if (concurrentEvents.length === 0) {
-      return verifiedStats;
-    }
-
-    const concurrentEventIDs = new Set(concurrentEvents.map((event) => event.id));
-    const profileStats = {
-      ...verifiedStats,
-      events: [
-        ...concurrentEvents,
-        ...verifiedStats.events.filter((event) => !concurrentEventIDs.has(event.id))
-      ].slice(0, 1000)
-    };
-    const sealed = await this.profileStatsIntegrity.seal(profileStats);
-    if (sealed.integrityStatus === "unavailable") {
-      return { ...currentStats, integrityStatus: "unavailable" };
-    }
-    return sealed;
-  }
-
   private patch(patch: Partial<BaselineSnapshot>): void {
     const progressKeys = [
       "homebrewBatchProgressByItemID",
@@ -2439,83 +2369,12 @@ function persistedUpdateHasValidRuntimeRoute(
   return canUseHomebrewAppUpdate(appRecord, token, snapshot.homebrewItems, emptyHomebrewCaskIndex);
 }
 
-function appUpdateProfileStatsEvent({
-  appRecord,
-  update,
-  occurredAt
-}: {
-  appRecord: AppRecord;
-  update: UpdateRecord;
-  occurredAt: string;
-}): ProfileStatsEvent {
-  return {
-    id: [
-      "appUpdate",
-      appRecord.id,
-      update.localVersion.raw,
-      update.remoteVersion.raw,
-      update.localBuildVersion?.raw ?? "",
-      update.remoteBuildVersion?.raw ?? "",
-      occurredAt
-    ].join(":"),
-    type: "appUpdate",
-    targetID: appRecord.id,
-    displayName: appRecord.displayName,
-    channel: profileStatsChannel(update.source),
-    occurredAt
-  };
-}
-
-function homebrewUpdateProfileStatsEvent({
-  item,
-  occurredAt
-}: {
-  item: HomebrewManagedItem;
-  occurredAt: string;
-}): ProfileStatsEvent {
-  return {
-    id: ["homebrewUpdate", item.id, item.installedVersion.raw, occurredAt].join(":"),
-    type: "homebrewUpdate",
-    targetID: item.id,
-    displayName: item.name,
-    channel: "homebrew",
-    occurredAt
-  };
-}
-
-function homebrewInstallProfileStatsEvent(item: HomebrewCaskDiscoveryItem): ProfileStatsEvent {
-  const occurredAt = new Date().toISOString();
-  return {
-    id: ["homebrewInstall", item.id, item.version.raw, occurredAt].join(":"),
-    type: "homebrewInstall",
-    targetID: item.id,
-    displayName: item.displayName,
-    channel: "homebrew",
-    occurredAt
-  };
-}
-
 function homebrewUpgradeKindForCommand(command: string[]): HomebrewManagedItemKind | undefined {
   const normalized = command.map((part) => part.toLowerCase());
   if (normalized[0] !== "upgrade") {
     return undefined;
   }
   return normalized.includes("--cask") || normalized.includes("--casks") ? "cask" : "formula";
-}
-
-function profileStatsChannel(
-  source: UpdateRecord["source"] | undefined
-): ProfileStatsEvent["channel"] {
-  if (
-    source === "appStore" ||
-    source === "sparkle" ||
-    source === "homebrew" ||
-    source === "web" ||
-    source === "unknown"
-  ) {
-    return source;
-  }
-  return "unknown";
 }
 
 function toggleSet(set: Set<string>, value: string): void {
