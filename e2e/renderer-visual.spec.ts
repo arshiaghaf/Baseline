@@ -337,13 +337,15 @@ for (const surface of ["main", "tray"] as const) {
                         rect: element.getBoundingClientRect().toJSON(),
                         style: Object.fromEntries(
                           [
-                            "transform",
+                            // Avoid adding utility candidates to Tailwind's
+                            // automatic scan of test files.
+                            "trans" + "form",
                             "transform-origin",
                             "opacity",
                             "color",
                             "background-color",
                             "filter",
-                            "backdrop-filter",
+                            "backdrop-" + "filter",
                             "fill",
                             "stroke",
                             "stroke-width",
