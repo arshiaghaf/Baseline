@@ -6,6 +6,7 @@
 
 NSString *APRequestAnswer(BOOL *cancelled) {
   const char *scenario = getenv("HOMEBREW_BASELINE_FIXTURE_CASE");
+  if (!strcmp(scenario, "crash")) _exit(70);
   if (!strcmp(scenario, "peer-loss")) for (;;) pause();
   *cancelled = !strcmp(scenario, "cancel");
   if (*cancelled || !strcmp(scenario, "error")) return nil;
