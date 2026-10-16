@@ -62,14 +62,47 @@ export class HomebrewWorkLock<Inventory> {
 
     let released = false;
     this.commandCount += 1;
-    this.callbacks.onLockStateChange();
+    try {
+      this.callbacks.onLockStateChange();
+    } catch (error) {
+      this.commandCount = Math.max(0, this.commandCount - 1);
+      // Restore the published lock state. No command was acquired, so there is
+      // no release callback to run; retain the original publication error.
+      try {
+        this.callbacks.onLockStateChange();
+      } catch {
+        // A rollback notification cannot replace the acquisition error.
+      }
+      throw error;
+    }
     return () => {
       if (released) return;
       released = true;
       this.commandCount = Math.max(0, this.commandCount - 1);
-      this.callbacks.onLockStateChange();
-      this.callbacks.onCommandReleased();
+      this.notifyCommandReleased();
     };
+  }
+
+  private notifyCommandReleased(): void {
+    let failure: unknown;
+    let failed = false;
+    try {
+      this.callbacks.onLockStateChange();
+    } catch (error) {
+      failure = error;
+      failed = true;
+    }
+    try {
+      this.callbacks.onCommandReleased();
+    } catch (error) {
+      if (!failed) {
+        failure = error;
+        failed = true;
+      }
+    }
+    // Release is final even when publication fails; report the first callback
+    // error after both publication and queue-drain callbacks have run.
+    if (failed) throw failure;
   }
 
   beginRefresh(sequence: number): void {

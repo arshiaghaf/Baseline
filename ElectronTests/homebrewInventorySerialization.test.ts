@@ -60,6 +60,62 @@ function storeWithInventory(fetchInventory: () => Promise<HomebrewInventoryResul
 }
 
 describe("Homebrew inventory serialization", () => {
+  it("rolls back a command reservation when lock publication throws", () => {
+    const published: boolean[] = [];
+    let throwOnce = true;
+    const drain = vi.fn();
+    const lock = new HomebrewWorkLock<string>({
+      hasOtherMutation: () => false,
+      onLockStateChange: () => {
+        published.push(lock.isCommandLocked);
+        if (throwOnce) {
+          throwOnce = false;
+          throw new Error("lock publication failed");
+        }
+      },
+      onCommandReleased: drain
+    });
+
+    expect(() => lock.reserveCommand()).toThrow("lock publication failed");
+    expect(lock.activeCommandCount).toBe(0);
+    expect(lock.isCommandLocked).toBe(false);
+    expect(lock.isCleanupLocked).toBe(false);
+    expect(published).toEqual([true, false]);
+    expect(drain).not.toHaveBeenCalled();
+
+    const release = lock.reserveCommand();
+    expect(release).toBeDefined();
+    release?.();
+    expect(lock.isCommandLocked).toBe(false);
+    expect(drain).toHaveBeenCalledTimes(1);
+  });
+
+  it("drains queued work and makes release idempotent when unlock publication throws", () => {
+    let throwOnUnlock = true;
+    const drain = vi.fn(() => {
+      throw new Error("queue drain failed");
+    });
+    const lock = new HomebrewWorkLock<string>({
+      hasOtherMutation: () => false,
+      onLockStateChange: () => {
+        if (!lock.isCommandLocked && throwOnUnlock) {
+          throwOnUnlock = false;
+          throw new Error("unlock publication failed");
+        }
+      },
+      onCommandReleased: drain
+    });
+    const release = lock.reserveCommand();
+    expect(release).toBeDefined();
+
+    expect(() => release?.()).toThrow("unlock publication failed");
+    expect(lock.activeCommandCount).toBe(0);
+    expect(lock.isCommandLocked).toBe(false);
+    expect(drain).toHaveBeenCalledTimes(1);
+    expect(() => release?.()).not.toThrow();
+    expect(drain).toHaveBeenCalledTimes(1);
+  });
+
   it("shares one metadata read between full refreshes waiting behind a lightweight read", async () => {
     const lightweight = deferred<HomebrewInventoryResult>();
     const metadata = deferred<HomebrewInventoryResult>();
