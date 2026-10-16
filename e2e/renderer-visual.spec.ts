@@ -152,7 +152,9 @@ for (const surface of ["main", "tray"] as const) {
             const ciLane = testInfo.config.metadata.visualLane === "xcode-27";
             const bounds = {
               ...sizes[surface][size],
-              ...(ciLane && surface === "main" ? { height: 640 } : {})
+              ...(ciLane && surface === "main"
+                ? { width: size === "wide" ? 1000 : 660, height: 640 }
+                : {})
             };
             const geometry = await application.evaluate(
               ({ BrowserWindow, screen }, { route, bounds, ciLane }) => {
@@ -179,6 +181,7 @@ for (const surface of ["main", "tray"] as const) {
                   contentBounds: window.getContentBounds(),
                   windowBounds: window.getBounds(),
                   primaryDisplayID: display.id,
+                  primaryWorkArea: display.workArea,
                   displays: screen.getAllDisplays().map((display) => ({
                     id: display.id,
                     label: display.label,
@@ -238,8 +241,21 @@ for (const surface of ["main", "tray"] as const) {
                 `${JSON.stringify(environment, null, 2)}\n`
               );
             }
-            if (geometry.requestedContentBounds)
+            if (geometry.requestedContentBounds) {
+              const requested = geometry.requestedContentBounds;
+              const area = geometry.primaryWorkArea;
+              expect(requested.x, "CI content left fits work area").toBeGreaterThanOrEqual(area.x);
+              expect(requested.y, "CI content top fits work area").toBeGreaterThanOrEqual(area.y);
+              expect(
+                requested.x + requested.width,
+                "CI content right fits work area"
+              ).toBeLessThanOrEqual(area.x + area.width);
+              expect(
+                requested.y + requested.height,
+                "CI content bottom fits work area"
+              ).toBeLessThanOrEqual(area.y + area.height);
               expect(geometry.contentBounds).toEqual(geometry.requestedContentBounds);
+            }
             await expect
               .poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight })))
               .toEqual(bounds);

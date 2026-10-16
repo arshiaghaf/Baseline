@@ -27,9 +27,10 @@ rejecting stale `out/` builds.
 Environment is attached before dimension and pixel assertions, including display
 work areas/scale factors, requested and actual native content/window bounds, and
 renderer DPR. The CI lane requests fixed main content viewports of 660×640 and
-1280×640, versus the retained local 660×760 and 1280×900. Both lanes retain tray
+1000×640, versus the retained local 660×760 and 1280×900. Both lanes retain tray
 360×560 and 440×640. CI content origin is primary work-area x and work-area y+32;
-the exact content bounds and viewport are asserted, with no adaptive sizing.
+the requested rectangle must fit the work area, and exact content bounds and
+viewport are asserted, with no adaptive sizing.
 The shorter CI main viewport intentionally covers clipping/overflow on that
 desktop; it does not replace the taller local coverage.
 `png-sha256.json` records every retained original PNG's SHA-256.
