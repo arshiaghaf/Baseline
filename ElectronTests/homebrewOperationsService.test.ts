@@ -108,29 +108,32 @@ describe("HomebrewOperationsService", () => {
     const h = harness();
     h.lock.beginRefresh(1);
     const pending = h.service.performHomebrewUpdate("formula:example");
-    expect(h.state.homebrewQueuedItemIDs).toEqual(["formula:example"]);
-    expect(h.runCommand).not.toHaveBeenCalled();
-    h.setState({
-      homebrewItems: [
-        formula({
-          token: "different",
-          formulaIdentity: {
-            name: "different",
-            fullName: "different",
-            tap: "homebrew/core",
-            oldNames: []
-          }
-        })
-      ]
-    });
-    h.lock.endRefresh(1);
-    await h.service.processHomebrewUpdateQueue();
-    await pending;
+    try {
+      expect(h.state.homebrewQueuedItemIDs).toEqual(["formula:example"]);
+      expect(h.runCommand).not.toHaveBeenCalled();
+      h.setState({
+        homebrewItems: [
+          formula({
+            token: "different",
+            formulaIdentity: {
+              name: "different",
+              fullName: "different",
+              tap: "homebrew/core",
+              oldNames: []
+            }
+          })
+        ]
+      });
+    } finally {
+      h.lock.endRefresh(1);
+      await h.service.processHomebrewUpdateQueue();
+      await pending;
+    }
     expect(h.runCommand).not.toHaveBeenCalled();
     expect(h.state.homebrewUpdatingItemIDs).toEqual([]);
   });
 
-  it("reports streamed progress and completes with a success hold before refresh", async () => {
+  it("reports streamed progress and completes before refresh", async () => {
     let finish!: (result: CommandResult) => void;
     const commandGate = new Promise<CommandResult>((resolve) => {
       finish = resolve;
@@ -140,10 +143,13 @@ describe("HomebrewOperationsService", () => {
       return commandGate;
     });
     const pending = h.service.performHomebrewUpdate("formula:example");
-    await vi.waitFor(() => expect(h.runCommand).toHaveBeenCalled());
-    expect(h.state.homebrewBatchProgressByItemID["formula:example"]).toBeGreaterThan(0);
-    finish({ success: true, status: 0, output: "" });
-    await pending;
+    try {
+      await vi.waitFor(() => expect(h.runCommand).toHaveBeenCalled());
+      expect(h.state.homebrewBatchProgressByItemID["formula:example"]).toBeGreaterThan(0);
+    } finally {
+      finish({ success: true, status: 0, output: "" });
+      await pending;
+    }
     expect(h.runCommand).toHaveBeenCalledWith(["upgrade", "example"], expect.any(Function));
     expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual(["formula:example"]);
     expect(h.stats).toHaveBeenCalledTimes(1);
@@ -152,16 +158,22 @@ describe("HomebrewOperationsService", () => {
   });
 
   it("records a failed update and keeps its transient failure state through refresh", async () => {
-    const h = harness(async () => ({ success: false, status: 1, output: "failed" }));
-    await h.service.performHomebrewUpdate("formula:example");
-    expect(h.failure).toHaveBeenCalledWith(
-      "formula:example",
-      "update",
-      expect.objectContaining({ success: false })
-    );
-    expect(h.state.homebrewBatchFailedItemIDs).toEqual(["formula:example"]);
-    expect(h.state.refreshErrorMessage).toBe("Homebrew update failed for Example.");
-    expect(h.stats).not.toHaveBeenCalled();
-    expect(h.refresh).toHaveBeenCalledTimes(1);
+    vi.useFakeTimers();
+    try {
+      const h = harness(async () => ({ success: false, status: 1, output: "failed" }));
+      await h.service.performHomebrewUpdate("formula:example");
+      expect(h.failure).toHaveBeenCalledWith(
+        "formula:example",
+        "update",
+        expect.objectContaining({ success: false })
+      );
+      expect(h.state.homebrewBatchFailedItemIDs).toEqual(["formula:example"]);
+      expect(h.state.refreshErrorMessage).toBe("Homebrew update failed for Example.");
+      expect(h.stats).not.toHaveBeenCalled();
+      expect(h.refresh).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });
