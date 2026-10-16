@@ -44,6 +44,7 @@ import { SelfUpdateClient } from "./selfUpdateClient";
 import { normalizeAppVisibility } from "../shared/appVisibility";
 import { SparkleAppcastClient } from "./sparkleAppcastClient";
 import { ProgressPublisher } from "./progressPublisher";
+import { ToolStatusService } from "./toolStatusService";
 import {
   failureReason,
   normalizeOperationFailures,
@@ -107,6 +108,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private hasCheckedHomebrewAvailability = false;
   private readonly homebrewWorkLock: HomebrewWorkLock<HomebrewInventoryResult>;
   private readonly homebrewOperations: HomebrewOperationsService;
+  private readonly toolStatus: ToolStatusService;
   private readonly refreshComputation: RefreshComputationService;
 
   private state: BaselineSnapshot;
@@ -204,6 +206,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       getStats: () => this.state.profileStats,
       publishStats: (profileStats) => this.patch({ profileStats }),
       persist: () => this.persist()
+    });
+    this.toolStatus = new ToolStatusService({
+      patch: (patch) => this.patch(patch),
+      reserveHomebrewCommandLock: () => this.reserveHomebrewCommandLock(),
+      runBrewCommand: this.runBrewCommand,
+      runMasCommand: this.runMasCommand,
+      markHomebrewAvailabilityChecked: () => {
+        this.hasCheckedHomebrewAvailability = true;
+      }
     });
     this.homebrewOperations = new HomebrewOperationsService({
       getState: (): HomebrewOperationsState => {
@@ -395,24 +406,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async refreshToolStatus(): Promise<void> {
-    this.patch({ isChecking: true });
-    const masStatus = this.runMasCommand(["version"]);
-    const releaseHomebrewCommandLock = this.reserveHomebrewCommandLock();
-    let brew: CommandResult | undefined;
-    try {
-      brew = releaseHomebrewCommandLock ? await this.runBrewCommand(["--version"]) : undefined;
-    } finally {
-      releaseHomebrewCommandLock?.();
-    }
-    if (brew) {
-      this.hasCheckedHomebrewAvailability = true;
-    }
-    const mas = await masStatus;
-    this.patch({
-      isMasInstalled: mas.success,
-      ...(brew ? { isHomebrewInstalled: brew.success } : {}),
-      isChecking: false
-    });
+    await this.toolStatus.check();
   }
 
   async setSearchText(searchText: string): Promise<void> {
