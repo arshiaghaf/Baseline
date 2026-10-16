@@ -14,9 +14,7 @@ import {
   EyeOff,
   FolderPlus,
   Info,
-  Link2,
   LockKeyhole,
-  Package,
   RefreshCcw,
   Search,
   Server,
@@ -31,16 +29,11 @@ import type {
   AppRecord,
   AppearancePreference,
   BaselineSnapshot,
-  HomebrewCaskDiscoveryItem,
   HomebrewManagedItem,
   MenuTab
 } from "../shared/domain";
-import {
-  defaultPersistedSnapshot,
-  applySnapshotProgress,
-  homebrewPresentationLabel
-} from "../shared/domain";
-import { homebrewItemMatchesApp, isCask } from "../shared/homebrewAppLinking";
+import { defaultPersistedSnapshot, applySnapshotProgress } from "../shared/domain";
+import { homebrewItemMatchesApp } from "../shared/homebrewAppLinking";
 import { operationFailureDescription, type OperationFailure } from "../shared/operationFailures";
 import { operationIssueReport } from "../shared/operationReport";
 import "./styles.css";
@@ -50,8 +43,7 @@ import {
   type DerivedSections,
   combinedAvailableCount,
   uninstallableHomebrewItemForApp,
-  compareRecentRows,
-  matchingAppForHomebrewItem
+  compareRecentRows
 } from "./helpers/sections";
 import {
   clearCompactPopoverControlFocus,
@@ -69,11 +61,6 @@ import {
 } from "./constants";
 import {
   selectedTabTitle,
-  appSourceLabel,
-  appUpdateReadyLabel,
-  appUpdateVersionChange,
-  updatedRelativeLabel,
-  homebrewItemLabel,
   homebrewReadyDetail,
   defaultScanDirectoryLabel,
   clampRefreshIntervalMinutes
@@ -83,19 +70,18 @@ import {
   ActionConfirmationOverlay
 } from "./components/ActionConfirmation";
 import {
-  Empty,
-  PanelTitle,
-  UpdateActionButton,
-  RowMoreActionButton,
-  VersionChange
-} from "./components/CommonControls";
-import {
-  homebrewBatchActionState,
-  appControlState,
-  isHomebrewCommandActive,
-  actionStateFromFlags,
-  homebrewControlState
-} from "./helpers/actionState";
+  DiscoverRow,
+  AppRow,
+  HomebrewRow,
+  IgnoredAppCard,
+  IgnoredHomebrewCard,
+  AppUpdateCard,
+  HomebrewUpdateCard,
+  RecentAppCard,
+  RecentHomebrewCard
+} from "./components/ItemViews";
+import { Empty, PanelTitle, UpdateActionButton } from "./components/CommonControls";
+import { homebrewBatchActionState } from "./helpers/actionState";
 import { performHomebrewUpdateAllForItems, toggleCollapsedSection } from "./helpers/actions";
 import {
   buildProfileSummary,
@@ -1324,93 +1310,6 @@ function AppSection({
   );
 }
 
-function AppIconButton({ app }: { app: AppRecord }) {
-  return (
-    <button
-      className={
-        app.iconDataURL
-          ? "app-icon app-icon-image clickable-app-icon"
-          : "app-icon clickable-app-icon"
-      }
-      onClick={() => void window.baseline.openApp(app.id)}
-      title="Open app"
-      aria-label="Open app"
-    >
-      {app.iconDataURL ? (
-        <img src={app.iconDataURL} alt="" draggable={false} />
-      ) : (
-        app.displayName.slice(0, 1).toUpperCase()
-      )}
-    </button>
-  );
-}
-
-function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const {
-    update,
-    isIgnored,
-    uninstallableItem,
-    isUninstalling,
-    actionState,
-    isUpdating,
-    homebrewUninstallBlocked,
-    isHomebrewUpdatePinned
-  } = appControlState(app, snapshot);
-  const label = appSourceLabel(app, snapshot);
-
-  return (
-    <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
-      <div className="item-card-top">
-        <AppIconButton app={app} />
-        <div className="item-card-actions">
-          {update && !isHomebrewUpdatePinned && (
-            <UpdateActionButton
-              state={actionState}
-              disabled={isUninstalling}
-              readyLabel={appUpdateReadyLabel(app, snapshot, update)}
-              onAction={() => void window.baseline.performAppUpdate(app.id)}
-            />
-          )}
-          <RowMoreActionButton
-            isIgnored={isIgnored}
-            disabled={isUninstalling}
-            onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
-            uninstallLabel="Uninstall"
-            canUninstall={Boolean(uninstallableItem)}
-            uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
-            onUninstall={() =>
-              uninstallableItem &&
-              requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
-            }
-          />
-        </div>
-      </div>
-      <div className="item-card-main row-main">
-        <div className="row-title">
-          <strong>{app.displayName}</strong>
-          {label && <span>{label}</span>}
-          {isHomebrewUpdatePinned && (
-            <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
-          )}
-        </div>
-        <p>
-          {update ? (
-            <VersionChange
-              from={appUpdateVersionChange(update).from}
-              to={appUpdateVersionChange(update).to}
-              collapseLong
-            />
-          ) : (
-            app.localVersion.raw || "unknown"
-          )}
-        </p>
-      </div>
-    </article>
-  );
-}
-
 function RecentlyUpdatedAppSection({
   sectionID,
   title,
@@ -1548,135 +1447,6 @@ function CardGrid({
   sectionClassName: string;
 }) {
   return <div className={`card-grid ${sectionClassName}`}>{children}</div>;
-}
-
-function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const {
-    update,
-    isIgnored,
-    uninstallableItem,
-    isUninstalling,
-    actionState,
-    isUpdating,
-    homebrewUninstallBlocked,
-    isHomebrewUpdatePinned
-  } = appControlState(app, snapshot);
-  const recentlyUpdatedRecord = snapshot.recentlyUpdated.find((record) => record.appID === app.id);
-  const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
-
-  return (
-    <article className={isIgnored ? "item-card recent-card ignored-row" : "item-card recent-card"}>
-      <div className="item-card-top">
-        <AppIconButton app={app} />
-        <div className="item-card-actions">
-          {update && !isHomebrewUpdatePinned && (
-            <UpdateActionButton
-              state={actionState}
-              disabled={isUninstalling}
-              readyLabel={appUpdateReadyLabel(app, snapshot, update)}
-              onAction={() => void window.baseline.performAppUpdate(app.id)}
-            />
-          )}
-          <RowMoreActionButton
-            isIgnored={isIgnored}
-            disabled={isUninstalling}
-            onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
-            uninstallLabel="Uninstall"
-            canUninstall={Boolean(uninstallableItem)}
-            uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
-            onUninstall={() =>
-              uninstallableItem &&
-              requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
-            }
-          />
-        </div>
-      </div>
-      <div className="item-card-main row-main">
-        <div className="row-title">
-          <strong>{app.displayName}</strong>
-          {label && <span>{label}</span>}
-          {isHomebrewUpdatePinned && (
-            <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
-          )}
-        </div>
-        <p>
-          {recentlyUpdatedRecord
-            ? updatedRelativeLabel(recentlyUpdatedRecord.updatedAt)
-            : "Updated recently"}
-        </p>
-      </div>
-    </article>
-  );
-}
-
-function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: BaselineSnapshot }) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const {
-    update,
-    isIgnored,
-    uninstallableItem,
-    isUninstalling,
-    actionState,
-    isUpdating,
-    homebrewUninstallBlocked,
-    isHomebrewUpdatePinned
-  } = appControlState(app, snapshot);
-  const label = appSourceLabel(app, snapshot);
-
-  return (
-    <article className="item-card ignored-card ignored-row">
-      <div className="item-card-top">
-        <AppIconButton app={app} />
-        <div className="item-card-actions">
-          <RowMoreActionButton
-            isIgnored={isIgnored}
-            disabled={isUninstalling}
-            updateAction={
-              update && !isHomebrewUpdatePinned
-                ? {
-                    state: actionState,
-                    disabled: isUninstalling,
-                    readyLabel: appUpdateReadyLabel(app, snapshot, update),
-                    onAction: () => void window.baseline.performAppUpdate(app.id)
-                  }
-                : undefined
-            }
-            onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
-            uninstallLabel="Uninstall"
-            canUninstall={Boolean(uninstallableItem)}
-            uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
-            onUninstall={() =>
-              uninstallableItem &&
-              requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
-            }
-          />
-        </div>
-      </div>
-      <div className="item-card-main row-main">
-        <div className="row-title">
-          <strong>{app.displayName}</strong>
-          {label && <span>{label}</span>}
-          {isHomebrewUpdatePinned && (
-            <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
-          )}
-        </div>
-        <p>
-          {update ? (
-            <VersionChange
-              from={appUpdateVersionChange(update).from}
-              to={appUpdateVersionChange(update).to}
-              collapseLong
-            />
-          ) : (
-            app.localVersion.raw || "unknown"
-          )}
-        </p>
-      </div>
-    </article>
-  );
 }
 
 export function OperationFailures({ snapshot }: { snapshot: BaselineSnapshot }) {
@@ -1847,83 +1617,6 @@ function OperationReportPreview({
   );
 }
 
-export function AppRow({
-  app,
-  snapshot,
-  recentlyUpdated
-}: {
-  app: AppRecord;
-  snapshot: BaselineSnapshot;
-  recentlyUpdated: boolean;
-}) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const {
-    update,
-    isIgnored,
-    uninstallableItem,
-    isUninstalling,
-    actionState,
-    isUpdating,
-    homebrewUninstallBlocked,
-    isHomebrewUpdatePinned
-  } = appControlState(app, snapshot);
-  const recentlyUpdatedRecord = recentlyUpdated
-    ? snapshot.recentlyUpdated.find((record) => record.appID === app.id)
-    : undefined;
-  const recentlyUpdatedAt = recentlyUpdatedRecord?.updatedAt;
-  const label = appSourceLabel(app, snapshot, recentlyUpdatedRecord);
-
-  return (
-    <article className={isIgnored ? "row ignored-row" : "row"}>
-      <AppIconButton app={app} />
-      <div className="row-main">
-        <div className="row-title">
-          <strong>{app.displayName}</strong>
-          {label && <span>{label}</span>}
-          {isHomebrewUpdatePinned && (
-            <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
-          )}
-        </div>
-        <p>
-          {update ? (
-            <VersionChange
-              from={appUpdateVersionChange(update).from}
-              to={appUpdateVersionChange(update).to}
-            />
-          ) : recentlyUpdatedAt ? (
-            updatedRelativeLabel(recentlyUpdatedAt)
-          ) : (
-            app.localVersion.raw || "unknown"
-          )}
-        </p>
-      </div>
-      <div className="row-actions">
-        {update && !isHomebrewUpdatePinned && (
-          <UpdateActionButton
-            state={actionState}
-            disabled={isUninstalling}
-            readyLabel={appUpdateReadyLabel(app, snapshot, update)}
-            onAction={() => void window.baseline.performAppUpdate(app.id)}
-          />
-        )}
-        <RowMoreActionButton
-          isIgnored={isIgnored}
-          disabled={isUninstalling}
-          onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
-          uninstallLabel="Uninstall"
-          canUninstall={Boolean(uninstallableItem)}
-          uninstalling={isUninstalling}
-          uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
-          onUninstall={() =>
-            uninstallableItem &&
-            requestActionConfirmation({ type: "uninstall", item: uninstallableItem })
-          }
-        />
-      </div>
-    </article>
-  );
-}
-
 function HomebrewTab({
   snapshot,
   derived
@@ -2065,61 +1758,6 @@ function DiscoverSection({ snapshot }: { snapshot: BaselineSnapshot }) {
   );
 }
 
-export function DiscoverRow({
-  item,
-  snapshot
-}: {
-  item: HomebrewCaskDiscoveryItem;
-  snapshot: BaselineSnapshot;
-}) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const installing = snapshot.homebrewDiscoverInstallingItemIDs.includes(item.id);
-  const failed = snapshot.homebrewDiscoverFailedItemIDs.includes(item.id);
-  const done = snapshot.homebrewDiscoverInstalledPendingRefreshItemIDs.includes(item.id);
-  const progress = snapshot.homebrewDiscoverProgressByItemID[item.id];
-  const canInstall = snapshot.isHomebrewInstalled;
-  const busy = canInstall && !installing && !failed && !done && isHomebrewCommandActive(snapshot);
-
-  return (
-    <article className="row">
-      <HomebrewItemIcon item={item} snapshot={snapshot} />
-      <div className="row-main">
-        <div className="row-title">
-          <strong>{item.displayName}</strong>
-          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
-        </div>
-        <p>
-          {canInstall
-            ? item.version.raw || item.token
-            : "Homebrew is not installed. Install Homebrew to enable this source."}
-        </p>
-      </div>
-      <div className="row-actions">
-        <UpdateActionButton
-          state={actionStateFromFlags({ failed, updating: installing, progress, done })}
-          readyLabel={canInstall ? (busy ? "Busy" : "Install") : "Needs Homebrew"}
-          disabled={!canInstall || busy}
-          onAction={() => {
-            if (canInstall && !busy) {
-              requestActionConfirmation({ type: "install", item });
-            }
-          }}
-        />
-        {item.homepageURL && (
-          <button
-            className="icon-button"
-            onClick={() => void window.baseline.openExternal(item.homepageURL!)}
-            title="Open Homebrew page"
-            aria-label="Open Homebrew page"
-          >
-            <Link2 size={15} />
-          </button>
-        )}
-      </div>
-    </article>
-  );
-}
-
 export function HomebrewSection({
   sectionID,
   title,
@@ -2182,65 +1820,6 @@ export function HomebrewSection({
           </div>
         ))}
     </section>
-  );
-}
-
-function HomebrewUpdateCard({
-  item,
-  snapshot
-}: {
-  item: HomebrewManagedItem;
-  snapshot: BaselineSnapshot;
-}) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
-    homebrewControlState(item, snapshot);
-
-  return (
-    <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
-      <div className="item-card-top">
-        <HomebrewItemIcon item={item} snapshot={snapshot} />
-        <div className="item-card-actions">
-          {item.isOutdated && !item.pinned && (
-            <UpdateActionButton
-              state={updateState}
-              disabled={isUninstalling}
-              onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
-            />
-          )}
-          <RowMoreActionButton
-            isIgnored={isIgnored}
-            disabled={isUninstalling}
-            onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
-            uninstallLabel="Uninstall"
-            canUninstall={item.kind === "cask"}
-            uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
-            onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
-          />
-        </div>
-      </div>
-      <div className="item-card-main row-main">
-        <div className="row-title">
-          <strong>{item.name}</strong>
-          {item.pinned && (
-            <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
-          )}
-          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
-        </div>
-        <p>
-          {item.latestVersion ? (
-            <VersionChange
-              from={item.installedVersion.raw || "unknown"}
-              to={item.latestVersion.raw}
-              collapseLong
-            />
-          ) : (
-            item.installedVersion.raw || "unknown"
-          )}
-        </p>
-      </div>
-    </article>
   );
 }
 
@@ -2319,241 +1898,6 @@ function IgnoredHomebrewSection({
         ))}
     </section>
   );
-}
-
-function RecentHomebrewCard({
-  item,
-  snapshot,
-  appCaskLabel
-}: {
-  item: HomebrewManagedItem;
-  snapshot: BaselineSnapshot;
-  appCaskLabel?: string;
-}) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
-    homebrewControlState(item, snapshot);
-  const recentlyUpdatedRecord = snapshot.homebrewRecentlyUpdated.find(
-    (record) => record.itemID === item.id
-  );
-
-  return (
-    <article className={isIgnored ? "item-card recent-card ignored-row" : "item-card recent-card"}>
-      <div className="item-card-top">
-        <HomebrewItemIcon item={item} snapshot={snapshot} />
-        <div className="item-card-actions">
-          {item.isOutdated && !item.pinned && (
-            <UpdateActionButton
-              state={updateState}
-              disabled={isUninstalling}
-              onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
-            />
-          )}
-          <RowMoreActionButton
-            isIgnored={isIgnored}
-            disabled={isUninstalling}
-            onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
-            uninstallLabel="Uninstall"
-            canUninstall={item.kind === "cask"}
-            uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
-            onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
-          />
-        </div>
-      </div>
-      <div className="item-card-main row-main">
-        <div className="row-title">
-          <strong>{item.name}</strong>
-          {item.pinned && (
-            <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
-          )}
-          <span>{homebrewItemLabel(item, appCaskLabel)}</span>
-        </div>
-        <p>
-          {recentlyUpdatedRecord
-            ? updatedRelativeLabel(recentlyUpdatedRecord.updatedAt)
-            : "Updated recently"}
-        </p>
-      </div>
-    </article>
-  );
-}
-
-function IgnoredHomebrewCard({
-  item,
-  snapshot
-}: {
-  item: HomebrewManagedItem;
-  snapshot: BaselineSnapshot;
-}) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
-    homebrewControlState(item, snapshot);
-
-  return (
-    <article className="item-card ignored-card ignored-row">
-      <div className="item-card-top">
-        <HomebrewItemIcon item={item} snapshot={snapshot} />
-        <div className="item-card-actions">
-          <RowMoreActionButton
-            isIgnored={isIgnored}
-            disabled={isUninstalling}
-            updateAction={
-              item.isOutdated && !item.pinned
-                ? {
-                    state: updateState,
-                    disabled: isUninstalling,
-                    onAction: () => void window.baseline.performHomebrewUpdate(item.id)
-                  }
-                : undefined
-            }
-            onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
-            uninstallLabel="Uninstall"
-            canUninstall={item.kind === "cask"}
-            uninstalling={isUninstalling}
-            uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
-            onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
-          />
-        </div>
-      </div>
-      <div className="item-card-main row-main">
-        <div className="row-title">
-          <strong>{item.name}</strong>
-          {item.pinned && (
-            <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
-          )}
-          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
-        </div>
-        <p>
-          {item.latestVersion ? (
-            <VersionChange
-              from={item.installedVersion.raw || "unknown"}
-              to={item.latestVersion.raw}
-              collapseLong
-            />
-          ) : (
-            item.installedVersion.raw || "unknown"
-          )}
-        </p>
-      </div>
-    </article>
-  );
-}
-
-export function HomebrewRow({
-  item,
-  snapshot,
-  recentlyUpdated = false
-}: {
-  item: HomebrewManagedItem;
-  snapshot: BaselineSnapshot;
-  recentlyUpdated?: boolean;
-}) {
-  const requestActionConfirmation = React.useContext(ActionConfirmationContext);
-  const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
-    homebrewControlState(item, snapshot);
-  const recentlyUpdatedAt = recentlyUpdated
-    ? snapshot.homebrewRecentlyUpdated.find((record) => record.itemID === item.id)?.updatedAt
-    : undefined;
-
-  return (
-    <article className={isIgnored ? "row ignored-row" : "row"}>
-      <HomebrewItemIcon item={item} snapshot={snapshot} />
-      <div className="row-main">
-        <div className="row-title">
-          <strong>{item.name}</strong>
-          {item.pinned && (
-            <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
-          )}
-          <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
-        </div>
-        <p>
-          {recentlyUpdatedAt ? (
-            updatedRelativeLabel(recentlyUpdatedAt)
-          ) : item.latestVersion ? (
-            <VersionChange
-              from={item.installedVersion.raw || "unknown"}
-              to={item.latestVersion.raw}
-            />
-          ) : (
-            item.installedVersion.raw || "unknown"
-          )}
-        </p>
-      </div>
-      <div className="row-actions">
-        {item.isOutdated && !item.pinned && (
-          <UpdateActionButton
-            state={updateState}
-            disabled={isUninstalling}
-            onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
-          />
-        )}
-        <RowMoreActionButton
-          isIgnored={isIgnored}
-          disabled={isUninstalling}
-          onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
-          uninstallLabel="Uninstall"
-          canUninstall={item.kind === "cask"}
-          uninstalling={isUninstalling}
-          uninstallDisabled={isUpdating || isUninstalling || homebrewUninstallBlocked}
-          onUninstall={() => requestActionConfirmation({ type: "uninstall", item })}
-        />
-      </div>
-    </article>
-  );
-}
-
-function HomebrewItemIcon({
-  item,
-  snapshot
-}: {
-  item: Pick<HomebrewManagedItem, "kind" | "token" | "presentation"> &
-    Partial<
-      Pick<HomebrewManagedItem, "appID" | "name" | "iconDataURL"> &
-        Pick<HomebrewCaskDiscoveryItem, "displayName">
-    >;
-  snapshot: BaselineSnapshot;
-}) {
-  const app = matchingAppForHomebrewItem(item, snapshot);
-  const iconDataURL = item.iconDataURL ?? app?.iconDataURL;
-  const isCaskItem = isCask(item.kind);
-  const isCliLike = item.kind === "formula" || item.presentation === "cli";
-  const fallbackIcon = isCliLike ? <Terminal size={25} strokeWidth={2.2} /> : <Package size={26} />;
-  const fallbackClassName = [
-    "app-icon",
-    "brew",
-    isCaskItem ? "cask" : "formula",
-    isCliLike ? "tool" : undefined
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  if (app) {
-    return (
-      <button
-        className={
-          iconDataURL
-            ? "app-icon app-icon-image clickable-app-icon"
-            : `${fallbackClassName} clickable-app-icon`
-        }
-        onClick={() => void window.baseline.openApp(app.id)}
-        title="Open app"
-        aria-label="Open app"
-      >
-        {iconDataURL ? <img src={iconDataURL} alt="" draggable={false} /> : fallbackIcon}
-      </button>
-    );
-  }
-
-  if (iconDataURL) {
-    return (
-      <div className="app-icon app-icon-image">
-        <img src={iconDataURL} alt="" draggable={false} />
-      </div>
-    );
-  }
-
-  return <div className={fallbackClassName}>{fallbackIcon}</div>;
 }
 
 export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
@@ -3270,6 +2614,8 @@ const root = document.getElementById("root");
 if (root) {
   createRoot(root).render(<App />);
 }
+
+export { AppRow, DiscoverRow, HomebrewRow } from "./components/ItemViews";
 
 export { UpdateActionButton } from "./components/CommonControls";
 
