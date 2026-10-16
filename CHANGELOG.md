@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.1 — 2026-10-16
+
+### Added
+
+- Contributor regression tests now cover superseded refreshes and recovery from failed update lookups. ([#268](https://github.com/arshiaghaf/Baseline/pull/268)), ([#273](https://github.com/arshiaghaf/Baseline/pull/273))
+- Contributor regression tests now cover profile-history integrity, duplicate events, and recovery from failed saves. ([#269](https://github.com/arshiaghaf/Baseline/pull/269))
+- Contributor regression tests now protect Homebrew reservation ownership and release ordering. ([#270](https://github.com/arshiaghaf/Baseline/pull/270))
+- Contributor regression tests now cover queued Homebrew identity checks and update progress ordering. ([#271](https://github.com/arshiaghaf/Baseline/pull/271))
+
+### Fixed
+
+- Contributor Homebrew maintenance tests now handle delayed saves without timing out or leaving unfinished work. ([#265](https://github.com/arshiaghaf/Baseline/pull/265))
+- Overlapping refreshes now share Homebrew inventory reads instead of running metadata checks concurrently. ([#274](https://github.com/arshiaghaf/Baseline/pull/274))
+- Failed Homebrew lock notifications no longer leave operations locked or prevent queued work from continuing. ([#274](https://github.com/arshiaghaf/Baseline/pull/274))
+- Failed Homebrew or mas checks now finish, preserve successful results, and allow retry. ([#275](https://github.com/arshiaghaf/Baseline/pull/275))
+- Overlapping tool checks now share probes instead of starting duplicate checks. ([#275](https://github.com/arshiaghaf/Baseline/pull/275))
+- Quitting Baseline now cancels delayed failure and progress updates once shutdown is accepted. ([#276](https://github.com/arshiaghaf/Baseline/pull/276))
+
 ## 0.7.0 — 2026-10-10
 
 ### Added
