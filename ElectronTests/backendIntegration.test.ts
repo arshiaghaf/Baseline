@@ -54,9 +54,12 @@ function fixture(
   options: {
     run?: typeof runBrewCommand;
     inventory?: () => Promise<HomebrewInventoryResult>;
+    save?: () => Promise<void>;
+    scan?: () => Promise<never[]>;
+    savedItems?: HomebrewManagedItem[];
   } = {}
 ) {
-  const save = vi.fn(async () => undefined);
+  const save = vi.fn(options.save ?? (async () => undefined));
   const run = vi.fn(options.run ?? (async () => ok));
   const fetchInventory = vi.fn(options.inventory ?? (async () => healthyInventory));
   const store = new UpdateStore({
@@ -64,7 +67,7 @@ function fixture(
     persisted: {
       ...defaultPersistedSnapshot(),
       autoRefreshEnabled: false,
-      homebrewItems: [formula]
+      homebrewItems: options.savedItems ?? [formula]
     },
     openExternalURL: async () => false,
     openAppBundle: async () => undefined,
@@ -76,7 +79,7 @@ function fixture(
       seal: async (stats) => stats
     },
     clients: {
-      scanner: { scanApplications: async () => [] },
+      scanner: { scanApplications: options.scan ?? (async () => []) },
       appStore: { lookupOutcome: async () => ({ type: "completed" }) },
       sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
       homebrew: {
@@ -95,6 +98,213 @@ function fixture(
 }
 
 describe("backend composition", () => {
+  it.each([
+    "healthy",
+    "provider failure",
+    "inventory failure",
+    "failure-details save only",
+    "persistence failure",
+    "cleanup uncertainty",
+    "cleanup and persistence failure"
+  ])(
+    "retains the failed install outcome and current warnings after %s reconciliation",
+    async (scenario) => {
+      vi.useFakeTimers();
+      let saveCount = 0;
+      const { store, save } = fixture({
+        run: async () => ({ ...ok, success: false, status: 1, output: "private install output" }),
+        save: async () => {
+          if (
+            scenario.includes("persistence failure") ||
+            (scenario === "failure-details save only" && saveCount++ === 0)
+          )
+            throw new Error("Reconciliation save failed.");
+        },
+        scan: async () => {
+          if (scenario === "provider failure") throw new Error("Application scan failed.");
+          return [];
+        },
+        inventory: async () => {
+          if (scenario === "inventory failure") throw new Error("Inventory read failed.");
+          return {
+            ...healthyInventory,
+            warning: "Fresh inventory warning.",
+            ...(scenario.startsWith("cleanup") ? { cleanupUnconfirmed: true } : {})
+          };
+        }
+      });
+      try {
+        await store
+          .installHomebrewItem({
+            id: "formula:new",
+            kind: "formula",
+            token: "new",
+            displayName: "New",
+            version: version("1")
+          })
+          .catch((error: Error) => {
+            expect(scenario).toContain("persistence failure");
+            expect(error.message).toBe("Reconciliation save failed.");
+          });
+        const state = store.getSnapshot();
+        expect(state.refreshErrorMessage).toContain("Homebrew install failed for New.");
+        if (scenario === "provider failure")
+          expect(state.refreshErrorMessage).toContain("Application scan failed.");
+        if (scenario === "inventory failure")
+          expect(state.refreshErrorMessage).toContain("Inventory read failed.");
+        if (scenario.includes("persistence failure")) {
+          expect(state.refreshErrorMessage).toContain("Reconciliation save failed.");
+        }
+        if (scenario.includes("persistence failure") || scenario === "failure-details save only")
+          expect(state.lastRefreshNoticeMessage).toContain("Failure details could not be saved.");
+        if (!scenario.startsWith("cleanup") && scenario !== "inventory failure")
+          expect(state.lastRefreshNoticeMessage).toContain("Fresh inventory warning.");
+        if (scenario.startsWith("cleanup")) {
+          expect(state.lastRefreshNoticeMessage).toContain("Check running Homebrew processes");
+          expect(state.isHomebrewCommandLocked).toBe(true);
+        }
+        expect(JSON.stringify(state)).not.toContain("private install output");
+        await vi.advanceTimersByTimeAsync(4_001);
+        expect(store.getSnapshot().homebrewDiscoverFailedItemIDs).not.toContain("formula:new");
+        expect(store.getSnapshot().refreshErrorMessage).toContain(
+          "Homebrew install failed for New."
+        );
+      } finally {
+        save.mockResolvedValue(undefined);
+        await store.prepareToQuit();
+        vi.useRealTimers();
+      }
+    }
+  );
+
+  it("does not restore an unrelated old notice when failed-install reconciliation succeeds", async () => {
+    let warning: string | undefined = "Old unrelated inventory warning.";
+    const { store } = fixture({
+      run: async () => ({ ...ok, success: false, status: 1 }),
+      inventory: async () => ({ ...healthyInventory, warning })
+    });
+    try {
+      await store.refresh(true);
+      expect(store.getSnapshot().lastRefreshNoticeMessage).toBe(warning);
+      warning = undefined;
+      await store.installHomebrewItem({
+        id: "formula:new",
+        kind: "formula",
+        token: "new",
+        displayName: "New",
+        version: version("1")
+      });
+      expect(store.getSnapshot().refreshErrorMessage).toBe("Homebrew install failed for New.");
+      expect(store.getSnapshot().lastRefreshNoticeMessage).toBeUndefined();
+    } finally {
+      await store.prepareToQuit();
+    }
+  });
+
+  it("binds fresh metadata to the saved ID only through a unique verified renamed identity", async () => {
+    const previous = {
+      ...formula,
+      id: "formula:old",
+      token: "old",
+      formulaIdentity: {
+        name: "old",
+        fullName: "vendor/tools/old",
+        tap: "vendor/tools",
+        oldNames: []
+      }
+    };
+    const renamed = {
+      ...formula,
+      id: "formula:new",
+      token: "new",
+      formulaIdentity: {
+        name: "new",
+        fullName: "vendor/tools/new",
+        tap: "vendor/tools",
+        oldNames: ["old"]
+      }
+    };
+    const metadata: HomebrewInstalledMetadata = {
+      identity: "vendor/tools/new",
+      kind: "formula",
+      deprecated: true,
+      caveats: "private renamed caveats",
+      installedReceipts: [],
+      dependencies: [],
+      installedDependents: []
+    };
+    let inventory: HomebrewInventoryResult = {
+      ...healthyInventory,
+      items: [renamed],
+      installedMetadataByItemID: { [renamed.id]: metadata }
+    };
+    const { store, save } = fixture({ savedItems: [previous], inventory: async () => inventory });
+    try {
+      await store.refresh(true);
+      expect(store.getSnapshot().homebrewItems[0]?.id).toBe(previous.id);
+      expect(store.getHomebrewInstalledContext(previous.id)).toMatchObject({
+        deprecated: true,
+        caveatsAvailable: true
+      });
+      expect(store.getHomebrewInstalledContext(renamed.id)).toBeUndefined();
+      expect(JSON.stringify(save.mock.calls)).not.toContain("private renamed caveats");
+      inventory = { ...inventory, inventoryReadSucceededByKind: { formula: false, cask: true } };
+      await store.refresh(true);
+      expect(store.getHomebrewInstalledContext(previous.id)).toBeUndefined();
+    } finally {
+      await store.prepareToQuit();
+    }
+  });
+
+  it.each(["duplicate inventory", "duplicate metadata", "unverified", "different tap", "absent"])(
+    "rejects installed context for %s rather than using ID or token continuity",
+    async (scenario) => {
+      const metadata: HomebrewInstalledMetadata = {
+        identity: "example",
+        kind: "formula",
+        installedReceipts: [],
+        dependencies: [],
+        installedDependents: []
+      };
+      const { store } = fixture({
+        inventory: async () => ({
+          ...healthyInventory,
+          items:
+            scenario === "absent"
+              ? []
+              : scenario === "duplicate inventory"
+                ? [formula, { ...formula, id: "formula:duplicate" }]
+                : [
+                    {
+                      ...formula,
+                      ...(scenario === "unverified" ? { formulaIdentityVerified: false } : {}),
+                      ...(scenario === "different tap"
+                        ? {
+                            formulaIdentity: {
+                              name: "example",
+                              fullName: "vendor/tools/example",
+                              tap: "vendor/tools",
+                              oldNames: []
+                            }
+                          }
+                        : {})
+                    }
+                  ],
+          installedMetadataByItemID: {
+            [formula.id]: metadata,
+            ...(scenario === "duplicate metadata" ? { duplicate: metadata } : {})
+          }
+        })
+      });
+      try {
+        await store.refresh(true);
+        expect(store.getHomebrewInstalledContext(formula.id)).toBeUndefined();
+      } finally {
+        await store.prepareToQuit();
+      }
+    }
+  );
+
   it("awaits started inventory siblings before quarantining the shared reservation", async () => {
     const sibling = deferred<CommandResult>();
     const began = deferred<void>();

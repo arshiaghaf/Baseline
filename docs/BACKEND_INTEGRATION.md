@@ -22,7 +22,10 @@ Homebrew diagnostics. Renderer source and visual behavior are unchanged.
   flags and observed dependency/dependent counts. Caveat availability is exposed
   without copying its potentially private prose. Full receipt/dependency data is
   an ephemeral main-process sidecar. Failed reads revoke context, and current
-  installed identity must still match. Counts are partial observations, never
+  installed identity must still match uniquely in both fresh inventory and metadata.
+  A proven same-tap rename may retain a saved item ID; context follows its current
+  verified canonical identity, without token or stale-continuity fallback.
+  Counts are partial observations, never
   authorization for uninstall or update operations. `installedOnRequest` exposes
   only Homebrew's observed flag; false does not establish a historical dependency
   cause. Receipt counts describe formula keg records, not cask info versions.
@@ -36,6 +39,11 @@ reconciliation. Failed installations now reconcile too: partial installation may
 have changed the target or dependencies. Cancellation, timeout, and signal
 failures map to the existing private `interrupted` failure category. Uninstall
 classification retains only a bounded output tail.
+
+Failed-install reconciliation preserves the install outcome and any failure-detail
+save warning from that operation alongside fresh reconciliation errors and cleanup
+warnings. It does not restore unrelated notices from before the installation.
+The outcome remains visible after the transient failed-row indicator expires.
 
 If process cleanup cannot be confirmed, the runner returns `cleanup` after its
 bounded cleanup budget and quarantines further Homebrew execution for that

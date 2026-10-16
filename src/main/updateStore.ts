@@ -558,8 +558,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     operation: OperationFailure["operation"],
     result: CommandResult,
     reason?: OperationFailure["reason"]
-  ): Promise<void> {
-    await this.recordOperationFailures([{ entityID, operation, result, reason }]);
+  ): Promise<string | undefined> {
+    return this.recordOperationFailures([{ entityID, operation, result, reason }]);
   }
 
   private async recordOperationFailures(
@@ -569,7 +569,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       result: CommandResult;
       reason?: OperationFailure["reason"];
     }>
-  ): Promise<void> {
+  ): Promise<string | undefined> {
     if (failures.length === 0) return;
     const occurredAt = new Date().toISOString();
     const records = failures.map(({ entityID, operation, result, reason }): OperationFailure => ({
@@ -592,17 +592,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         ...(this.state.operationFailures ?? []).filter((previous) => !ids.has(previous.id))
       ])
     });
-    await this.persistFailureDetails();
+    return this.persistFailureDetails();
   }
 
-  private async persistFailureDetails(): Promise<void> {
+  private async persistFailureDetails(): Promise<string | undefined> {
     try {
       await this.persist();
     } catch {
-      this.patch({
-        lastRefreshNoticeMessage:
-          "Failure details could not be saved. They remain available until Baseline quits."
-      });
+      const notice =
+        "Failure details could not be saved. They remain available until Baseline quits.";
+      this.patch({ lastRefreshNoticeMessage: notice });
+      return notice;
     }
   }
 
@@ -762,15 +762,24 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   getHomebrewInstalledContext(itemID: string): HomebrewInstalledContext | undefined {
     if (typeof itemID !== "string" || this.homebrewWorkLock.hasUnconfirmedCleanup) return undefined;
-    const item = this.state.homebrewItems.find((candidate) => candidate.id === itemID);
-    const metadata = this.installedMetadataByItemID[itemID];
+    const items = this.state.homebrewItems.filter((candidate) => candidate.id === itemID);
+    if (items.length !== 1) return undefined;
+    const item = items[0]!;
+    const identity = homebrewCommandToken(item);
+    if (!identity) return undefined;
+    // Reconciliation can retain a saved ID across a proven rename. Bind only
+    // unique current verified identities, never the historical ID or bare token.
     if (
-      !item ||
-      !metadata ||
-      metadata.kind !== item.kind ||
-      metadata.identity !== homebrewCommandToken(item)
+      this.state.homebrewItems.filter(
+        (candidate) => candidate.kind === item.kind && homebrewCommandToken(candidate) === identity
+      ).length !== 1
     )
       return undefined;
+    const matches = Object.values(this.installedMetadataByItemID).filter(
+      (metadata) => metadata.kind === item.kind && metadata.identity === identity
+    );
+    if (matches.length !== 1) return undefined;
+    const metadata = matches[0]!;
     return {
       deprecated: metadata.deprecated,
       disabled: metadata.disabled,
@@ -854,11 +863,20 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         }
         // Metadata is an ephemeral projection, revoked on uncertain cleanup
         // or a failed kind read before the shared reservation is released.
+        const identityCounts = new Map<string, number>();
+        for (const item of result.items) {
+          const identity = homebrewCommandToken(item);
+          if (!identity) continue;
+          const key = `${item.kind}:${identity}`;
+          identityCounts.set(key, (identityCounts.get(key) ?? 0) + 1);
+        }
         this.installedMetadataByItemID = this.homebrewWorkLock.hasUnconfirmedCleanup
           ? {}
           : Object.fromEntries(
               Object.entries(result.installedMetadataByItemID ?? {}).filter(
-                ([, metadata]) => result.inventoryReadSucceededByKind?.[metadata.kind] !== false
+                ([, metadata]) =>
+                  result.inventoryReadSucceededByKind?.[metadata.kind] !== false &&
+                  identityCounts.get(`${metadata.kind}:${metadata.identity}`) === 1
               )
             );
         if (result.inventoryReadSucceededByKind?.formula === false) {

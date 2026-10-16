@@ -106,7 +106,7 @@ export class HomebrewOperationsService {
     entityID: string,
     operation: OperationFailure["operation"],
     result: CommandResult
-  ) => Promise<void>;
+  ) => Promise<string | void>;
   private readonly recordOperationFailures: (
     failures: Array<{
       entityID: string;
@@ -114,7 +114,7 @@ export class HomebrewOperationsService {
       result: CommandResult;
       reason?: OperationFailure["reason"];
     }>
-  ) => Promise<void>;
+  ) => Promise<string | void>;
   private readonly hasCheckedHomebrewAvailability: () => boolean;
   private readonly markHomebrewAvailabilityChecked: () => void;
   private readonly requiresInventory: () => boolean;
@@ -133,7 +133,7 @@ export class HomebrewOperationsService {
       entityID: string,
       operation: OperationFailure["operation"],
       result: CommandResult
-    ) => Promise<void>;
+    ) => Promise<string | void>;
     recordOperationFailures: (
       failures: Array<{
         entityID: string;
@@ -141,7 +141,7 @@ export class HomebrewOperationsService {
         result: CommandResult;
         reason?: OperationFailure["reason"];
       }>
-    ) => Promise<void>;
+    ) => Promise<string | void>;
     hasCheckedHomebrewAvailability: () => boolean;
     markHomebrewAvailabilityChecked: () => void;
     requiresInventory: () => boolean;
@@ -703,7 +703,10 @@ export class HomebrewOperationsService {
           this.applyDiscoverInstallEvent(event, parser, itemID, item.token.toLowerCase());
         });
         const success = commandResult.success;
-        if (!success) await this.recordOperationFailure(itemID, "install", commandResult);
+        // Carry only this operation's persistence notice, not unrelated old state.
+        const failureNotice = success
+          ? undefined
+          : await this.recordOperationFailure(itemID, "install", commandResult);
         this.patch({
           homebrewDiscoverInstallingItemIDs: success
             ? this.state.homebrewDiscoverInstallingItemIDs
@@ -754,7 +757,19 @@ export class HomebrewOperationsService {
           this.scheduleHomebrewDiscoverFailureClear(itemID);
           // A failed or interrupted installation can still have installed
           // dependencies or the target. Reconcile while holding the reservation.
-          await this.refresh(true);
+          const installError = `Homebrew install failed for ${item.displayName}.`;
+          try {
+            await this.refresh(true);
+          } finally {
+            // Reconciliation owns fresh inventory/cleanup warnings and refresh
+            // errors. Retain them alongside the install outcome even if it throws.
+            this.patch({
+              refreshErrorMessage: [...new Set([installError, this.state.refreshErrorMessage])]
+                .filter(Boolean)
+                .join(" ")
+            });
+            if (typeof failureNotice === "string") this.applyOperationNotice(failureNotice);
+          }
         }
       } finally {
         if (this.state.homebrewDiscoverInstallingItemIDs.includes(itemID)) {
@@ -940,7 +955,7 @@ export class HomebrewOperationsService {
   }
 
   private applyOperationNotice(message: string | undefined): void {
-    if (!message) {
+    if (!message || this.state.lastRefreshNoticeMessage === message) {
       return;
     }
     this.patch({
