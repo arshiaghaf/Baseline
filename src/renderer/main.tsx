@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { baseline } from "./ipc";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { BaselineSnapshot } from "../shared/domain";
@@ -68,7 +69,7 @@ export function App() {
         return;
       }
       resyncing = true;
-      void window.baseline
+      void baseline
         .getSnapshot()
         .then(receiveSnapshot)
         .catch(() => undefined)
@@ -80,8 +81,8 @@ export function App() {
           }
         });
     };
-    const unsubscribeSnapshot = window.baseline.onSnapshotChanged(receiveSnapshot);
-    const unsubscribeProgress = window.baseline.onSnapshotProgress((event) => {
+    const unsubscribeSnapshot = baseline.onSnapshotChanged(receiveSnapshot);
+    const unsubscribeProgress = baseline.onSnapshotProgress((event) => {
       const result = applySnapshotProgress(current, event);
       if (result.needsResync) {
         resync();
@@ -123,7 +124,7 @@ export function App() {
       onSearchActiveChange={setSearchActive}
       onOpenSettings={() => {
         setSearchActive(false);
-        void window.baseline.showSettings();
+        void baseline.showSettings();
       }}
     />
   );

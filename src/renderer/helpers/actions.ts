@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { baseline } from "../ipc";
 import type { BaselineSnapshot, HomebrewManagedItem } from "../../shared/domain";
 
 export function performHomebrewUpdateAllForItems(items: Pick<HomebrewManagedItem, "id">[]): void {
-  void window.baseline.performHomebrewUpdateAll(items.map((item) => item.id));
+  void baseline.performHomebrewUpdateAll(items.map((item) => item.id));
 }
 
 export function toggleCollapsedSection(
@@ -19,5 +20,5 @@ export function toggleCollapsedSection(
   } else {
     values.add(sectionID);
   }
-  void window.baseline.updatePreferences({ [key]: [...values].sort() });
+  void baseline.updatePreferences({ [key]: [...values].sort() });
 }

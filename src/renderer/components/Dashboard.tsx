@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { baseline } from "../ipc";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -187,10 +188,10 @@ export function Dashboard({
     const confirmation = actionConfirmation;
     setActionConfirmation(undefined);
     if (confirmation.type === "install") {
-      void window.baseline.installHomebrewItem(confirmation.item);
+      void baseline.installHomebrewItem(confirmation.item);
       return;
     }
-    void window.baseline.uninstallHomebrewItem(confirmation.item.id);
+    void baseline.uninstallHomebrewItem(confirmation.item.id);
   };
   const requestActionConfirmation = (confirmation: ActionConfirmation) => {
     setSearchActive(false);
@@ -224,7 +225,7 @@ export function Dashboard({
             />
             <button
               className="toolbar-button refresh-button"
-              onClick={() => void window.baseline.refresh(false)}
+              onClick={() => void baseline.refresh(false)}
               title="Refresh"
               tabIndex={-1}
             >
@@ -282,7 +283,7 @@ export function Dashboard({
               ) : null}
               <button
                 className="toolbar-button refresh-button"
-                onClick={() => void window.baseline.refresh(false)}
+                onClick={() => void baseline.refresh(false)}
                 title="Refresh"
               >
                 <RefreshCcw
@@ -369,7 +370,7 @@ export function Sidebar({
   const selectTab = (tab: MenuTab) => {
     onNavigate?.();
     window.location.hash = "/main";
-    void window.baseline.setSelectedTab(tab);
+    void baseline.setSelectedTab(tab);
   };
   const dismissSearchFromSidebarMouseDown = (event: React.MouseEvent<HTMLElement>) => {
     const target = event.target;
@@ -434,7 +435,7 @@ export function Sidebar({
           className={route === "settings" ? "selected" : ""}
           onClick={() => {
             onNavigate?.();
-            void window.baseline.showSettings();
+            void baseline.showSettings();
           }}
         >
           <Settings size={16} strokeWidth={sidebarIconStrokeWidth} />
@@ -453,7 +454,7 @@ export function SelfUpdateToolbarButton({ releaseURL }: { releaseURL: string }) 
   return (
     <button
       className="toolbar-button self-update-toolbar-button"
-      onClick={() => void window.baseline.openExternal(releaseURL)}
+      onClick={() => void baseline.openExternal(releaseURL)}
       title="New Baseline Update Available"
       aria-label="New Baseline Update Available"
     >

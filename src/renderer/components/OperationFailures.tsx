@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { baseline } from "../ipc";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { BaselineSnapshot } from "../../shared/domain";
@@ -67,7 +68,7 @@ export function OperationFailureRow({
           <button
             type="button"
             onClick={() => {
-              void window.baseline.copyOperationFailure(failure.id, attemptID).then(
+              void baseline.copyOperationFailure(failure.id, attemptID).then(
                 (copied) => setCopyMessage(copied ? "Copied" : "Details are no longer available"),
                 () => setCopyMessage("Could not copy details")
               );
@@ -83,7 +84,7 @@ export function OperationFailureRow({
           </button>
           <button
             type="button"
-            onClick={() => void window.baseline.dismissOperationFailure(failure.id)}
+            onClick={() => void baseline.dismissOperationFailure(failure.id)}
             aria-label={`Dismiss failure for ${name}`}
           >
             Dismiss
@@ -158,7 +159,7 @@ export function OperationReportPreview({
             type="button"
             className="primary-button"
             onClick={() => {
-              void window.baseline.openExternal(report.url).then(
+              void baseline.openExternal(report.url).then(
                 (opened) => {
                   if (opened) onClose();
                   else setOpenError(true);

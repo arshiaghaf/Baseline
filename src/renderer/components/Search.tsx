@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { baseline } from "../ipc";
 import React, { useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 import type { BaselineSnapshot } from "../../shared/domain";
@@ -49,7 +50,7 @@ export function ToolbarSearch({
   }, [onClose, open]);
 
   const clearSearch = () => {
-    void window.baseline.setSearchText("");
+    void baseline.setSearchText("");
     inputRef.current?.focus();
   };
 
@@ -63,7 +64,7 @@ export function ToolbarSearch({
         <input
           ref={inputRef}
           value={snapshot.searchText}
-          onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
+          onChange={(event) => void baseline.setSearchText(event.currentTarget.value)}
           placeholder="Search"
           tabIndex={open ? 0 : -1}
           aria-hidden={!open}
@@ -191,7 +192,7 @@ export function SearchField({
   }, [autoFocus]);
 
   const clearSearch = () => {
-    void window.baseline.setSearchText("");
+    void baseline.setSearchText("");
     inputRef.current?.focus();
   };
 
@@ -201,7 +202,7 @@ export function SearchField({
       <input
         ref={inputRef}
         value={snapshot.searchText}
-        onChange={(event) => void window.baseline.setSearchText(event.currentTarget.value)}
+        onChange={(event) => void baseline.setSearchText(event.currentTarget.value)}
         placeholder="Search"
       />
       {snapshot.searchText ? (

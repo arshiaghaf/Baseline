@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { baseline } from "../ipc";
 import React from "react";
 import { Link2, Package, Terminal } from "lucide-react";
 import type {
@@ -36,7 +37,7 @@ export function AppIconButton({ app }: { app: AppRecord }) {
           ? "app-icon app-icon-image clickable-app-icon"
           : "app-icon clickable-app-icon"
       }
-      onClick={() => void window.baseline.openApp(app.id)}
+      onClick={() => void baseline.openApp(app.id)}
       title="Open app"
       aria-label="Open app"
     >
@@ -73,13 +74,13 @@ export function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
               state={actionState}
               disabled={isUninstalling}
               readyLabel={appUpdateReadyLabel(app, snapshot, update)}
-              onAction={() => void window.baseline.performAppUpdate(app.id)}
+              onAction={() => void baseline.performAppUpdate(app.id)}
             />
           )}
           <RowMoreActionButton
             isIgnored={isIgnored}
             disabled={isUninstalling}
-            onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
+            onToggleIgnore={() => void baseline.toggleIgnoredApp(app.id)}
             uninstallLabel="Uninstall"
             canUninstall={Boolean(uninstallableItem)}
             uninstalling={isUninstalling}
@@ -140,13 +141,13 @@ export function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
               state={actionState}
               disabled={isUninstalling}
               readyLabel={appUpdateReadyLabel(app, snapshot, update)}
-              onAction={() => void window.baseline.performAppUpdate(app.id)}
+              onAction={() => void baseline.performAppUpdate(app.id)}
             />
           )}
           <RowMoreActionButton
             isIgnored={isIgnored}
             disabled={isUninstalling}
-            onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
+            onToggleIgnore={() => void baseline.toggleIgnoredApp(app.id)}
             uninstallLabel="Uninstall"
             canUninstall={Boolean(uninstallableItem)}
             uninstalling={isUninstalling}
@@ -204,11 +205,11 @@ export function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: Ba
                     state: actionState,
                     disabled: isUninstalling,
                     readyLabel: appUpdateReadyLabel(app, snapshot, update),
-                    onAction: () => void window.baseline.performAppUpdate(app.id)
+                    onAction: () => void baseline.performAppUpdate(app.id)
                   }
                 : undefined
             }
-            onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
+            onToggleIgnore={() => void baseline.toggleIgnoredApp(app.id)}
             uninstallLabel="Uninstall"
             canUninstall={Boolean(uninstallableItem)}
             uninstalling={isUninstalling}
@@ -300,13 +301,13 @@ export function AppRow({
             state={actionState}
             disabled={isUninstalling}
             readyLabel={appUpdateReadyLabel(app, snapshot, update)}
-            onAction={() => void window.baseline.performAppUpdate(app.id)}
+            onAction={() => void baseline.performAppUpdate(app.id)}
           />
         )}
         <RowMoreActionButton
           isIgnored={isIgnored}
           disabled={isUninstalling}
-          onToggleIgnore={() => void window.baseline.toggleIgnoredApp(app.id)}
+          onToggleIgnore={() => void baseline.toggleIgnoredApp(app.id)}
           uninstallLabel="Uninstall"
           canUninstall={Boolean(uninstallableItem)}
           uninstalling={isUninstalling}
@@ -364,7 +365,7 @@ export function DiscoverRow({
         {item.homepageURL && (
           <button
             className="icon-button"
-            onClick={() => void window.baseline.openExternal(item.homepageURL!)}
+            onClick={() => void baseline.openExternal(item.homepageURL!)}
             title="Open Homebrew page"
             aria-label="Open Homebrew page"
           >
@@ -396,13 +397,13 @@ export function HomebrewUpdateCard({
             <UpdateActionButton
               state={updateState}
               disabled={isUninstalling}
-              onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
+              onAction={() => void baseline.performHomebrewUpdate(item.id)}
             />
           )}
           <RowMoreActionButton
             isIgnored={isIgnored}
             disabled={isUninstalling}
-            onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
+            onToggleIgnore={() => void baseline.toggleIgnoredHomebrew(item.id)}
             uninstallLabel="Uninstall"
             canUninstall={item.kind === "cask"}
             uninstalling={isUninstalling}
@@ -460,13 +461,13 @@ export function RecentHomebrewCard({
             <UpdateActionButton
               state={updateState}
               disabled={isUninstalling}
-              onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
+              onAction={() => void baseline.performHomebrewUpdate(item.id)}
             />
           )}
           <RowMoreActionButton
             isIgnored={isIgnored}
             disabled={isUninstalling}
-            onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
+            onToggleIgnore={() => void baseline.toggleIgnoredHomebrew(item.id)}
             uninstallLabel="Uninstall"
             canUninstall={item.kind === "cask"}
             uninstalling={isUninstalling}
@@ -517,11 +518,11 @@ export function IgnoredHomebrewCard({
                 ? {
                     state: updateState,
                     disabled: isUninstalling,
-                    onAction: () => void window.baseline.performHomebrewUpdate(item.id)
+                    onAction: () => void baseline.performHomebrewUpdate(item.id)
                   }
                 : undefined
             }
-            onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
+            onToggleIgnore={() => void baseline.toggleIgnoredHomebrew(item.id)}
             uninstallLabel="Uninstall"
             canUninstall={item.kind === "cask"}
             uninstalling={isUninstalling}
@@ -599,13 +600,13 @@ export function HomebrewRow({
           <UpdateActionButton
             state={updateState}
             disabled={isUninstalling}
-            onAction={() => void window.baseline.performHomebrewUpdate(item.id)}
+            onAction={() => void baseline.performHomebrewUpdate(item.id)}
           />
         )}
         <RowMoreActionButton
           isIgnored={isIgnored}
           disabled={isUninstalling}
-          onToggleIgnore={() => void window.baseline.toggleIgnoredHomebrew(item.id)}
+          onToggleIgnore={() => void baseline.toggleIgnoredHomebrew(item.id)}
           uninstallLabel="Uninstall"
           canUninstall={item.kind === "cask"}
           uninstalling={isUninstalling}
@@ -650,7 +651,7 @@ export function HomebrewItemIcon({
             ? "app-icon app-icon-image clickable-app-icon"
             : `${fallbackClassName} clickable-app-icon`
         }
-        onClick={() => void window.baseline.openApp(app.id)}
+        onClick={() => void baseline.openApp(app.id)}
         title="Open app"
         aria-label="Open app"
       >

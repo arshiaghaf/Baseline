@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { baseline } from "../ipc";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -43,7 +44,7 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
   const selectedItem = settingsSidebarItems.find((item) => item.id === selectedSection);
 
   useEffect(() => {
-    void window.baseline.getAppMetadata().then(setAppMetadata);
+    void baseline.getAppMetadata().then(setAppMetadata);
   }, []);
 
   return (
@@ -111,10 +112,7 @@ export function SettingsSidebar({
   return (
     <aside className="sidebar settings-sidebar">
       <div className="settings-sidebar-header">
-        <button
-          className="back-to-app-button"
-          onClick={() => void window.baseline.showMainWindow()}
-        >
+        <button className="back-to-app-button" onClick={() => void baseline.showMainWindow()}>
           <ArrowLeft size={15} strokeWidth={sidebarIconStrokeWidth} />
           <span>Back to app</span>
         </button>
@@ -171,7 +169,7 @@ export function SettingsPane({
     setCleaningUp(true);
     setCleanupMessage("");
     try {
-      setCleanupMessage(await window.baseline.cleanUpHomebrew());
+      setCleanupMessage(await baseline.cleanUpHomebrew());
     } catch {
       setCleanupMessage("Homebrew cleanup could not run. Please try again.");
     } finally {
@@ -190,7 +188,7 @@ export function SettingsPane({
                 <button
                   className="ghost-button small-button"
                   disabled={snapshot.isHomebrewCommandLocked || cleaningUp}
-                  onClick={() => void window.baseline.refreshToolStatus()}
+                  onClick={() => void baseline.refreshToolStatus()}
                 >
                   Refresh
                 </button>
@@ -268,7 +266,7 @@ export function SettingsPane({
               action={
                 <button
                   className="toolbar-button"
-                  onClick={() => void window.baseline.chooseDirectory()}
+                  onClick={() => void baseline.chooseDirectory()}
                   title="Add directory"
                 >
                   <FolderPlus size={15} />
@@ -299,7 +297,7 @@ export function SettingsPane({
                     <SettingsRowText label="Custom folder" description={directory} />
                     <button
                       className="toolbar-button"
-                      onClick={() => void window.baseline.removeDirectory(directory)}
+                      onClick={() => void baseline.removeDirectory(directory)}
                       title="Remove"
                     >
                       <XCircle size={15} />
@@ -370,9 +368,7 @@ export function SettingsPane({
                 <button
                   className="primary-button wide"
                   onClick={() => {
-                    void window.baseline
-                      .copyDiagnostics()
-                      .then(() => onDiagnosticsCopiedChange(true));
+                    void baseline.copyDiagnostics().then(() => onDiagnosticsCopiedChange(true));
                   }}
                 >
                   {diagnosticsCopied ? "Copied" : "Copy Report"}
@@ -536,7 +532,7 @@ export function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
               />
               <button
                 className="toolbar-button"
-                onClick={() => void window.baseline.acknowledgeProfileStatsReset()}
+                onClick={() => void baseline.acknowledgeProfileStatsReset()}
                 title="Dismiss"
                 aria-label="Dismiss stats reset warning"
               >
@@ -570,9 +566,7 @@ export function AppearanceSelector({ value }: { value: AppearancePreference }) {
             aria-pressed={selected}
             className={selected ? "selected" : ""}
             key={option.value}
-            onClick={() =>
-              void window.baseline.updatePreferences({ appearancePreference: option.value })
-            }
+            onClick={() => void baseline.updatePreferences({ appearancePreference: option.value })}
             type="button"
           >
             <Icon size={15} strokeWidth={toolbarIconStrokeWidth} />
@@ -608,7 +602,7 @@ export function RefreshIntervalInput({ value, disabled }: { value: number; disab
       return;
     }
     lastCommittedDraftRef.current = normalizedDraft;
-    void window.baseline.updatePreferences({ refreshIntervalMinutes });
+    void baseline.updatePreferences({ refreshIntervalMinutes });
   };
 
   return (
@@ -683,7 +677,7 @@ export function Toggle({
           if (disabled) {
             return;
           }
-          void window.baseline.updatePreferences({ [patch]: event.currentTarget.checked });
+          void baseline.updatePreferences({ [patch]: event.currentTarget.checked });
         }}
       />
     </label>
