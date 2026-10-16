@@ -98,6 +98,7 @@ it("serializes overlapping admission and ignores a prior duplicate COMPLETE for 
     two = await client(second);
   await one.send(M.begin);
   two.write(M.begin);
+  expect((await two.send(M.hello)).type).toBe(M.hello | 128);
   await one.send(M.answered);
   expect((await two.next()).type).toBe(M.begin | 128);
   await one.send(M.complete);
@@ -192,9 +193,30 @@ it("contains observer failures through cleanup instead of throwing from socket c
     throw new Error("fixture observer failure");
   });
   const peer = await client();
-  await peer.send(M.begin);
+  expect((await peer.send(M.begin)).type).toBe(M.deny);
   expect(stopped).toHaveBeenCalledWith("error");
   expect((await coordinator.finish(true)).helperError).toBe(true);
+});
+
+it("denies an already-deferred admission after waiting-clear publication fails while still draining completion", async () => {
+  const one = await client(),
+    two = await client(second);
+  await one.send(M.begin);
+  two.write(M.begin);
+  changed.mockImplementation((prompt) => {
+    if (prompt === undefined) throw new Error("fixture observer failure");
+  });
+  expect((await one.send(M.answered)).type).toBe(M.answered | 128);
+  expect((await two.next()).type).toBe(M.deny);
+  expect(stopped).toHaveBeenCalledWith("error");
+  expect((await one.send(M.complete)).type).toBe(M.complete | 128);
+  await one.close();
+  await two.close();
+  expect(await coordinator.finish(true)).toEqual({
+    cancelled: false,
+    helperError: true,
+    cleanupConfirmed: true
+  });
 });
 
 it.each(["truncated", "overflow", "unknown", "wrong-operation", "changed-prompt"])(

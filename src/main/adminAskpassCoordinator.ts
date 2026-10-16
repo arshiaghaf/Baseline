@@ -152,10 +152,11 @@ export class AdminAskpassCoordinator {
       this.claimed.add(frame.promptID);
     } else if (peer.promptID !== frame.promptID)
       throw new Error("Administrator invocation changed.");
-    const result =
-      this.stopped && (frame.type === M.hello || frame.type === M.begin)
-        ? "deny"
-        : this.lifecycle.receive(frame);
+    const admission = frame.type === M.hello || frame.type === M.begin;
+    let result = (this.stopped || this.error) && admission ? "deny" : this.lifecycle.receive(frame);
+    // Publishing BEGIN may itself fail. Never ACK admission after an observer
+    // error, even when the command owner has not begun teardown yet.
+    if (result === "ack" && admission && this.error) result = "deny";
     if (result === "defer") {
       peer.deferred = frame;
       return;
@@ -170,7 +171,7 @@ export class AdminAskpassCoordinator {
       return;
     }
     if (frame.type === M.hello) peer.registered = true;
-    peer.deferred = undefined;
+    if (frame.type !== M.hello) peer.deferred = undefined;
     this.write(peer, { ...frame, type: frame.type | 128 });
     if (this.lifecycle.cancelled) this.requestStop("cancelled");
     if (this.lifecycle.helperError) this.fail();
