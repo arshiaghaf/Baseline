@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { extractFile, listPackage } from "@electron/asar";
+import type { FullConfig } from "@playwright/test";
 import ViteConfigGenerator from "@electron-forge/plugin-vite/dist/ViteConfig";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -13,7 +14,7 @@ import setup from "./globalSetup";
 
 const digest = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 
-export default async function visualSetup(): Promise<() => Promise<void>> {
+export default async function visualSetup(config: FullConfig): Promise<() => Promise<void>> {
   const root = process.cwd();
   const temporary = await mkdtemp(path.join(os.tmpdir(), "baseline-renderer-proof-"));
   try {
@@ -24,12 +25,12 @@ export default async function visualSetup(): Promise<() => Promise<void>> {
       root,
       true
     );
-    const config = (await generator.getRendererConfig())[0];
-    if (!config) throw new Error("Missing Forge renderer build configuration.");
+    const rendererConfig = (await generator.getRendererConfig())[0];
+    if (!rendererConfig) throw new Error("Missing Forge renderer build configuration.");
     await build({
-      ...config,
+      ...rendererConfig,
       configFile: false,
-      build: { ...config.build, outDir: temporary, emptyOutDir: true }
+      build: { ...rendererConfig.build, outDir: temporary, emptyOutDir: true }
     });
     const archive = path.join(
       root,
@@ -81,6 +82,10 @@ export default async function visualSetup(): Promise<() => Promise<void>> {
     const provenance = {
       schemaVersion: 1,
       baselineSource: "a3292e0b3a5b0735b681eb5f9568023ecbcb9ac2",
+      checkoutCommit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+      rendererTree: execFileSync("git", ["rev-parse", "HEAD:src/renderer"], {
+        encoding: "utf8"
+      }).trim(),
       sourceHash: digest(JSON.stringify(sourceHashes)),
       rendererFiles: packageHashes,
       rendererHash: digest(JSON.stringify(packageHashes)),
@@ -89,6 +94,16 @@ export default async function visualSetup(): Promise<() => Promise<void>> {
       macOS: execFileSync("/usr/bin/sw_vers", ["-productVersion"], { encoding: "utf8" }).trim(),
       macOSBuild: execFileSync("/usr/bin/sw_vers", ["-buildVersion"], { encoding: "utf8" }).trim(),
       kernel: os.release(),
+      visualLane: config.metadata.visualLane,
+      configuration: path.basename(config.configFile ?? ""),
+      runner: {
+        imageOS: process.env.ImageOS,
+        imageVersion: process.env.ImageVersion,
+        os: process.env.RUNNER_OS,
+        architecture: process.env.RUNNER_ARCH,
+        runID: process.env.GITHUB_RUN_ID,
+        commit: process.env.GITHUB_SHA
+      },
       toolFiles: Object.fromEntries(
         await Promise.all(
           [
@@ -96,7 +111,11 @@ export default async function visualSetup(): Promise<() => Promise<void>> {
             "playwright.visual.config.ts",
             "e2e/renderer-visual.spec.ts",
             "e2e/visualSnapshot.ts",
-            "e2e/visualSetup.ts"
+            "e2e/visualSetup.ts",
+            ...(config.configFile &&
+            path.basename(config.configFile) !== "playwright.visual.config.ts"
+              ? [path.basename(config.configFile)]
+              : [])
           ].map(async (file) => [file, digest(await readFile(path.join(root, file)))])
         )
       ),
@@ -108,12 +127,7 @@ export default async function visualSetup(): Promise<() => Promise<void>> {
         (argument) => argument === "-u" || argument.startsWith("--update-snapshots")
       )
     ) {
-      const directory = path.join(
-        root,
-        "e2e",
-        "visual-baselines",
-        `macos-${provenance.macOS.split(".")[0]}-${process.arch}-software-srgb`
-      );
+      const directory = config.metadata.visualBaselineDirectory as string;
       await mkdir(directory, { recursive: true });
       await writeFile(
         path.join(directory, "provenance.json"),

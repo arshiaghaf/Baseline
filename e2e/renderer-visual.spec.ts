@@ -149,19 +149,97 @@ for (const surface of ["main", "tray"] as const) {
             await page.emulateMedia({ colorScheme: theme, reducedMotion: motion });
             await page.clock.setFixedTime(new Date(visualTime));
             await page.reload();
-            const bounds = sizes[surface][size];
-            const nativeBounds = await application.evaluate(
-              ({ BrowserWindow }, { route, bounds }) => {
+            const ciLane = testInfo.config.metadata.visualLane === "xcode-27";
+            const bounds = {
+              ...sizes[surface][size],
+              ...(ciLane && surface === "main" ? { height: 640 } : {})
+            };
+            const geometry = await application.evaluate(
+              ({ BrowserWindow, screen }, { route, bounds, ciLane }) => {
                 const window = BrowserWindow.getAllWindows().find((window) =>
                   window.webContents.getURL().endsWith(route)
                 );
                 if (!window) throw new Error(`Missing native window ${route}`);
-                window.setContentSize(bounds.width, bounds.height);
-                window.show();
-                return window.getContentBounds();
+                const display = screen.getPrimaryDisplay();
+                // CI's desktop cannot fit the local 760/900-height windows.
+                // Fixed content bounds remain inside its work area; never adapt
+                // a requested viewport to whatever dimensions happen to fit.
+                const requestedContentBounds = ciLane
+                  ? { x: display.workArea.x, y: display.workArea.y + 32, ...bounds }
+                  : undefined;
+                if (requestedContentBounds) {
+                  window.show();
+                  window.setContentBounds(requestedContentBounds);
+                } else {
+                  window.setContentSize(bounds.width, bounds.height);
+                  window.show();
+                }
+                return {
+                  requestedContentBounds,
+                  contentBounds: window.getContentBounds(),
+                  windowBounds: window.getBounds(),
+                  primaryDisplayID: display.id,
+                  displays: screen.getAllDisplays().map((display) => ({
+                    id: display.id,
+                    label: display.label,
+                    bounds: display.bounds,
+                    workArea: display.workArea,
+                    scaleFactor: display.scaleFactor,
+                    rotation: display.rotation
+                  }))
+                };
               },
-              { route: surface === "main" ? "#/main" : "#/menubar", bounds }
+              { route: surface === "main" ? "#/main" : "#/menubar", bounds, ciLane }
             );
+            const renderer = await page.evaluate(async () => {
+              await document.fonts.ready;
+              return {
+                viewport: { width: innerWidth, height: innerHeight },
+                deviceScaleFactor: devicePixelRatio,
+                userAgent: navigator.userAgent,
+                locale: navigator.language,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                fontFamily: getComputedStyle(document.documentElement).fontFamily,
+                fontStatus: document.fonts.status
+              };
+            });
+            const environment = {
+              macOS,
+              kernel: os.release(),
+              arch: process.arch,
+              launchArguments,
+              requestedViewport: bounds,
+              geometry,
+              visualLane: testInfo.config.metadata.visualLane,
+              macOSBuild: execFileSync("/usr/bin/sw_vers", ["-buildVersion"], {
+                encoding: "utf8"
+              }).trim(),
+              renderer,
+              runtime: await application.evaluate(() => process.versions),
+              gpuFeatureStatus: await application.evaluate(({ app }) => app.getGPUFeatureStatus())
+            };
+            await testInfo.attach("render-environment", {
+              body: JSON.stringify(
+                {
+                  ...environment,
+                  provenance: JSON.parse(process.env.BASELINE_VISUAL_PROVENANCE ?? "null")
+                },
+                null,
+                2
+              ),
+              contentType: "application/json"
+            });
+            if (testInfo.config.updateSnapshots !== "none") {
+              await writeFile(
+                path.join(
+                  testInfo.config.metadata.visualBaselineDirectory as string,
+                  `environment-${name}.json`
+                ),
+                `${JSON.stringify(environment, null, 2)}\n`
+              );
+            }
+            if (geometry.requestedContentBounds)
+              expect(geometry.contentBounds).toEqual(geometry.requestedContentBounds);
             await expect
               .poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight })))
               .toEqual(bounds);
@@ -286,48 +364,6 @@ for (const surface of ["main", "tray"] as const) {
               }
             }
             expect(errors).toEqual([]);
-            const renderer = await page.evaluate(() => ({
-              viewport: { width: innerWidth, height: innerHeight },
-              deviceScaleFactor: devicePixelRatio,
-              userAgent: navigator.userAgent,
-              locale: navigator.language,
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-              fontFamily: getComputedStyle(document.documentElement).fontFamily,
-              fontStatus: document.fonts.status
-            }));
-            const environment = {
-              macOS,
-              kernel: os.release(),
-              arch: process.arch,
-              launchArguments,
-              nativeBounds: { width: nativeBounds.width, height: nativeBounds.height },
-              renderer,
-              runtime: await application.evaluate(() => process.versions),
-              gpuFeatureStatus: await application.evaluate(({ app }) => app.getGPUFeatureStatus())
-            };
-            await testInfo.attach("render-environment", {
-              body: JSON.stringify(
-                {
-                  ...environment,
-                  provenance: JSON.parse(process.env.BASELINE_VISUAL_PROVENANCE ?? "null")
-                },
-                null,
-                2
-              ),
-              contentType: "application/json"
-            });
-            if (testInfo.config.updateSnapshots !== "none") {
-              await writeFile(
-                path.join(
-                  process.cwd(),
-                  "e2e",
-                  "visual-baselines",
-                  `macos-${macOS.split(".")[0]}-${process.arch}-software-srgb`,
-                  `environment-${name}.json`
-                ),
-                `${JSON.stringify(environment, null, 2)}\n`
-              );
-            }
           } finally {
             if (application) await cleanupApplications([application]);
             await rm(userData, { recursive: true, force: true });

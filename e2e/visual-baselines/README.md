@@ -4,15 +4,19 @@ The source baseline is `a3292e0b3a5b0735b681eb5f9568023ecbcb9ac2`.
 Application source is unchanged in the baseline PR. Keep its committed PNGs
 unchanged throughout the renderer extraction stack.
 
-The authoritative comparison lane is `xcode-27` (macOS 27, Apple Silicon).
+The authoritative comparison lane is `xcode-27` (macOS 27, Apple Silicon), selected
+with `BASELINE_VISUAL_LANE=xcode-27`. It has its own named snapshot directory;
+the original local captures remain in `macos-27-arm64-software-srgb`.
 Visual launches use `--disable-gpu --force-color-profile=srgb` to make rasterization
 deterministic; default-GPU Electron smoke coverage remains unchanged. This lane
 does not establish production GPU/backdrop rendering equivalence.
 Comparisons use a 0.01 per-pixel perceptual color threshold and allow zero pixels
 above it. This accounts for observed 1–3/255 channel rounding on a few disclosure
 edges in unchanged-source repeats; it is not an allowed-pixel budget or mask.
-The original local captures use macOS 27.2; compatibility with the CI image must
-be verified before this baseline unlocks source moves. Other CI runners keep
+The original local captures use macOS 27.2. The macOS 27.0.1 CI image did not
+match them: its desktop constrained main-window heights and tray pixels differed.
+CI therefore needs separately captured original-source images and unchanged
+repeat comparisons before this baseline unlocks source moves. Other CI runners keep
 their existing Electron smoke coverage. Missing baselines fail; comparison never
 creates or updates expected images. OS, architecture, viewport, native content
 bounds, device scale factor, locale, timezone, fonts and Electron/Chromium runtime
@@ -20,6 +24,14 @@ are recorded alongside the snapshots. `provenance.json` records source, fixture,
 configuration and packaged-renderer hashes. Every visual preflight rebuilds with
 Forge's renderer configuration and verifies the packaged renderer matches it,
 rejecting stale `out/` builds.
+Environment is attached before dimension and pixel assertions, including display
+work areas/scale factors, requested and actual native content/window bounds, and
+renderer DPR. The CI lane requests fixed main content viewports of 660×640 and
+1280×640, versus the retained local 660×760 and 1280×900. Both lanes retain tray
+360×560 and 440×640. CI content origin is primary work-area x and work-area y+32;
+the exact content bounds and viewport are asserted, with no adaptive sizing.
+The shorter CI main viewport intentionally covers clipping/overflow on that
+desktop; it does not replace the taller local coverage.
 `png-sha256.json` records every retained original PNG's SHA-256.
 `comparison-policy.json` records the final comparison threshold/configuration
 separately from the original capture configuration; the PNGs were not regenerated

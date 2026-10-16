@@ -3,6 +3,7 @@
 
 import { defineConfig } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import path from "node:path";
 import base from "./playwright.config";
 
 const baselineSource = "a3292e0b3a5b0735b681eb5f9568023ecbcb9ac2";
@@ -25,6 +26,14 @@ const macOS =
         .trim()
         .split(".")[0]
     : "unsupported";
+const lane = process.env.BASELINE_VISUAL_LANE;
+if (lane && lane !== "xcode-27") throw new Error(`Unknown visual lane: ${lane}`);
+const directory = path.join(
+  process.cwd(),
+  "e2e",
+  "visual-baselines",
+  `${lane ? `${lane}-` : ""}macos-${macOS}-${process.arch}-software-srgb`
+);
 
 // System fonts and native rasterization belong to a named platform lane.
 // Keep smoke coverage on every CI runner; compare pixels on xcode-27 only.
@@ -36,7 +45,8 @@ export default defineConfig(base, {
   timeout: 120_000,
   retries: 0,
   updateSnapshots: "none",
-  snapshotPathTemplate: `{testDir}/visual-baselines/macos-${macOS}-${process.arch}-software-srgb/{arg}{ext}`,
+  metadata: { visualLane: lane ?? "local", visualBaselineDirectory: directory },
+  snapshotPathTemplate: `${directory}/{arg}{ext}`,
   expect: {
     toHaveScreenshot: {
       animations: "disabled",
