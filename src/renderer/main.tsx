@@ -41,8 +41,7 @@ import type {
   HomebrewManagedItem,
   MenuTab,
   ProfileStatsChannel,
-  ProfileStatsEvent,
-  UpdateRecord
+  ProfileStatsEvent
 } from "../shared/domain";
 import {
   defaultPersistedSnapshot,
@@ -51,7 +50,6 @@ import {
   sourceDisplayName
 } from "../shared/domain";
 import {
-  homebrewItemForAppUpdate,
   homebrewItemHasAppRepresentation,
   homebrewItemMatchesApp,
   isCask
@@ -70,6 +68,14 @@ import type {
   SettingsSectionID,
   TogglePatch
 } from "./types";
+import {
+  deriveSections,
+  type DerivedSections,
+  combinedAvailableCount,
+  uninstallableHomebrewItemForApp,
+  compareRecentRows,
+  matchingAppForHomebrewItem
+} from "./helpers/sections";
 import {
   clearCompactPopoverControlFocus,
   setElementInert,
@@ -97,7 +103,15 @@ import {
   sectionTitleLabel,
   hasLongVersionLabel
 } from "./helpers/labels";
-import { uninstallableHomebrewItemForApp } from "./helpers/sections";
+import {
+  homebrewBatchActionState,
+  appControlState,
+  isHomebrewCommandActive,
+  actionStateFromFlags,
+  homebrewControlState,
+  actionStateLabel
+} from "./helpers/actionState";
+import { performHomebrewUpdateAllForItems, toggleCollapsedSection } from "./helpers/actions";
 import {
   rowActionMenuEstimatedWidth,
   rowActionMenuEstimatedHeight,
@@ -1327,44 +1341,6 @@ function AppSection({
   );
 }
 
-type AppControlState = {
-  update?: UpdateRecord;
-  isIgnored: boolean;
-  uninstallableItem?: HomebrewManagedItem;
-  isUninstalling: boolean;
-  actionState: ActionState;
-  isUpdating: boolean;
-  homebrewUninstallBlocked: boolean;
-  isHomebrewUpdatePinned: boolean;
-};
-
-function appControlState(app: AppRecord, snapshot: BaselineSnapshot): AppControlState {
-  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const isHomebrewUpdatePinned = Boolean(
-    homebrewItemForAppUpdate(update, snapshot.homebrewItems)?.pinned
-  );
-  const isIgnored = snapshot.ignoredIDs.includes(app.id);
-  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
-  const isUninstalling = uninstallableItem
-    ? snapshot.homebrewUninstallingItemIDs.includes(uninstallableItem.id)
-    : false;
-  const { state: actionState, isUpdating } = appUpdateActionState(app, snapshot);
-  const homebrewCommandActive = isHomebrewCommandActive(snapshot);
-  const homebrewUninstallBlocked = Boolean(
-    uninstallableItem && homebrewCommandActive && !isUninstalling
-  );
-  return {
-    update,
-    isIgnored,
-    uninstallableItem,
-    isUninstalling,
-    actionState,
-    isUpdating,
-    homebrewUninstallBlocked,
-    isHomebrewUpdatePinned
-  };
-}
-
 function AppIconButton({ app }: { app: AppRecord }) {
   return (
     <button
@@ -2226,41 +2202,6 @@ export function HomebrewSection({
   );
 }
 
-type HomebrewControlState = {
-  isUpdating: boolean;
-  isUninstalling: boolean;
-  isIgnored: boolean;
-  updateState: ActionState;
-  homebrewUninstallBlocked: boolean;
-};
-
-function homebrewControlState(
-  item: HomebrewManagedItem,
-  snapshot: BaselineSnapshot
-): HomebrewControlState {
-  const isUpdating = snapshot.homebrewUpdatingItemIDs.includes(item.id);
-  const queued = snapshot.homebrewQueuedItemIDs.includes(item.id);
-  const isUninstalling = snapshot.homebrewUninstallingItemIDs.includes(item.id);
-  const isIgnored = snapshot.ignoredHomebrewItemIDs.includes(item.id);
-  const failed = snapshot.homebrewBatchFailedItemIDs.includes(item.id);
-  const done = snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id);
-  const progress = snapshot.homebrewBatchProgressByItemID[item.id];
-  const homebrewUninstallBlocked = isHomebrewCommandActive(snapshot) && !isUninstalling;
-  return {
-    isUpdating,
-    isUninstalling,
-    isIgnored,
-    updateState: actionStateFromFlags({
-      failed,
-      queued,
-      updating: isUpdating,
-      progress,
-      done
-    }),
-    homebrewUninstallBlocked
-  };
-}
-
 function HomebrewUpdateCard({
   item,
   snapshot
@@ -3017,100 +2958,6 @@ function ActionConfirmationOverlay({
       </section>
     </div>
   );
-}
-
-function actionStateFromFlags({
-  failed,
-  queued = false,
-  updating,
-  progress,
-  done
-}: {
-  failed: boolean;
-  queued?: boolean;
-  updating: boolean;
-  progress?: number;
-  done: boolean;
-}): ActionState {
-  if (failed) {
-    return { type: "failed" };
-  }
-  if (done) {
-    return { type: "done" };
-  }
-  if (queued) {
-    return { type: "queued" };
-  }
-  if (updating) {
-    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
-  }
-  return { type: "ready" };
-}
-
-function isHomebrewCommandActive(snapshot: BaselineSnapshot): boolean {
-  return (
-    snapshot.isHomebrewCommandLocked ||
-    snapshot.isRunningHomebrewMaintenance ||
-    snapshot.homebrewUpdatingItemIDs.length > 0 ||
-    snapshot.homebrewUninstallingItemIDs.length > 0 ||
-    snapshot.homebrewDiscoverInstallingItemIDs.length > 0
-  );
-}
-
-function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): string {
-  if (state.type === "updating") {
-    return "Updating";
-  }
-  if (state.type === "queued") {
-    return "Queued";
-  }
-  if (state.type === "done") {
-    return "Updated";
-  }
-  return "Update failed";
-}
-
-function appUpdateActionState(
-  app: AppRecord,
-  snapshot: BaselineSnapshot
-): { state: ActionState; isUpdating: boolean } {
-  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
-  const matchedHomebrewItem = homebrewItemForAppUpdate(update, snapshot.homebrewItems);
-  const isUpdating =
-    snapshot.appUpdatingIDs.includes(app.id) ||
-    Boolean(
-      matchedHomebrewItem && snapshot.homebrewUpdatingItemIDs.includes(matchedHomebrewItem.id)
-    );
-  const queued = Boolean(
-    matchedHomebrewItem && snapshot.homebrewQueuedItemIDs.includes(matchedHomebrewItem.id)
-  );
-  const progress =
-    snapshot.homebrewFallbackProgressByAppID[app.id] ??
-    (matchedHomebrewItem
-      ? snapshot.homebrewBatchProgressByItemID[matchedHomebrewItem.id]
-      : undefined);
-  const failed =
-    snapshot.homebrewFallbackFailedAppIDs.includes(app.id) ||
-    Boolean(
-      matchedHomebrewItem && snapshot.homebrewBatchFailedItemIDs.includes(matchedHomebrewItem.id)
-    );
-  const done =
-    snapshot.appUpdatedPendingRefreshIDs.includes(app.id) ||
-    Boolean(
-      matchedHomebrewItem &&
-      snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(matchedHomebrewItem.id)
-    );
-
-  return {
-    isUpdating,
-    state: actionStateFromFlags({
-      failed,
-      queued,
-      updating: isUpdating,
-      progress,
-      done
-    })
-  };
 }
 
 export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
@@ -4127,216 +3974,6 @@ function startedUsingSummary(createdAt: string): ProfileSummary["startedUsing"] 
   };
 }
 
-function compareRecentRows(
-  lhs: { updatedAt: string; id: string },
-  rhs: { updatedAt: string; id: string }
-): number {
-  const lhsTime = new Date(lhs.updatedAt).getTime();
-  const rhsTime = new Date(rhs.updatedAt).getTime();
-  const lhsSafeTime = Number.isFinite(lhsTime) ? lhsTime : 0;
-  const rhsSafeTime = Number.isFinite(rhsTime) ? rhsTime : 0;
-  if (lhsSafeTime !== rhsSafeTime) {
-    return rhsSafeTime - lhsSafeTime;
-  }
-  return lhs.id.localeCompare(rhs.id);
-}
-
-function combinedAvailableCount(derived: DerivedSections): number {
-  return derived.availableApps.length + derived.allHomebrewOutdated.length;
-}
-
-function performHomebrewUpdateAllForItems(items: Pick<HomebrewManagedItem, "id">[]): void {
-  void window.baseline.performHomebrewUpdateAll(items.map((item) => item.id));
-}
-
-function homebrewBatchActionState(
-  items: Pick<HomebrewManagedItem, "id">[],
-  snapshot: BaselineSnapshot
-): ActionState {
-  return items.length > 0 &&
-    items.every((item) => snapshot.homebrewUpdatedPendingRefreshItemIDs.includes(item.id))
-    ? { type: "done" }
-    : { type: "ready" };
-}
-
-function toggleCollapsedSection(
-  kind: "app" | "homebrew",
-  sectionID: string,
-  snapshot: BaselineSnapshot
-): void {
-  const key = kind === "app" ? "collapsedAppSectionIDs" : "collapsedHomebrewSectionIDs";
-  const values = new Set(snapshot[key]);
-  if (values.has(sectionID)) {
-    values.delete(sectionID);
-  } else {
-    values.add(sectionID);
-  }
-  void window.baseline.updatePreferences({ [key]: [...values].sort() });
-}
-
-type DerivedSections = ReturnType<typeof deriveSections>;
-
-function deriveSections(
-  snapshot: Pick<
-    BaselineSnapshot,
-    | "apps"
-    | "updates"
-    | "ignoredIDs"
-    | "recentlyUpdated"
-    | "homebrewItems"
-    | "ignoredHomebrewItemIDs"
-    | "homebrewRecentlyUpdated"
-    | "searchText"
-  >
-) {
-  const term = snapshot.searchText.trim().toLowerCase();
-  const updatesByAppID = new Map(
-    snapshot.updates
-      .filter(
-        (update) =>
-          !(
-            update.source === "homebrew" &&
-            homebrewItemForAppUpdate(update, snapshot.homebrewItems)?.pinned
-          )
-      )
-      .map((update) => [update.appID, update])
-  );
-  const appByID = new Map(snapshot.apps.map((app) => [app.id, app]));
-  const uninstallableAppIDs = new Set(
-    snapshot.homebrewItems
-      .filter((item) => item.kind === "cask" && item.appID)
-      .map((item) => item.appID)
-  );
-  const appFilter = (app: AppRecord) =>
-    !term ||
-    app.displayName.toLowerCase().includes(term) ||
-    app.bundleIdentifier?.toLowerCase().includes(term);
-  const homebrewFilter = (item: HomebrewManagedItem) =>
-    !term ||
-    item.name.toLowerCase().includes(term) ||
-    item.token.toLowerCase().includes(term) ||
-    item.installedVersion.raw.toLowerCase().includes(term) ||
-    item.latestVersion?.raw.toLowerCase().includes(term);
-
-  const availableApps = snapshot.apps
-    .filter((app) => updatesByAppID.has(app.id) && !snapshot.ignoredIDs.includes(app.id))
-    .filter(appFilter)
-    .sort((lhs, rhs) => sortByUpdateDate(lhs, rhs, updatesByAppID));
-  const installedApps = snapshot.apps
-    .filter((app) => !updatesByAppID.has(app.id) && !snapshot.ignoredIDs.includes(app.id))
-    .filter((app) => !uninstallableAppIDs.has(app.id))
-    .filter(appFilter)
-    .sort(sortByName);
-  const ignoredApps = snapshot.apps
-    .filter((app) => snapshot.ignoredIDs.includes(app.id))
-    .filter(appFilter)
-    .sort(sortByName);
-  const recentlyUpdatedApps = snapshot.recentlyUpdated
-    .map((record) => appByID.get(record.appID))
-    .filter((app): app is AppRecord => {
-      if (!app) {
-        return false;
-      }
-      return !snapshot.ignoredIDs.includes(app.id) && !updatesByAppID.has(app.id);
-    })
-    .filter(appFilter);
-
-  const homebrewOutdated = snapshot.homebrewItems
-    .filter(
-      (item) =>
-        item.isOutdated && !item.pinned && !snapshot.ignoredHomebrewItemIDs.includes(item.id)
-    )
-    .filter(homebrewFilter)
-    .sort(sortHomebrewOutdated);
-  const ignoredAppsUnfiltered = snapshot.apps.filter((app) => snapshot.ignoredIDs.includes(app.id));
-  const appsRepresentedOutsideHomebrew = term
-    ? [...availableApps, ...ignoredAppsUnfiltered]
-    : snapshot.apps.filter(
-        (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
-      );
-  const representedAppIDs = new Set(appsRepresentedOutsideHomebrew.map((app) => app.id));
-  const allHomebrewOutdated = homebrewOutdated.filter(
-    (item) => !(isCask(item.kind) && item.appID && representedAppIDs.has(item.appID))
-  );
-  const homebrewInstalled = snapshot.homebrewItems
-    .filter(
-      (item) =>
-        (!item.isOutdated || item.pinned) && !snapshot.ignoredHomebrewItemIDs.includes(item.id)
-    )
-    .filter(homebrewFilter)
-    .sort(sortHomebrewInstalled);
-  const homebrewIgnored = snapshot.homebrewItems
-    .filter((item) => snapshot.ignoredHomebrewItemIDs.includes(item.id))
-    .filter(homebrewFilter)
-    .sort(sortHomebrewInstalled);
-  const recentlyIDs = new Set(snapshot.homebrewRecentlyUpdated.map((record) => record.itemID));
-  const homebrewRecentlyUpdated = homebrewInstalled.filter((item) => recentlyIDs.has(item.id));
-
-  return {
-    availableApps,
-    installedApps,
-    ignoredApps,
-    recentlyUpdatedApps,
-    homebrewOutdated,
-    allHomebrewOutdated,
-    homebrewInstalled,
-    homebrewIgnored,
-    homebrewRecentlyUpdated
-  };
-}
-
-function matchingAppForHomebrewItem(
-  item: Pick<HomebrewManagedItem, "kind" | "token"> &
-    Partial<
-      Pick<HomebrewManagedItem, "appID" | "name" | "presentation"> &
-        Pick<HomebrewCaskDiscoveryItem, "displayName">
-    >,
-  snapshot: BaselineSnapshot
-): AppRecord | undefined {
-  if (!isCask(item.kind)) {
-    return undefined;
-  }
-  const appFromExplicitLink = item.appID
-    ? snapshot.apps.find((app) => app.id === item.appID)
-    : undefined;
-  if (appFromExplicitLink) {
-    return appFromExplicitLink;
-  }
-
-  return undefined;
-}
-
-function sortByName(lhs: AppRecord, rhs: AppRecord): number {
-  return lhs.displayName.localeCompare(rhs.displayName, undefined, { sensitivity: "base" });
-}
-
-function sortByUpdateDate(
-  lhs: AppRecord,
-  rhs: AppRecord,
-  updatesByAppID: Map<string, UpdateRecord>
-): number {
-  const left = new Date(
-    updatesByAppID.get(lhs.id)?.releaseDate ?? updatesByAppID.get(lhs.id)?.checkedAt ?? 0
-  ).getTime();
-  const right = new Date(
-    updatesByAppID.get(rhs.id)?.releaseDate ?? updatesByAppID.get(rhs.id)?.checkedAt ?? 0
-  ).getTime();
-  return right - left || sortByName(lhs, rhs);
-}
-
-function sortHomebrewOutdated(lhs: HomebrewManagedItem, rhs: HomebrewManagedItem): number {
-  const left = new Date(lhs.releaseDate ?? 0).getTime();
-  const right = new Date(rhs.releaseDate ?? 0).getTime();
-  return right - left || lhs.name.localeCompare(rhs.name, undefined, { sensitivity: "base" });
-}
-
-function sortHomebrewInstalled(lhs: HomebrewManagedItem, rhs: HomebrewManagedItem): number {
-  return (
-    lhs.kind.localeCompare(rhs.kind) ||
-    lhs.name.localeCompare(rhs.name, undefined, { sensitivity: "base" })
-  );
-}
-
 function currentRoute(): Route {
   const raw = window.location.hash.replace(/^#\/?/u, "");
   if (raw === "menubar" || raw === "settings") {
@@ -4351,7 +3988,9 @@ if (root) {
   createRoot(root).render(<App />);
 }
 
-export { ActionConfirmationContext, actionStateFromFlags };
+export { ActionConfirmationContext };
+
+export { actionStateFromFlags } from "./helpers/actionState";
 
 export { uninstallableHomebrewItemForApp } from "./helpers/sections";
 
