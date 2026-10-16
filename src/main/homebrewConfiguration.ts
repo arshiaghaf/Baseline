@@ -52,7 +52,12 @@ function assignments(content: Buffer): Map<string, string> {
 }
 
 function absolute(value: string | undefined): string {
-  if (!value || !path.isAbsolute(value) || value.includes("\0"))
+  if (
+    !value ||
+    !path.isAbsolute(value) ||
+    value.includes("\0") ||
+    value.split(path.sep).some((component) => component === "." || component === "..")
+  )
     throw new UnsupportedConfiguration("unsupported");
   return value;
 }
@@ -90,7 +95,13 @@ async function linkRepository(file: string): Promise<string> {
   const target = await readlink(file);
   // The launcher resolves the first link's directory, not an arbitrary final
   // executable realpath. Match that distinction for /usr/local/bin/brew.
-  return path.dirname(await realpath(path.resolve(directory, path.dirname(target))));
+  const targetDirectory = path.dirname(target);
+  // Preserve kernel symlink/.. traversal; path.resolve would normalize first.
+  return path.dirname(
+    await realpath(
+      path.isAbsolute(targetDirectory) ? targetDirectory : `${directory}/${targetDirectory}`
+    )
+  );
 }
 
 async function launcherPrefix(executable: string): Promise<string> {
@@ -101,20 +112,35 @@ async function launcherPrefix(executable: string): Promise<string> {
   const file = path.join(directory, "brew");
   const prefix = path.dirname(directory);
   const repository = (await symbolic(file)) ? await linkRepository(file) : prefix;
+  let compatibilityLink = false;
+  let compatibilityRepository: string | undefined;
+  try {
+    compatibilityLink = await symbolic("/usr/local/bin/brew");
+    if (compatibilityLink) compatibilityRepository = await linkRepository("/usr/local/bin/brew");
+  } catch {
+    // The launcher's optional /usr/local compatibility lookup is a non-match
+    // when its target cannot be entered. Selected-prefix checks remain strict.
+  }
   if (
-    (await symbolic("/usr/local/bin/brew")) &&
+    compatibilityLink &&
     !(await symbolic(path.join(prefix, "Cellar"))) &&
-    repository === (await linkRepository("/usr/local/bin/brew"))
+    repository === compatibilityRepository
   )
     return "/usr/local";
   return prefix;
 }
 
-async function inspect(executable: string, environment: NodeJS.ProcessEnv): Promise<string> {
+async function inspect(
+  executable: string,
+  environment: NodeJS.ProcessEnv,
+  signal?: AbortSignal
+): Promise<string> {
+  signal?.throwIfAborted();
   const hash = createHash("sha256");
   const prefix = await launcherPrefix(executable);
   const effective = { ...environment };
   const load = async (file: string) => {
+    signal?.throwIfAborted();
     hash.update(file).update("\0");
     let handle;
     try {
@@ -132,11 +158,14 @@ async function inspect(executable: string, environment: NodeJS.ProcessEnv): Prom
       throw new UnsupportedConfiguration("unreadable");
     }
     try {
+      signal?.throwIfAborted();
       const before = await handle.stat({ bigint: true });
+      signal?.throwIfAborted();
       if (!before.isFile() || before.size > BigInt(maxConfigurationBytes))
         throw new UnsupportedConfiguration("unsupported");
       const bytes = Buffer.alloc(maxConfigurationBytes + 1);
       const { bytesRead } = await handle.read(bytes, 0, bytes.length, 0);
+      signal?.throwIfAborted();
       const after = await handle.stat({ bigint: true });
       if (
         bytesRead > maxConfigurationBytes ||
@@ -173,16 +202,17 @@ async function inspect(executable: string, environment: NodeJS.ProcessEnv): Prom
  * Refusal applies to reads as well as mutations; it never edits configuration. */
 export async function checkHomebrewConfiguration(
   executable: string,
-  inherited: NodeJS.ProcessEnv
+  inherited: NodeJS.ProcessEnv,
+  signal?: AbortSignal
 ): Promise<HomebrewConfigurationCheck> {
   const environment = { ...inherited };
   try {
-    const fingerprint = await inspect(executable, environment);
+    const fingerprint = await inspect(executable, environment, signal);
     return {
       supported: true,
       revalidate: async () => {
         try {
-          return (await inspect(executable, environment)) === fingerprint;
+          return (await inspect(executable, environment, signal)) === fingerprint;
         } catch {
           return false;
         }

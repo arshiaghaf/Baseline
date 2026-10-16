@@ -12,6 +12,7 @@ import {
 import { OperationOutputTail } from "./operationOutputTail";
 import { CommandCapture, CommandOutputStream } from "./commandOutput";
 import { terminateCommandGroup } from "./commandProcessGroup";
+import { CommandPreflight, PreflightInterrupted } from "./commandPreflight";
 import {
   homebrewEnvironment,
   homebrewReadCommand,
@@ -287,33 +288,48 @@ export async function runBrewCommand(
   options: CommandOptions = {}
 ): Promise<CommandResult> {
   if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
-  const executable = await resolvedBrewExecutablePath();
-  // A concurrent command may have failed teardown during executable resolution.
-  if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
-  if (!executable) return missingExecutable("Homebrew");
   const read = homebrewReadCommand(args);
-  const commandOptions: CommandOptions = {
-    collectOutputTail: !read,
-    timeoutMs: read ? commandReadTimeoutMs : 0,
-    capture: read ? "complete" : "tail",
-    ...options,
-    env: homebrewEnvironment(executable, { ...process.env, ...options.env })
-  };
-  const configuration = await checkHomebrewConfiguration(executable, commandOptions.env!);
-  if (!configuration.supported || !(await configuration.revalidate())) {
-    return {
-      success: false,
-      status: null,
-      output: "",
-      stdout: "",
-      stderr: "",
-      failure: { kind: "configuration-blocked", message: homebrewConfigurationBlockedMessage }
+  const preflight = new CommandPreflight(
+    options.timeoutMs ?? (read ? commandReadTimeoutMs : 0),
+    options.signal
+  );
+  try {
+    const executable = await preflight.run(resolvedBrewExecutablePath);
+    // A concurrent command may have failed teardown during executable resolution.
+    if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
+    if (!executable) return missingExecutable("Homebrew");
+    const commandOptions: CommandOptions = {
+      collectOutputTail: !read,
+      timeoutMs: read ? commandReadTimeoutMs : 0,
+      capture: read ? "complete" : "tail",
+      ...options,
+      env: homebrewEnvironment(executable, { ...process.env, ...options.env })
     };
+    const configuration = await preflight.run(() =>
+      checkHomebrewConfiguration(executable, commandOptions.env!, preflight.cancellationSignal)
+    );
+    if (!configuration.supported || !(await preflight.run(configuration.revalidate))) {
+      return {
+        success: false,
+        status: null,
+        output: "",
+        stdout: "",
+        stderr: "",
+        failure: { kind: "configuration-blocked", message: homebrewConfigurationBlockedMessage }
+      };
+    }
+    if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
+    commandOptions.timeoutMs = preflight.remainingMs();
+    preflight.dispose();
+    return await executeCommand(executable, args, onOutputLine, commandOptions, () => {
+      homebrewCleanupUnconfirmed = true;
+    });
+  } catch (error) {
+    if (error instanceof PreflightInterrupted) return error.result();
+    throw error;
+  } finally {
+    preflight.dispose();
   }
-  if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
-  return executeCommand(executable, args, onOutputLine, commandOptions, () => {
-    homebrewCleanupUnconfirmed = true;
-  });
 }
 
 export async function runMasCommand(

@@ -83,6 +83,58 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       expect((await checkHomebrewConfiguration(executable, env)).supported).toBe(true);
     });
 
+    it.each(["HOME", "XDG_CONFIG_HOME", "HOMEBREW_XDG_CONFIG_HOME", "prefix redirect"])(
+      "refuses symlink/.. ambiguity in %s before lexical path normalization",
+      async (source) => {
+        for (const name of ["base", "other/dir", "other/homebrew", "other/.homebrew"])
+          await mkdir(path.join(directory, name), { recursive: true });
+        await symlink(path.join(directory, "other/dir"), path.join(directory, "base/link"));
+        const rawDirectory = `${directory}/base/link/..`;
+        const userConfig = path.join(
+          directory,
+          "other",
+          source === "HOME" ? ".homebrew" : "homebrew",
+          "brew.env"
+        );
+        await writeFile(userConfig, "SUDO_ASKPASS=/fixture-conflict\n");
+        if (source === "prefix redirect")
+          await writeFile(prefixFile, `HOMEBREW_XDG_CONFIG_HOME=${rawDirectory}\n`);
+        else env[source] = rawDirectory;
+        const terminal = path.join(directory, "prefix/Library/Homebrew/brew.sh");
+        await mkdir(path.dirname(terminal), { recursive: true });
+        await writeFile(terminal, '#!/bin/bash\n[[ "$SUDO_ASKPASS" == /fixture-conflict ]]\n');
+        const child = spawnSync(executable, ["--version"], {
+          env,
+          encoding: "utf8",
+          timeout: 2000
+        });
+        expect(child.status).toBe(0);
+        expect(child.stdout).toBe("");
+        expect(child.stderr).toBe("");
+        expect(await checkHomebrewConfiguration(executable, env)).toEqual({
+          supported: false,
+          reason: "unsupported"
+        });
+      }
+    );
+
+    it("supports ordinary user directory and relative executable symlinks without dot components in inputs", async () => {
+      const actualUser = path.join(directory, "actual-user");
+      await mkdir(actualUser);
+      const userLink = path.join(directory, "user-link");
+      await symlink(actualUser, userLink);
+      env.HOME = userLink;
+      const repository = path.join(directory, "repository/bin/brew");
+      await mkdir(path.dirname(repository), { recursive: true });
+      await copyFile(executable, repository);
+      await rm(executable);
+      await symlink("../../repository/bin/brew", executable);
+      expect((await checkHomebrewConfiguration(executable, env)).supported).toBe(true);
+      expect(
+        (await checkHomebrewConfiguration(`${directory}/prefix/../prefix/bin/brew`, env)).supported
+      ).toBe(false);
+    });
+
     it.each([
       "HOMEBREW_BROKEN\n",
       "HOMEBREW_BAD-NAME=value\n",
