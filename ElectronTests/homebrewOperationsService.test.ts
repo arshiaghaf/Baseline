@@ -9,7 +9,7 @@ import {
   HomebrewOperationsService,
   type HomebrewOperationsState
 } from "../src/main/homebrewOperationsService";
-import type { CommandResult } from "../src/main/commandRunner";
+import type { CommandOptions, CommandResult } from "../src/main/commandRunner";
 
 function formula(patch: Partial<HomebrewManagedItem> = {}): HomebrewManagedItem {
   return {
@@ -30,7 +30,11 @@ function formula(patch: Partial<HomebrewManagedItem> = {}): HomebrewManagedItem 
 }
 
 function harness(
-  run: (args: string[], onLine?: (line: string) => void) => Promise<CommandResult> = async () => ({
+  run: (
+    args: string[],
+    onLine?: (line: string) => void,
+    options?: CommandOptions
+  ) => Promise<CommandResult> = async () => ({
     success: true,
     status: 0,
     output: ""
@@ -56,6 +60,7 @@ function harness(
   const refresh = vi.fn(async () => undefined);
   const stats = vi.fn(async () => undefined);
   const failure = vi.fn(async () => undefined);
+  const failures = vi.fn(async () => undefined);
   const events: string[] = [];
   const lock = new HomebrewWorkLock<never>({
     hasOtherMutation: () =>
@@ -80,7 +85,7 @@ function harness(
     recordProfileStatsEvents: stats,
     clearOperationFailure: () => undefined,
     recordOperationFailure: failure,
-    recordOperationFailures: vi.fn(async () => undefined),
+    recordOperationFailures: failures,
     hasCheckedHomebrewAvailability: () => true,
     markHomebrewAvailabilityChecked: () => undefined,
     requiresInventory: () => false,
@@ -93,6 +98,7 @@ function harness(
     refresh,
     stats,
     failure,
+    failures,
     events,
     get state() {
       return state;
@@ -104,6 +110,112 @@ function harness(
 }
 
 describe("HomebrewOperationsService", () => {
+  it("retains an independent helper fault alongside reconciliation errors after cancellation", async () => {
+    const h = harness(async () => ({
+      success: false,
+      cancelled: true,
+      status: 1,
+      output: "",
+      failure: { kind: "admin-helper", message: "fixture helper failure" }
+    }));
+    h.refresh.mockImplementation(async () => {
+      h.setState({ refreshErrorMessage: "Inventory unavailable." });
+    });
+    await h.service.performHomebrewUpdate("formula:example");
+    expect(h.state.refreshErrorMessage).toContain("Inventory unavailable.");
+    expect(h.state.refreshErrorMessage).toContain("administrator password helper failed");
+    expect(h.failure).not.toHaveBeenCalled();
+    expect(h.state.homebrewOperation).toBeUndefined();
+    expect(h.lock.activeCommandCount).toBe(0);
+  });
+
+  it.each(["single", "batch", "queued", "install", "uninstall"] as const)(
+    "reconciles cancelled %s without failure UI/history while holding the reservation",
+    async (scenario) => {
+      const cancelled = {
+        success: false,
+        status: 1,
+        output: "sudo fixture rejected",
+        cancelled: true
+      };
+      const h = harness(async (args) =>
+        args[0] === "update" ? { success: true, status: 0, output: "" } : cancelled
+      );
+      const cask: HomebrewManagedItem = {
+        id: "cask:fixture",
+        kind: "cask",
+        token: "fixture",
+        fullToken: "fixture",
+        tap: "homebrew/cask",
+        name: "Fixture",
+        installedVersion: version("1"),
+        isOutdated: true
+      };
+      const other = { ...cask, id: "cask:other", token: "other", fullToken: "other" };
+      h.setState({ homebrewItems: [cask, other] });
+      h.refresh.mockImplementation(async () => {
+        expect(h.lock.activeCommandCount).toBe(1);
+        expect(h.state.homebrewOperation?.phase).toBe("reconciling");
+      });
+      if (scenario === "single") await h.service.performHomebrewUpdate(cask.id);
+      if (scenario === "batch") await h.service.performHomebrewUpdateAll();
+      if (scenario === "queued") {
+        h.lock.beginRefresh(9);
+        const pending = [
+          h.service.performHomebrewUpdate(cask.id),
+          h.service.performHomebrewUpdate(other.id)
+        ];
+        try {
+          h.lock.endRefresh(9);
+          await h.service.processHomebrewUpdateQueue();
+        } finally {
+          await Promise.all(pending);
+        }
+      }
+      if (scenario === "install")
+        await h.service.installHomebrewItem({
+          id: "cask:fixture",
+          kind: "cask",
+          token: "fixture",
+          displayName: "Fixture",
+          version: version("2")
+        });
+      if (scenario === "uninstall") await h.service.uninstallHomebrewItem(cask.id);
+      expect(h.failure).not.toHaveBeenCalled();
+      expect(h.failures).not.toHaveBeenCalled();
+      expect(h.stats).not.toHaveBeenCalled();
+      expect(h.refresh).toHaveBeenCalledOnce();
+      expect(h.state.refreshErrorMessage).toBeUndefined();
+      expect(h.state.homebrewBatchFailedItemIDs).toEqual([]);
+      expect(h.state.homebrewDiscoverFailedItemIDs).toEqual([]);
+      expect(h.state.homebrewUpdatingItemIDs).toEqual([]);
+      expect(h.state.homebrewDiscoverInstallingItemIDs).toEqual([]);
+      expect(h.state.homebrewUninstallingItemIDs).toEqual([]);
+      expect(h.state.homebrewOperation).toBeUndefined();
+      expect(h.lock.activeCommandCount).toBe(0);
+    }
+  );
+
+  it("publishes a recoverable waiting snapshot and ignores status after the command settles", async () => {
+    let notify: ((id: string | undefined) => void) | undefined;
+    const h = harness(async (_args, _line, options) => {
+      notify = options?.adminOperation?.onWaitingChanged;
+      notify?.("a".repeat(32));
+      expect(h.state.homebrewOperation).toMatchObject({
+        phase: "waiting",
+        waitingPromptID: "a".repeat(32),
+        itemIDs: ["formula:example"]
+      });
+      // getSnapshot uses a clone of this authoritative state; reopening does not
+      // depend on having observed the notification that established the wait.
+      expect(structuredClone(h.state).homebrewOperation?.waitingPromptID).toBe("a".repeat(32));
+      return { success: false, status: 1, output: "", cancelled: true };
+    });
+    await h.service.performHomebrewUpdate("formula:example");
+    notify?.("b".repeat(32));
+    expect(h.state.homebrewOperation).toBeUndefined();
+  });
+
   it("queues during refresh and verifies fresh installed identity before execution", async () => {
     const h = harness();
     h.lock.beginRefresh(1);
@@ -150,7 +262,11 @@ describe("HomebrewOperationsService", () => {
       finish({ success: true, status: 0, output: "" });
       await pending;
     }
-    expect(h.runCommand).toHaveBeenCalledWith(["upgrade", "example"], expect.any(Function));
+    expect(h.runCommand).toHaveBeenCalledWith(
+      ["upgrade", "example"],
+      expect.any(Function),
+      expect.objectContaining({ adminOperation: expect.any(Object) })
+    );
     expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual(["formula:example"]);
     expect(h.stats).toHaveBeenCalledTimes(1);
     expect(h.refresh).toHaveBeenCalledTimes(1);

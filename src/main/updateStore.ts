@@ -28,6 +28,7 @@ import { AppStoreLookupClient } from "./appStoreLookupClient";
 import { BundleScannerClient } from "./bundleScanner";
 import {
   runBrewCommand as defaultRunBrewCommand,
+  commandWasCancelled,
   runMasCommand as defaultRunMasCommand,
   homebrewCleanupIsUnconfirmed,
   type CommandResult
@@ -215,6 +216,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       ...persisted,
       operationFailures: normalizeOperationFailures(persisted.operationFailures),
       operationFailureDetails: {},
+      homebrewOperation: undefined,
       isMasInstalled: false,
       isHomebrewInstalled: false,
       isChecking: false,
@@ -606,6 +608,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       reason?: OperationFailure["reason"];
     }>
   ): Promise<string | undefined> {
+    failures = failures.filter(({ result }) => !commandWasCancelled(result));
     if (failures.length === 0) return;
     const occurredAt = new Date().toISOString();
     const records = failures.map(({ entityID, operation, result, reason }): OperationFailure => ({
