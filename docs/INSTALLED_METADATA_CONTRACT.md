@@ -85,3 +85,6 @@ data, all supported dependency scopes, unsupported legacy fields, per-keg versus
 current versions, cask info separation, unknown values and exact graph matching.
 The existing inventory tests continue to cover identity verification, partial
 failure recovery, pin/rename/tap continuity and cleanup quarantine.
+The inventory regression also exercises 300,000 valid runtime references within
+the runner capture limit. Iterative appends preserve this wide observed subset
+without exceeding the JavaScript call-argument limit or losing healthy inventory.

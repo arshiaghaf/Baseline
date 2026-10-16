@@ -89,6 +89,62 @@ describe("HomebrewInventoryClient", () => {
     ]);
   });
 
+  it("preserves healthy inventory with a wide producer-shaped runtime dependency array", async () => {
+    const referenceCount = 300_000;
+    const output = JSON.stringify({
+      formulae: [
+        {
+          name: "ripgrep",
+          full_name: "ripgrep",
+          tap: "homebrew/core",
+          installed: [
+            {
+              version: "14.0.0",
+              installed_on_request: false,
+              runtime_dependencies: Array(referenceCount).fill({ full_name: "lib" })
+            }
+          ]
+        },
+        {
+          name: "lib",
+          full_name: "lib",
+          tap: "homebrew/core",
+          installed: [{ version: "1", installed_on_request: true, runtime_dependencies: [] }]
+        }
+      ],
+      casks: JSON.parse(commandMock.results.get("info --cask --installed --json=v2")!.output).casks
+    });
+    // A complete, valid transport response below the runner's 32 MiB capture limit.
+    expect(Buffer.byteLength(output)).toBeLessThan(32 * 1024 * 1024);
+    commandMock.results.set("info --installed --json=v2", { success: true, status: 0, output });
+    commandMock.results.set("list --formula --versions", {
+      success: true,
+      status: 0,
+      output: "ripgrep 14.0.0\nlib 1\n"
+    });
+    const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
+    const result = await new HomebrewInventoryClient().fetchInventory();
+    expect(result.inventoryReadSucceededByKind).toEqual({ formula: true, cask: true });
+    expect(result.outdatedDetectionSucceededByKind).toEqual({ formula: true, cask: true });
+    expect(result.items).toHaveLength(3);
+    expect(result.items.find((item) => item.id === "formula:ripgrep")).toMatchObject({
+      formulaIdentityVerified: true,
+      isOutdated: true
+    });
+    const sidecar = result.installedMetadataByItemID!;
+    const references = sidecar["formula:ripgrep"]!.dependencies;
+    expect(references).toHaveLength(referenceCount);
+    expect(sidecar["formula:ripgrep"]!.installedReceipts[0]!.runtimeDependencies).toHaveLength(
+      referenceCount
+    );
+    expect(references.every((dependency) => dependency.installedItemID === "formula:lib")).toBe(
+      true
+    );
+    expect(sidecar["formula:lib"]!.installedDependents).toEqual(["formula:ripgrep"]);
+    expect(sidecar["cask:notion"]?.caskInstalledVersion).toBe("4.0.0");
+    expect(commandMock.calls).toHaveLength(5);
+  });
+
   it("joins custom formula updates by verified full name while retaining the saved rack ID", async () => {
     commandMock.results.set("list --formula --versions", {
       success: true,

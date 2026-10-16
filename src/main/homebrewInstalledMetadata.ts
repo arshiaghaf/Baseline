@@ -125,7 +125,10 @@ export function buildInstalledMetadata(
       dependencies: declaredDependencies(raw, item.kind, installedReceipts),
       installedDependents: []
     };
-    metadata.dependencies.push(...installedReceipts.flatMap((r) => r.runtimeDependencies));
+    // Captured JSON can contain more references than V8 accepts as call arguments.
+    for (const receipt of installedReceipts) {
+      for (const dependency of receipt.runtimeDependencies) metadata.dependencies.push(dependency);
+    }
     result[item.id] = metadata;
   }
 
