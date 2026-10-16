@@ -277,7 +277,6 @@ describe("combined installed-info transport", () => {
       revision: 4,
       versionScheme: 1,
       installedOnRequest: true,
-      installedAsDependency: true,
       installedReceipts: [
         { version: "1.0_1", installedOnRequest: false },
         { version: "1.0_2", installedOnRequest: true, time: 1700000000 }
@@ -288,7 +287,10 @@ describe("combined installed-info transport", () => {
       token: "libshared",
       source: "receipt",
       scope: "runtime",
-      version: "2.0_3",
+      spec: "stable",
+      receiptVersion: "1.0_2",
+      version: "2.0",
+      pkgVersion: "2.0_3",
       revision: 3,
       declaredDirectly: true,
       installedItemID: "formula:libshared"
@@ -302,7 +304,9 @@ describe("combined installed-info transport", () => {
     expect(metadata["formula:head-tool"]?.headVersion).toBe("HEAD");
     expect(metadata["cask:auto-tool"]).toMatchObject({
       autoUpdates: true,
-      installedReceipts: [{ version: "1.2,100" }],
+      caskVersion: "1.3,110",
+      caskInstalledVersion: "1.2,100",
+      installedReceipts: [],
       dependencies: [
         { kind: "formula", token: "libshared", source: "declaration" },
         { kind: "cask", token: "latest-tool", source: "declaration" }

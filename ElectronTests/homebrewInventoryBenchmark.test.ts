@@ -160,7 +160,7 @@ function scaledFixture(additionalPerKind: number) {
       name: token,
       full_name: token,
       tap: "homebrew/core",
-      installed: [{ version: "1.0_2", installed_on_request: true, installed_as_dependency: false }]
+      installed: [{ version: "1.0_2", installed_on_request: true }]
     });
     result.info.casks.push({
       token,
