@@ -9,7 +9,10 @@ import {
   HomebrewInventoryClient,
   type HomebrewInventoryResult
 } from "../src/main/homebrewInventoryClient";
-import type { HomebrewInstalledMetadata } from "../src/main/homebrewInstalledMetadata";
+import {
+  buildInstalledMetadata,
+  type HomebrewInstalledMetadata
+} from "../src/main/homebrewInstalledMetadata";
 import { SnapshotPersistence } from "../src/main/persistence";
 import { UpdateStore } from "../src/main/updateStore";
 import {
@@ -277,6 +280,67 @@ describe("backend composition", () => {
       };
       await store.refresh(true);
       expect(store.getHomebrewInstalledContext(formula.id)).toBeUndefined();
+    } finally {
+      await store.prepareToQuit();
+    }
+  });
+
+  it("keeps serialized cask info separate from formula receipt counts in installed context", async () => {
+    const cask: HomebrewManagedItem = {
+      id: "cask:desktop",
+      kind: "cask",
+      token: "desktop",
+      fullToken: "desktop",
+      tap: "homebrew/cask",
+      name: "Desktop",
+      installedVersion: version("1"),
+      isOutdated: false
+    };
+    // Cask::Cask#to_h emits installed/version fields, not Formula installed-keg records.
+    const metadata = buildInstalledMetadata(
+      [cask],
+      { ...ok, stdout: '{"formulae":[]}' },
+      {
+        ...ok,
+        stdout: JSON.stringify({
+          casks: [
+            {
+              token: "desktop",
+              full_token: "desktop",
+              tap: "homebrew/cask",
+              version: "2",
+              installed: "1",
+              installed_time: 1700000000,
+              auto_updates: true,
+              caveats: "private cask prose /Users/private/settings",
+              depends_on: { formula: ["dependency"] }
+            }
+          ]
+        })
+      }
+    );
+    const { store, save } = fixture({
+      inventory: async () => ({
+        ...healthyInventory,
+        items: [cask],
+        installedMetadataByItemID: metadata
+      })
+    });
+    try {
+      await store.refresh(true);
+      expect(store.getHomebrewInstalledContext(cask.id)).toEqual({
+        deprecated: undefined,
+        disabled: undefined,
+        autoUpdates: true,
+        installedOnRequest: undefined,
+        caveatsAvailable: true,
+        installedReceiptCount: 0,
+        declaredDependencyCount: 1,
+        observedRuntimeDependencyCount: 0,
+        observedInstalledDependentCount: 0
+      });
+      expect(JSON.stringify(save.mock.calls)).not.toContain("private cask prose");
+      expect(JSON.stringify(store.getSnapshot())).not.toContain("caskInstalledVersion");
     } finally {
       await store.prepareToQuit();
     }
