@@ -2,9 +2,11 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import type { CommandResult } from "../src/main/commandRunner";
 
-const fixture = vi.hoisted(() => ({ create: vi.fn(), spawn: vi.fn() }));
+const fixture = vi.hoisted(() => ({ create: vi.fn(), spawn: vi.fn(), revalidate: vi.fn() }));
 vi.mock("node:fs/promises", async (original) => ({
   ...(await original<typeof import("node:fs/promises")>()),
   access: async () => {}
@@ -15,7 +17,7 @@ vi.mock("../src/shared/security", async (original) => ({
   brewExecutableCandidates: () => [process.execPath]
 }));
 vi.mock("../src/main/homebrewConfiguration", () => ({
-  checkHomebrewConfiguration: async () => ({ supported: true, revalidate: async () => true }),
+  checkHomebrewConfiguration: async () => ({ supported: true, revalidate: fixture.revalidate }),
   homebrewConfigurationBlockedMessage: "fixture configuration refusal"
 }));
 vi.mock("../src/main/adminAskpassCoordinator", () => ({
@@ -49,6 +51,7 @@ const operation = { operationID: "1".repeat(32), onWaitingChanged: vi.fn() };
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
+  fixture.revalidate.mockResolvedValue(true);
   api = await import("../src/main/commandRunner");
   runtime = await import("../src/main/adminAskpassRuntime");
   await runtime.configureAdminAskpass(process.execPath); // Metadata only; never launched.
@@ -156,5 +159,73 @@ it.each(["rejection", "unconfirmed"])(
     expect((await api.runBrewCommand(["--version"])).failure?.kind).toBe("cleanup");
     expect(result()?.failure?.kind).toBe("cancelled");
     expect(fixture.spawn).not.toHaveBeenCalled();
+  }
+);
+
+it.each(["cancelled", "timeout"])(
+  "bounds stalled known-session disposal after %s without dropping ownership",
+  async (kind) => {
+    const revalidating = gate(),
+      finishing = gate();
+    fixture.revalidate
+      .mockResolvedValueOnce(true)
+      .mockImplementationOnce(() => revalidating.promise.then(() => true));
+    fixture.create.mockResolvedValue({
+      socketPath: "/fixture/socket",
+      finish: () => finishing.promise.then(() => ({ cleanupConfirmed: true }))
+    });
+    const abort = new AbortController();
+    const result = observe(
+      api.runBrewCommand(args, undefined, {
+        adminOperation: operation,
+        signal: abort.signal,
+        timeoutMs: kind === "timeout" ? 15 : 0,
+        cleanupTimeoutMs: 20
+      })
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fixture.revalidate).toHaveBeenCalledTimes(2);
+    if (kind === "cancelled") abort.abort();
+    await vi.advanceTimersByTimeAsync(kind === "timeout" ? 36 : 21);
+    expect(result()?.failure?.kind).toBe("cleanup");
+    expect(Boolean(result()?.cancelled)).toBe(kind === "cancelled");
+    expect(api.homebrewCleanupIsUnconfirmed()).toBe(true);
+    await expect(runtime.configureAdminAskpass(process.execPath)).rejects.toThrow();
+    expect(fixture.spawn).not.toHaveBeenCalled();
+    finishing.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(runtime.configureAdminAskpass(process.execPath)).resolves.toBeUndefined();
+  }
+);
+
+it.each(["transport close", "finish"])(
+  "bounds %s after command exit within the same cleanup budget",
+  async (stage) => {
+    const stopped = gate();
+    fixture.create.mockResolvedValue({
+      socketPath: "/fixture/socket",
+      lifecycle: { cancelled: false },
+      prepareCleanup: () => (stage === "transport close" ? stopped.promise : Promise.resolve()),
+      finish: () => stopped.promise.then(() => ({ cleanupConfirmed: true }))
+    });
+    fixture.spawn.mockImplementation(() => {
+      const child = Object.assign(new EventEmitter(), {
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        unref: vi.fn()
+      });
+      queueMicrotask(() => child.emit("close", 0, null));
+      return child;
+    });
+    const result = observe(
+      api.runBrewCommand(args, undefined, { adminOperation: operation, cleanupTimeoutMs: 20 })
+    );
+    await vi.advanceTimersByTimeAsync(21);
+    expect(result()?.failure?.kind).toBe("cleanup");
+    expect(api.homebrewCleanupIsUnconfirmed()).toBe(true);
+    await expect(runtime.configureAdminAskpass(process.execPath)).rejects.toThrow();
+    stopped.resolve();
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(runtime.configureAdminAskpass(process.execPath)).resolves.toBeUndefined();
   }
 );

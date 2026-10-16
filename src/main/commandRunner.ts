@@ -13,6 +13,7 @@ import { OperationOutputTail } from "./operationOutputTail";
 import { CommandCapture, CommandOutputStream } from "./commandOutput";
 import { terminateCommandGroup } from "./commandProcessGroup";
 import { CommandPreflight, PreflightInterrupted } from "./commandPreflight";
+import { CommandCleanup } from "./commandCleanup";
 import {
   createAdminAskpassSession,
   releaseAdminAskpassSession,
@@ -138,7 +139,8 @@ async function executeCommand(
   onOutputLine: (line: string) => void = () => undefined,
   options: CommandOptions = {},
   onCleanupFailure?: () => void,
-  admin?: AdminAskpassSession
+  admin?: AdminAskpassSession,
+  cleanupBudget = new CommandCleanup(options.cleanupTimeoutMs ?? 3_000)
 ): Promise<CommandResult> {
   const empty = { success: false, status: null, output: "", stdout: "", stderr: "" };
   if (options.signal?.aborted) {
@@ -195,7 +197,9 @@ async function executeCommand(
         admin?.coordinator.lifecycle.cancelled;
       if (admin) {
         try {
-          const evidence = await admin.coordinator.finish(failure?.kind !== "cleanup");
+          const evidence = await cleanupBudget.wait(
+            admin.coordinator.finish(failure?.kind !== "cleanup")
+          );
           if (!evidence.cleanupConfirmed)
             throw new Error("Unconfirmed administrator helper cleanup.");
           if (evidence.helperError && (!failure || failure.kind === "cancelled"))
@@ -229,21 +233,34 @@ async function executeCommand(
     const clean = () => {
       cleanup ??= (async () => {
         const budget = options.cleanupTimeoutMs ?? 3_000;
-        const deadline = performance.now() + budget;
-        if (admin)
-          await admin.coordinator.prepareCleanup(
-            admin.coordinator.lifecycle.cancelled || failure?.kind === "cancelled"
-              ? "cancelled"
-              : failure?.kind === "admin-helper"
-                ? "error"
-                : "command-exit",
-            Math.min(deadline, performance.now() + Math.min(1_000, budget / 2))
-          );
-        await terminateCommandGroup(
-          child,
-          options.terminationGraceMs ?? 1_000,
-          Math.max(1, deadline - performance.now())
+        const deadline = cleanupBudget.deadline;
+        let helperCleanupFailed = false;
+        if (admin) {
+          try {
+            await cleanupBudget.wait(
+              admin.coordinator.prepareCleanup(
+                admin.coordinator.lifecycle.cancelled || failure?.kind === "cancelled"
+                  ? "cancelled"
+                  : failure?.kind === "admin-helper"
+                    ? "error"
+                    : "command-exit",
+                Math.min(deadline, performance.now() + Math.min(1_000, budget / 2))
+              )
+            );
+          } catch {
+            helperCleanupFailed = true;
+          }
+        }
+        // Attempt group teardown even when status transport shutdown stalled.
+        await cleanupBudget.wait(
+          terminateCommandGroup(
+            child,
+            options.terminationGraceMs ?? 1_000,
+            Math.max(1, deadline - performance.now())
+          )
         );
+        if (helperCleanupFailed)
+          throw new Error("Administrator helper cleanup could not be confirmed.");
       })().catch((error: NodeJS.ErrnoException) => {
         onCleanupFailure?.();
         failure = {
@@ -349,6 +366,7 @@ export async function runBrewCommand(
 ): Promise<CommandResult> {
   if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
   const read = homebrewReadCommand(args);
+  const cleanupBudget = new CommandCleanup(options.cleanupTimeoutMs ?? 3_000);
   const preflight = new CommandPreflight(
     options.timeoutMs ?? (read ? commandReadTimeoutMs : 0),
     options.signal
@@ -409,7 +427,7 @@ export async function runBrewCommand(
           ),
         {
           dispose: async (session) => {
-            if (session) await disposeAdmin(session);
+            if (session) await cleanupBudget.wait(disposeAdmin(session));
           },
           failed: () => {
             homebrewCleanupUnconfirmed = true;
@@ -445,7 +463,8 @@ export async function runBrewCommand(
         () => {
           homebrewCleanupUnconfirmed = true;
         },
-        admin
+        admin,
+        cleanupBudget
       )
     );
   } catch (error) {
@@ -453,7 +472,16 @@ export async function runBrewCommand(
     throw error;
   } finally {
     preflight.dispose();
-    if (admin && !(await disposeAdmin(admin)) && outcome) {
+    let confirmed = true;
+    if (admin) {
+      try {
+        confirmed = await cleanupBudget.wait(disposeAdmin(admin));
+      } catch {
+        confirmed = false;
+        homebrewCleanupUnconfirmed = true;
+      }
+    }
+    if (!confirmed && outcome) {
       outcome.success = false;
       outcome.failure = {
         kind: "cleanup",
