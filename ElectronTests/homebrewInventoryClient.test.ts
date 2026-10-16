@@ -276,6 +276,7 @@ describe("HomebrewInventoryClient", () => {
         .sort()
     ).toEqual(
       [
+        "info --installed --json=v2",
         "list --formula --versions",
         "list --cask --versions",
         "outdated --formula --json=v2",
