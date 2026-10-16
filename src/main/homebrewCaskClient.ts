@@ -311,9 +311,16 @@ function walk(value: any, visitor: (key: string, value: any) => void): void {
   let visited = 0;
   while (pending.length && ++visited <= 20_000) {
     const current = pending.pop();
-    if (Array.isArray(current)) pending.push(...current);
-    else if (current && typeof current === "object") {
-      for (const [key, child] of Object.entries(current)) {
+    if (Array.isArray(current)) {
+      // Installed metadata bypasses strict catalogue admission. Bound both
+      // queued work and traversal without spreading an untrusted array into call arguments.
+      const count = Math.min(current.length, 20_000 - visited - pending.length);
+      for (let index = 0; index < count; index++) pending.push(current[index]);
+    } else if (current && typeof current === "object") {
+      for (const key in current) {
+        if (visited + pending.length >= 20_000) break;
+        if (!Object.hasOwn(current, key)) continue;
+        const child = current[key];
         visitor(key, child);
         pending.push(child);
       }

@@ -355,3 +355,59 @@ it("retains still-fresh must-revalidate data when a forced request fails", async
   expect(await cache.fetch()).toEqual([]);
   expect(cache.status.unavailable).toBe(true);
 });
+
+it.each(["success", "timeout"])(
+  "gives a late bodyless 304 recovery its own bounded request deadline: %s",
+  async (outcome) => {
+    const signals: AbortSignal[] = [];
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(
+        () => controller.abort(new DOMException("Timed out", "TimeoutError")),
+        milliseconds
+      );
+      signals.push(controller.signal);
+      return controller.signal;
+    });
+    let requests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      requests++;
+      if (requests === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 11_900));
+        return new Response(null, { status: 304 });
+      }
+      const signal = init!.signal!;
+      await new Promise<void>((resolve, reject) => {
+        if (signal.aborted) reject(signal.reason);
+        else {
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+          if (outcome === "success") setTimeout(resolve, 2000);
+        }
+      });
+      return live('["recovered"]');
+    });
+    const cache = new CatalogueCache(
+      url,
+      [],
+      100,
+      (data) => JSON.parse(data.toString()) as string[]
+    );
+    let settled = false;
+    const task = cache.fetch().then((value) => {
+      settled = true;
+      return value;
+    });
+    await vi.advanceTimersByTimeAsync(11_900);
+    expect(requests).toBe(2);
+    expect(timeout.mock.calls).toEqual([[12_000], [12_000]]);
+    expect(signals[0]).not.toBe(signals[1]);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(signals[0]!.aborted).toBe(true);
+    expect(signals[1]!.aborted).toBe(false);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(outcome === "success" ? 1900 : 11_900);
+    expect(await task).toEqual(outcome === "success" ? ["recovered"] : []);
+    expect(cache.status.unavailable).toBe(outcome !== "success");
+    expect(requests).toBe(2);
+  }
+);
