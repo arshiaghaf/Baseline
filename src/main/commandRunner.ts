@@ -13,6 +13,11 @@ import { OperationOutputTail } from "./operationOutputTail";
 import { CommandCapture, CommandOutputStream } from "./commandOutput";
 import { terminateCommandGroup } from "./commandProcessGroup";
 import {
+  createAdminAskpassSession,
+  releaseAdminAskpassSession,
+  type AdminAskpassSession
+} from "./adminAskpassRuntime";
+import {
   homebrewEnvironment,
   homebrewReadCommand,
   commandReadTimeoutMs,
@@ -65,7 +70,7 @@ export type CommandFailure = {
 };
 
 export type CommandOptions = {
-  /** Status metadata only. Supplying this does not enable the dormant helper. */
+  /** Status metadata only. Eligibility also requires main-process helper setup. */
   adminOperation?: {
     operationID: string;
     onWaitingChanged(waitingPromptID: string | undefined): void;
@@ -131,12 +136,15 @@ async function executeCommand(
   args: string[],
   onOutputLine: (line: string) => void = () => undefined,
   options: CommandOptions = {},
-  onCleanupFailure?: () => void
+  onCleanupFailure?: () => void,
+  admin?: AdminAskpassSession
 ): Promise<CommandResult> {
   const empty = { success: false, status: null, output: "", stdout: "", stderr: "" };
   if (options.signal?.aborted) {
+    if (admin) await admin.coordinator.prepareCleanup("cancelled", performance.now());
     return {
       ...empty,
+      cancelled: true,
       failure: { kind: "cancelled", message: "Command cancelled before launch." }
     };
   }
@@ -163,6 +171,7 @@ async function executeCommand(
     const stdout = new CommandCapture(maxBytes, tail);
     const stderr = new CommandCapture(maxBytes, tail);
     let failure: CommandFailure | undefined;
+    let cancellationRequested = false;
     let cleanup: Promise<void> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const child = spawn(executablePath, args, {
@@ -171,16 +180,41 @@ async function executeCommand(
       env: { ...process.env, ...options.env }
     });
     let settled = false;
-    const finish = (status: number | null, signal: NodeJS.Signals | null) => {
+    const finish = async (status: number | null, signal: NodeJS.Signals | null) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);
+      admin?.stop.removeEventListener("abort", onAdminStop);
       if (signal && !failure)
         failure = { kind: "signal", message: `Command terminated by ${signal}.` };
+      const cancelled =
+        cancellationRequested ||
+        failure?.kind === "cancelled" ||
+        admin?.coordinator.lifecycle.cancelled;
+      if (admin) {
+        try {
+          const evidence = await admin.coordinator.finish(failure?.kind !== "cleanup");
+          if (!evidence.cleanupConfirmed)
+            throw new Error("Unconfirmed administrator helper cleanup.");
+          if (evidence.helperError && (!failure || failure.kind === "cancelled"))
+            failure = {
+              kind: "admin-helper",
+              message: "The administrator password helper failed."
+            };
+        } catch {
+          onCleanupFailure?.();
+          failure = {
+            kind: "cleanup",
+            message:
+              "Could not confirm administrator helper cleanup. Restart Baseline after checking running Homebrew processes."
+          };
+        }
+      }
       const invalidCapture = !tail && (output.truncated || failure?.kind === "cleanup");
       resolve({
-        success: status === 0 && !failure,
+        success: status === 0 && !failure && !cancelled,
+        ...(cancelled ? { cancelled: true } : {}),
         status: failure?.kind === "spawn" ? null : status,
         signal,
         failure,
@@ -192,11 +226,24 @@ async function executeCommand(
       });
     };
     const clean = () => {
-      cleanup ??= terminateCommandGroup(
-        child,
-        options.terminationGraceMs ?? 1_000,
-        options.cleanupTimeoutMs ?? 3_000
-      ).catch((error: NodeJS.ErrnoException) => {
+      cleanup ??= (async () => {
+        const budget = options.cleanupTimeoutMs ?? 3_000;
+        const deadline = performance.now() + budget;
+        if (admin)
+          await admin.coordinator.prepareCleanup(
+            admin.coordinator.lifecycle.cancelled || failure?.kind === "cancelled"
+              ? "cancelled"
+              : failure?.kind === "admin-helper"
+                ? "error"
+                : "command-exit",
+            Math.min(deadline, performance.now() + Math.min(1_000, budget / 2))
+          );
+        await terminateCommandGroup(
+          child,
+          options.terminationGraceMs ?? 1_000,
+          Math.max(1, deadline - performance.now())
+        );
+      })().catch((error: NodeJS.ErrnoException) => {
         onCleanupFailure?.();
         failure = {
           kind: "cleanup",
@@ -209,7 +256,7 @@ async function executeCommand(
         child.stdout.destroy();
         child.stderr.destroy();
         child.unref();
-        finish(null, null);
+        void finish(null, null);
       });
       return cleanup;
     };
@@ -217,7 +264,18 @@ async function executeCommand(
       failure ??= reason;
       void clean();
     };
-    const onAbort = () => stop({ kind: "cancelled", message: "Command cancelled." });
+    const onAbort = () => {
+      cancellationRequested = true;
+      stop({ kind: "cancelled", message: "Command cancelled." });
+    };
+    const onAdminStop = () => {
+      cancellationRequested ||= admin?.stopReason() === "cancelled";
+      stop(
+        admin?.stopReason() === "cancelled"
+          ? { kind: "cancelled", message: "Administrator password entry cancelled." }
+          : { kind: "admin-helper", message: "The administrator password helper failed." }
+      );
+    };
     const onLine = (line: string) => {
       if (failure) return;
       try {
@@ -265,10 +323,12 @@ async function executeCommand(
     });
     child.on("close", async (status, signal) => {
       await clean();
-      finish(status, signal);
+      await finish(status, signal);
     });
     options.signal?.addEventListener("abort", onAbort, { once: true });
+    admin?.stop.addEventListener("abort", onAdminStop, { once: true });
     if (options.signal?.aborted) onAbort();
+    if (admin?.stop.aborted) onAdminStop();
     if (options.timeoutMs)
       timer = setTimeout(
         () =>
@@ -311,9 +371,53 @@ export async function runBrewCommand(
     };
   }
   if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
-  return executeCommand(executable, args, onOutputLine, commandOptions, () => {
-    homebrewCleanupUnconfirmed = true;
-  });
+  let admin: AdminAskpassSession | undefined;
+  try {
+    admin = await createAdminAskpassSession(args, options.adminOperation);
+  } catch {
+    return {
+      success: false,
+      status: null,
+      output: "",
+      stdout: "",
+      stderr: "",
+      failure: {
+        kind: "admin-helper",
+        message: "The administrator password helper is unavailable."
+      }
+    };
+  }
+  if (admin) commandOptions.env = { ...commandOptions.env, ...admin.environment };
+  try {
+    // Socket setup is asynchronous: revalidate at the actual spawn boundary.
+    if (homebrewCleanupUnconfirmed) return quarantinedHomebrew();
+    if (!(await configuration.revalidate()))
+      return {
+        success: false,
+        status: null,
+        output: "",
+        failure: { kind: "configuration-blocked", message: homebrewConfigurationBlockedMessage }
+      };
+    return await executeCommand(
+      executable,
+      args,
+      onOutputLine,
+      commandOptions,
+      () => {
+        homebrewCleanupUnconfirmed = true;
+      },
+      admin
+    );
+  } finally {
+    if (admin) {
+      try {
+        const evidence = await admin.coordinator.finish(true);
+        if (!evidence.cleanupConfirmed) homebrewCleanupUnconfirmed = true;
+      } finally {
+        releaseAdminAskpassSession(admin);
+      }
+    }
+  }
 }
 
 export async function runMasCommand(
