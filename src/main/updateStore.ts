@@ -468,6 +468,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.persist();
     if (this.hasActiveUpdateOperation()) return false;
     this.refreshLifecycle.stop();
+    this.homebrewOperations.dispose();
+    this.progressPublisher.dispose();
     return true;
   }
 
