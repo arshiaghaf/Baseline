@@ -8,8 +8,6 @@ import type {
   AppRecord,
   BaselineSnapshot,
   HomebrewCaskDiscoveryItem,
-  HomebrewCaskIndex,
-  HomebrewFormulaIndex,
   HomebrewManagedItem,
   MenuTab,
   PersistedSnapshot,
@@ -18,17 +16,9 @@ import type {
   SnapshotProgressEvent,
   UpdateRecord
 } from "../shared/domain";
-import {
-  emptyHomebrewCaskIndex,
-  emptyHomebrewFormulaIndex,
-  normalizeAppearancePreference
-} from "../shared/domain";
+import { emptyHomebrewCaskIndex, normalizeAppearancePreference } from "../shared/domain";
 import type { HomebrewMaintenanceRunEvent } from "../shared/homebrewProgress";
-import {
-  caskIndexForInstalledItems,
-  homebrewCommandToken,
-  installedCaskEntry
-} from "../shared/homebrewIdentity";
+import { homebrewCommandToken, installedCaskEntry } from "../shared/homebrewIdentity";
 import type { PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
 import { isVersionEmpty, version, type VersionValue } from "../shared/version";
@@ -59,28 +49,24 @@ import {
   normalizeOperationFailures,
   type OperationFailure
 } from "../shared/operationFailures";
-import type { CatalogueStatus } from "./catalogueCache";
 
-import {
-  isAppUpdateNewerThanInstalledApp,
-  lookupAppUpdates,
-  mergeRecentlyUpdated
-} from "./appUpdateLookupService";
+import { isAppUpdateNewerThanInstalledApp } from "./appUpdateLookupService";
 import {
   canUseHomebrewAppUpdate,
-  detectLaggingHomebrewCaskTokens,
   emptyHomebrewInventoryResult,
   homebrewCaskItemProvesAppOwnership,
-  homebrewIdentityReconciliationItems,
   homebrewItemCanRunAppUpdate,
   installedCaskIdentifiesSelf,
-  mergeHomebrewRecentlyUpdatedRecords,
   preserveFormulaIdentityContinuity,
-  preservePreviousHomebrewInventoryMembership,
-  preservePreviousHomebrewOutdatedState,
-  reconcileHomebrewInventory
+  preservePreviousHomebrewInventoryMembership
 } from "./homebrewReconciliation";
 import { RefreshLifecycle } from "./refreshLifecycle";
+import {
+  RefreshComputationService,
+  homebrewInventoryIsComplete,
+  type RefreshOptions,
+  type RefreshReadState
+} from "./refreshComputationService";
 export {
   mergeHomebrewRecentlyUpdatedRecords,
   preservePreviousHomebrewOutdatedState
@@ -90,12 +76,6 @@ type StoreEvents = {
   snapshot: [BaselineSnapshot];
   progress: [SnapshotProgressEvent];
   homebrewCommand: [HomebrewMaintenanceRunEvent];
-};
-
-type RefreshOptions = {
-  allowHomebrewInventoryDuringActiveCommand?: boolean;
-  forceMetadata?: boolean;
-  onHomebrewInventoryReconciled?: (inventory: HomebrewInventoryResult) => void;
 };
 
 type HomebrewCaskSource = Pick<HomebrewCaskClient, "fetchIndex" | "lookupUpdate" | "searchCasks"> &
@@ -124,11 +104,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly profileStatsService: ProfileStatsService;
   private readonly successRefreshDelayMS: number;
   private homebrewCleanupRequiresInventory = false;
-  private latestHomebrewIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex;
-  private latestHomebrewFormulaIndex: HomebrewFormulaIndex = emptyHomebrewFormulaIndex;
   private hasCheckedHomebrewAvailability = false;
   private readonly homebrewWorkLock: HomebrewWorkLock<HomebrewInventoryResult>;
   private readonly homebrewOperations: HomebrewOperationsService;
+  private readonly refreshComputation: RefreshComputationService;
 
   private state: BaselineSnapshot;
   private snapshotRevision = 0;
@@ -138,7 +117,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private readonly refreshLifecycle = new RefreshLifecycle<RefreshOptions>(
     (lightweight, sequence, options, signal) =>
-      this.computeRefresh(lightweight, sequence, options, signal),
+      this.refreshComputation.compute(lightweight, sequence, options, signal),
     () => void this.refresh(true)
   );
 
@@ -292,6 +271,62 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       requiresInventory: () => this.homebrewCleanupRequiresInventory,
       successRefreshDelayMS: this.successRefreshDelayMS
     });
+    this.refreshComputation = new RefreshComputationService(
+      {
+        scanner: this.scanner,
+        appStore: this.appStore,
+        sparkle: this.sparkle,
+        homebrew: this.homebrew,
+        homebrewFormula: this.homebrewFormula
+      },
+      {
+        readState: (): RefreshReadState => {
+          const {
+            homebrewItems,
+            homebrewFormulaIdentityContinuity,
+            updates,
+            recentlyUpdated,
+            homebrewRecentlyUpdated,
+            homebrewUpdatedPendingRefreshItemIDs,
+            homebrewDiscoverInstallingItemIDs,
+            homebrewDiscoverInstalledPendingRefreshItemIDs,
+            homebrewDiscoverProgressByItemID,
+            searchText
+          } = this.state;
+          return {
+            homebrewItems,
+            homebrewFormulaIdentityContinuity,
+            updates,
+            recentlyUpdated,
+            homebrewRecentlyUpdated,
+            homebrewUpdatedPendingRefreshItemIDs,
+            homebrewDiscoverInstallingItemIDs,
+            homebrewDiscoverInstalledPendingRefreshItemIDs,
+            homebrewDiscoverProgressByItemID,
+            searchText
+          };
+        },
+        patch: (patch) => this.patch(patch),
+        persist: () => this.persist(),
+        scanDirectories: () => this.scanDirectories(),
+        fetchHomebrewInventory: (lightweight, options) =>
+          this.fetchHomebrewInventory(lightweight, options),
+        lookupSelfUpdate: (now) => this.lookupSelfUpdate(now),
+        isCurrent: (sequence) => this.refreshLifecycle.isCurrent(sequence),
+        isSelfApp: (app) => this.isSelfApp(app),
+        beginRefresh: (sequence) => this.homebrewWorkLock.beginRefresh(sequence),
+        endRefresh: (sequence) => this.homebrewWorkLock.endRefresh(sequence),
+        isHomebrewMutationActive: () => this.isHomebrewMutationActive(),
+        isCleanupInventoryRequired: () => this.homebrewCleanupRequiresInventory,
+        setCleanupInventoryRequired: (required) => {
+          this.homebrewCleanupRequiresInventory = required;
+        },
+        invalidateHomebrewUpdateTargets: () => this.invalidateHomebrewUpdateTargets(),
+        processHomebrewUpdateQueue: () => {
+          void this.homebrewOperations.processHomebrewUpdateQueue();
+        }
+      }
+    );
   }
 
   private isSelfApp(app: AppRecord): boolean {
@@ -382,7 +417,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   async setSearchText(searchText: string): Promise<void> {
     this.patch({ searchText });
-    await this.refreshHomebrewDiscoverItems();
+    this.refreshComputation.refreshDiscoverItems();
   }
 
   async setSelectedTab(selectedTab: MenuTab): Promise<void> {
@@ -664,238 +699,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     return this.homebrewWorkLock.reserveCommand(options);
   }
 
-  private async computeRefresh(
-    lightweight: boolean,
-    sequence: number,
-    options: RefreshOptions,
-    signal: AbortSignal
-  ): Promise<void> {
-    this.homebrewWorkLock.beginRefresh(sequence);
-    this.patch({
-      isRefreshing: true,
-      refreshErrorMessage: undefined,
-      lastRefreshNoticeMessage: undefined
-    });
-    const now = new Date().toISOString();
-    const force =
-      options.forceMetadata ?? (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand);
-    let homebrewInventoryTask: Promise<HomebrewInventoryResult> | undefined;
-    try {
-      homebrewInventoryTask = this.fetchHomebrewInventory(lightweight, options);
-      const [apps, catalogueIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
-        await Promise.all([
-          this.scanner.scanApplications(this.scanDirectories()),
-          this.homebrew.fetchIndex({ force }),
-          this.homebrewFormula.fetchIndex({ force }),
-          homebrewInventoryTask,
-          this.lookupSelfUpdate(now)
-        ]);
-      if (!this.refreshLifecycle.isCurrent(sequence)) {
-        return;
-      }
-      const homebrewItems = preservePreviousHomebrewInventoryMembership(
-        homebrewInventory.items,
-        this.state.homebrewItems,
-        homebrewInventory.inventoryReadSucceededByKind,
-        this.state.homebrewFormulaIdentityContinuity
-      );
-      const homebrewIndex = caskIndexForInstalledItems(catalogueIndex, homebrewItems);
-      this.latestHomebrewIndex = homebrewIndex;
-      this.latestHomebrewFormulaIndex = homebrewFormulaIndex;
-      const previousUpdates = new Map(this.state.updates.map((update) => [update.appID, update]));
-      const updates = await lookupAppUpdates(
-        { appStore: this.appStore, sparkle: this.sparkle, homebrew: this.homebrew },
-        {
-          apps,
-          previousUpdates,
-          homebrewItems,
-          homebrewIndex,
-          now,
-          force,
-          signal,
-          isCurrent: () => this.refreshLifecycle.isCurrent(sequence),
-          isSelfApp: (app) => this.isSelfApp(app),
-          canUseHomebrewAppUpdate
-        }
-      );
-      if (!updates) return;
-
-      if (!this.refreshLifecycle.isCurrent(sequence)) {
-        return;
-      }
-      const previousHomebrewItems = this.state.homebrewItems;
-      const reconciledHomebrewItems = reconcileHomebrewInventory(
-        preservePreviousHomebrewOutdatedState(
-          homebrewItems,
-          homebrewIdentityReconciliationItems(this.state),
-          homebrewInventory.outdatedDetectionSucceededByKind
-        ),
-        updates,
-        apps,
-        homebrewIndex,
-        previousHomebrewItems,
-        (app) => this.isSelfApp(app)
-      );
-      const homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
-        reconciledHomebrewItems,
-        this.state,
-        homebrewInventory.inventoryReadSucceededByKind
-      );
-      const recentlyUpdated = mergeRecentlyUpdated(
-        this.state.recentlyUpdated,
-        apps,
-        updates,
-        previousUpdates,
-        now
-      );
-      const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
-        this.state.homebrewRecentlyUpdated,
-        homebrewIdentityReconciliationItems(this.state),
-        homebrewIdentityReconciliationItems({
-          homebrewItems: reconciledHomebrewItems,
-          homebrewFormulaIdentityContinuity
-        }),
-        now,
-        { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
-      );
-      const preserveHomebrewCommandState =
-        this.isHomebrewMutationActive() && !options.allowHomebrewInventoryDuringActiveCommand;
-      this.patch({
-        apps,
-        updates,
-        homebrewItems: reconciledHomebrewItems,
-        homebrewFormulaIdentityContinuity,
-        recentlyUpdated,
-        homebrewRecentlyUpdated,
-        lastRefreshDate: now,
-        isRefreshing: false,
-        lastRefreshNoticeMessage:
-          [
-            homebrewInventory.warning,
-            catalogueCacheNotice(this.homebrew.cacheStatus, this.homebrewFormula.cacheStatus)
-          ]
-            .filter(Boolean)
-            .join(" ") || undefined,
-        appUpdatedPendingRefreshIDs: [],
-        homebrewUpdatedPendingRefreshItemIDs: preserveHomebrewCommandState
-          ? this.state.homebrewUpdatedPendingRefreshItemIDs
-          : [],
-        homebrewDiscoverInstallingItemIDs: preserveHomebrewCommandState
-          ? this.state.homebrewDiscoverInstallingItemIDs
-          : [],
-        homebrewDiscoverInstalledPendingRefreshItemIDs: preserveHomebrewCommandState
-          ? this.state.homebrewDiscoverInstalledPendingRefreshItemIDs
-          : [],
-        homebrewDiscoverProgressByItemID: preserveHomebrewCommandState
-          ? this.state.homebrewDiscoverProgressByItemID
-          : {},
-        selfUpdate,
-        laggingHomebrewCaskTokens: detectLaggingHomebrewCaskTokens(
-          homebrewItems,
-          updates,
-          apps,
-          homebrewIndex
-        )
-      });
-      await this.refreshHomebrewDiscoverItems();
-      if (this.homebrewInventoryIsComplete(homebrewInventory)) {
-        this.homebrewCleanupRequiresInventory = false;
-      } else if (this.homebrewCleanupRequiresInventory || options.onHomebrewInventoryReconciled) {
-        this.homebrewCleanupRequiresInventory = true;
-        this.invalidateHomebrewUpdateTargets();
-      }
-      await this.persist();
-      if (!this.refreshLifecycle.isCurrent(sequence)) return;
-      options.onHomebrewInventoryReconciled?.(homebrewInventory);
-      void this.homebrewOperations.processHomebrewUpdateQueue();
-    } catch (error) {
-      if (!this.refreshLifecycle.isCurrent(sequence)) {
-        return;
-      }
-      // Keep this refresh's task even after the shared inventory lock is released.
-      // An unrelated provider failure must not discard fresh membership evidence.
-      const recoveredHomebrewInventory = await homebrewInventoryTask?.catch(() => undefined);
-      if (!this.refreshLifecycle.isCurrent(sequence)) {
-        return;
-      }
-      const patch: Partial<BaselineSnapshot> = {
-        isRefreshing: false,
-        refreshErrorMessage: error instanceof Error ? error.message : "Refresh failed."
-      };
-      const inventory = recoveredHomebrewInventory ?? {
-        items: [],
-        inventoryReadSucceededByKind: { formula: false, cask: false },
-        outdatedDetectionSucceededByKind: { formula: false, cask: false }
-      };
-      patch.homebrewItems = preservePreviousHomebrewOutdatedState(
-        preservePreviousHomebrewInventoryMembership(
-          inventory.items,
-          this.state.homebrewItems,
-          inventory.inventoryReadSucceededByKind,
-          this.state.homebrewFormulaIdentityContinuity
-        ),
-        homebrewIdentityReconciliationItems(this.state),
-        inventory.outdatedDetectionSucceededByKind
-      );
-      patch.homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
-        patch.homebrewItems,
-        this.state,
-        inventory.inventoryReadSucceededByKind
-      );
-      patch.homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
-        this.state.homebrewRecentlyUpdated,
-        homebrewIdentityReconciliationItems(this.state),
-        homebrewIdentityReconciliationItems({
-          homebrewItems: patch.homebrewItems,
-          homebrewFormulaIdentityContinuity: patch.homebrewFormulaIdentityContinuity
-        }),
-        now,
-        { completedItemIDs: this.state.homebrewUpdatedPendingRefreshItemIDs }
-      );
-      patch.lastRefreshNoticeMessage = recoveredHomebrewInventory?.warning;
-      this.patch(patch);
-      if (this.homebrewCleanupRequiresInventory || options.onHomebrewInventoryReconciled) {
-        this.homebrewCleanupRequiresInventory = true;
-        this.invalidateHomebrewUpdateTargets();
-        await this.persist().catch(() => undefined);
-      } else {
-        await this.persist();
-      }
-      void this.homebrewOperations.processHomebrewUpdateQueue();
-    } finally {
-      // Fresh identity, membership and pins must reach state before any queued
-      // command can resume. A superseded refresh cannot release its successor.
-      if (this.homebrewWorkLock.endRefresh(sequence)) {
-        void this.homebrewOperations.processHomebrewUpdateQueue();
-      }
-    }
-  }
-
-  private async refreshHomebrewDiscoverItems(): Promise<void> {
-    const term = this.state.searchText.trim();
-    if (!term) {
-      this.patch({ homebrewDiscoverItems: [] });
-      return;
-    }
-    const installedCasks = new Set(
-      this.state.homebrewItems
-        .filter((item) => item.kind === "cask")
-        .map((item) => item.token.toLowerCase())
-    );
-    const installedFormulae = new Set(
-      this.state.homebrewItems
-        .filter((item) => item.kind === "formula")
-        .map((item) => item.token.toLowerCase())
-    );
-    const casks = this.homebrew.searchCasks(term, this.latestHomebrewIndex, installedCasks);
-    const formulae = this.homebrewFormula.searchFormulae(
-      term,
-      this.latestHomebrewFormulaIndex,
-      installedFormulae
-    );
-    this.patch({ homebrewDiscoverItems: [...casks, ...formulae].slice(0, 18) });
-  }
-
   private async lookupSelfUpdate(now: string): Promise<SelfUpdateRecord | undefined> {
     if (isVersionEmpty(this.currentAppVersion)) {
       return undefined;
@@ -1037,13 +840,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     let refreshed = false;
     try {
       await this.refreshLifecycle.runCleanupGeneration((sequence, signal) =>
-        this.computeRefresh(
+        this.refreshComputation.compute(
           true,
           sequence,
           {
             allowHomebrewInventoryDuringActiveCommand: true,
             onHomebrewInventoryReconciled: (inventory) => {
-              refreshed = this.homebrewInventoryIsComplete(inventory);
+              refreshed = homebrewInventoryIsComplete(inventory);
             }
           },
           signal
@@ -1063,16 +866,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       await this.persist().catch(() => undefined);
     }
     return refreshed;
-  }
-
-  private homebrewInventoryIsComplete(inventory: HomebrewInventoryResult): boolean {
-    return (
-      inventory.inventoryReadSucceededByKind?.formula !== false &&
-      inventory.inventoryReadSucceededByKind?.cask !== false &&
-      inventory.outdatedDetectionSucceeded &&
-      inventory.outdatedDetectionSucceededByKind?.formula !== false &&
-      inventory.outdatedDetectionSucceededByKind?.cask !== false
-    );
   }
 
   private invalidateHomebrewUpdateTargets(): void {
@@ -1100,7 +893,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         homebrewCaskItemProvesAppOwnership(
           item,
           appRecord,
-          installedCaskEntry(item, this.latestHomebrewIndex)
+          installedCaskEntry(item, this.refreshComputation.caskIndex)
         )
     );
   }
@@ -1275,17 +1068,4 @@ function addToArray<T>(values: T[], value: T): T[] {
 
 function removeFromArray<T>(values: T[], value: T): T[] {
   return values.filter((candidate) => candidate !== value);
-}
-
-function catalogueCacheNotice(...statuses: Array<CatalogueStatus | undefined>): string | undefined {
-  if (statuses.some((status) => status?.unavailable)) {
-    return "Homebrew catalogue metadata is unavailable. Refresh to retry.";
-  }
-  const stale = statuses.filter((status): status is CatalogueStatus => Boolean(status?.stale));
-  if (stale.length === 0) return undefined;
-  const checkedAt = stale
-    .map((status) => status.checkedAt)
-    .filter(Boolean)
-    .sort()[0];
-  return `Using cached Homebrew catalogue metadata${checkedAt ? ` (last checked ${checkedAt})` : ""}. Refresh to retry.`;
 }
