@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "baselineSource": "a3292e0b3a5b0735b681eb5f9568023ecbcb9ac2",
+  "sourceHash": "4b05e7f839f22b2bf6a710492b60edd4fc8fea3558f8e9d93770c16b99ebfab6",
+  "rendererFiles": {
+    "assets/index-BPzAoH-z.css": "38e512d1828ec58aa23f386dab05609d72f2fab277633d70c8b10077bcda8a31",
+    "assets/index-Cg-ifz_f.js": "f49105fcc5dad413ae50b30f1e13d0e5af133dfb2ffbfab578617e4eebc75457",
+    "index.html": "a93ce379f44200af8e108aa42c5ce41954a7b5f09ace79a0dcbcae2fb133902b"
+  },
+  "rendererHash": "d4cea82255ae113f7496a6c071e29187074c75924722750aa46e4f7830ced0d2",
+  "node": "v24.22.0",
+  "architecture": "arm64",
+  "macOS": "27.2",
+  "macOSBuild": "26B5112a",
+  "kernel": "27.2.0",
+  "toolFiles": {
+    "package-lock.json": "9bf1eabd69e32fb68a9d7b551aeed573111c5b392aff2b82706798de0631cc64",
+    "playwright.visual.config.ts": "c2a7313f95de6b84e4f55d2088b262dbe91baa182d9df653f9810901f1cb19ed",
+    "e2e/renderer-visual.spec.ts": "b8387448378d0e558f22cf6d2da4cb7665eee71d10215b5cce9f3e6971a3299a",
+    "e2e/visualSnapshot.ts": "6210a96e639e8b9a53bfc43f86ce721318813a8a16caf1f9e821e012fdb3240d",
+    "e2e/visualSetup.ts": "b226f4000a2ec48331cfbf77e33cfe1156da73b876723ae42c00642bc9aef5fd"
+  },
+  "capturedAt": "2026-10-16T14:48:43.195Z"
+}

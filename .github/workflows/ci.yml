@@ -74,5 +74,17 @@ jobs:
       - name: Electron smoke test
         run: npm run test:electron
 
+      - name: Electron visual comparison (macOS 27 Apple Silicon)
+        if: matrix.os == 'xcode-27'
+        run: npx playwright test --config playwright.visual.config.ts
+
+      - name: Retain visual comparison evidence
+        if: always() && matrix.os == 'xcode-27'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-visual-results
+          path: test-results/
+          retention-days: 7
+
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
