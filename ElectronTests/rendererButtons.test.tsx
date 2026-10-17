@@ -15,6 +15,7 @@ import {
   SettingsView,
   UpdateActionButton
 } from "../src/renderer/main";
+import { AppUpdateCard, RecentAppCard, IgnoredAppCard } from "../src/renderer/components/ItemViews";
 import type {
   AppRecord,
   BaselineSnapshot,
@@ -183,6 +184,190 @@ beforeEach(() => {
 });
 
 describe("renderer button parity", () => {
+  it("recovers waiting status from the snapshot on app and cask rows without affecting a same-token formula", () => {
+    const formula = { ...cask, id: "formula:example", kind: "formula" as const, appID: undefined };
+    const waiting = snapshot({
+      homebrewItems: [cask, formula],
+      homebrewUpdatingItemIDs: [cask.id, formula.id],
+      homebrewOperation: {
+        id: "1".repeat(32),
+        itemIDs: [cask.id],
+        appIDs: [app.id],
+        phase: "waiting",
+        waitingPromptID: "2".repeat(32)
+      }
+    });
+    const rows = (state: BaselineSnapshot) => (
+      <>
+        <AppRow app={app} snapshot={state} recentlyUpdated={false} />
+        <HomebrewRow item={cask} snapshot={state} />
+        <HomebrewRow item={formula} snapshot={state} />
+      </>
+    );
+    const firstWindow = render(rows(waiting));
+    expect(screen.getAllByRole("status").map((node) => node.textContent)).toEqual([
+      "Waiting for admin password",
+      "Waiting for admin password"
+    ]);
+    expect(screen.getAllByRole("button", { name: "Updating" })).toHaveLength(1);
+    firstWindow.unmount();
+    const reopened = render(rows(waiting));
+    expect(screen.getAllByText("Waiting for admin password")).toHaveLength(2);
+    reopened.rerender(
+      rows({
+        ...waiting,
+        homebrewOperation: {
+          ...waiting.homebrewOperation!,
+          phase: "reconciling",
+          waitingPromptID: undefined
+        }
+      })
+    );
+    expect(screen.queryByText("Waiting for admin password")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["update card", AppUpdateCard],
+    ["recent card", RecentAppCard],
+    ["ignored card", IgnoredAppCard],
+    ["row", AppRow]
+  ] as const)(
+    "uses selected-cask and uninstall ownership for the %s waiting line",
+    (_label, Component) => {
+      const operation = {
+        id: "1".repeat(32),
+        itemIDs: [cask.id],
+        appIDs: [],
+        phase: "waiting" as const,
+        waitingPromptID: "2".repeat(32)
+      };
+      const state = snapshot({
+        homebrewItems: [{ ...cask, appID: "app:other-bundle" }],
+        homebrewUpdatingItemIDs: [cask.id],
+        homebrewOperation: operation
+      });
+      const { rerender } = render(<Component app={app} snapshot={state} recentlyUpdated={false} />);
+      expect(screen.getByRole("status")).toHaveTextContent("Waiting for admin password");
+      // Removal uses explicit installed ownership even without a Homebrew update.
+      rerender(
+        <Component
+          app={app}
+          snapshot={snapshot({
+            updates: [],
+            homebrewItems: [cask],
+            homebrewUninstallingItemIDs: [cask.id],
+            homebrewOperation: operation
+          })}
+          recentlyUpdated={false}
+        />
+      );
+      expect(screen.getByRole("status")).toHaveTextContent("Waiting for admin password");
+      // A same-token formula is never ownership evidence for the app.
+      rerender(
+        <Component
+          app={app}
+          snapshot={snapshot({
+            homebrewItems: [{ ...cask, id: "formula:example", kind: "formula", appID: undefined }],
+            homebrewOperation: { ...operation, itemIDs: ["formula:example"] }
+          })}
+          recentlyUpdated={false}
+        />
+      );
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    }
+  );
+
+  it("shows the password wait for removal even without an update action", () => {
+    render(
+      <HomebrewRow
+        item={{ ...cask, isOutdated: false }}
+        snapshot={snapshot({
+          updates: [],
+          homebrewUninstallingItemIDs: [cask.id],
+          homebrewOperation: {
+            id: "1".repeat(32),
+            itemIDs: [cask.id],
+            appIDs: [app.id],
+            phase: "waiting",
+            waitingPromptID: "2".repeat(32)
+          }
+        })}
+      />
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Waiting for admin password");
+  });
+
+  it("freezes only the affected synthetic progress and resumes without counting time spent waiting", () => {
+    vi.useFakeTimers();
+    try {
+      const formula = {
+        ...cask,
+        id: "formula:example",
+        kind: "formula" as const,
+        appID: undefined
+      };
+      const state = snapshot({
+        homebrewItems: [cask, formula],
+        homebrewUpdatingItemIDs: [cask.id, formula.id],
+        homebrewBatchProgressByItemID: { [cask.id]: 0.1, [formula.id]: 0.1 }
+      });
+      const rows = (next: BaselineSnapshot) => (
+        <>
+          <HomebrewRow item={cask} snapshot={next} />
+          <HomebrewRow item={formula} snapshot={next} />
+        </>
+      );
+      const { container, rerender } = render(rows(state));
+      act(() => vi.advanceTimersByTime(1000));
+      const articles = () => Array.from(container.querySelectorAll("article"));
+      const before = articles().map(progressRingValue);
+      rerender(
+        rows({
+          ...state,
+          homebrewOperation: {
+            id: "1".repeat(32),
+            itemIDs: [cask.id],
+            appIDs: [app.id],
+            phase: "waiting",
+            waitingPromptID: "2".repeat(32)
+          }
+        })
+      );
+      act(() => vi.advanceTimersByTime(20000));
+      expect(progressRingValue(articles()[0]!)).toBe(before[0]);
+      expect(progressRingValue(articles()[1]!)).toBeGreaterThan(before[1]!);
+      rerender(rows(state));
+      expect(progressRingValue(articles()[0]!)).toBe(before[0]);
+      act(() => vi.advanceTimersByTime(120));
+      expect(progressRingValue(articles()[0]!)).toBeGreaterThan(before[0]!);
+      expect(progressRingValue(articles()[0]!)).toBeLessThan(before[0]! + 0.01);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("distinguishes blocked Homebrew configuration from absence in Settings and Discover", () => {
+    const item: HomebrewCaskDiscoveryItem = {
+      id: "cask:fixture",
+      token: "fixture",
+      displayName: "Fixture",
+      kind: "cask",
+      version: version("1.0")
+    };
+    const state = snapshot({ homebrewConfigurationBlocked: true, homebrewDiscoverItems: [item] });
+    render(
+      <>
+        <SettingsView snapshot={state} />
+        <DiscoverRow item={item} snapshot={state} />
+      </>
+    );
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    expect(screen.getByText(/Homebrew is installed, but its configuration/)).toBeInTheDocument();
+    expect(screen.queryByText(/Homebrew is not installed/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check Homebrew" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clean up Homebrew" })).toBeDisabled();
+  });
+
   it.each([false, true])(
     "keeps inspectable failure details on the dashboard (compact=%s)",
     (compact) => {

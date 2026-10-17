@@ -8,7 +8,7 @@ export type Route = "main" | "menubar" | "settings";
 export type ActionState =
   | { type: "ready" }
   | { type: "queued" }
-  | { type: "updating"; progress?: number }
+  | { type: "updating"; progress?: number; waitingForAdmin?: boolean }
   | { type: "done" }
   | { type: "failed" };
 

@@ -78,6 +78,7 @@ export function homebrewControlState(
       queued,
       updating: isUpdating,
       progress,
+      waitingForAdmin: isWaitingForAdmin(snapshot, { itemID: item.id }),
       done
     }),
     homebrewUninstallBlocked
@@ -89,12 +90,14 @@ export function actionStateFromFlags({
   queued = false,
   updating,
   progress,
+  waitingForAdmin = false,
   done
 }: {
   failed: boolean;
   queued?: boolean;
   updating: boolean;
   progress?: number;
+  waitingForAdmin?: boolean;
   done: boolean;
 }): ActionState {
   if (failed) {
@@ -107,7 +110,11 @@ export function actionStateFromFlags({
     return { type: "queued" };
   }
   if (updating) {
-    return progress === undefined ? { type: "updating" } : { type: "updating", progress };
+    return {
+      type: "updating",
+      ...(progress === undefined ? {} : { progress }),
+      ...(waitingForAdmin ? { waitingForAdmin: true } : {})
+    };
   }
   return { type: "ready" };
 }
@@ -124,7 +131,7 @@ export function isHomebrewCommandActive(snapshot: BaselineSnapshot): boolean {
 
 export function actionStateLabel(state: Exclude<ActionState, { type: "ready" }>): string {
   if (state.type === "updating") {
-    return "Updating";
+    return state.waitingForAdmin ? "Waiting for admin password" : "Updating";
   }
   if (state.type === "queued") {
     return "Queued";
@@ -173,9 +180,34 @@ export function appUpdateActionState(
       queued,
       updating: isUpdating,
       progress,
+      waitingForAdmin: appIsWaitingForAdmin(app, snapshot),
       done
     })
   };
+}
+
+/** Use the same proven app/cask identity for row status and its action. */
+export function appIsWaitingForAdmin(app: AppRecord, snapshot: BaselineSnapshot): boolean {
+  const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
+  const selectedItem = homebrewItemForAppUpdate(update, snapshot.homebrewItems);
+  const uninstallableItem = uninstallableHomebrewItemForApp(app, snapshot);
+  return (
+    isWaitingForAdmin(snapshot, { appID: app.id, itemID: selectedItem?.id }) ||
+    isWaitingForAdmin(snapshot, { itemID: uninstallableItem?.id })
+  );
+}
+
+export function isWaitingForAdmin(
+  snapshot: BaselineSnapshot,
+  target: { itemID?: string; appID?: string }
+): boolean {
+  const operation = snapshot.homebrewOperation;
+  return Boolean(
+    operation?.phase === "waiting" &&
+    operation.waitingPromptID &&
+    ((target.itemID && operation.itemIDs.includes(target.itemID)) ||
+      (target.appID && operation.appIDs.includes(target.appID)))
+  );
 }
 
 export function homebrewBatchActionState(
