@@ -9,8 +9,7 @@ NSString *APRequestAnswer(BOOL *cancelled) {
   [NSApp activateIgnoringOtherApps:YES];
   // Never interpolate sudo argv, labels, or metadata into this static script.
   NSAppleScript *script = [[NSAppleScript alloc] initWithSource:
-    @"text returned of (display dialog \"Homebrew needs administrator permission to continue this operation.\\n\\n"
-     "This password dialog is provided by Baseline.\" "
+    @"text returned of (display dialog \"Enter your Mac administrator password to allow Homebrew to continue the operation you started in Baseline.\" "
      "with title \"Baseline\" default answer \"\" with hidden answer "
      "buttons {\"Cancel\", \"Continue\"} default button \"Continue\" cancel button \"Cancel\")"];
   NSDictionary *error = nil;
