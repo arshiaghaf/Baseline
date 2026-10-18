@@ -225,10 +225,31 @@ export async function lookupAppUpdates(
     };
     const apple = lookups.get(app.id);
     if (apple) {
-      const outcome = await apple();
+      let outcome = await apple();
+      let usedIdentity = requestedIdentity.get(app.id) ?? false;
       if (!active()) return;
+      if (
+        outcome.type === "completed" &&
+        !outcome.identity &&
+        !outcome.value &&
+        !usedIdentity &&
+        check.appStoreIdentity
+      ) {
+        // A bundle search cannot invalidate an independently verified product.
+        // Confirm it freshly before replacing its identity or actionable result.
+        check.discoveryCheckedAt = outcome.checkedAt ?? input.now;
+        outcome = await clients.appStore.lookupOutcome(app.bundleIdentifier!, app.localVersion, {
+          signal: input.signal,
+          force: Boolean(input.force || input.forceAppDiscovery),
+          identity: check.appStoreIdentity,
+          includeIOSAppStoreSoftware: app.isIOSAppOnMac === true,
+          includeMacCapableAppStoreSoftware: app.isIOSAppOnMac !== true
+        });
+        usedIdentity = true;
+        if (!active()) return;
+      }
       if (outcome.type === "completed") {
-        if (outcome.discovered ?? !requestedIdentity.get(app.id))
+        if (outcome.discovered ?? !usedIdentity)
           check.discoveryCheckedAt = outcome.checkedAt ?? input.now;
         check.appStoreIdentity = outcome.identity;
         if (outcome.value) {

@@ -102,7 +102,10 @@ describe("durable provider routing", () => {
   const checkedAt = "2026-10-15T00:00:00.000Z";
   function clients(outcome: object = { type: "completed" }) {
     return {
-      appStore: { lookupOutcome: vi.fn(), lookupOutcomes: vi.fn(async () => [outcome]) },
+      appStore: {
+        lookupOutcome: vi.fn().mockResolvedValue(outcome),
+        lookupOutcomes: vi.fn(async () => [outcome])
+      },
       sparkle: {
         lookupOutcome: vi.fn().mockResolvedValue({ type: "completed", providerFound: true })
       },
@@ -207,6 +210,164 @@ describe("durable provider routing", () => {
       expect(source.sparkle.lookupOutcome).not.toHaveBeenCalled();
     }
   );
+
+  const previousAppleUpdate: UpdateRecord = {
+    id: base.id,
+    appID: base.id,
+    source: "appStore",
+    supportLevel: "supported",
+    localVersion: base.localVersion,
+    remoteVersion: version("2"),
+    appStoreItemID: identity.productID,
+    checkedAt
+  };
+
+  it.each([
+    { forceAppDiscovery: false, now: "2026-10-16T06:00:00.000Z", expectedForce: false },
+    { forceAppDiscovery: true, now: "2026-10-16T00:01:00.000Z", expectedForce: true }
+  ])(
+    "confirms a known product when broader discovery omits it: %j",
+    async ({ expectedForce, ...patch }) => {
+      const source = clients({ type: "completed", discovered: true, checkedAt: patch.now });
+      const numericCheckedAt = new Date(Date.parse(patch.now) + 1000).toISOString();
+      vi.mocked(source.appStore.lookupOutcome).mockResolvedValue({
+        type: "completed",
+        discovered: false,
+        identity,
+        checkedAt: numericCheckedAt,
+        value: { remoteVersion: version("3"), appStoreItemID: identity.productID }
+      });
+      const result = await run(source, {
+        ...patch,
+        force: false,
+        previousChecks: prior({
+          status: "checked",
+          source: "appStore",
+          appStoreIdentity: identity
+        }),
+        previousUpdates: new Map([[base.id, previousAppleUpdate]])
+      });
+      expect(source.appStore.lookupOutcomes).toHaveBeenCalledWith(
+        [expect.objectContaining({ identity: undefined })],
+        expect.anything()
+      );
+      expect(source.appStore.lookupOutcome).toHaveBeenCalledWith(
+        base.bundleIdentifier,
+        base.localVersion,
+        expect.objectContaining({ identity, force: expectedForce })
+      );
+      expect(result.updates).toMatchObject([
+        { source: "appStore", remoteVersion: version("3"), checkedAt: numericCheckedAt }
+      ]);
+      expect(result.checks[base.id]).toMatchObject({
+        status: "checked",
+        appStoreIdentity: identity,
+        checkedAt: numericCheckedAt,
+        discoveryCheckedAt: patch.now
+      });
+    }
+  );
+
+  it.each([
+    {
+      name: "current",
+      numericOutcome: { type: "completed", identity, discovered: false, checkedAt: input().now },
+      status: "checked",
+      retained: false,
+      product: identity
+    },
+    {
+      name: "missing",
+      numericOutcome: { type: "completed", discovered: false, checkedAt: input().now },
+      status: "unresolved",
+      retained: false,
+      product: undefined
+    },
+    {
+      name: "failed",
+      numericOutcome: { type: "transientFailure" },
+      status: "failed",
+      retained: true,
+      product: identity
+    }
+  ] as const)(
+    "handles a $name numeric confirmation after a broader no-match",
+    async ({ numericOutcome, status, retained, product }) => {
+      const source = clients({ type: "completed", discovered: true, checkedAt: input().now });
+      vi.mocked(source.appStore.lookupOutcome).mockResolvedValue(numericOutcome);
+      const result = await run(source, {
+        forceAppDiscovery: true,
+        previousChecks: prior({
+          status: "checked",
+          source: "appStore",
+          appStoreIdentity: identity,
+          checkedAt
+        }),
+        previousUpdates: new Map([[base.id, previousAppleUpdate]])
+      });
+      expect(source.appStore.lookupOutcome).toHaveBeenCalledTimes(1);
+      expect(result.updates).toEqual(retained ? [previousAppleUpdate] : []);
+      expect(result.checks[base.id]).toMatchObject({ status, discoveryCheckedAt: input().now });
+      expect(result.checks[base.id]?.appStoreIdentity).toEqual(product);
+      if (retained) expect(result.checks[base.id]?.checkedAt).toBe(checkedAt);
+    }
+  );
+
+  it("adopts a confirmed replacement from broader discovery without reusing the old product", async () => {
+    const replacement = { ...identity, productID: 456 };
+    const source = clients({
+      type: "completed",
+      discovered: true,
+      identity: replacement,
+      checkedAt: input().now,
+      value: { remoteVersion: version("4"), appStoreItemID: replacement.productID }
+    });
+    const result = await run(source, {
+      forceAppDiscovery: true,
+      previousChecks: prior({ status: "checked", source: "appStore", appStoreIdentity: identity }),
+      previousUpdates: new Map([[base.id, previousAppleUpdate]])
+    });
+    expect(source.appStore.lookupOutcome).not.toHaveBeenCalled();
+    expect(result.checks[base.id]?.appStoreIdentity).toEqual(replacement);
+    expect(result.updates).toMatchObject([{ remoteVersion: version("4"), appStoreItemID: 456 }]);
+  });
+
+  it("drains a started product confirmation before completing a cancelled generation", async () => {
+    const source = clients({ type: "completed", discovered: true, checkedAt: input().now });
+    const controller = new AbortController();
+    let release!: () => void;
+    const gate = new Promise<void>((done) => {
+      release = done;
+    });
+    let started = false;
+    vi.mocked(source.appStore.lookupOutcome).mockImplementation(async () => {
+      started = true;
+      await gate;
+      return { type: "completed", identity, value: { remoteVersion: version("3") } };
+    });
+    const task = run(source, {
+      forceAppDiscovery: true,
+      signal: controller.signal,
+      previousChecks: prior({ status: "checked", source: "appStore", appStoreIdentity: identity }),
+      previousUpdates: new Map([[base.id, previousAppleUpdate]])
+    });
+    let settled = false;
+    const observed = task.then((result) => {
+      settled = true;
+      return result;
+    });
+    try {
+      await vi.waitFor(() => expect(started).toBe(true));
+      controller.abort();
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      release();
+      expect((await observed).updates).toBeUndefined();
+    } finally {
+      release();
+      await Promise.allSettled([task, observed]);
+    }
+  });
 
   it("keeps cached no-match searches visibly unresolved and forces an explicit source search", async () => {
     const source = clients();
