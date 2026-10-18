@@ -145,6 +145,12 @@ export type RecentlyUpdatedRecord = {
   updatedAt: string;
 };
 
+/** Historical comparison evidence only; never an update action or source authority. */
+export type AppUpdateComparison = Pick<
+  UpdateRecord,
+  "appID" | "source" | "localVersion" | "localBuildVersion"
+>;
+
 export type HomebrewRecentlyUpdatedRecord = {
   id: string;
   itemID: string;
@@ -250,6 +256,8 @@ export type PersistedSnapshot = {
   operationFailures?: import("./operationFailures").OperationFailure[];
   apps: AppRecord[];
   updates: UpdateRecord[];
+  /** Last reconciled updates, independent of partial streamed display results. */
+  appUpdateComparisonBaseline?: AppUpdateComparison[];
   recentlyUpdated: RecentlyUpdatedRecord[];
   homebrewItems: HomebrewManagedItem[];
   /** Hidden identity continuity during incomplete formula metadata; never command targets. */
