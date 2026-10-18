@@ -141,6 +141,33 @@ describe("tool readiness lifecycle", () => {
     expect(h.release).toHaveBeenCalledTimes(2);
   });
 
+  it.each([true, false])(
+    "publishes Homebrew availability (%s) before releasing its reservation while mas waits",
+    async (success) => {
+      const brew = deferred<CommandResult>();
+      const mas = deferred<CommandResult>();
+      const h = statusHarness(
+        () => brew.promise,
+        () => mas.promise
+      );
+      h.release.mockImplementation(() => {
+        expect(h.state.isHomebrewInstalled).toBe(success);
+        expect(h.markHomebrewAvailabilityChecked).toHaveBeenCalledOnce();
+      });
+      const checking = h.service.check();
+      try {
+        brew.resolve({ success, status: success ? 0 : 1, output: "" });
+        await vi.waitFor(() => expect(h.release).toHaveBeenCalledOnce());
+        expect(h.state.isChecking).toBe(true);
+        expect(h.state.isHomebrewInstalled).toBe(success);
+      } finally {
+        mas.resolve(available);
+        await checking;
+      }
+      expect(h.state.isHomebrewInstalled).toBe(success);
+    }
+  );
+
   it("releases brew independently and keeps the successful mas result after brew rejects", async () => {
     const brew = deferred<CommandResult>();
     const mas = deferred<CommandResult>();
