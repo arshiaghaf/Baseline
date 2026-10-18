@@ -9,11 +9,6 @@ import type { LookupOutcome } from "./appStoreLookupClient";
 import { LookupCache, type LookupRequestOptions } from "./lookupCache";
 import { isSparkleVersionNewer, sparkleMarketingVersion } from "../shared/sparkleVersion";
 
-export type SparkleLookupRequestOptions = LookupRequestOptions & {
-  /** Stable for one refresh, independently of each consumer's cancellation signal. */
-  refreshIdentity?: object;
-};
-
 type AppcastItem = {
   shortVersionString?: string;
   buildVersion?: string;
@@ -54,16 +49,16 @@ const parser = new XMLParser({
 export class SparkleAppcastClient {
   private readonly cache = new LookupCache(1000);
   private readonly decoded = new WeakMap<Buffer, AppcastCandidate[]>();
-  // Use an explicit generation identity when subscribers have distinct signals.
-  // Existing callers share the refresh signal itself. Only forced lookups need
-  // retention beyond LookupCache; cached reads cannot satisfy a forced one.
-  private readonly refreshFeeds = new WeakMap<object, RefreshFeeds>();
+  // RefreshLifecycle supplies a distinct signal for each refresh generation.
+  // Only forced lookups need extra retention: ordinary lookups already reuse
+  // LookupCache metadata. Never let an earlier cached read satisfy a forced one.
+  private readonly refreshFeeds = new WeakMap<AbortSignal, RefreshFeeds>();
 
   async lookupOutcome(
     feedURL: string,
     localVersion: VersionValue,
     localBuildVersion?: VersionValue,
-    options: SparkleLookupRequestOptions = {}
+    options: LookupRequestOptions = {}
   ): Promise<LookupOutcome<SparkleLookupResult>> {
     if (!isAllowedFeedURL(feedURL)) {
       return { type: "completed" };
@@ -71,8 +66,7 @@ export class SparkleAppcastClient {
 
     try {
       options.signal?.throwIfAborted();
-      const identity = options.refreshIdentity ?? options.signal;
-      const refresh = options.force && identity ? this.feedsFor(identity) : undefined;
+      const refresh = options.force && options.signal ? this.feedsFor(options.signal) : undefined;
       let metadata = refresh?.entries.get(feedURL);
       if (!metadata) {
         const buffer = await this.cache.get(
@@ -132,11 +126,11 @@ export class SparkleAppcastClient {
     return decoded.candidates;
   }
 
-  private feedsFor(identity: object): RefreshFeeds {
-    let feeds = this.refreshFeeds.get(identity);
+  private feedsFor(signal: AbortSignal): RefreshFeeds {
+    let feeds = this.refreshFeeds.get(signal);
     if (!feeds) {
       feeds = { entries: new Map(), bytes: 0 };
-      this.refreshFeeds.set(identity, feeds);
+      this.refreshFeeds.set(signal, feeds);
     }
     return feeds;
   }
