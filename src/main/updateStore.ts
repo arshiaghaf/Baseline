@@ -48,7 +48,12 @@ import {
   configurationBlockedInventory,
   type HomebrewInventoryResult
 } from "./homebrewInventoryClient";
-import { homebrewConfigurationBlockedMessage } from "./homebrewConfiguration";
+import {
+  homebrewConfigurationBlockedMessage,
+  safeConfigurationReason
+} from "./homebrewConfiguration";
+import type { HomebrewConfigurationReason } from "../shared/domain";
+import { homebrewConfigurationValidatedMessage } from "../shared/homebrewConfiguration";
 import { HomebrewWorkLock } from "./homebrewWorkLock";
 import {
   HomebrewOperationsService,
@@ -202,7 +207,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (result.failure?.kind === "cleanup" || this.isHomebrewCleanupUnconfirmed()) {
         this.blockHomebrewAfterUnconfirmedCleanup();
       }
-      if (result.failure?.kind === "configuration-blocked") this.blockHomebrewForConfiguration();
+      if (result.failure?.kind === "configuration-blocked")
+        this.blockHomebrewForConfiguration(result.failure.configurationReason);
       return result;
     };
     const runMas = options.runMasCommand ?? defaultRunMasCommand;
@@ -224,6 +230,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       operationFailureDetails: {},
       homebrewOperation: undefined,
       homebrewConfigurationBlocked: false,
+      homebrewConfigurationReason: undefined,
       isMasInstalled: false,
       isHomebrewInstalled: false,
       isChecking: false,
@@ -273,9 +280,19 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       patch: (patch) =>
         this.patch({
           ...patch,
+          ...(this.state.homebrewConfigurationBlocked &&
+          patch.homebrewConfigurationBlocked === false &&
+          patch.isHomebrewInstalled
+            ? { lastRefreshNoticeMessage: homebrewConfigurationValidatedMessage }
+            : {}),
           // The runner latches refusals; only reconciled inventory clears them.
           // A delayed availability publication must not overwrite that newer state.
-          homebrewConfigurationBlocked: this.state.homebrewConfigurationBlocked
+          homebrewConfigurationBlocked: Boolean(
+            this.state.homebrewConfigurationBlocked || patch.homebrewConfigurationBlocked
+          ),
+          homebrewConfigurationReason: patch.homebrewConfigurationBlocked
+            ? safeConfigurationReason(patch.homebrewConfigurationReason)
+            : this.state.homebrewConfigurationReason
         }),
       reserveHomebrewCommandLock: () => this.reserveHomebrewCommandLock(),
       runBrewCommand: this.runBrewCommand,
@@ -397,10 +414,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         endRefresh: (sequence) => this.homebrewWorkLock.endRefresh(sequence),
         isHomebrewMutationActive: () => this.isHomebrewMutationActive(),
         isCleanupInventoryRequired: () => this.homebrewCleanupRequiresInventory,
-        setCleanupInventoryRequired: (required) => {
+        setCleanupInventoryRequired: (required, fullRefresh) => {
           this.homebrewCleanupRequiresInventory = required;
-          if (!required && this.state.homebrewConfigurationBlocked) {
-            this.patch({ homebrewConfigurationBlocked: false });
+          if (!required && fullRefresh && this.state.homebrewConfigurationBlocked) {
+            this.patch({
+              homebrewConfigurationBlocked: false,
+              homebrewConfigurationReason: undefined
+            });
           }
         },
         invalidateHomebrewUpdateTargets: () => this.invalidateHomebrewUpdateTargets(),
@@ -904,7 +924,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     });
   }
 
-  private blockHomebrewForConfiguration(): void {
+  private blockHomebrewForConfiguration(reason?: HomebrewConfigurationReason): void {
     this.installedMetadataByItemID = {};
     this.homebrewCleanupRequiresInventory = true;
     this.homebrewOperations.cancelQueuedHomebrewUpdates();
@@ -913,6 +933,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.patch({
       isHomebrewInstalled: true,
       homebrewConfigurationBlocked: true,
+      homebrewConfigurationReason: safeConfigurationReason(reason),
       lastRefreshNoticeMessage: homebrewConfigurationBlockedMessage
     });
   }
@@ -952,7 +973,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             },
       start: (updateMetadata) => this.fetchFreshHomebrewInventory(updateMetadata),
       reconcileBeforeRelease: (result) => {
-        if (result.configurationBlocked) this.blockHomebrewForConfiguration();
+        if (result.configurationBlocked)
+          this.blockHomebrewForConfiguration(result.configurationReason);
         // Older inventory transports do not preserve individual runner failure
         // details. Observe the process-wide latch as well as newer producers.
         if (
@@ -1022,7 +1044,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       const brew = await this.runBrewCommand(["--version"]);
       this.hasCheckedHomebrewAvailability = true;
       if (!brew.success) {
-        if (brew.failure?.kind === "configuration-blocked") return configurationBlockedInventory();
+        if (brew.failure?.kind === "configuration-blocked")
+          return configurationBlockedInventory(brew.failure.configurationReason);
         if (this.homebrewCleanupRequiresInventory) {
           // Even a missing executable is not proof that cached packages disappeared.
           return {

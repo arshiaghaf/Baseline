@@ -3,10 +3,51 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { chmod, copyFile, mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile
+} from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { checkHomebrewConfiguration } from "../src/main/homebrewConfiguration";
+import {
+  checkHomebrewConfiguration,
+  safeConfigurationReason
+} from "../src/main/homebrewConfiguration";
+
+it("allows only fixed diagnostic fields and redacts every home path", () => {
+  expect(
+    safeConfigurationReason({
+      kind: "invalid-assignment",
+      file: "/Users/alice/.homebrew/brew.env",
+      line: 999999,
+      setting: "SECRET_NAME",
+      value: "secret",
+      exception: "private text"
+    })
+  ).toEqual({
+    kind: "invalid-assignment",
+    file: "~/.homebrew/brew.env",
+    path: undefined,
+    line: undefined,
+    setting: undefined
+  });
+  expect(
+    safeConfigurationReason({
+      kind: "invalid-executable",
+      path: "/Users/alice/homebrew/bin/brew",
+      file: "/Users/alice/brew.env"
+    }).path
+  ).toBe("~/homebrew/bin/brew");
+  expect(
+    safeConfigurationReason({ kind: "invalid-setting-path", setting: "ARBITRARY" }).setting
+  ).toBeUndefined();
+});
 
 // The unmodified launcher always reads the host system configuration. Avoid
 // making fixture assertions about a developer's unrelated global settings.
@@ -41,6 +82,10 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       expect(await check.revalidate()).toBe(true);
       await writeFile(prefixFile, "HOMEBREW_NO_ANALYTICS=0\n");
       expect(await check.revalidate()).toBe(false);
+      expect(await check.revalidateDetailed()).toEqual({
+        valid: false,
+        detail: { kind: "changed", file: await realpath(prefixFile) }
+      });
     });
 
     it.each([
@@ -52,7 +97,7 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       "refuses accepted askpass or reserved assignment without exposing its value: %j",
       async (content) => {
         await writeFile(userFile, content);
-        expect(await checkHomebrewConfiguration(executable, env)).toEqual({
+        expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
           supported: false,
           reason: "conflict"
         });
@@ -138,7 +183,7 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
         expect(child.status).toBe(0);
         expect(child.stdout).toBe("");
         expect(child.stderr).toBe("");
-        expect(await checkHomebrewConfiguration(executable, env)).toEqual({
+        expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
           supported: false,
           reason: "unsupported"
         });
@@ -166,20 +211,18 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       "HOMEBREW_BROKEN\n",
       "HOMEBREW_BAD-NAME=value\n",
       "HOMEBREW_FOO=x\r\n",
-      "# unicode é\n",
       "HOMEBREW_FOO=x\0\n"
     ])("refuses unsupported bytes or export syntax conservatively: %j", async (content) => {
       await writeFile(prefixFile, content);
-      expect(await checkHomebrewConfiguration(executable, env)).toEqual({
+      expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
         supported: false,
         reason: "unsupported"
       });
     });
 
-    it.each(["symlink", "directory", "oversize", "unreadable", "fifo"] as const)(
+    it.each(["directory", "oversize", "unreadable", "fifo"] as const)(
       "refuses %s configuration without waiting for a FIFO writer",
       async (kind) => {
-        if (kind === "symlink") await symlink(path.join(directory, "missing"), prefixFile);
         if (kind === "directory") await mkdir(prefixFile);
         if (kind === "oversize") await writeFile(prefixFile, Buffer.alloc(65537, 32));
         if (kind === "unreadable") {
@@ -203,6 +246,128 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       }
     );
 
+    it("matches the launcher for ignored UTF-8 and CRLF records", async () => {
+      await writeFile(
+        prefixFile,
+        "# café\r\nUNRELATED=é\r\nHOMEBREW_PREFIX=é\r\nHOMEBREW_EXPERIMENTAL_RUST_FRONTEND=é\r\nHOMEBREW_NO_ANALYTICS=1\n"
+      );
+      const terminal = path.join(directory, "prefix/Library/Homebrew/brew.sh");
+      await mkdir(path.dirname(terminal), { recursive: true });
+      await writeFile(terminal, '#!/bin/bash\n[[ "$HOMEBREW_NO_ANALYTICS" == 1 ]]\n');
+      const child = spawnSync(executable, ["--version"], { env, encoding: "utf8", timeout: 2000 });
+      expect(child.status).toBe(0);
+      const check = await checkHomebrewConfiguration(executable, env);
+      expect(check.supported).toBe(true);
+    });
+
+    it("follows a valid brew.env symlink and detects target replacement", async () => {
+      const target = path.join(directory, "first.env");
+      const replacement = path.join(directory, "second.env");
+      await writeFile(target, "HOMEBREW_NO_ANALYTICS=1\n");
+      await writeFile(replacement, "HOMEBREW_NO_ANALYTICS=1\n");
+      await symlink(target, prefixFile);
+      const terminal = path.join(directory, "prefix/Library/Homebrew/brew.sh");
+      await mkdir(path.dirname(terminal), { recursive: true });
+      await writeFile(terminal, '#!/bin/bash\n[[ "$HOMEBREW_NO_ANALYTICS" == 1 ]]\n');
+      expect(spawnSync(executable, ["--version"], { env, timeout: 2000 }).status).toBe(0);
+      const check = await checkHomebrewConfiguration(executable, env);
+      expect(check.supported).toBe(true);
+      if (!check.supported) return;
+      expect(await check.revalidate()).toBe(true);
+      await rm(prefixFile);
+      await symlink(replacement, prefixFile);
+      expect(await check.revalidate()).toBe(false);
+      expect(await check.revalidateDetailed()).toEqual({
+        valid: false,
+        detail: { kind: "changed", file: (await realpath(path.dirname(prefixFile))) + "/brew.env" }
+      });
+      expect((await checkHomebrewConfiguration(executable, env)).supported).toBe(true);
+    });
+
+    it("retains a typed reason and file when a linked target fails reinspection", async () => {
+      const target = path.join(directory, "target.env");
+      await writeFile(target, "HOMEBREW_NO_ANALYTICS=1\n");
+      await symlink(target, prefixFile);
+      const check = await checkHomebrewConfiguration(executable, env);
+      expect(check.supported).toBe(true);
+      if (!check.supported) return;
+      await writeFile(target, "HOMEBREW_BAD-NAME=secret\n");
+      expect(await check.revalidateDetailed()).toMatchObject({
+        valid: false,
+        detail: {
+          kind: "invalid-assignment",
+          file: (await realpath(path.dirname(prefixFile))) + "/brew.env",
+          line: 1
+        }
+      });
+      await rm(target);
+      expect(await check.revalidateDetailed()).toMatchObject({
+        valid: false,
+        detail: {
+          kind: "invalid-folder",
+          file: (await realpath(path.dirname(prefixFile))) + "/brew.env"
+        }
+      });
+    });
+
+    it("rejects dangling links and conflicts in linked targets", async () => {
+      const target = path.join(directory, "linked.env");
+      await symlink(target, prefixFile);
+      expect((await checkHomebrewConfiguration(executable, env)).supported).toBe(false);
+      await writeFile(target, "SUDO_ASKPASS=/fixture\n");
+      expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
+        supported: false,
+        reason: "conflict"
+      });
+    });
+
+    it("rejects a linked directory as a non-regular target", async () => {
+      const target = path.join(directory, "directory-target");
+      await mkdir(target);
+      await symlink(target, prefixFile);
+      expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
+        supported: false,
+        detail: { kind: "non-regular" }
+      });
+    });
+
+    it.each(["HOMEBREW_FOO=x\r\n", "HOMEBREW_FOO=é\n", "HOMEBREW_BAD-NAME=value\n"])(
+      "rejects malformed accepted launcher records: %j",
+      async (content) => {
+        await writeFile(prefixFile, content);
+        expect((await checkHomebrewConfiguration(executable, env)).supported).toBe(false);
+      }
+    );
+
+    it("reports a bounded line number and a fixed setting name without its value", async () => {
+      await writeFile(prefixFile, "# ignored\nHOMEBREW_BAD-NAME=secret\n");
+      expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
+        supported: false,
+        detail: { kind: "invalid-assignment", file: await realpath(prefixFile), line: 2 }
+      });
+      await writeFile(prefixFile, "HOMEBREW_XDG_CONFIG_HOME=relative/secret\n");
+      expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
+        supported: false,
+        detail: {
+          kind: "invalid-setting-path",
+          setting: "HOMEBREW_XDG_CONFIG_HOME",
+          file: await realpath(prefixFile)
+        }
+      });
+      env.XDG_CONFIG_HOME = "relative/secret";
+      expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
+        supported: false,
+        detail: { kind: "invalid-setting-path", setting: "XDG_CONFIG_HOME", file: undefined }
+      });
+    });
+
+    it("redacts the brew executable path in a validation failure", async () => {
+      expect(await checkHomebrewConfiguration("/Users/private/bin/brew", env)).toMatchObject({
+        supported: false,
+        detail: { kind: "invalid-executable", path: "~/bin/brew" }
+      });
+    });
+
     it("checks the executable launch prefix when bin/brew links into another repository", async () => {
       const repository = path.join(directory, "repository/bin/brew");
       await mkdir(path.dirname(repository), { recursive: true });
@@ -210,7 +375,7 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       await rm(executable);
       await symlink(repository, executable);
       await writeFile(prefixFile, "SUDO_ASKPASS=/conflict\n");
-      expect(await checkHomebrewConfiguration(executable, env)).toEqual({
+      expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
         supported: false,
         reason: "conflict"
       });

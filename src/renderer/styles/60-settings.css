@@ -57,6 +57,11 @@
   gap: 16px;
 }
 
+.settings-row-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .wide-panel {
   grid-column: 1 / -1;
 }

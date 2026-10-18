@@ -30,6 +30,7 @@ import type {
 } from "../src/shared/domain";
 import { defaultPersistedSnapshot, profileStatsSignatureVersion } from "../src/shared/domain";
 import { HomebrewMaintenanceProgressStage } from "../src/shared/homebrewProgress";
+import { homebrewConfigurationValidatedMessage } from "../src/shared/homebrewConfiguration";
 import { version } from "../src/shared/version";
 
 const app: AppRecord = {
@@ -115,7 +116,7 @@ function installBaselineMock() {
     getToolStatus: vi.fn(),
     refreshToolStatus: vi.fn(),
     cleanUpHomebrew: vi.fn(async () => "Homebrew cleanup completed."),
-    refresh: vi.fn(),
+    refresh: vi.fn(async () => undefined),
     setSearchText: vi.fn(),
     setSelectedTab: vi.fn(),
     updatePreferences: vi.fn(),
@@ -367,10 +368,85 @@ describe("renderer button parity", () => {
       </>
     );
     expect(screen.getByText("Needs attention")).toBeInTheDocument();
-    expect(screen.getByText(/Homebrew is installed, but its configuration/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Baseline couldn’t validate the Homebrew configuration/)
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Homebrew is not installed/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Check Homebrew" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Clean up Homebrew" })).toBeDisabled();
+  });
+
+  it("runs a full refresh from blocked Settings and reports only the typed reason", async () => {
+    const state = snapshot({
+      homebrewConfigurationBlocked: true,
+      homebrewConfigurationReason: {
+        kind: "invalid-assignment",
+        file: "~/secret/brew.env",
+        line: 4
+      }
+    });
+    render(<SettingsView snapshot={state} />);
+    expect(
+      screen.getByText(
+        "~/secret/brew.env, line 4, has an invalid assignment. Use NAME=value syntax or comment out that line."
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    await waitFor(() => expect(window.baseline.refresh).toHaveBeenCalledWith(false));
+    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Report issue" }));
+    const url = new URL(vi.mocked(window.baseline.openExternal).mock.calls.at(-1)![0]);
+    expect(url.searchParams.get("logs")).toBe("Homebrew configuration blocked: invalid-assignment");
+    expect(url.href).not.toContain("secret");
+    expect(url.href).not.toContain("brew.env");
+  });
+
+  it("disables blocked Settings refresh while busy", () => {
+    render(
+      <SettingsView
+        snapshot={snapshot({ homebrewConfigurationBlocked: true, isRefreshing: true })}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
+  });
+
+  it("keeps a working update check beside the post-validation message", async () => {
+    const { rerender } = render(
+      <SettingsView
+        snapshot={snapshot({
+          homebrewConfigurationBlocked: true,
+          lastRefreshNoticeMessage: homebrewConfigurationValidatedMessage
+        })}
+      />
+    );
+    expect(screen.getByText(homebrewConfigurationValidatedMessage)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Report issue" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    await waitFor(() => expect(window.baseline.refresh).toHaveBeenCalledWith(false));
+    rerender(
+      <SettingsView
+        snapshot={snapshot({ lastRefreshNoticeMessage: homebrewConfigurationValidatedMessage })}
+      />
+    );
+    expect(screen.queryByText(homebrewConfigurationValidatedMessage)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Check for updates" })).not.toBeInTheDocument();
+  });
+
+  it("names an invalid inherited setting without inventing a brew.env file", () => {
+    render(
+      <SettingsView
+        snapshot={snapshot({
+          homebrewConfigurationBlocked: true,
+          homebrewConfigurationReason: { kind: "invalid-setting-path", setting: "XDG_CONFIG_HOME" }
+        })}
+      />
+    );
+    expect(
+      screen.getByText(
+        "The XDG_CONFIG_HOME environment setting has an invalid path. Use an absolute path without . or .. components."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/brew\.env/)).not.toBeInTheDocument();
   });
 
   it.each([false, true])(

@@ -100,7 +100,7 @@ export type RefreshPorts = {
   endRefresh: (sequence: number) => boolean;
   isHomebrewMutationActive: () => boolean;
   isCleanupInventoryRequired: () => boolean;
-  setCleanupInventoryRequired: (required: boolean) => void;
+  setCleanupInventoryRequired: (required: boolean, fullRefresh: boolean) => void;
   invalidateHomebrewUpdateTargets: () => void;
   processHomebrewUpdateQueue: () => void;
 };
@@ -262,9 +262,9 @@ export class RefreshComputationService {
       });
       await this.refreshDiscoverItems();
       if (homebrewInventoryIsComplete(homebrewInventory)) {
-        this.ports.setCleanupInventoryRequired(false);
+        this.ports.setCleanupInventoryRequired(false, !lightweight);
       } else if (this.ports.isCleanupInventoryRequired() || options.onHomebrewInventoryReconciled) {
-        this.ports.setCleanupInventoryRequired(true);
+        this.ports.setCleanupInventoryRequired(true, !lightweight);
         this.ports.invalidateHomebrewUpdateTargets();
       }
       await this.ports.persist();
@@ -318,7 +318,7 @@ export class RefreshComputationService {
       patch.lastRefreshNoticeMessage = recoveredHomebrewInventory?.warning;
       this.ports.patch(patch);
       if (this.ports.isCleanupInventoryRequired() || options.onHomebrewInventoryReconciled) {
-        this.ports.setCleanupInventoryRequired(true);
+        this.ports.setCleanupInventoryRequired(true, !lightweight);
         this.ports.invalidateHomebrewUpdateTargets();
         await this.ports.persist().catch(() => undefined);
       } else {

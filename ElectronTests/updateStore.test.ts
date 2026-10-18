@@ -171,7 +171,14 @@ describe("update store helpers", () => {
             success: false,
             status: null,
             output: "",
-            failure: { kind: "configuration-blocked", message: "fixture configuration refusal" }
+            failure: {
+              kind: "configuration-blocked",
+              message: "fixture configuration refusal",
+              configurationReason: {
+                kind: "sudo-askpass",
+                file: "/Users/alice/.homebrew/brew.env"
+              }
+            }
           }
         : { success: true, status: 0, output: "" }
     );
@@ -199,7 +206,11 @@ describe("update store helpers", () => {
     await store.refreshToolStatus();
     expect(store.getSnapshot()).toMatchObject({
       isHomebrewInstalled: true,
-      homebrewConfigurationBlocked: true
+      homebrewConfigurationBlocked: true,
+      homebrewConfigurationReason: {
+        kind: "sudo-askpass",
+        file: "~/.homebrew/brew.env"
+      }
     });
     await store.refresh(false);
     const retained = store.getSnapshot();
@@ -229,14 +240,23 @@ describe("update store helpers", () => {
     blocked = false;
     await store.refreshToolStatus();
     expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+    expect(store.getSnapshot().lastRefreshNoticeMessage).toBe(
+      "Homebrew’s configuration now passes validation. Check for updates again to finish refreshing installed packages."
+    );
     const confirmCleanup = vi.fn(async () => true);
     expect(await store.cleanUpHomebrew(confirmCleanup)).toContain("Refresh");
     expect(confirmCleanup).not.toHaveBeenCalled();
     expect(run).toHaveBeenCalledTimes(1);
     await store.performHomebrewUpdate(formula.id);
     expect(run).toHaveBeenCalledTimes(1); // Probe success alone cannot restore authority.
+    await store.refresh(true);
+    expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
     await store.refresh(false);
     expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(false);
+    expect(store.getSnapshot().homebrewConfigurationReason).toBeUndefined();
+    expect(store.getSnapshot().lastRefreshNoticeMessage).not.toBe(
+      "Homebrew’s configuration now passes validation. Check for updates again to finish refreshing installed packages."
+    );
     expect(
       store.getSnapshot().homebrewItems.find((item) => item.id === formula.id)
         ?.formulaIdentityVerified

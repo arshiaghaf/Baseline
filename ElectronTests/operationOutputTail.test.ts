@@ -5,6 +5,14 @@
 import { describe, expect, it } from "vitest";
 import { OperationOutputTail, operationTailBytes } from "../src/main/operationOutputTail";
 import { runCommand } from "../src/main/commandRunner";
+import { redactHomePaths } from "../src/main/redactHomePaths";
+
+it("shares main-process home-path redaction with configuration diagnostics", () => {
+  expect(redactHomePaths("/Users/fixture/config/brew.env")).toBe("~/config/brew.env");
+  const tail = new OperationOutputTail();
+  tail.write("stderr", Buffer.from("/Users/fixture/config/brew.env\n"));
+  expect(tail.text()).toBe("~/config/brew.env");
+});
 
 const patterns = [
   "ghp_fixtureTOKEN",

@@ -101,6 +101,38 @@ it("rejects an already-aborted command before executable resolution", async () =
   expect(mocks.spawn).not.toHaveBeenCalled();
 });
 
+it("retains a typed reinspection failure instead of replacing it with changed", async () => {
+  mocks.check.mockResolvedValue({
+    supported: true,
+    revalidate,
+    revalidateDetailed: async () => ({
+      valid: false,
+      detail: { kind: "invalid-assignment", file: "~/brew.env", line: 2 }
+    })
+  });
+  const result = await runBrewCommand(["--version"]);
+  expect(result.failure).toMatchObject({
+    kind: "configuration-blocked",
+    configurationReason: { kind: "invalid-assignment", file: "~/brew.env", line: 2 }
+  });
+  expect(mocks.spawn).not.toHaveBeenCalled();
+});
+
+it("retains the final reinspection reason and path before spawn", async () => {
+  const detailed = vi
+    .fn()
+    .mockResolvedValueOnce({ valid: true })
+    .mockResolvedValueOnce({ valid: false, detail: { kind: "unreadable", file: "~/brew.env" } });
+  mocks.check.mockResolvedValue({ supported: true, revalidate, revalidateDetailed: detailed });
+  const result = await runBrewCommand(["--version"]);
+  expect(result.failure).toMatchObject({
+    kind: "configuration-blocked",
+    configurationReason: { kind: "unreadable", file: "~/brew.env" }
+  });
+  expect(detailed).toHaveBeenCalledTimes(2);
+  expect(mocks.spawn).not.toHaveBeenCalled();
+});
+
 it.each(["resolution", "check", "revalidate", "final revalidation"])(
   "times out stalled %s and prevents late spawn",
   async (stage) => {

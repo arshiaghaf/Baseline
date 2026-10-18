@@ -14,6 +14,7 @@ import {
   XCircle
 } from "lucide-react";
 import type { AppMetadata } from "../../shared/appMetadata";
+import { homebrewConfigurationValidatedMessage } from "../../shared/homebrewConfiguration";
 import type { AppearancePreference, BaselineSnapshot } from "../../shared/domain";
 import type { SettingsSectionID, TogglePatch } from "../types";
 import {
@@ -159,10 +160,14 @@ export function SettingsPane({
   snapshot: BaselineSnapshot;
 }) {
   const [cleanupRequestPending, setCleaningUp] = useState(false);
+  const [refreshRequestPending, setRefreshRequestPending] = useState(false);
   const cleaningUp = cleanupRequestPending || snapshot.isCleaningUpHomebrew;
   const [cleanupResponseMessage, setCleanupMessage] = useState("");
   const cleanupMessage = snapshot.homebrewCleanupMessage ?? cleanupResponseMessage;
   const cleanupPending = useRef(false);
+  const configurationValidated =
+    snapshot.homebrewConfigurationBlocked &&
+    snapshot.lastRefreshNoticeMessage === homebrewConfigurationValidatedMessage;
   const cleanUp = async () => {
     if (cleanupPending.current) return;
     cleanupPending.current = true;
@@ -203,6 +208,52 @@ export function SettingsPane({
                 blocked={snapshot.homebrewConfigurationBlocked}
                 readyDetail={homebrewReadyDetail(snapshot)}
               />
+              {snapshot.homebrewConfigurationBlocked && (
+                <div
+                  className="settings-row settings-row-action"
+                  role="group"
+                  aria-label="Homebrew configuration actions"
+                >
+                  <SettingsRowText label="Homebrew configuration" />
+                  <div className="settings-row-actions">
+                    <button
+                      className="ghost-button small-button"
+                      disabled={
+                        refreshRequestPending ||
+                        snapshot.isRefreshing ||
+                        snapshot.isChecking ||
+                        snapshot.isHomebrewCommandLocked ||
+                        cleaningUp
+                      }
+                      onClick={() => {
+                        setRefreshRequestPending(true);
+                        void baseline.refresh(false).then(
+                          () => setRefreshRequestPending(false),
+                          () => setRefreshRequestPending(false)
+                        );
+                      }}
+                    >
+                      Check for updates
+                    </button>
+                    {!configurationValidated && (
+                      <button
+                        className="ghost-button small-button"
+                        onClick={() => {
+                          const url = new URL("https://github.com/arshiaghaf/Baseline/issues/new");
+                          url.searchParams.set("template", "bug_report.yml");
+                          url.searchParams.set(
+                            "logs",
+                            `Homebrew configuration blocked: ${snapshot.homebrewConfigurationReason?.kind ?? "unknown"}`
+                          );
+                          void baseline.openExternal(url.href);
+                        }}
+                      >
+                        Report issue
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
               <div
                 className="settings-row settings-row-action homebrew-cleanup-row"
                 role="group"

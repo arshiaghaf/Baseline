@@ -233,7 +233,32 @@ export type ToolStatus = {
   isMasInstalled: boolean;
   isHomebrewInstalled: boolean;
   homebrewConfigurationBlocked?: boolean;
+  /** Main-process validated diagnostic; runtime only, never persisted. */
+  homebrewConfigurationReason?: HomebrewConfigurationReason;
   isChecking: boolean;
+};
+
+export type HomebrewConfigurationSetting = "HOME" | "XDG_CONFIG_HOME" | "HOMEBREW_XDG_CONFIG_HOME";
+
+export type HomebrewConfigurationReason = {
+  kind:
+    | "sudo-askpass"
+    | "reserved-askpass"
+    | "unsupported-content"
+    | "invalid-assignment"
+    | "unreadable"
+    | "non-regular"
+    | "oversize"
+    | "invalid-setting-path"
+    | "invalid-folder"
+    | "invalid-executable"
+    | "changed"
+    | "incomplete-read"
+    | "unknown";
+  file?: string;
+  path?: string;
+  line?: number;
+  setting?: HomebrewConfigurationSetting;
 };
 
 export type RefreshState = {

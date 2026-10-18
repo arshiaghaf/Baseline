@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { runBrewCommand, runMasCommand, type CommandResult } from "./commandRunner";
+import type { HomebrewConfigurationReason } from "../shared/domain";
 
 export type ToolStatusPatch = {
   isChecking?: boolean;
   isHomebrewInstalled?: boolean;
   homebrewConfigurationBlocked?: boolean;
+  homebrewConfigurationReason?: HomebrewConfigurationReason;
   isMasInstalled?: boolean;
 };
 
@@ -88,6 +90,9 @@ export class ToolStatusService {
             const homebrewConfigurationBlocked = result.failure?.kind === "configuration-blocked";
             this.options.patch({
               homebrewConfigurationBlocked,
+              homebrewConfigurationReason: homebrewConfigurationBlocked
+                ? result.failure?.configurationReason
+                : undefined,
               isHomebrewInstalled: homebrewConfigurationBlocked || result.success
             });
             return result;
