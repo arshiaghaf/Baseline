@@ -38,6 +38,7 @@ import { calculateTrayWindowPosition } from "./trayWindowPosition";
 import { UpdateStore } from "./updateStore";
 import { catalogueCacheDirectory } from "./catalogueCacheDirectory";
 import { isTrustedBackendSender } from "./backendIpcAuthorization";
+import { backendIpcRegistrar } from "./backendIpc";
 import type { HomebrewDiagnosticsRequest } from "../shared/homebrewDiagnostics";
 import { trayMenuTemplate } from "./trayMenu";
 
@@ -572,26 +573,22 @@ function trayUpdateTitle(snapshot: BaselineSnapshot): string {
 }
 
 function wireIpc(): void {
-  ipcMain.handle(ipcChannels.getSnapshot, () => store.getSnapshot());
-  ipcMain.handle(ipcChannels.getAppMetadata, () => metadata);
-  ipcMain.handle(
-    ipcChannels.getDiagnostics,
+  const handle = backendIpcRegistrar(ipcMain, requireBackendSender);
+  handle("getSnapshot", () => store.getSnapshot());
+  handle("getAppMetadata", () => metadata);
+  handle(
+    "getDiagnostics",
     () =>
       renderDiagnostics(store.getSnapshot(), metadata, process.platform) +
       store.getCatalogueDiagnostics()
   );
-  ipcMain.handle(
-    ipcChannels.collectHomebrewDiagnostics,
-    (event, request: HomebrewDiagnosticsRequest) => {
-      requireBackendSender(event);
-      return store.collectHomebrewDiagnostics(request);
-    }
-  );
-  ipcMain.handle(ipcChannels.getHomebrewInstalledContext, (event, itemID: string) => {
-    requireBackendSender(event);
+  handle("collectHomebrewDiagnostics", (_event, request?: HomebrewDiagnosticsRequest) => {
+    return store.collectHomebrewDiagnostics(request);
+  });
+  handle("getHomebrewInstalledContext", (_event, itemID: string) => {
     return store.getHomebrewInstalledContext(itemID);
   });
-  ipcMain.handle(ipcChannels.getToolStatus, () => {
+  handle("getToolStatus", () => {
     const snapshot = store.getSnapshot();
     return {
       isMasInstalled: snapshot.isMasInstalled,
@@ -599,56 +596,32 @@ function wireIpc(): void {
       isChecking: snapshot.isChecking
     };
   });
-  ipcMain.handle(ipcChannels.cleanUpHomebrew, (event) =>
+  handle("cleanUpHomebrew", (event) =>
     store.cleanUpHomebrew(() => confirmHomebrewCleanup(BrowserWindow.fromWebContents(event.sender)))
   );
-  ipcMain.handle(ipcChannels.refreshToolStatus, () => store.refreshToolStatus());
-  ipcMain.handle(
-    ipcChannels.refresh,
-    (_event, lightweight?: boolean, forceAppDiscovery?: boolean) =>
-      store.refresh(Boolean(lightweight), { forceAppDiscovery: Boolean(forceAppDiscovery) })
+  handle("refreshToolStatus", () => store.refreshToolStatus());
+  handle("refresh", (_event, lightweight?: boolean, forceAppDiscovery?: boolean) =>
+    store.refresh(lightweight, { forceAppDiscovery })
   );
-  ipcMain.handle(ipcChannels.setSearchText, (_event, value: string) =>
-    store.setSearchText(String(value))
+  handle("setSearchText", (_event, value: string) => store.setSearchText(value));
+  handle("setSelectedTab", (_event, tab: MenuTab) => store.setSelectedTab(tab));
+  handle("updatePreferences", (_event, patch: PreferencePatch) => store.updatePreferences(patch));
+  handle("acknowledgeProfileStatsReset", () => store.acknowledgeProfileStatsReset());
+  handle("dismissOperationFailure", (_event, id: string) => store.dismissOperationFailure(id));
+  handle("toggleIgnoredApp", (_event, appID: string) => store.toggleIgnoredApp(appID));
+  handle("toggleIgnoredHomebrew", (_event, itemID: string) => store.toggleIgnoredHomebrew(itemID));
+  handle("performAppUpdate", (_event, appID: string) => store.performAppUpdate(appID));
+  handle("performHomebrewUpdate", (_event, itemID: string) => store.performHomebrewUpdate(itemID));
+  handle("performHomebrewUpdateAll", (_event, itemIDs?: string[]) =>
+    store.performHomebrewUpdateAll(itemIDs)
   );
-  ipcMain.handle(ipcChannels.setSelectedTab, (_event, tab: MenuTab) => store.setSelectedTab(tab));
-  ipcMain.handle(ipcChannels.updatePreferences, (_event, patch: PreferencePatch) =>
-    store.updatePreferences(patch)
-  );
-  ipcMain.handle(ipcChannels.acknowledgeProfileStatsReset, () =>
-    store.acknowledgeProfileStatsReset()
-  );
-  ipcMain.handle(ipcChannels.dismissOperationFailure, (_event, id: unknown) =>
-    typeof id === "string" ? store.dismissOperationFailure(id) : undefined
-  );
-  ipcMain.handle(ipcChannels.toggleIgnoredApp, (_event, appID: string) =>
-    store.toggleIgnoredApp(String(appID))
-  );
-  ipcMain.handle(ipcChannels.toggleIgnoredHomebrew, (_event, itemID: string) =>
-    store.toggleIgnoredHomebrew(String(itemID))
-  );
-  ipcMain.handle(ipcChannels.performAppUpdate, (_event, appID: string) =>
-    store.performAppUpdate(String(appID))
-  );
-  ipcMain.handle(ipcChannels.performHomebrewUpdate, (_event, itemID: string) =>
-    store.performHomebrewUpdate(String(itemID))
-  );
-  ipcMain.handle(ipcChannels.performHomebrewUpdateAll, (_event, itemIDs?: unknown) =>
-    store.performHomebrewUpdateAll(
-      Array.isArray(itemIDs) ? itemIDs.map((itemID) => String(itemID)) : undefined
-    )
-  );
-  ipcMain.handle(ipcChannels.installHomebrewItem, (_event, item: HomebrewCaskDiscoveryItem) =>
+  handle("installHomebrewItem", (_event, item: HomebrewCaskDiscoveryItem) =>
     store.installHomebrewItem(item)
   );
-  ipcMain.handle(ipcChannels.uninstallHomebrewItem, (_event, itemID: string) =>
-    store.uninstallHomebrewItem(String(itemID))
-  );
-  ipcMain.handle(ipcChannels.openApp, (_event, appID: string) => store.openApp(String(appID)));
-  ipcMain.handle(ipcChannels.openExternal, (_event, url: string) =>
-    store.openExternal(String(url))
-  );
-  ipcMain.handle(ipcChannels.chooseDirectory, async () => {
+  handle("uninstallHomebrewItem", (_event, itemID: string) => store.uninstallHomebrewItem(itemID));
+  handle("openApp", (_event, appID: string) => store.openApp(appID));
+  handle("openExternal", (_event, url: string) => store.openExternal(url));
+  handle("chooseDirectory", async () => {
     const result = await dialog.showOpenDialog({
       properties: ["openDirectory"],
       buttonLabel: "Add"
@@ -660,24 +633,21 @@ function wireIpc(): void {
     await store.addDirectory(directory);
     return directory;
   });
-  ipcMain.handle(ipcChannels.removeDirectory, (_event, directory: string) =>
-    store.removeDirectory(String(directory))
-  );
-  ipcMain.handle(ipcChannels.copyOperationFailure, (event, id: string, attemptID: string) => {
-    requireBackendSender(event);
-    const text = store.operationFailureText(String(id), String(attemptID));
+  handle("removeDirectory", (_event, directory: string) => store.removeDirectory(directory));
+  handle("copyOperationFailure", (_event, id: string, attemptID: string) => {
+    const text = store.operationFailureText(id, attemptID);
     if (!text) return false;
     clipboard.writeText(text);
     return true;
   });
-  ipcMain.handle(ipcChannels.copyDiagnostics, () => {
+  handle("copyDiagnostics", () => {
     clipboard.writeText(
       renderDiagnostics(store.getSnapshot(), metadata, process.platform) +
         store.getCatalogueDiagnostics()
     );
   });
-  ipcMain.handle(ipcChannels.showMainWindow, () => showMainWindow("main"));
-  ipcMain.handle(ipcChannels.showSettings, () => showMainWindow("settings"));
+  handle("showMainWindow", () => showMainWindow("main"));
+  handle("showSettings", () => showMainWindow("settings"));
 }
 
 function requireBackendSender(event: Electron.IpcMainInvokeEvent): void {
