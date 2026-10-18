@@ -208,7 +208,10 @@ describe("RefreshComputationService", () => {
         expect(state.updates).toMatchObject([
           { appID: actionable.id, source: "appStore", remoteVersion: version("3") }
         ]);
-        expect(state.appUpdateComparisonBaseline).toMatchObject([{ localVersion: version("1") }]);
+        expect(state.appUpdateComparisonBaseline).toMatchObject([
+          { appID: app.id, localVersion: version("1") },
+          { appID: actionable.id, localVersion: actionable.localVersion }
+        ]);
         expect(events).not.toContain("persist");
         expect(events).not.toContain("end");
         expect(patches.some((patch) => patch.isRefreshing === false)).toBe(false);

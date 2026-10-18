@@ -152,7 +152,6 @@ export class RefreshComputationService {
     const force =
       options.forceMetadata ?? (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand);
     let homebrewInventoryTask: Promise<HomebrewInventoryResult> | undefined;
-    let pendingAppComparisons: AppUpdateComparison[] | undefined;
     const startedTasks: Promise<unknown>[] = [];
     try {
       homebrewInventoryTask = this.ports.fetchHomebrewInventory(lightweight, options);
@@ -227,6 +226,7 @@ export class RefreshComputationService {
       const previousUpdates = new Map(
         this.ports.readState().updates.map((update) => [update.appID, update])
       );
+      const observedComparisons = new Map(comparisonBaseline.map((item) => [item.appID, item]));
       const previousChecks = this.ports.readState().appProviderChecks;
       const retainedIDs = new Set(retainedApps.map((app) => app.id));
       // Preserve discovery/comparison evidence, but stale bundle evidence must not
@@ -255,11 +255,18 @@ export class RefreshComputationService {
             !this.clients.homebrew.cacheStatus?.unavailable,
           forceAppDiscovery: options.forceAppDiscovery,
           onProgress: (appProviderChecks, updates) => {
-            if (this.ports.isCurrent(sequence))
-              this.ports.patch({
-                appProviderChecks: { ...retainedChecks, ...appProviderChecks },
-                updates
-              });
+            if (!this.ports.isCurrent(sequence)) return;
+            for (const comparison of appUpdateComparisons(updates))
+              observedComparisons.set(comparison.appID, comparison);
+            // Publish comparison-only evidence with actionable observations so
+            // saves, quit and successors cannot retain one without the other.
+            // Keep earlier evidence when previews remove rows before history
+            // has been reconciled; obsolete generations cannot publish here.
+            this.ports.patch({
+              appProviderChecks: { ...retainedChecks, ...appProviderChecks },
+              updates,
+              appUpdateComparisonBaseline: [...observedComparisons.values()]
+            });
           },
           homebrewItems,
           homebrewIndex,
@@ -272,7 +279,6 @@ export class RefreshComputationService {
         }
       );
       if (!updates) return;
-      pendingAppComparisons = appUpdateComparisons(updates);
 
       const [formulaResult, selfUpdateResult] = await supplementaryResults;
       if (formulaResult.status === "rejected") throw formulaResult.reason;
@@ -364,7 +370,6 @@ export class RefreshComputationService {
           homebrewIndex
         )
       });
-      pendingAppComparisons = undefined;
       await this.refreshDiscoverItems();
       if (homebrewInventoryIsComplete(homebrewInventory)) {
         this.ports.setCleanupInventoryRequired(false, !lightweight);
@@ -395,16 +400,6 @@ export class RefreshComputationService {
         ),
         refreshErrorMessage: error instanceof Error ? error.message : "Refresh failed."
       };
-      if (pendingAppComparisons) {
-        // App results can be actionable before unrelated metadata fails. Keep
-        // their latest installed comparison durable without losing evidence
-        // for rows removed by previews that still need history reconciliation.
-        patch.appUpdateComparisonBaseline = [
-          ...new Map(
-            [...comparisonBaseline, ...pendingAppComparisons].map((item) => [item.appID, item])
-          ).values()
-        ];
-      }
       const inventory = recoveredHomebrewInventory ?? {
         items: [],
         inventoryReadSucceededByKind: { formula: false, cask: false },
