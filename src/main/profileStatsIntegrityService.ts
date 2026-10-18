@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { profileStatsLifetimeFromEvents } from "../shared/profileStats";
+import { profileStatsCountsAreSafe, profileStatsLifetimeFromEvents } from "../shared/profileStats";
 import { createHmac } from "node:crypto";
 import type { ProfileStats } from "../shared/domain";
 import { defaultProfileStatsAfterTamper, profileStatsSignatureVersion } from "../shared/domain";
@@ -20,22 +20,51 @@ export class ProfileStatsIntegrityService implements ProfileStatsIntegrity {
   async verifyOrInitialize(stats: ProfileStats): Promise<ProfileStats> {
     try {
       const secret = await this.getSecret();
+      const reset = () =>
+        sealProfileStats(defaultProfileStatsAfterTamper(), secret, "resetAfterTamper");
+      const hasEnvelope = stats.lifetime !== undefined || stats.lifetimeSeal !== undefined;
       if (!stats.signature) {
-        if (stats.events.length > 0 || (stats.lifetime?.entries.length ?? 0) > 0) {
-          return sealProfileStats(defaultProfileStatsAfterTamper(), secret, "resetAfterTamper");
-        }
+        if (stats.events.length > 0 || hasEnvelope) return reset();
         return sealProfileStats(stats, secret, "verified");
       }
-      if (signatureFor(stats, secret) === stats.signature) {
-        return normalizeProfileStatsSignature(stats, secret);
+      // Format 3 existed in an earlier draft. Authenticate all its fields before migration;
+      // never fall back to legacy formulas which omit its aggregate payload.
+      if (stats.signatureVersion === 3) {
+        if (
+          !stats.lifetime ||
+          stats.lifetimeSeal !== undefined ||
+          !profileStatsCountsAreSafe(stats.lifetime.entries) ||
+          signatureFor(stats, secret) !== stats.signature
+        )
+          return reset();
+        return sealProfileStats(stats, secret, stats.resetNotice ? "resetAfterTamper" : "verified");
       }
-      if (unversionedSignatureFor(stats, secret) === stats.signature) {
+      if (stats.signatureVersion !== 1 && stats.signatureVersion !== 2) return reset();
+      if (hasEnvelope) {
+        const envelope = stats.lifetimeSeal;
+        if (
+          stats.signatureVersion !== 2 ||
+          !stats.lifetime ||
+          !envelope ||
+          !profileStatsCountsAreSafe(stats.lifetime.entries) ||
+          signatureFor(stats, secret) !== stats.signature ||
+          envelope.version !== 1 ||
+          envelope.eventSignature !== stats.signature ||
+          envelope.signature !== lifetimeSignatureFor(stats, secret)
+        )
+          return reset();
+        return { ...stats, integrityStatus: stats.resetNotice ? "resetAfterTamper" : "verified" };
+      }
+      if (
+        signatureFor(stats, secret) === stats.signature ||
+        unversionedSignatureFor(stats, secret) === stats.signature
+      ) {
         return migrateProfileStats(stats, secret);
       }
       if (legacySignatureFor(stats, secret) === stats.signature) {
         return migrateProfileStats({ ...stats, startedUsingAt: stats.createdAt }, secret);
       }
-      return sealProfileStats(defaultProfileStatsAfterTamper(), secret, "resetAfterTamper");
+      return reset();
     } catch {
       return { ...stats, integrityStatus: "unavailable" };
     }
@@ -55,29 +84,60 @@ function sealProfileStats(
   secret: string,
   integrityStatus: ProfileStats["integrityStatus"]
 ): ProfileStats {
-  const sealed = {
+  const lifetime =
+    stats.lifetime ??
+    profileStatsLifetimeFromEvents(
+      stats.events,
+      stats.events.length === 0 ? "complete" : "lowerBound"
+    );
+  if (!profileStatsCountsAreSafe(lifetime.entries)) {
+    throw new RangeError("Profile history counts exceed the supported numeric range.");
+  }
+  const sealed: ProfileStats = {
     ...stats,
-    lifetime:
-      stats.lifetime ??
-      profileStatsLifetimeFromEvents(
-        stats.events,
-        stats.events.length === 0 ? "complete" : "lowerBound"
-      ),
+    lifetime,
     signatureVersion: profileStatsSignatureVersion,
     integrityStatus
   };
-  return { ...sealed, signature: signatureFor(sealed, secret) };
+  sealed.signature = signatureFor(sealed, secret);
+  sealed.lifetimeSeal = {
+    version: 1,
+    eventSignature: sealed.signature,
+    signature: lifetimeSignatureFor(sealed, secret)
+  };
+  return sealed;
 }
 
 function signatureFor(stats: ProfileStats, secret: string): string {
   return createHmac("sha256", secret).update(canonicalProfileStats(stats)).digest("base64url");
 }
 
-function normalizeProfileStatsSignature(stats: ProfileStats, secret: string): ProfileStats {
-  if (stats.signatureVersion !== profileStatsSignatureVersion) {
-    return migrateProfileStats(stats, secret);
-  }
-  return { ...stats, integrityStatus: stats.resetNotice ? "resetAfterTamper" : "verified" };
+function lifetimeSignatureFor(stats: ProfileStats, secret: string): string {
+  return createHmac("sha256", secret)
+    .update(
+      JSON.stringify({
+        purpose: "baseline-profile-lifetime",
+        version: 1,
+        eventSignature: stats.signature,
+        lifetime: canonicalLifetime(stats)
+      })
+    )
+    .digest("base64url");
+}
+
+function canonicalLifetime(stats: ProfileStats) {
+  return stats.lifetime
+    ? {
+        coverage: stats.lifetime.coverage,
+        entries: stats.lifetime.entries.map((entry) => ({
+          type: entry.type,
+          targetID: entry.targetID,
+          displayName: entry.displayName,
+          channel: entry.channel,
+          count: entry.count
+        }))
+      }
+    : undefined;
 }
 
 function migrateProfileStats(stats: ProfileStats, secret: string): ProfileStats {
@@ -91,22 +151,7 @@ function migrateProfileStats(stats: ProfileStats, secret: string): ProfileStats 
 function canonicalProfileStats(stats: ProfileStats): string {
   return JSON.stringify({
     signatureVersion: stats.signatureVersion,
-    ...(stats.signatureVersion >= 3
-      ? {
-          lifetime: stats.lifetime
-            ? {
-                coverage: stats.lifetime.coverage,
-                entries: stats.lifetime.entries.map((entry) => ({
-                  type: entry.type,
-                  targetID: entry.targetID,
-                  displayName: entry.displayName,
-                  channel: entry.channel,
-                  count: entry.count
-                }))
-              }
-            : undefined
-        }
-      : {}),
+    ...(stats.signatureVersion === 3 ? { lifetime: canonicalLifetime(stats) } : {}),
     createdAt: stats.createdAt,
     startedUsingAt: stats.startedUsingAt,
     events: stats.events.map((event) => ({

@@ -188,18 +188,26 @@ export type ProfileStatsLifetime = {
   entries: ProfileStatsAggregate[];
 };
 
+export type ProfileStatsLifetimeSeal = {
+  version: 1;
+  eventSignature: string;
+  signature: string;
+};
+
 export type ProfileStats = {
   createdAt: string;
   startedUsingAt: string;
   signatureVersion: number;
   events: ProfileStatsEvent[];
   lifetime?: ProfileStatsLifetime;
+  // null preserves a malformed envelope's presence through loading so verification fails closed.
+  lifetimeSeal?: ProfileStatsLifetimeSeal | null;
   resetNotice?: ProfileStatsResetNotice;
   signature?: string;
   integrityStatus: ProfileStatsIntegrityStatus;
 };
 
-export const profileStatsSignatureVersion = 3;
+export const profileStatsSignatureVersion = 2;
 
 export type HomebrewManagedItem = {
   id: string;

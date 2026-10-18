@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { profileStatsCountsAreSafe } from "../shared/profileStats";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
@@ -9,6 +10,7 @@ import type {
   ProfileStats,
   ProfileStatsEvent,
   ProfileStatsLifetime,
+  ProfileStatsLifetimeSeal,
   ProfileStatsResetNotice
 } from "../shared/domain";
 import {
@@ -195,10 +197,30 @@ function normalizeProfileStats(
         : defaults.signatureVersion,
     events,
     lifetime: normalizeProfileStatsLifetime(input?.lifetime),
+    lifetimeSeal: normalizeProfileStatsLifetimeSeal(input),
     resetNotice: normalizeProfileStatsResetNotice(input?.resetNotice),
     signature: typeof input?.signature === "string" ? input.signature : undefined,
     integrityStatus: "pending"
   };
+}
+
+function normalizeProfileStatsLifetimeSeal(
+  input: Partial<ProfileStats> | undefined
+): ProfileStatsLifetimeSeal | null | undefined {
+  if (!input || (!Object.hasOwn(input, "lifetime") && !Object.hasOwn(input, "lifetimeSeal")))
+    return undefined;
+  // Preserve aggregate-only v3 drafts for full-payload verification, never legacy fallback.
+  if (input.signatureVersion === 3 && !Object.hasOwn(input, "lifetimeSeal")) return undefined;
+  const seal = input.lifetimeSeal;
+  if (
+    !normalizeProfileStatsLifetime(input.lifetime) ||
+    !seal ||
+    seal.version !== 1 ||
+    typeof seal.eventSignature !== "string" ||
+    typeof seal.signature !== "string"
+  )
+    return null;
+  return { version: 1, eventSignature: seal.eventSignature, signature: seal.signature };
 }
 
 function normalizeProfileStatsLifetime(input: unknown): ProfileStatsLifetime | undefined {
@@ -222,7 +244,7 @@ function normalizeProfileStatsLifetime(input: unknown): ProfileStatsLifetime | u
       typeof entry.displayName !== "string" ||
       typeof entry.count !== "number" ||
       !Number.isSafeInteger(entry.count) ||
-      (entry.count ?? 0) <= 0
+      entry.count <= 0
     )
       return undefined;
     entries.push({
@@ -233,7 +255,7 @@ function normalizeProfileStatsLifetime(input: unknown): ProfileStatsLifetime | u
       count: entry.count
     });
   }
-  return { coverage: lifetime.coverage, entries };
+  return profileStatsCountsAreSafe(entries) ? { coverage: lifetime.coverage, entries } : undefined;
 }
 
 function normalizeProfileStatsEvent(input: unknown): ProfileStatsEvent[] {

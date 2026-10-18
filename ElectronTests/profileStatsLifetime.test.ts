@@ -28,7 +28,7 @@ const event: ProfileStatsEvent = {
 const secret = "synthetic-history-secret";
 
 describe("profile lifetime history", () => {
-  it("migrates version 2 seals from retained events without trusting unsigned aggregates", async () => {
+  it("migrates version 2 seals from retained events as a lower bound", async () => {
     const integrity = new ProfileStatsIntegrityService(async () => secret);
     const old = { ...defaultProfileStats(), signatureVersion: 2, events: [event] };
     const signature = createHmac("sha256", secret)
@@ -44,10 +44,10 @@ describe("profile lifetime history", () => {
       .digest("base64url");
     const migrated = await integrity.verifyOrInitialize({
       ...old,
-      signature,
-      lifetime: { coverage: "complete", entries: [{ ...event, count: 9000 }] }
+      signature
     });
     expect(migrated.integrityStatus).toBe("verified");
+    expect(migrated.lifetimeSeal).toMatchObject({ version: 1, eventSignature: signature });
     expect(migrated.lifetime).toEqual({
       coverage: "lowerBound",
       entries: [
