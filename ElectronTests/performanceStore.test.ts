@@ -87,28 +87,37 @@ describe("performance store integration", () => {
   it("stops scheduling obsolete apps even when an injected source ignores cancellation", async () => {
     const records = Array.from({ length: 30 }, (_, i) => app(i));
     let finish!: () => void;
-    let calls = 0;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     const signals: AbortSignal[] = [];
+    let oldSignal: AbortSignal | undefined;
     const lookupOutcome = vi.fn(async (_id, _version, options) => {
-      calls++;
-      signals.push(options!.signal!);
-      if (calls === 1)
-        await new Promise<void>((resolve) => {
-          finish = resolve;
-        });
+      const signal = options!.signal!;
+      oldSignal ??= signal;
+      signals.push(signal);
+      // Hold the entire old generation's first wave, even with concurrent workers.
+      if (signal === oldSignal) await gate;
       return { type: "completed" as const };
     });
     const { store } = await fixture({
       clients: { scanner: { scanApplications: async () => records }, appStore: { lookupOutcome } }
     });
     const old = store.refresh(false);
-    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
-    const current = store.refresh(false);
-    finish();
-    await Promise.all([old, current]);
-    expect(calls).toBe(31);
-    expect(signals[0]!.aborted).toBe(true);
-    expect(store.getSnapshot().isRefreshing).toBe(false);
+    let current: Promise<void> | undefined;
+    try {
+      await vi.waitFor(() => expect(lookupOutcome).toHaveBeenCalledTimes(4));
+      current = store.refresh(false);
+      finish();
+      await Promise.all([old, current]);
+      expect(signals.filter((signal) => signal === oldSignal)).toHaveLength(4);
+      expect(signals.filter((signal) => signal !== oldSignal)).toHaveLength(30);
+      expect(oldSignal!.aborted).toBe(true);
+      expect(store.getSnapshot().isRefreshing).toBe(false);
+    } finally {
+      finish();
+      await Promise.all([old, current]);
+    }
   });
 
   it("uses fresh-source policies for manual checks and cached metadata after a local operation", async () => {

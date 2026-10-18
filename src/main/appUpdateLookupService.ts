@@ -40,14 +40,50 @@ type LookupInput = {
   ) => boolean;
 };
 
+// Keep per-app source precedence while overlapping independent app checks. Provider
+// clients still own host pacing, Retry-After, request sharing and cancellation.
+const appLookupConcurrency = 4;
+
 /** Returns undefined when a superseded generation must not commit its partial results. */
 export async function lookupAppUpdates(
   clients: LookupClients,
   input: LookupInput
 ): Promise<UpdateRecord[] | undefined> {
-  const updates: UpdateRecord[] = [];
+  const results = new Array<UpdateRecord | undefined>(input.apps.length);
+  let nextIndex = 0;
+  let failed = false;
+  const lookupInput = { ...input, isCurrent: () => !failed && input.isCurrent() };
+  const worker = async () => {
+    try {
+      while (!failed && !input.signal.aborted && input.isCurrent()) {
+        const index = nextIndex++;
+        const appRecord = input.apps[index];
+        if (!appRecord) return;
+        if (input.isSelfApp(appRecord)) continue;
+        results[index] = await lookupAppUpdate(clients, lookupInput, appRecord);
+      }
+    } catch (error) {
+      failed = true;
+      throw error;
+    }
+  };
+  // Settle every started lookup before releasing refresh ownership on failure.
+  const workers = await Promise.allSettled(
+    Array.from({ length: Math.min(appLookupConcurrency, input.apps.length) }, worker)
+  );
+  const failure = workers.find((result) => result.status === "rejected");
+  if (failure?.status === "rejected") throw failure.reason;
+  if (input.signal.aborted || !input.isCurrent()) return undefined;
+  // Completion order must not reorder rows or change reconciliation input.
+  return results.filter((update): update is UpdateRecord => update !== undefined);
+}
+
+async function lookupAppUpdate(
+  clients: LookupClients,
+  input: LookupInput,
+  appRecord: AppRecord
+): Promise<UpdateRecord | undefined> {
   const {
-    apps,
     previousUpdates,
     homebrewItems,
     homebrewIndex,
@@ -55,118 +91,108 @@ export async function lookupAppUpdates(
     force,
     signal,
     isCurrent,
-    isSelfApp,
     canUseHomebrewAppUpdate
   } = input;
-  for (const appRecord of apps) {
-    if (isSelfApp(appRecord)) continue;
-    if (signal.aborted || !isCurrent()) return undefined;
-    if (appRecord.bundleIdentifier) {
-      const outcome = await clients.appStore.lookupOutcome(
-        appRecord.bundleIdentifier,
-        appRecord.localVersion,
-        {
-          signal,
-          force,
-          includeIOSAppStoreSoftware:
-            appRecord.isIOSAppOnMac === true && appRecord.hasAppStoreEvidence === true,
-          includeMacCapableAppStoreSoftware:
-            appRecord.isIOSAppOnMac !== true && appRecord.hasSafariWebExtension === true
-        }
-      );
-      if (signal.aborted || !isCurrent()) return undefined;
-      if (outcome.type === "completed" && outcome.value) {
-        updates.push({
-          id: appRecord.id,
-          appID: appRecord.id,
-          source: "appStore",
-          supportLevel: "supported",
-          localVersion: appRecord.localVersion,
-          remoteVersion: outcome.value.remoteVersion,
-          updateURL: outcome.value.updateURL,
-          appStoreItemID: outcome.value.appStoreItemID,
-          releaseNotesSummary: outcome.value.releaseNotesSummary,
-          releaseDate: outcome.value.releaseDate,
-          checkedAt: outcome.checkedAt ?? now
-        });
-        continue;
-      }
-      if (outcome.type === "transientFailure") {
-        const previousUpdate = previousAppUpdateForTransientLookup(
-          previousUpdates,
-          appRecord,
-          "appStore"
-        );
-        if (previousUpdate) {
-          updates.push(previousUpdate);
-          continue;
-        }
-      }
-    }
-
-    if (appRecord.sparkleFeedURL) {
-      const outcome = await clients.sparkle.lookupOutcome(
-        appRecord.sparkleFeedURL,
-        appRecord.localVersion,
-        appRecord.bundleVersion,
-        { signal, force }
-      );
-      if (signal.aborted || !isCurrent()) return undefined;
-      if (outcome.type === "completed" && outcome.value) {
-        updates.push({
-          id: appRecord.id,
-          appID: appRecord.id,
-          source: "sparkle",
-          supportLevel: "limited",
-          localVersion: appRecord.localVersion,
-          remoteVersion: outcome.value.remoteVersion,
-          localBuildVersion: appRecord.bundleVersion,
-          remoteBuildVersion: outcome.value.remoteBuildVersion,
-          sparkleVersionComparison: outcome.value.versionComparison,
-          updateURL: outcome.value.updateURL,
-          releaseNotesURL: outcome.value.releaseNotesURL,
-          releaseDate: outcome.value.releaseDate,
-          checkedAt: outcome.checkedAt ?? now
-        });
-        continue;
-      }
-      if (outcome.type === "transientFailure") {
-        const previousUpdate = previousAppUpdateForTransientLookup(
-          previousUpdates,
-          appRecord,
-          "sparkle"
-        );
-        if (previousUpdate) {
-          updates.push(previousUpdate);
-          continue;
-        }
-      }
-    }
-
-    const homebrewUpdate = clients.homebrew.lookupUpdate(
+  if (appRecord.bundleIdentifier) {
+    const outcome = await clients.appStore.lookupOutcome(
       appRecord.bundleIdentifier,
-      path.basename(appRecord.bundlePath),
       appRecord.localVersion,
-      homebrewIndex
+      {
+        signal,
+        force,
+        includeIOSAppStoreSoftware:
+          appRecord.isIOSAppOnMac === true && appRecord.hasAppStoreEvidence === true,
+        includeMacCapableAppStoreSoftware:
+          appRecord.isIOSAppOnMac !== true && appRecord.hasSafariWebExtension === true
+      }
     );
-    if (homebrewUpdate && isValidHomebrewToken(homebrewUpdate.token)) {
-      if (canUseHomebrewAppUpdate(appRecord, homebrewUpdate.token, homebrewItems, homebrewIndex)) {
-        updates.push({
-          id: appRecord.id,
-          appID: appRecord.id,
-          source: "homebrew",
-          supportLevel: "limited",
-          localVersion: appRecord.localVersion,
-          remoteVersion: homebrewUpdate.remoteVersion,
-          homebrewToken: homebrewUpdate.token,
-          updateURL: homebrewUpdate.homepageURL,
-          releaseNotesSummary: `Token: ${homebrewUpdate.token}`,
-          checkedAt: now
-        });
+    if (signal.aborted || !isCurrent()) return undefined;
+    if (outcome.type === "completed" && outcome.value) {
+      return {
+        id: appRecord.id,
+        appID: appRecord.id,
+        source: "appStore",
+        supportLevel: "supported",
+        localVersion: appRecord.localVersion,
+        remoteVersion: outcome.value.remoteVersion,
+        updateURL: outcome.value.updateURL,
+        appStoreItemID: outcome.value.appStoreItemID,
+        releaseNotesSummary: outcome.value.releaseNotesSummary,
+        releaseDate: outcome.value.releaseDate,
+        checkedAt: outcome.checkedAt ?? now
+      };
+    }
+    if (outcome.type === "transientFailure") {
+      const previousUpdate = previousAppUpdateForTransientLookup(
+        previousUpdates,
+        appRecord,
+        "appStore"
+      );
+      if (previousUpdate) {
+        return previousUpdate;
       }
     }
   }
-  return updates;
+
+  if (appRecord.sparkleFeedURL) {
+    const outcome = await clients.sparkle.lookupOutcome(
+      appRecord.sparkleFeedURL,
+      appRecord.localVersion,
+      appRecord.bundleVersion,
+      { signal, force }
+    );
+    if (signal.aborted || !isCurrent()) return undefined;
+    if (outcome.type === "completed" && outcome.value) {
+      return {
+        id: appRecord.id,
+        appID: appRecord.id,
+        source: "sparkle",
+        supportLevel: "limited",
+        localVersion: appRecord.localVersion,
+        remoteVersion: outcome.value.remoteVersion,
+        localBuildVersion: appRecord.bundleVersion,
+        remoteBuildVersion: outcome.value.remoteBuildVersion,
+        sparkleVersionComparison: outcome.value.versionComparison,
+        updateURL: outcome.value.updateURL,
+        releaseNotesURL: outcome.value.releaseNotesURL,
+        releaseDate: outcome.value.releaseDate,
+        checkedAt: outcome.checkedAt ?? now
+      };
+    }
+    if (outcome.type === "transientFailure") {
+      const previousUpdate = previousAppUpdateForTransientLookup(
+        previousUpdates,
+        appRecord,
+        "sparkle"
+      );
+      if (previousUpdate) {
+        return previousUpdate;
+      }
+    }
+  }
+
+  const homebrewUpdate = clients.homebrew.lookupUpdate(
+    appRecord.bundleIdentifier,
+    path.basename(appRecord.bundlePath),
+    appRecord.localVersion,
+    homebrewIndex
+  );
+  if (homebrewUpdate && isValidHomebrewToken(homebrewUpdate.token)) {
+    if (canUseHomebrewAppUpdate(appRecord, homebrewUpdate.token, homebrewItems, homebrewIndex)) {
+      return {
+        id: appRecord.id,
+        appID: appRecord.id,
+        source: "homebrew",
+        supportLevel: "limited",
+        localVersion: appRecord.localVersion,
+        remoteVersion: homebrewUpdate.remoteVersion,
+        homebrewToken: homebrewUpdate.token,
+        updateURL: homebrewUpdate.homepageURL,
+        releaseNotesSummary: `Token: ${homebrewUpdate.token}`,
+        checkedAt: now
+      };
+    }
+  }
 }
 
 type AppLookupSource = Extract<UpdateRecord["source"], "appStore" | "sparkle">;

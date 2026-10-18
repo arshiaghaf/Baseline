@@ -95,3 +95,131 @@ describe("lookupAppUpdates", () => {
     expect(updates).toBeUndefined();
   });
 });
+
+function apps(count: number): AppRecord[] {
+  return Array.from({ length: count }, (_, index) => ({
+    ...app,
+    id: `app-${index}`,
+    bundleIdentifier: `com.example.app-${index}`
+  }));
+}
+
+function gate<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+describe("parallel app lookups", () => {
+  it("bounds active app checks, preserves scan order and waits for every app", async () => {
+    const records = apps(7);
+    const gates = records.map(() =>
+      gate<{ type: "completed"; value: { remoteVersion: ReturnType<typeof version> } }>()
+    );
+    const lookup = vi.fn(
+      (id: string) => gates[records.findIndex((record) => record.bundleIdentifier === id)]!.promise
+    );
+    const task = lookupAppUpdates(
+      {
+        appStore: { lookupOutcome: lookup },
+        sparkle: { lookupOutcome: vi.fn() },
+        homebrew: { lookupUpdate: vi.fn() }
+      },
+      { ...input(), apps: records }
+    );
+    try {
+      expect(lookup).toHaveBeenCalledTimes(4);
+      gates[3]!.resolve({ type: "completed", value: { remoteVersion: version("2") } });
+      await vi.waitFor(() => expect(lookup).toHaveBeenCalledTimes(5));
+      gates[4]!.resolve({ type: "completed", value: { remoteVersion: version("2") } });
+      await vi.waitFor(() => expect(lookup).toHaveBeenCalledTimes(6));
+      for (const pending of gates)
+        pending.resolve({ type: "completed", value: { remoteVersion: version("2") } });
+      const result = await task;
+      expect(result?.map((update) => update.appID)).toEqual(records.map((record) => record.id));
+      expect(lookup).toHaveBeenCalledTimes(7);
+    } finally {
+      for (const pending of gates)
+        pending.resolve({ type: "completed", value: { remoteVersion: version("2") } });
+      await task;
+    }
+  });
+
+  it.each(["abort", "supersede"])(
+    "stops queued and lower-precedence checks after %s and drains in-flight work",
+    async (mode) => {
+      const records = apps(8);
+      const controller = new AbortController();
+      let current = true;
+      const pending = gate<{ type: "completed" }>();
+      const lookup = vi.fn(() => pending.promise);
+      const sparkle = vi.fn();
+      const homebrew = vi.fn();
+      const task = lookupAppUpdates(
+        {
+          appStore: { lookupOutcome: lookup },
+          sparkle: { lookupOutcome: sparkle },
+          homebrew: { lookupUpdate: homebrew }
+        },
+        { ...input(), apps: records, signal: controller.signal, isCurrent: () => current }
+      );
+      try {
+        expect(lookup).toHaveBeenCalledTimes(4);
+        if (mode === "abort") controller.abort();
+        else current = false;
+        pending.resolve({ type: "completed" });
+        expect(await task).toBeUndefined();
+        expect(lookup).toHaveBeenCalledTimes(4);
+        expect(sparkle).not.toHaveBeenCalled();
+        expect(homebrew).not.toHaveBeenCalled();
+      } finally {
+        pending.resolve({ type: "completed" });
+        await task;
+      }
+    }
+  );
+
+  it("drains started checks after an unexpected failure without dispatching queued apps", async () => {
+    const records = apps(8);
+    const gates = records.map(() => gate<{ type: "completed" }>());
+    const lookup = vi.fn(
+      (id: string) => gates[records.findIndex((record) => record.bundleIdentifier === id)]!.promise
+    );
+    const sparkle = vi.fn().mockResolvedValue({ type: "completed" });
+    let settled = false;
+    const task = lookupAppUpdates(
+      {
+        appStore: { lookupOutcome: lookup },
+        sparkle: { lookupOutcome: sparkle },
+        homebrew: { lookupUpdate: vi.fn() }
+      },
+      { ...input(), apps: records }
+    );
+    const failure = expect(task).rejects.toThrow("provider failed");
+    void task.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      }
+    );
+    try {
+      gates[0]!.reject(new Error("provider failed"));
+      await vi.waitFor(() => expect(lookup).toHaveBeenCalledTimes(4));
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      for (const pending of gates.slice(1)) pending.resolve({ type: "completed" });
+      await failure;
+      expect(lookup).toHaveBeenCalledTimes(4);
+      expect(sparkle).not.toHaveBeenCalled();
+    } finally {
+      for (const pending of gates) pending.resolve({ type: "completed" });
+      await failure;
+    }
+  });
+});
