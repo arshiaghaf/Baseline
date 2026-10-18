@@ -1228,7 +1228,8 @@ describe("update store helpers", () => {
     const runBrewCommand = vi.fn(async () => ({
       success: false,
       status: null,
-      output: ""
+      output: "",
+      failure: { kind: "spawn" as const, code: "ENOENT", message: "Fixture helper missing" }
     }));
     const store = await makeStore({
       persisted: {
