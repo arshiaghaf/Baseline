@@ -17,6 +17,15 @@ type AppcastItem = {
   publicationDate?: string;
 };
 
+type AppcastCandidate = {
+  item: AppcastItem;
+  hasMarketingVersion: boolean;
+  buildVersion: VersionValue;
+  parsedVersion: VersionValue;
+  updateURL?: string;
+  releaseNotesURL?: string;
+};
+
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
@@ -80,23 +89,15 @@ export class SparkleAppcastClient {
 
     const parsed = parser.parse(data.toString("utf8")) as any;
     const channel = parsed?.rss?.channel;
-    const rawItems = Array.isArray(channel?.item)
+    const rawItems: unknown[] = Array.isArray(channel?.item)
       ? channel.item
       : channel?.item
         ? [channel.item]
         : [];
-    const items = rawItems.map(normalizeItem).filter(Boolean) as AppcastItem[];
-    const candidates = items
-      .map((item) => ({
-        item,
-        hasMarketingVersion: Boolean(item.shortVersionString?.trim()),
-        buildVersion: version(item.buildVersion),
-        parsedVersion: sparkleMarketingVersion(
-          version(item.shortVersionString ?? item.buildVersion),
-          version(item.buildVersion)
-        )
-      }))
-      .filter(({ parsedVersion }) => !isVersionEmpty(parsedVersion))
+    const candidates = rawItems
+      .map(normalizeItem)
+      .map(usableCandidate)
+      .filter((candidate): candidate is AppcastCandidate => candidate !== undefined)
       .filter((candidate) =>
         isSparkleVersionNewer(
           candidate,
@@ -113,21 +114,34 @@ export class SparkleAppcastClient {
       return undefined;
     }
 
-    const updateURL = sanitizeExternalURL(best.item.enclosureURL);
-    const releaseNotesURL = sanitizeExternalURL(best.item.releaseNotesURL);
-    if (!updateURL && !releaseNotesURL) {
-      return undefined;
-    }
-
     return {
       remoteVersion: best.parsedVersion,
       remoteBuildVersion: isVersionEmpty(best.buildVersion) ? undefined : best.buildVersion,
       versionComparison: best.hasMarketingVersion ? "marketing" : "build",
-      updateURL,
-      releaseNotesURL,
+      updateURL: best.updateURL,
+      releaseNotesURL: best.releaseNotesURL,
       releaseDate: best.item.publicationDate
     };
   }
+}
+
+function usableCandidate(item: AppcastItem): AppcastCandidate | undefined {
+  const buildVersion = version(item.buildVersion);
+  const parsedVersion = sparkleMarketingVersion(
+    version(item.shortVersionString ?? item.buildVersion),
+    buildVersion
+  );
+  const updateURL = sanitizeExternalURL(item.enclosureURL);
+  const releaseNotesURL = sanitizeExternalURL(item.releaseNotesURL);
+  if (isVersionEmpty(parsedVersion) || (!updateURL && !releaseNotesURL)) return undefined;
+  return {
+    item,
+    hasMarketingVersion: Boolean(item.shortVersionString?.trim()),
+    buildVersion,
+    parsedVersion,
+    updateURL,
+    releaseNotesURL
+  };
 }
 
 function compareAppcastItems(
@@ -206,11 +220,5 @@ function usableAppcast(data: Buffer): boolean {
   const channel = parsed?.rss?.channel;
   if (!channel || typeof channel !== "object") throw new Error("Invalid appcast response");
   const raw = Array.isArray(channel.item) ? channel.item : channel.item ? [channel.item] : [];
-  return raw
-    .map(normalizeItem)
-    .some(
-      (item: AppcastItem) =>
-        !isVersionEmpty(version(item.shortVersionString ?? item.buildVersion)) &&
-        Boolean(sanitizeExternalURL(item.enclosureURL) || sanitizeExternalURL(item.releaseNotesURL))
-    );
+  return raw.map(normalizeItem).some((item: AppcastItem) => usableCandidate(item) !== undefined);
 }

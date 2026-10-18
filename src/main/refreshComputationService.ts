@@ -3,6 +3,7 @@
 
 import type {
   AppRecord,
+  AppUpdateComparison,
   BaselineSnapshot,
   HomebrewCaskIndex,
   HomebrewFormulaIndex,
@@ -40,6 +41,7 @@ export type RefreshOptions = {
 export type RefreshReadState = Pick<
   BaselineSnapshot,
   | "appProviderChecks"
+  | "appUpdateComparisonBaseline"
   | "homebrewItems"
   | "homebrewFormulaIdentityContinuity"
   | "updates"
@@ -56,6 +58,7 @@ export type RefreshPatch = Partial<
   Pick<
     BaselineSnapshot,
     | "appProviderChecks"
+    | "appUpdateComparisonBaseline"
     | "isRefreshing"
     | "refreshErrorMessage"
     | "lastRefreshNoticeMessage"
@@ -129,7 +132,14 @@ export class RefreshComputationService {
     signal: AbortSignal
   ): Promise<void> {
     this.ports.beginRefresh(sequence);
+    const comparisonBaseline =
+      this.ports.readState().appUpdateComparisonBaseline ??
+      appUpdateComparisons(this.ports.readState().updates);
     this.ports.patch({
+      // Seed older snapshots before any preview can remove comparison evidence.
+      // Failed or superseded generations leave this baseline intact for retries
+      // and unrelated preference saves, including a later relaunch.
+      appUpdateComparisonBaseline: comparisonBaseline,
       isRefreshing: true,
       refreshErrorMessage: undefined,
       lastRefreshNoticeMessage: undefined
@@ -222,7 +232,7 @@ export class RefreshComputationService {
         this.ports.readState().recentlyUpdated,
         apps,
         updates,
-        previousUpdates,
+        new Map(comparisonBaseline.map((update) => [update.appID, update])),
         now
       );
       const homebrewRecentlyUpdated = mergeHomebrewRecentlyUpdatedRecords(
@@ -240,6 +250,7 @@ export class RefreshComputationService {
       this.ports.patch({
         apps,
         updates,
+        appUpdateComparisonBaseline: appUpdateComparisons(updates),
         homebrewItems: reconciledHomebrewItems,
         homebrewFormulaIdentityContinuity,
         recentlyUpdated,
@@ -381,6 +392,15 @@ export class RefreshComputationService {
     );
     this.ports.patch({ homebrewDiscoverItems: mergeCatalogueSearchResults(term, casks, formulae) });
   }
+}
+
+function appUpdateComparisons(updates: AppUpdateComparison[]): AppUpdateComparison[] {
+  return updates.map(({ appID, source, localVersion, localBuildVersion }) => ({
+    appID,
+    source,
+    localVersion,
+    localBuildVersion
+  }));
 }
 
 export function homebrewInventoryIsComplete(inventory: HomebrewInventoryResult): boolean {

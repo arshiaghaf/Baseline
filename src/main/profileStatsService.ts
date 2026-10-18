@@ -10,6 +10,7 @@ import type {
   UpdateRecord
 } from "../shared/domain";
 import { defaultProfileStatsAfterTamper } from "../shared/domain";
+import { addProfileStatsEvents, profileStatsLifetimeFromEvents } from "../shared/profileStats";
 import type { ProfileStatsIntegrity } from "./profileStatsIntegrityService";
 
 type ProfileStatsServiceOptions = {
@@ -29,8 +30,7 @@ export class ProfileStatsService {
       const statsBeforeVerification = this.options.getStats();
       const verifiedStats =
         await this.options.integrity.verifyOrInitialize(statsBeforeVerification);
-      const stats = await this.reconcileVerifiedStats(statsBeforeVerification, verifiedStats);
-      this.options.publishStats(stats);
+      this.options.publishStats(verifiedStats);
       await this.options.persist();
     });
   }
@@ -55,44 +55,40 @@ export class ProfileStatsService {
 
   private async statsWithEvents(events: ProfileStatsEvent[]): Promise<ProfileStats> {
     const stats = this.options.getStats();
-    const currentStats =
-      stats.signature || stats.events.length === 0
+    const verifiedStats =
+      stats.integrityStatus === "verified" || stats.integrityStatus === "resetAfterTamper"
         ? stats
-        : { ...defaultProfileStatsAfterTamper(), events: [], signature: undefined };
+        : await this.options.integrity.verifyOrInitialize(stats);
+    if (
+      verifiedStats.integrityStatus === "unavailable" ||
+      verifiedStats.integrityStatus === "pending"
+    ) {
+      return verifiedStats;
+    }
+    const currentStats =
+      !stats.signature &&
+      stats.events.length > 0 &&
+      verifiedStats.integrityStatus !== "resetAfterTamper"
+        ? defaultProfileStatsAfterTamper()
+        : verifiedStats;
     const eventIDs = new Set(currentStats.events.map((event) => event.id));
-    const newEvents = events.filter((event) => !eventIDs.has(event.id));
+    const newEvents = events.filter((event) => {
+      if (eventIDs.has(event.id)) return false;
+      eventIDs.add(event.id);
+      return true;
+    });
     if (newEvents.length === 0) return currentStats;
 
     const sealed = await this.options.integrity.seal({
       ...currentStats,
       events: [...newEvents, ...currentStats.events].slice(0, 1000),
+      lifetime: addProfileStatsEvents(
+        currentStats.lifetime ?? profileStatsLifetimeFromEvents(currentStats.events),
+        newEvents
+      ),
       integrityStatus:
         currentStats.integrityStatus === "resetAfterTamper" ? "resetAfterTamper" : "verified"
     });
-    if (sealed.integrityStatus === "unavailable") {
-      return { ...currentStats, integrityStatus: "unavailable" };
-    }
-    return sealed;
-  }
-
-  private async reconcileVerifiedStats(
-    statsBeforeVerification: ProfileStats,
-    verifiedStats: ProfileStats
-  ): Promise<ProfileStats> {
-    const previousEventIDs = new Set(statsBeforeVerification.events.map((event) => event.id));
-    const currentStats = this.options.getStats();
-    const concurrentEvents = currentStats.events.filter((event) => !previousEventIDs.has(event.id));
-    if (concurrentEvents.length === 0) return verifiedStats;
-
-    const concurrentEventIDs = new Set(concurrentEvents.map((event) => event.id));
-    const stats = {
-      ...verifiedStats,
-      events: [
-        ...concurrentEvents,
-        ...verifiedStats.events.filter((event) => !concurrentEventIDs.has(event.id))
-      ].slice(0, 1000)
-    };
-    const sealed = await this.options.integrity.seal(stats);
     if (sealed.integrityStatus === "unavailable") {
       return { ...currentStats, integrityStatus: "unavailable" };
     }

@@ -72,7 +72,6 @@ const expectedBaselineAPI = [
   "getSnapshot",
   "getToolStatus",
   "installHomebrewItem",
-  "onHomebrewCommandEvent",
   "onSnapshotChanged",
   "onSnapshotProgress",
   "openApp",

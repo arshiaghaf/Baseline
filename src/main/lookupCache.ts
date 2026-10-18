@@ -7,6 +7,8 @@ type HostSlot = { tail: Promise<void>; nextStart: number; queued: number; pauseU
 
 // Cache source metadata, not the answer for an installed version. Callers
 // compare cached metadata with the newly scanned version on every lookup.
+// Elapsed deadlines use the monotonic clock; checkedAt remains wall time for
+// display and HTTP dates are converted to elapsed delays when received.
 export class LookupCache {
   private readonly entries = new Map<
     string,
@@ -32,16 +34,15 @@ export class LookupCache {
     const slot = this.hosts.get(new URL(url).host) ?? this.hosts.get("overflow");
     if (!slot) return;
     const seconds = retryAfter === null ? NaN : Number(retryAfter);
-    const requested = Number.isFinite(seconds)
-      ? Date.now() + Math.max(0, seconds) * 1000
+    const delay = Number.isFinite(seconds)
+      ? seconds * 1000
       : retryAfter
-        ? Date.parse(retryAfter)
+        ? Date.parse(retryAfter) - Date.now()
         : NaN;
     slot.pauseUntil = Math.max(
       slot.pauseUntil,
-      Number.isFinite(requested)
-        ? Math.min(Date.now() + 24 * 60 * 60 * 1000, requested)
-        : Date.now() + 60_000
+      performance.now() +
+        (Number.isFinite(delay) ? Math.max(0, Math.min(24 * 60 * 60 * 1000, delay)) : 60_000)
     );
   }
 
@@ -52,7 +53,7 @@ export class LookupCache {
   ): Promise<Buffer> {
     options.signal?.throwIfAborted();
     const cached = this.entries.get(url);
-    if (!options.force && cached && Date.now() < cached.expiresAt) {
+    if (!options.force && cached && performance.now() < cached.expiresAt) {
       this.entries.delete(url);
       this.entries.set(url, cached);
       return cached.data;
@@ -114,7 +115,7 @@ export class LookupCache {
     let host = new URL(url).host;
     if (!this.hosts.has(host) && this.hosts.size >= 256) {
       for (const [key, slot] of this.hosts) {
-        if (slot.queued === 0 && Date.now() >= Math.max(slot.nextStart, slot.pauseUntil))
+        if (slot.queued === 0 && performance.now() >= Math.max(slot.nextStart, slot.pauseUntil))
           this.hosts.delete(key);
       }
       // A bounded shared bucket is conservative when many hosts are active.
@@ -131,12 +132,14 @@ export class LookupCache {
       .catch(() => undefined)
       .then(async () => {
         signal.throwIfAborted();
-        if (Date.now() < slot.pauseUntil) throw new Error("Source requests are temporarily paused");
-        const wait = Math.max(0, slot.nextStart - Date.now());
-        if (wait > 0) await waitForSlot(wait, signal);
+        if (performance.now() < slot.pauseUntil)
+          throw new Error("Source requests are temporarily paused");
+        const wait = Math.max(0, slot.nextStart - performance.now());
+        if (wait > 0) await waitForSlot(Math.ceil(wait), signal);
         signal.throwIfAborted();
-        if (Date.now() < slot.pauseUntil) throw new Error("Source requests are temporarily paused");
-        slot.nextStart = Date.now() + this.minIntervalMS;
+        if (performance.now() < slot.pauseUntil)
+          throw new Error("Source requests are temporarily paused");
+        slot.nextStart = performance.now() + this.minIntervalMS;
       });
     slot.tail = ready.catch(() => undefined);
     try {
@@ -153,7 +156,8 @@ export class LookupCache {
         this.entries.set(url, {
           data,
           checkedAt,
-          expiresAt: checkedAt + (typeof this.ttlMS === "number" ? this.ttlMS : this.ttlMS(data))
+          expiresAt:
+            performance.now() + (typeof this.ttlMS === "number" ? this.ttlMS : this.ttlMS(data))
         });
         this.bytes += data.byteLength;
         while (this.entries.size > this.maxEntries || this.bytes > this.maxBytes) {

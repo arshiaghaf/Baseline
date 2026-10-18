@@ -145,6 +145,12 @@ export type RecentlyUpdatedRecord = {
   updatedAt: string;
 };
 
+/** Historical comparison evidence only; never an update action or source authority. */
+export type AppUpdateComparison = Pick<
+  UpdateRecord,
+  "appID" | "source" | "localVersion" | "localBuildVersion"
+>;
+
 export type HomebrewRecentlyUpdatedRecord = {
   id: string;
   itemID: string;
@@ -178,11 +184,30 @@ export type ProfileStatsResetNotice = {
   reason: "tamper";
 };
 
+export type ProfileStatsAggregate = Pick<
+  ProfileStatsEvent,
+  "type" | "targetID" | "displayName" | "channel"
+> & { count: number };
+
+export type ProfileStatsLifetime = {
+  coverage: "complete" | "lowerBound";
+  entries: ProfileStatsAggregate[];
+};
+
+export type ProfileStatsLifetimeSeal = {
+  version: 1;
+  eventSignature: string;
+  signature: string;
+};
+
 export type ProfileStats = {
   createdAt: string;
   startedUsingAt: string;
   signatureVersion: number;
   events: ProfileStatsEvent[];
+  lifetime?: ProfileStatsLifetime;
+  // null preserves a malformed envelope's presence through loading so verification fails closed.
+  lifetimeSeal?: ProfileStatsLifetimeSeal | null;
   resetNotice?: ProfileStatsResetNotice;
   signature?: string;
   integrityStatus: ProfileStatsIntegrityStatus;
@@ -231,6 +256,8 @@ export type PersistedSnapshot = {
   operationFailures?: import("./operationFailures").OperationFailure[];
   apps: AppRecord[];
   updates: UpdateRecord[];
+  /** Last reconciled updates, independent of partial streamed display results. */
+  appUpdateComparisonBaseline?: AppUpdateComparison[];
   recentlyUpdated: RecentlyUpdatedRecord[];
   homebrewItems: HomebrewManagedItem[];
   /** Hidden identity continuity during incomplete formula metadata; never command targets. */

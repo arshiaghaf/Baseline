@@ -26,7 +26,8 @@ export function sanitizeOperationLine(line: string): string {
 
 /** Per-pipe decoding and terminal state; never emit a partial or overlong raw line.
  * Complete lines are sanitized BEFORE retention caps. Existing raw command capture
- * and outputLine IPC are separate consumers and are not sanitized by this class. */
+ * and main-process outputLine parser events are separate consumers and are not
+ * sanitized by this class. */
 export class OperationOutputTail {
   private lines: string[] = [];
   private readonly streams = new Map<string, ReturnType<OperationOutputTail["makeStream"]>>();

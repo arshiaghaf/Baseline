@@ -138,8 +138,7 @@ function installBaselineMock() {
     showSettings: vi.fn(),
     onSnapshotChanged: vi.fn(() => () => undefined),
     onSnapshotProgress: vi.fn(() => () => undefined),
-    dismissOperationFailure: vi.fn(async () => undefined),
-    onHomebrewCommandEvent: vi.fn(() => () => undefined)
+    dismissOperationFailure: vi.fn(async () => undefined)
   };
 }
 

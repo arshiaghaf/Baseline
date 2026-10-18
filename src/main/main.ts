@@ -471,11 +471,6 @@ function wireStoreEvents(): void {
       window.webContents.send(ipcChannels.snapshotChanged, snapshot);
     }
   });
-  store.on("homebrewCommand", (event) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send(ipcChannels.homebrewCommandEvent, event);
-    }
-  });
 }
 
 function applyAppearancePreference(preference: AppearancePreference): void {

@@ -17,6 +17,7 @@ information can remain, including path suffixes, so always check before sharing.
 The tail stays in memory, survives inventory reconciliation, and clears on the
 next user package mutation attempt or when Baseline quits. Failure reason/status
 records can remain after relaunch, but output is never added to saved failure
-records, ordinary diagnostics or diagnostics export. This protection applies to
-the new support tail; the existing live command-event IPC stream is a separate
-raw-output path and is not made sanitized by this feature.
+records, ordinary diagnostics or diagnostics export. Uninstall failure notices use
+the same redacted tail and show a generic message when no safe tail is available.
+Raw command output stays in the main process for progress parsing; it is not
+broadcast to renderer windows.

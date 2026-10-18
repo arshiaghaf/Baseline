@@ -407,6 +407,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         readState: (): RefreshReadState => {
           const {
             appProviderChecks,
+            appUpdateComparisonBaseline,
             homebrewItems,
             homebrewFormulaIdentityContinuity,
             updates,
@@ -420,6 +421,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           } = this.state;
           return {
             appProviderChecks,
+            appUpdateComparisonBaseline,
             homebrewItems,
             homebrewFormulaIdentityContinuity,
             updates,
@@ -493,6 +495,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     return {
       ...snapshot,
       updates: snapshot.updates.filter((update) => !ownIDs.has(update.appID)),
+      appUpdateComparisonBaseline: snapshot.appUpdateComparisonBaseline?.filter(
+        (update) => !ownIDs.has(update.appID)
+      ),
       homebrewItems: snapshot.homebrewItems.map((item) => {
         const entry = installedCaskEntry(item, emptyHomebrewCaskIndex);
         const isSelf =
@@ -1449,6 +1454,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     appProviderChecks: snapshot.appProviderChecks,
     apps: snapshot.apps,
     updates: snapshot.updates,
+    appUpdateComparisonBaseline: snapshot.appUpdateComparisonBaseline,
     recentlyUpdated: snapshot.recentlyUpdated,
     homebrewItems: snapshot.homebrewItems,
     homebrewFormulaIdentityContinuity: snapshot.homebrewFormulaIdentityContinuity,
