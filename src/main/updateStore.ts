@@ -140,6 +140,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private state: BaselineSnapshot;
   private snapshotRevision = 0;
   private closing = false;
+  private refreshRequestedWhileClosing?: Pick<
+    RefreshOptions,
+    "forceMetadata" | "forceAppDiscovery"
+  >;
   private quitTask?: Promise<boolean>;
   private readonly pendingProducers = new Set<Promise<unknown>>();
   private mutationGeneration = 0;
@@ -508,7 +512,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
-    if (this.closing) return;
+    if (this.closing) {
+      this.refreshRequestedWhileClosing = {
+        forceMetadata:
+          this.refreshRequestedWhileClosing?.forceMetadata === true ||
+          (options.forceMetadata ??
+            (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand)),
+        forceAppDiscovery:
+          this.refreshRequestedWhileClosing?.forceAppDiscovery === true ||
+          options.forceAppDiscovery === true
+      };
+      return;
+    }
     return this.trackProducer(this.refreshLifecycle.refresh(lightweight, options));
   }
 
@@ -581,6 +596,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (this.hasActiveUpdateOperation()) return Promise.resolve(false);
     // Fence admission before yielding, then invalidate refresh commits and timers.
     this.closing = true;
+    this.refreshRequestedWhileClosing = undefined;
     const interruptedRefresh = this.refreshLifecycle.isRefreshActive;
     this.refreshLifecycle.stop();
     const task = this.finishPreparingToQuit(interruptedRefresh);
@@ -606,13 +622,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       ready = true;
       return true;
     } finally {
+      const requestedRefresh = this.refreshRequestedWhileClosing;
+      this.refreshRequestedWhileClosing = undefined;
       if (!ready) {
         this.closing = false;
         this.quitTask = undefined;
         this.patch({ isRefreshing: false });
         this.restartAutoRefreshLoop();
-        if (interruptedRefresh && !this.hasActiveUpdateOperation()) {
-          void this.refresh(false, { forceMetadata: false }).catch(() => undefined);
+        if ((interruptedRefresh || requestedRefresh) && !this.hasActiveUpdateOperation()) {
+          void this.refresh(false, { forceMetadata: false, ...requestedRefresh }).catch(
+            () => undefined
+          );
         }
       }
     }

@@ -51,7 +51,10 @@ async function makeStore(
     "runBrewCommand" | "runMasCommand"
   > = {},
   options: Partial<
-    Pick<ConstructorParameters<typeof UpdateStore>[0], "persistence" | "profileStatsIntegrity">
+    Pick<
+      ConstructorParameters<typeof UpdateStore>[0],
+      "persistence" | "profileStatsIntegrity" | "persisted"
+    >
   > = {}
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-store-lifecycle-"));
@@ -418,6 +421,107 @@ describe("update store lifecycle boundaries", () => {
     } finally {
       oldScan.resolve([]);
       await Promise.allSettled([refresh]);
+      await store.prepareToQuit();
+    }
+  });
+
+  it.each(["add", "remove"])(
+    "replays an admitted directory %s refresh after quit saving fails",
+    async (change) => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-quit-directory-"));
+      directories.push(directory);
+      const persistence = new SnapshotPersistence(directory);
+      const save = persistence.save.bind(persistence);
+      const saving = deferred<void>();
+      const release = deferred<void>();
+      vi.spyOn(persistence, "save")
+        .mockImplementationOnce(async (snapshot) => {
+          saving.resolve();
+          await release.promise;
+          await save(snapshot);
+        })
+        .mockRejectedValueOnce(new Error("final save unavailable"));
+      const scanApplications = vi.fn<(directories: string[]) => Promise<AppRecord[]>>(async () => [
+        app("2")
+      ]);
+      const fetchIndex = vi.fn(async () => emptyHomebrewCaskIndex);
+      const additional = "/fixture/additional";
+      const store = await makeStore(
+        {
+          scanner: { scanApplications },
+          homebrew: { fetchIndex, lookupUpdate: () => undefined, searchCasks: () => [] }
+        },
+        {},
+        {
+          persistence,
+          persisted: {
+            ...defaultPersistedSnapshot(),
+            additionalDirectories: change === "remove" ? [additional] : []
+          }
+        }
+      );
+      const mutation =
+        change === "add" ? store.addDirectory(additional) : store.removeDirectory(additional);
+      let quit: Promise<boolean> | undefined;
+      try {
+        await saving.promise;
+        quit = store.prepareToQuit();
+        const rejected = expect(quit).rejects.toThrow("final save unavailable");
+        release.resolve();
+        await mutation;
+        await rejected;
+        await vi.waitFor(() => expect(scanApplications).toHaveBeenCalledTimes(1));
+        const scannedDirectories = scanApplications.mock.calls[0]?.[0];
+        if (change === "add") expect(scannedDirectories).toContain(additional);
+        else expect(scannedDirectories).not.toContain(additional);
+        expect(fetchIndex).toHaveBeenCalledWith({ force: false });
+        await vi.waitFor(async () => expect((await persistence.load()).apps).toEqual([app("2")]));
+        expect(await store.prepareToQuit()).toBe(true);
+      } finally {
+        release.resolve();
+        await Promise.allSettled([mutation, quit]);
+        await store.refresh(true);
+        await store.prepareToQuit();
+      }
+    }
+  );
+
+  it("preserves forced metadata checks when coalescing refresh requests during a failed quit", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-quit-deferred-refresh-"));
+    directories.push(directory);
+    const persistence = new SnapshotPersistence(directory);
+    const saving = deferred<void>();
+    const release = deferred<void>();
+    vi.spyOn(persistence, "save").mockImplementationOnce(async () => {
+      saving.resolve();
+      await release.promise;
+      throw new Error("final save unavailable");
+    });
+    const fetchIndex = vi.fn(async () => emptyHomebrewCaskIndex);
+    const store = await makeStore(
+      {
+        homebrew: { fetchIndex, lookupUpdate: () => undefined, searchCasks: () => [] }
+      },
+      {},
+      { persistence }
+    );
+    const quit = store.prepareToQuit();
+    const rejected = expect(quit).rejects.toThrow("final save unavailable");
+    try {
+      await saving.promise;
+      await store.refresh(true);
+      await store.refresh(false, { forceMetadata: true, forceAppDiscovery: true });
+      await store.refresh(true);
+      expect(fetchIndex).not.toHaveBeenCalled();
+      release.resolve();
+      await rejected;
+      await vi.waitFor(() => expect(fetchIndex).toHaveBeenCalledExactlyOnceWith({ force: true }));
+      await vi.waitFor(() => expect(store.getSnapshot().isRefreshing).toBe(false));
+      expect(await store.prepareToQuit()).toBe(true);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([quit, rejected]);
+      await store.refresh(true);
       await store.prepareToQuit();
     }
   });
