@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import type {
   AppRecord,
   BaselineSnapshot,
@@ -1432,12 +1433,15 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private patch(patch: Partial<BaselineSnapshot>): void {
+    const keys = Object.keys(patch) as (keyof BaselineSnapshot)[];
+    // Compare only supplied fields, before cloning or advancing the stream.
+    // An unchanged patch must also leave any queued progress delta intact.
+    if (keys.every((key) => isDeepStrictEqual(this.state[key], patch[key]))) return;
     const progressKeys = [
       "homebrewBatchProgressByItemID",
       "homebrewFallbackProgressByAppID",
       "homebrewDiscoverProgressByItemID"
     ] as const;
-    const keys = Object.keys(patch);
     const progressOnly =
       keys.length > 0 && keys.every((key) => progressKeys.some((candidate) => candidate === key));
     const terminal =
