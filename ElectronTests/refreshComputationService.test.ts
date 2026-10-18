@@ -82,25 +82,24 @@ function setup(scan: Promise<AppRecord[]>, inventory: HomebrewInventoryResult) {
       import("../src/main/bundleScanner").BundleScannerClient["scanApplications"]
     >(() => scan)
   };
-  const service = new RefreshComputationService(
-    {
-      scanner,
-      appStore: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
-      sparkle: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
-      homebrew: {
-        fetchIndex: vi.fn().mockResolvedValue(emptyHomebrewCaskIndex),
-        lookupUpdate: vi.fn().mockReturnValue(undefined),
-        searchCasks: vi.fn().mockReturnValue([])
-      },
-      homebrewFormula: {
-        fetchIndex: vi.fn().mockResolvedValue(emptyHomebrewFormulaIndex),
-        searchFormulae: vi.fn().mockReturnValue([])
-      }
+  const clients = {
+    scanner,
+    appStore: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
+    sparkle: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
+    homebrew: {
+      fetchIndex: vi.fn().mockResolvedValue(emptyHomebrewCaskIndex),
+      lookupUpdate: vi.fn().mockReturnValue(undefined),
+      searchCasks: vi.fn().mockReturnValue([])
     },
-    ports
-  );
+    homebrewFormula: {
+      fetchIndex: vi.fn().mockResolvedValue(emptyHomebrewFormulaIndex),
+      searchFormulae: vi.fn().mockReturnValue([])
+    }
+  };
+  const service = new RefreshComputationService(clients, ports);
   return {
     service,
+    clients,
     scanner,
     events,
     patches,
@@ -123,6 +122,229 @@ const completeInventory: HomebrewInventoryResult = {
 };
 
 describe("RefreshComputationService", () => {
+  it("does not restore consumed comparisons when persistence fails after final reconciliation", async () => {
+    const app: AppRecord = {
+      id: "example",
+      bundlePath: "/Applications/Example.app",
+      bundleIdentifier: "com.example.app",
+      displayName: "Example",
+      localVersion: version("2"),
+      sourceHint: "appStore"
+    };
+    const { service, ports, state } = setup(Promise.resolve([app]), completeInventory);
+    state.updates = [
+      {
+        id: app.id,
+        appID: app.id,
+        source: "appStore",
+        supportLevel: "supported",
+        localVersion: version("1"),
+        remoteVersion: app.localVersion,
+        checkedAt: "2026-10-01T00:00:00Z"
+      }
+    ];
+    ports.persist = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Save failed"))
+      .mockResolvedValue(undefined);
+    await service.compute(false, 1, {}, new AbortController().signal);
+    expect(state.recentlyUpdated).toMatchObject([
+      { appID: app.id, fromVersion: version("1"), toVersion: app.localVersion }
+    ]);
+    expect(state.appUpdateComparisonBaseline).toEqual([]);
+    expect((state as RefreshReadState & RefreshPatch).refreshErrorMessage).toBe("Save failed");
+  });
+
+  it.each(["formula", "selfUpdate"] as const)(
+    "streams app updates before a delayed %s result, but waits to reconcile and persist",
+    async (delayed) => {
+      const gate = deferred<void>();
+      const app: AppRecord = {
+        id: "example",
+        bundlePath: "/Applications/Example.app",
+        bundleIdentifier: "com.example.app",
+        displayName: "Example",
+        localVersion: version("2"),
+        sparkleFeedURL: "https://example.com/feed.xml",
+        sourceHint: "unknown"
+      };
+      const actionable = { ...app, id: "actionable", bundleIdentifier: "com.example.actionable" };
+      const { service, clients, ports, state, patches, events } = setup(
+        Promise.resolve([app, actionable]),
+        completeInventory
+      );
+      state.updates = [
+        {
+          id: app.id,
+          appID: app.id,
+          source: "sparkle",
+          supportLevel: "limited",
+          localVersion: version("1"),
+          remoteVersion: version("2"),
+          checkedAt: "2026-10-01T00:00:00Z"
+        }
+      ];
+      const previous = state.updates[0]!;
+      clients.appStore.lookupOutcome.mockImplementation(async (bundleID: string) => ({
+        type: "completed",
+        value:
+          bundleID === actionable.bundleIdentifier ? { remoteVersion: version("3") } : undefined
+      }));
+      clients.sparkle.lookupOutcome.mockResolvedValue({ type: "completed", providerFound: true });
+      if (delayed === "formula")
+        clients.homebrewFormula.fetchIndex.mockImplementation(async () => {
+          await gate.promise;
+          return emptyHomebrewFormulaIndex;
+        });
+      else
+        ports.lookupSelfUpdate = async () => {
+          await gate.promise;
+          return undefined;
+        };
+      const task = service.compute(false, 1, {}, new AbortController().signal);
+      try {
+        await vi.waitFor(() => expect(state.appProviderChecks?.[app.id]?.status).toBe("checked"));
+        expect(clients.appStore.lookupOutcome).toHaveBeenCalledTimes(2);
+        expect(state.updates).toMatchObject([
+          { appID: actionable.id, source: "appStore", remoteVersion: version("3") }
+        ]);
+        expect(state.appUpdateComparisonBaseline).toMatchObject([
+          { appID: app.id, localVersion: version("1") },
+          { appID: actionable.id, localVersion: actionable.localVersion }
+        ]);
+        expect(events).not.toContain("persist");
+        expect(events).not.toContain("end");
+        expect(patches.some((patch) => patch.isRefreshing === false)).toBe(false);
+        gate.resolve();
+        await task;
+        expect(state.recentlyUpdated).toMatchObject([
+          {
+            appID: app.id,
+            fromVersion: previous.localVersion,
+            toVersion: app.localVersion
+          }
+        ]);
+        expect(events.indexOf("persist")).toBeLessThan(events.indexOf("end"));
+      } finally {
+        gate.resolve();
+        await Promise.allSettled([task]);
+      }
+    }
+  );
+
+  it("waits for started lookups before surfacing a concurrent metadata failure", async () => {
+    const gate = deferred<void>();
+    const app: AppRecord = {
+      id: "example",
+      bundlePath: "/Applications/Example.app",
+      bundleIdentifier: "com.example.app",
+      displayName: "Example",
+      localVersion: version("1"),
+      sourceHint: "unknown"
+    };
+    const { service, clients, patches, events, state } = setup(
+      Promise.resolve([app]),
+      completeInventory
+    );
+    const priorComparison = {
+      appID: "prior",
+      source: "sparkle" as const,
+      localVersion: version("1")
+    };
+    state.appUpdateComparisonBaseline = [priorComparison];
+    clients.homebrewFormula.fetchIndex.mockRejectedValue(new Error("Formula metadata failed"));
+    clients.appStore.lookupOutcome.mockImplementation(async () => {
+      await gate.promise;
+      return { type: "completed", value: { remoteVersion: version("2") } };
+    });
+    const task = service.compute(false, 1, {}, new AbortController().signal);
+    try {
+      await vi.waitFor(() => expect(clients.appStore.lookupOutcome).toHaveBeenCalledTimes(1));
+      expect(state.appProviderChecks?.[app.id]?.status).toBe("pending");
+      expect(events).not.toContain("end");
+      gate.resolve();
+      await task;
+      expect(patches.some((patch) => patch.refreshErrorMessage === "Formula metadata failed")).toBe(
+        true
+      );
+      expect(state.appProviderChecks?.[app.id]?.status).toBe("checked");
+      expect(state.appUpdateComparisonBaseline).toMatchObject([
+        priorComparison,
+        { appID: app.id, source: "appStore", localVersion: app.localVersion }
+      ]);
+      expect(events.indexOf("error")).toBeLessThan(events.indexOf("persist"));
+      expect(events.indexOf("persist")).toBeLessThan(events.indexOf("end"));
+    } finally {
+      gate.resolve();
+      await Promise.allSettled([task]);
+    }
+  });
+
+  it.each(["formula", "selfUpdate"] as const)(
+    "drains a delayed %s provider before releasing a failed refresh",
+    async (delayed) => {
+      const gate = deferred<void>();
+      const scan = deferred<AppRecord[]>();
+      const { service, clients, ports, state, patches, events } = setup(
+        scan.promise,
+        completeInventory
+      );
+      if (delayed === "formula")
+        clients.homebrewFormula.fetchIndex.mockImplementation(async () => {
+          await gate.promise;
+          return emptyHomebrewFormulaIndex;
+        });
+      else
+        ports.lookupSelfUpdate = async () => {
+          await gate.promise;
+          return undefined;
+        };
+      const task = service.compute(false, 1, {}, new AbortController().signal);
+      try {
+        scan.reject(new Error("Scanner failed"));
+        await vi.waitFor(() => expect(events).toContain("persist"));
+        expect(patches.some((patch) => patch.refreshErrorMessage === "Scanner failed")).toBe(true);
+        expect((state as RefreshReadState & RefreshPatch).isRefreshing).toBe(true);
+        expect(events).not.toContain("end");
+        gate.resolve();
+        await task;
+        expect(patches.at(-1)).toEqual({ isRefreshing: false });
+        expect(events.indexOf("persist")).toBeLessThan(events.indexOf("end"));
+      } finally {
+        scan.resolve([]);
+        gate.resolve();
+        await Promise.allSettled([task]);
+      }
+    }
+  );
+
+  it("drains unrelated providers after supersession without late state commits", async () => {
+    const gate = deferred<void>();
+    const { service, clients, events, patches, supersede } = setup(
+      Promise.resolve([]),
+      completeInventory
+    );
+    clients.homebrewFormula.fetchIndex.mockImplementation(async () => {
+      await gate.promise;
+      return emptyHomebrewFormulaIndex;
+    });
+    const task = service.compute(false, 1, {}, new AbortController().signal);
+    try {
+      await vi.waitFor(() => expect(patches.some((patch) => patch.apps)).toBe(true));
+      supersede();
+      const count = patches.length;
+      expect(events).not.toContain("end");
+      gate.resolve();
+      await task;
+      expect(patches).toHaveLength(count);
+      expect(events).not.toContain("persist");
+      expect(events).toContain("end");
+    } finally {
+      gate.resolve();
+      await Promise.allSettled([task]);
+    }
+  });
+
   it("retains unavailable-root apps without fresh checks or update actions, removes confirmed absent apps, and recovers on retry", async () => {
     const app = (root: string, name: string): AppRecord => ({
       id: `${root}/${name}.app`,

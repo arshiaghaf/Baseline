@@ -152,22 +152,29 @@ export class RefreshComputationService {
     const force =
       options.forceMetadata ?? (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand);
     let homebrewInventoryTask: Promise<HomebrewInventoryResult> | undefined;
+    const startedTasks: Promise<unknown>[] = [];
     try {
       homebrewInventoryTask = this.ports.fetchHomebrewInventory(lightweight, options);
+      const formulaTask = this.clients.homebrewFormula.fetchIndex({ force, signal });
+      const selfUpdateTask = this.ports.lookupSelfUpdate(now, signal);
+      // Neither result is needed to discover app sources. Observe failures now,
+      // but defer final reconciliation until all started providers have drained.
+      const supplementaryResults = Promise.allSettled([formulaTask, selfUpdateTask] as const);
+      startedTasks.push(homebrewInventoryTask, formulaTask, selfUpdateTask);
       const rootHealth: ScanRootHealth[] = [];
       const canonicalPaths = new Map<string, string>();
-      const [scanResult, catalogueIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
-        await Promise.all([
-          this.clients.scanner.scanApplications(this.ports.scanDirectories(), {
-            signal,
-            onRootRead: (health) => rootHealth.push(health),
-            onAppRead: (bundlePath, canonical) => canonicalPaths.set(bundlePath, canonical)
-          }),
-          this.clients.homebrew.fetchIndex({ force, signal }),
-          this.clients.homebrewFormula.fetchIndex({ force, signal }),
-          homebrewInventoryTask,
-          this.ports.lookupSelfUpdate(now, signal)
-        ]);
+      const scanTask = this.clients.scanner.scanApplications(this.ports.scanDirectories(), {
+        signal,
+        onRootRead: (health) => rootHealth.push(health),
+        onAppRead: (bundlePath, canonical) => canonicalPaths.set(bundlePath, canonical)
+      });
+      const catalogueTask = this.clients.homebrew.fetchIndex({ force, signal });
+      startedTasks.push(scanTask, catalogueTask);
+      const [scanResult, catalogueIndex, homebrewInventory] = await Promise.all([
+        scanTask,
+        catalogueTask,
+        homebrewInventoryTask
+      ]);
       if (!this.ports.isCurrent(sequence)) {
         return;
       }
@@ -216,10 +223,10 @@ export class RefreshComputationService {
       );
       const homebrewIndex = caskIndexForInstalledItems(catalogueIndex, homebrewItems);
       this.latestCaskIndex = homebrewIndex;
-      this.latestFormulaIndex = homebrewFormulaIndex;
       const previousUpdates = new Map(
         this.ports.readState().updates.map((update) => [update.appID, update])
       );
+      const observedComparisons = new Map(comparisonBaseline.map((item) => [item.appID, item]));
       const previousChecks = this.ports.readState().appProviderChecks;
       const retainedIDs = new Set(retainedApps.map((app) => app.id));
       // Preserve discovery/comparison evidence, but stale bundle evidence must not
@@ -248,11 +255,18 @@ export class RefreshComputationService {
             !this.clients.homebrew.cacheStatus?.unavailable,
           forceAppDiscovery: options.forceAppDiscovery,
           onProgress: (appProviderChecks, updates) => {
-            if (this.ports.isCurrent(sequence))
-              this.ports.patch({
-                appProviderChecks: { ...retainedChecks, ...appProviderChecks },
-                updates
-              });
+            if (!this.ports.isCurrent(sequence)) return;
+            for (const comparison of appUpdateComparisons(updates))
+              observedComparisons.set(comparison.appID, comparison);
+            // Publish comparison-only evidence with actionable observations so
+            // saves, quit and successors cannot retain one without the other.
+            // Keep earlier evidence when previews remove rows before history
+            // has been reconciled; obsolete generations cannot publish here.
+            this.ports.patch({
+              appProviderChecks: { ...retainedChecks, ...appProviderChecks },
+              updates,
+              appUpdateComparisonBaseline: [...observedComparisons.values()]
+            });
           },
           homebrewItems,
           homebrewIndex,
@@ -266,9 +280,15 @@ export class RefreshComputationService {
       );
       if (!updates) return;
 
+      const [formulaResult, selfUpdateResult] = await supplementaryResults;
+      if (formulaResult.status === "rejected") throw formulaResult.reason;
+      if (selfUpdateResult.status === "rejected") throw selfUpdateResult.reason;
+      const selfUpdate = selfUpdateResult.value;
+
       if (!this.ports.isCurrent(sequence)) {
         return;
       }
+      this.latestFormulaIndex = formulaResult.value;
       const previousHomebrewItems = this.ports.readState().homebrewItems;
       const reconciledHomebrewItems = reconcileHomebrewInventory(
         preservePreviousHomebrewOutdatedState(
@@ -421,6 +441,7 @@ export class RefreshComputationService {
       }
       void this.ports.processHomebrewUpdateQueue();
     } finally {
+      await Promise.allSettled(startedTasks);
       if (this.ports.isCurrent(sequence)) this.ports.patch({ isRefreshing: false });
       // Fresh identity, membership and pins must reach state before any queued
       // command can resume. A superseded refresh cannot release its successor.
