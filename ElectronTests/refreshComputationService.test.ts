@@ -234,7 +234,45 @@ describe("RefreshComputationService", () => {
     }
   });
 
-  it("drains unrelated providers after supersession without late state or index commits", async () => {
+  it.each(["formula", "selfUpdate"] as const)(
+    "drains a delayed %s provider before releasing a failed refresh",
+    async (delayed) => {
+      const gate = deferred<void>();
+      const scan = deferred<AppRecord[]>();
+      const { service, clients, ports, state, patches, events } = setup(
+        scan.promise,
+        completeInventory
+      );
+      if (delayed === "formula")
+        clients.homebrewFormula.fetchIndex.mockImplementation(async () => {
+          await gate.promise;
+          return emptyHomebrewFormulaIndex;
+        });
+      else
+        ports.lookupSelfUpdate = async () => {
+          await gate.promise;
+          return undefined;
+        };
+      const task = service.compute(false, 1, {}, new AbortController().signal);
+      try {
+        scan.reject(new Error("Scanner failed"));
+        await vi.waitFor(() => expect(events).toContain("persist"));
+        expect(patches.some((patch) => patch.refreshErrorMessage === "Scanner failed")).toBe(true);
+        expect((state as RefreshReadState & RefreshPatch).isRefreshing).toBe(true);
+        expect(events).not.toContain("end");
+        gate.resolve();
+        await task;
+        expect(patches.at(-1)).toEqual({ isRefreshing: false });
+        expect(events.indexOf("persist")).toBeLessThan(events.indexOf("end"));
+      } finally {
+        scan.resolve([]);
+        gate.resolve();
+        await Promise.allSettled([task]);
+      }
+    }
+  );
+
+  it("drains unrelated providers after supersession without late state commits", async () => {
     const gate = deferred<void>();
     const { service, clients, events, patches, supersede } = setup(
       Promise.resolve([]),

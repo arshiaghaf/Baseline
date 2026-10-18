@@ -202,77 +202,6 @@ export async function lookupAppUpdates(
     }
   }
 
-  // All feed consumers in this lookup generation share metadata identity,
-  // while each speculative consumer retains its own cancellation signal.
-  const refreshIdentity = {};
-  const lookupSparkle = (app: AppRecord, signal = input.signal) => {
-    const options = {
-      signal,
-      force: input.force,
-      refreshIdentity
-    };
-    return clients.sparkle.lookupOutcome(
-      app.sparkleFeedURL!,
-      app.localVersion,
-      app.bundleVersion,
-      options
-    );
-  };
-  type SparkleOutcome = Awaited<ReturnType<typeof lookupSparkle>>;
-  const earlySparkle = new Map<string, Promise<PromiseSettledResult<SparkleOutcome>>>();
-  const sparkleControllers = new Map<string, AbortController>();
-  let workerFailed = false;
-  // Discovery has no dependency on the embedded feed. Start both routes, while
-  // leaving verified Apple routes demand-driven to avoid unnecessary requests.
-  // Reconciliation below still waits for Apple before selecting a lower source.
-  const sparkleWork = apps
-    .filter((app) => {
-      const previous = previousFor(app);
-      return (
-        app.sparkleFeedURL &&
-        !previous?.appStoreIdentity &&
-        previous?.source !== "appStore" &&
-        updates.get(app.id)?.source !== "appStore"
-      );
-    })
-    // Preserve the existing early path for independent/known feeds before
-    // speculative work on apps whose Apple discovery is still pending.
-    .sort(
-      (a, b) =>
-        Number(lookups.has(a.id)) - Number(lookups.has(b.id)) ||
-        Number(Boolean(previousFor(b)?.sparkleFeedURL)) -
-          Number(Boolean(previousFor(a)?.sparkleFeedURL))
-    )
-    .map((app) => {
-      let resolve!: (outcome: PromiseSettledResult<SparkleOutcome>) => void;
-      earlySparkle.set(app.id, new Promise((done) => (resolve = done)));
-      return { app, resolve };
-    });
-  const prefetchSparkle = async () => {
-    for (;;) {
-      const entry = sparkleWork.shift();
-      if (!entry) return;
-      if (!active() || workerFailed || checks[entry.app.id]?.status !== "pending") {
-        entry.resolve({ status: "fulfilled", value: { type: "transientFailure" } });
-        continue;
-      }
-      const controller = new AbortController();
-      sparkleControllers.set(entry.app.id, controller);
-      try {
-        entry.resolve({
-          status: "fulfilled",
-          value: await lookupSparkle(entry.app, AbortSignal.any([input.signal, controller.signal]))
-        });
-      } catch (reason) {
-        // A speculative failure matters only if this route is actually needed.
-        entry.resolve({ status: "rejected", reason });
-      } finally {
-        sparkleControllers.delete(entry.app.id);
-      }
-    }
-  };
-  const sparkleTasks = Array.from({ length: Math.min(4, sparkleWork.length) }, prefetchSparkle);
-
   async function lookupOne(app: AppRecord): Promise<void> {
     if (!active()) return;
     const check = { ...checks[app.id]! };
@@ -285,9 +214,6 @@ export async function lookupAppUpdates(
       source?: AppProviderCheck["source"],
       resultCheckedAt?: string
     ) => {
-      // A winning Apple update no longer needs its speculative feed. Cancel
-      // this consumer only; shared metadata requests retain other subscribers.
-      sparkleControllers.get(app.id)?.abort();
       if (result) updates.set(app.id, result);
       else updates.delete(app.id);
       // Without a numeric ID, source is the durable evidence for this verified
@@ -374,10 +300,12 @@ export async function lookupAppUpdates(
     }
 
     if (app.sparkleFeedURL) {
-      const early = await earlySparkle.get(app.id);
-      if (!active()) return;
-      if (early?.status === "rejected") throw early.reason;
-      const outcome = early ? early.value : await lookupSparkle(app);
+      const outcome = await clients.sparkle.lookupOutcome(
+        app.sparkleFeedURL,
+        app.localVersion,
+        app.bundleVersion,
+        { signal: input.signal, force: input.force }
+      );
       if (!active()) return;
       if (outcome.type === "completed" && outcome.providerFound !== false) {
         check.sparkleFeedURL = app.sparkleFeedURL;
@@ -487,6 +415,7 @@ export async function lookupAppUpdates(
     waiters.clear();
   };
   let remaining = workApps.length;
+  let workerFailed = false;
   for (const app of workApps) {
     const ready = readyLookups.get(app.id);
     if (ready)
@@ -519,7 +448,6 @@ export async function lookupAppUpdates(
         await lookupOne(app);
       } catch (error) {
         workerFailed = true;
-        for (const controller of sparkleControllers.values()) controller.abort();
         wakeWorkers();
         throw error;
       }
@@ -528,8 +456,7 @@ export async function lookupAppUpdates(
   // Drain both app workers and provider batches before releasing refresh locks.
   const settled = await Promise.allSettled([
     ...Array.from({ length: Math.min(4, apps.length) }, work),
-    ...bulkTasks,
-    ...sparkleTasks
+    ...bulkTasks
   ]);
   const failure = settled.find((result) => result.status === "rejected");
   if (failure?.status === "rejected") throw failure.reason;
