@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { runBrewCommand, runMasCommand, type CommandResult } from "./commandRunner";
-import type { HomebrewConfigurationReason, ToolStatus } from "../shared/domain";
+import type { HomebrewConfigurationReason, RefreshState, ToolStatus } from "../shared/domain";
 
 export type ToolStatusPatch = {
   isChecking?: boolean;
   isHomebrewInstalled?: boolean;
+  homebrewCheckStatus?: RefreshState["homebrewCheckStatus"];
   homebrewConfigurationBlocked?: boolean;
   homebrewConfigurationReason?: HomebrewConfigurationReason;
   isMasInstalled?: boolean;
@@ -97,20 +98,30 @@ export class ToolStatusService {
     const brew: Promise<CommandResult | undefined> = release
       ? Promise.resolve()
           .then(() => this.options.runBrewCommand(["--version"]))
-          .then((result) => {
-            // Publish while this probe still owns the Homebrew reservation.
-            // Waiting for mas could overwrite a newer inventory recovery.
-            this.options.markHomebrewAvailabilityChecked();
-            const homebrewConfigurationBlocked = result.failure?.kind === "configuration-blocked";
-            this.options.patch({
-              homebrewConfigurationBlocked,
-              homebrewConfigurationReason: homebrewConfigurationBlocked
-                ? result.failure?.configurationReason
-                : undefined,
-              isHomebrewInstalled: homebrewConfigurationBlocked || result.success
-            });
-            return result;
-          })
+          .then(
+            (result) => {
+              // Publish while this probe still owns the Homebrew reservation.
+              // Waiting for mas could overwrite a newer inventory recovery.
+              this.options.markHomebrewAvailabilityChecked();
+              const homebrewConfigurationBlocked = result.failure?.kind === "configuration-blocked";
+              const missing = result.failure?.kind === "spawn" && result.failure.code === "ENOENT";
+              this.options.patch({
+                homebrewConfigurationBlocked,
+                homebrewConfigurationReason: homebrewConfigurationBlocked
+                  ? result.failure?.configurationReason
+                  : undefined,
+                isHomebrewInstalled: homebrewConfigurationBlocked || result.success,
+                ...(!result.success && !missing
+                  ? { homebrewCheckStatus: "incomplete" as const }
+                  : {})
+              });
+              return result;
+            },
+            (error: unknown) => {
+              this.options.patch({ homebrewCheckStatus: "incomplete" });
+              throw error;
+            }
+          )
           .finally(() => {
             try {
               release();

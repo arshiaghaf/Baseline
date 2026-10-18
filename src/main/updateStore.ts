@@ -307,6 +307,11 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       patch: (patch) =>
         this.patch({
           ...patch,
+          // A newly present or missing executable needs fresh inventory evidence.
+          ...(patch.isHomebrewInstalled !== undefined &&
+          patch.isHomebrewInstalled !== this.state.isHomebrewInstalled
+            ? { homebrewCheckStatus: "incomplete" as const }
+            : {}),
           ...(this.state.homebrewConfigurationBlocked &&
           patch.homebrewConfigurationBlocked === false &&
           patch.isHomebrewInstalled
@@ -420,7 +425,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             homebrewDiscoverInstallingItemIDs,
             homebrewDiscoverInstalledPendingRefreshItemIDs,
             homebrewDiscoverProgressByItemID,
-            searchText
+            searchText,
+            homebrewCheckNoticeMessage,
+            lastRefreshNoticeMessage
           } = this.state;
           return {
             apps: this.state.apps,
@@ -436,7 +443,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             homebrewDiscoverInstallingItemIDs,
             homebrewDiscoverInstalledPendingRefreshItemIDs,
             homebrewDiscoverProgressByItemID,
-            searchText
+            searchText,
+            homebrewCheckNoticeMessage,
+            lastRefreshNoticeMessage
           };
         },
         patch: (patch) => this.patch(patch),
@@ -1099,6 +1108,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.homebrewOperations.cancelQueuedHomebrewUpdates();
     this.invalidateHomebrewUpdateTargets();
     this.patch({
+      homebrewCheckStatus: "incomplete",
       lastRefreshNoticeMessage:
         "Homebrew process cleanup could not be confirmed. Check running Homebrew processes before restarting Baseline."
     });
@@ -1113,6 +1123,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.patch({
       isHomebrewInstalled: true,
       homebrewConfigurationBlocked: true,
+      homebrewCheckStatus: "incomplete",
       homebrewConfigurationReason: safeConfigurationReason(reason),
       homebrewConfigurationValidated: false,
       lastRefreshNoticeMessage: homebrewConfigurationBlockedMessage
@@ -1230,15 +1241,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       if (!brew.success) {
         if (brew.failure?.kind === "configuration-blocked")
           return configurationBlockedInventory(brew.failure.configurationReason);
-        if (this.homebrewCleanupRequiresInventory) {
-          // Even a missing executable is not proof that cached packages disappeared.
+        const missing = brew.failure?.kind === "spawn" && brew.failure.code === "ENOENT";
+        if (!missing || this.homebrewCleanupRequiresInventory) {
+          // Only explicit absence can stand in for an empty inventory. A failed
+          // probe or unconfirmed cleanup cannot prove installed packages current.
           return {
             items: [],
             inventoryReadSucceededByKind: { formula: false, cask: false },
             outdatedDetectionSucceeded: false,
             outdatedDetectionSucceededByKind: { formula: false, cask: false },
-            warning:
-              "Installed Homebrew packages could not be refreshed. Refresh again before updating."
+            warning: this.homebrewCleanupRequiresInventory
+              ? "Installed Homebrew packages could not be refreshed. Refresh again before updating."
+              : "Homebrew availability could not be confirmed. Refresh to retry."
           };
         }
         return emptyHomebrewInventoryResult();

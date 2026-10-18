@@ -56,6 +56,8 @@ export type RefreshReadState = Pick<
   | "homebrewDiscoverInstalledPendingRefreshItemIDs"
   | "homebrewDiscoverProgressByItemID"
   | "searchText"
+  | "homebrewCheckNoticeMessage"
+  | "lastRefreshNoticeMessage"
 >;
 
 export type RefreshPatch = Partial<
@@ -64,7 +66,10 @@ export type RefreshPatch = Partial<
     | "appProviderChecks"
     | "appUpdateComparisonBaseline"
     | "isRefreshing"
+    | "homebrewCheckStatus"
+    | "homebrewCheckNoticeMessage"
     | "refreshErrorMessage"
+    | "refreshCheckFailed"
     | "lastRefreshNoticeMessage"
     | "apps"
     | "updates"
@@ -145,7 +150,10 @@ export class RefreshComputationService {
       // and unrelated preference saves, including a later relaunch.
       appUpdateComparisonBaseline: comparisonBaseline,
       isRefreshing: true,
+      homebrewCheckStatus: "checking",
+      homebrewCheckNoticeMessage: undefined,
       refreshErrorMessage: undefined,
+      refreshCheckFailed: false,
       lastRefreshNoticeMessage: undefined
     });
     const now = new Date().toISOString();
@@ -155,12 +163,14 @@ export class RefreshComputationService {
     const startedTasks: Promise<unknown>[] = [];
     try {
       homebrewInventoryTask = this.ports.fetchHomebrewInventory(lightweight, options);
+      startedTasks.push(homebrewInventoryTask);
       const formulaTask = this.clients.homebrewFormula.fetchIndex({ force, signal });
+      startedTasks.push(formulaTask);
       const selfUpdateTask = this.ports.lookupSelfUpdate(now, signal);
+      startedTasks.push(selfUpdateTask);
       // Neither result is needed to discover app sources. Observe failures now,
       // but defer final reconciliation until all started providers have drained.
       const supplementaryResults = Promise.allSettled([formulaTask, selfUpdateTask] as const);
-      startedTasks.push(homebrewInventoryTask, formulaTask, selfUpdateTask);
       const rootHealth: ScanRootHealth[] = [];
       const canonicalPaths = new Map<string, string>();
       const scanTask = this.clients.scanner.scanApplications(this.ports.scanDirectories(), {
@@ -168,8 +178,9 @@ export class RefreshComputationService {
         onRootRead: (health) => rootHealth.push(health),
         onAppRead: (bundlePath, canonical) => canonicalPaths.set(bundlePath, canonical)
       });
+      startedTasks.push(scanTask);
       const catalogueTask = this.clients.homebrew.fetchIndex({ force, signal });
-      startedTasks.push(scanTask, catalogueTask);
+      startedTasks.push(catalogueTask);
       const [scanResult, catalogueIndex, homebrewInventory] = await Promise.all([
         scanTask,
         catalogueTask,
@@ -326,6 +337,11 @@ export class RefreshComputationService {
       );
       const preserveHomebrewCommandState =
         this.ports.isHomebrewMutationActive() && !options.allowHomebrewInventoryDuringActiveCommand;
+      const homebrewCheckNoticeMessage = homebrewRefreshNotice(
+        homebrewInventory.warning,
+        this.clients.homebrew.cacheStatus,
+        this.clients.homebrewFormula.cacheStatus
+      );
       this.ports.patch({
         apps,
         updates,
@@ -334,21 +350,16 @@ export class RefreshComputationService {
           ...comparisonBaseline.filter((item) => retainedIDs.has(item.appID))
         ],
         homebrewItems: reconciledHomebrewItems,
+        homebrewCheckStatus: homebrewInventoryIsComplete(homebrewInventory)
+          ? "complete"
+          : "incomplete",
         homebrewFormulaIdentityContinuity,
         recentlyUpdated,
         homebrewRecentlyUpdated,
         lastRefreshDate: new Date().toISOString(),
+        homebrewCheckNoticeMessage,
         lastRefreshNoticeMessage:
-          [
-            scanNotice,
-            homebrewInventory.warning,
-            catalogueCacheNotice(
-              this.clients.homebrew.cacheStatus,
-              this.clients.homebrewFormula.cacheStatus
-            )
-          ]
-            .filter(Boolean)
-            .join(" ") || undefined,
+          [scanNotice, homebrewCheckNoticeMessage].filter(Boolean).join(" ") || undefined,
         appUpdatedPendingRefreshIDs: [],
         homebrewUpdatedPendingRefreshItemIDs: preserveHomebrewCommandState
           ? this.ports.readState().homebrewUpdatedPendingRefreshItemIDs
@@ -385,13 +396,10 @@ export class RefreshComputationService {
       if (!this.ports.isCurrent(sequence)) {
         return;
       }
-      // Keep this refresh's task even after the shared inventory lock is released.
-      // An unrelated provider failure must not discard fresh membership evidence.
-      const recoveredHomebrewInventory = await homebrewInventoryTask?.catch(() => undefined);
-      if (!this.ports.isCurrent(sequence)) {
-        return;
-      }
-      const patch: RefreshPatch = {
+      // Report failure promptly, but keep refresh ownership until all started
+      // producers have settled. Cache health can change during that drain.
+      this.ports.patch({
+        refreshCheckFailed: true,
         appProviderChecks: Object.fromEntries(
           Object.entries(this.ports.readState().appProviderChecks ?? {}).map(([id, check]) => [
             id,
@@ -399,7 +407,13 @@ export class RefreshComputationService {
           ])
         ),
         refreshErrorMessage: error instanceof Error ? error.message : "Refresh failed."
-      };
+      });
+      await Promise.allSettled(startedTasks);
+      if (!this.ports.isCurrent(sequence)) return;
+      // Keep this refresh's inventory task even after its shared lock is released.
+      const recoveredHomebrewInventory = await homebrewInventoryTask?.catch(() => undefined);
+      if (!this.ports.isCurrent(sequence)) return;
+      const patch: RefreshPatch = {};
       const inventory = recoveredHomebrewInventory ?? {
         items: [],
         inventoryReadSucceededByKind: { formula: false, cask: false },
@@ -430,7 +444,23 @@ export class RefreshComputationService {
         now,
         { completedItemIDs: this.ports.readState().homebrewUpdatedPendingRefreshItemIDs }
       );
-      patch.lastRefreshNoticeMessage = recoveredHomebrewInventory?.warning;
+      patch.homebrewCheckStatus =
+        recoveredHomebrewInventory && homebrewInventoryIsComplete(recoveredHomebrewInventory)
+          ? "complete"
+          : "incomplete";
+      const current = this.ports.readState();
+      patch.homebrewCheckNoticeMessage = mergeRefreshNotices(
+        current.homebrewCheckNoticeMessage,
+        homebrewRefreshNotice(
+          recoveredHomebrewInventory?.warning,
+          this.clients.homebrew.cacheStatus,
+          this.clients.homebrewFormula.cacheStatus
+        )
+      );
+      patch.lastRefreshNoticeMessage = mergeRefreshNotices(
+        current.lastRefreshNoticeMessage,
+        patch.homebrewCheckNoticeMessage
+      );
       this.ports.patch(patch);
       if (this.ports.isCleanupInventoryRequired() || options.onHomebrewInventoryReconciled) {
         this.ports.setCleanupInventoryRequired(true, !lightweight);
@@ -494,6 +524,23 @@ export function homebrewInventoryIsComplete(inventory: HomebrewInventoryResult):
     inventory.outdatedDetectionSucceeded &&
     inventory.outdatedDetectionSucceededByKind?.formula !== false &&
     inventory.outdatedDetectionSucceededByKind?.cask !== false
+  );
+}
+
+function mergeRefreshNotices(...notices: Array<string | undefined>): string | undefined {
+  return notices.reduce<string | undefined>((combined, notice) => {
+    if (!notice || combined?.includes(notice)) return combined;
+    if (!combined || notice.includes(combined)) return notice;
+    return `${combined} ${notice}`;
+  }, undefined);
+}
+
+function homebrewRefreshNotice(
+  inventoryWarning: string | undefined,
+  ...statuses: Array<CatalogueStatus | undefined>
+): string | undefined {
+  return (
+    [inventoryWarning, catalogueCacheNotice(...statuses)].filter(Boolean).join(" ") || undefined
   );
 }
 

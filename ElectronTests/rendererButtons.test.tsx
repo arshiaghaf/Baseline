@@ -31,6 +31,7 @@ import type {
 import { defaultPersistedSnapshot, profileStatsSignatureVersion } from "../src/shared/domain";
 import { HomebrewMaintenanceProgressStage } from "../src/shared/homebrewProgress";
 import { homebrewConfigurationValidatedMessage } from "../src/shared/homebrewConfiguration";
+import { trayUpdateTitle } from "../src/main/trayStatus";
 import { version } from "../src/shared/version";
 
 const app: AppRecord = {
@@ -3790,6 +3791,7 @@ describe("app refresh source visibility", () => {
       const state = snapshot({
         updates: [],
         homebrewItems: [],
+        homebrewCheckStatus: "complete",
         appProviderChecks: {
           [app.id]: {
             fingerprint: "fixture",
@@ -3929,7 +3931,10 @@ describe("app refresh source visibility", () => {
   it.each([
     {
       name: "completed",
-      patch: { lastRefreshDate: "2026-10-18T10:00:00.000Z" },
+      patch: {
+        lastRefreshDate: "2026-10-18T10:00:00.000Z",
+        homebrewCheckStatus: "complete" as const
+      },
       expected: "No updates to show from the last refresh."
     },
     { name: "initial", patch: {}, expected: "Refresh to check for updates." },
@@ -3940,7 +3945,7 @@ describe("app refresh source visibility", () => {
     },
     {
       name: "failed",
-      patch: { refreshErrorMessage: "Inventory unavailable" },
+      patch: { refreshErrorMessage: "Inventory unavailable", refreshCheckFailed: true },
       expected: "Some updates could not be checked."
     },
     {
@@ -4009,4 +4014,177 @@ describe("app refresh source visibility", () => {
     );
     expect(screen.getByText(/Could not check updates.*Last successful check:/)).toBeInTheDocument();
   });
+});
+
+describe("truthful update success states", () => {
+  const healthy = () =>
+    snapshot({
+      apps: [app],
+      updates: [],
+      homebrewItems: [],
+      selectedTab: "homebrew",
+      lastRefreshDate: "2026-10-18T10:00:00.000Z",
+      homebrewCheckStatus: "complete",
+      appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "checked" } }
+    });
+
+  it.each([false, true])(
+    "renders inventory health and recovery in the real dashboard (compact=%s)",
+    (compact) => {
+      const state = healthy();
+      const view = (patch: Partial<BaselineSnapshot>) => (
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={{ ...state, ...patch }}
+        />
+      );
+      const { rerender } = render(view({ homebrewCheckStatus: undefined }));
+      expect(screen.getByText("Refresh to check Homebrew updates.")).toBeVisible();
+      rerender(view({ isRefreshing: true, homebrewCheckStatus: "checking" }));
+      expect(screen.getByText("Checking Homebrew updates. Results are incomplete.")).toBeVisible();
+      rerender(
+        view({
+          homebrewCheckStatus: "incomplete",
+          lastRefreshNoticeMessage: "Only formulae were read."
+        })
+      );
+      expect(
+        screen.getByText("Some Homebrew updates could not be checked. Refresh to retry.")
+      ).toBeVisible();
+      expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
+      // A retained installed row is not successful current inventory evidence.
+      rerender(
+        view({
+          homebrewCheckStatus: "incomplete",
+          homebrewItems: [{ ...cask, appID: undefined, isOutdated: false }]
+        })
+      );
+      expect(
+        screen.getByText("Some Homebrew updates could not be checked. Refresh to retry.")
+      ).toBeVisible();
+      rerender(
+        view({ homebrewCheckStatus: "complete", refreshErrorMessage: "Source unavailable" })
+      );
+      expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
+      rerender(
+        view({
+          homebrewCheckStatus: "complete",
+          homebrewCheckNoticeMessage: "Cached catalogue",
+          lastRefreshNoticeMessage: "Cached catalogue"
+        })
+      );
+      expect(
+        screen.getByText(
+          "Homebrew update information may be incomplete. See the refresh notice for details."
+        )
+      ).toBeVisible();
+      rerender(view({ homebrewCheckStatus: "complete" }));
+      expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
+      expect(trayUpdateTitle(state)).toBe("✓");
+    }
+  );
+
+  it.each([false, true])(
+    "qualifies filtered, ignored, pinned and app-represented updates (compact=%s)",
+    (compact) => {
+      const base = healthy();
+      const view = (patch: Partial<BaselineSnapshot>) => (
+        <Dashboard
+          compact={compact}
+          searchActive={Boolean(patch.searchText)}
+          onOpenSettings={() => undefined}
+          snapshot={{ ...base, ...patch }}
+        />
+      );
+      const { rerender } = render(view({ searchText: "missing", homebrewItems: [cask] }));
+      expect(screen.getByText("No matches found.")).toBeVisible();
+      expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
+      for (const patch of [
+        { homebrewItems: [cask], ignoredHomebrewItemIDs: [cask.id] },
+        { homebrewItems: [{ ...cask, pinned: true }] },
+        { homebrewItems: [cask], updates: [update] },
+        { homebrewItems: [cask], ignoredIDs: [app.id] }
+      ]) {
+        rerender(view(patch));
+        expect(
+          screen.getByText(
+            "No Homebrew updates to show. Updates may be listed with apps, ignored, or pinned."
+          )
+        ).toBeVisible();
+        expect(
+          screen.queryByText("All your Homebrew items are up to date.")
+        ).not.toBeInTheDocument();
+      }
+    }
+  );
+
+  it.each<Partial<BaselineSnapshot>>([
+    { homebrewCheckStatus: undefined },
+    { homebrewCheckStatus: "checking" },
+    { homebrewCheckStatus: "incomplete" },
+    { isRefreshing: true },
+    { isChecking: true },
+    { lastRefreshDate: undefined },
+    { refreshErrorMessage: "Unavailable" },
+    { lastRefreshNoticeMessage: "Incomplete inventory" },
+    { homebrewCheckNoticeMessage: "Cached catalogue" },
+    { homebrewConfigurationBlocked: true },
+    ...(["pending", "failed", "unresolved"] as const).map((status) => ({
+      appProviderChecks: { [app.id]: { fingerprint: "fixture", status } }
+    }))
+  ])("does not display a tray checkmark for uncertain checks: %j", (patch) => {
+    expect(trayUpdateTitle({ ...healthy(), ...patch })).toBe("");
+  });
+
+  it("keeps tray counts independent of search and avoids double counting app casks", () => {
+    const state = {
+      ...healthy(),
+      updates: [update],
+      homebrewItems: [cask],
+      searchText: "missing",
+      refreshErrorMessage: "Partial failure"
+    };
+    expect(trayUpdateTitle(state)).toBe("1\u2009↓");
+    expect(trayUpdateTitle({ ...state, ignoredIDs: [app.id] })).toBe("");
+    expect(trayUpdateTitle({ ...state, homebrewItems: [{ ...cask, pinned: true }] })).toBe("");
+    expect(
+      trayUpdateTitle({
+        ...healthy(),
+        updates: [update],
+        homebrewItems: [cask],
+        ignoredIDs: [app.id]
+      })
+    ).toBe("✓");
+  });
+});
+
+describe("Homebrew empty copy scope", () => {
+  it.each([false, true])(
+    "keeps a closed search's retained term out of unfiltered copy (compact=%s)",
+    (compact) => {
+      const state = snapshot({
+        selectedTab: "homebrew",
+        searchText: "missing",
+        apps: [],
+        updates: [],
+        homebrewItems: [],
+        homebrewCheckStatus: "complete",
+        lastRefreshDate: "2026-10-18T10:00:00.000Z"
+      });
+      const view = (searchActive: boolean) => (
+        <Dashboard
+          compact={compact}
+          searchActive={searchActive}
+          snapshot={state}
+          onOpenSettings={() => undefined}
+        />
+      );
+      const { rerender } = render(view(true));
+      expect(screen.getByText("No matches found.")).toBeVisible();
+      rerender(view(false));
+      expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
+      expect(screen.queryByText(/No Homebrew updates match your search/)).not.toBeInTheDocument();
+    }
+  );
 });

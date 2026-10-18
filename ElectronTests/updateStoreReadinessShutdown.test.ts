@@ -190,6 +190,7 @@ describe("tool readiness lifecycle", () => {
       expect(h.state).toEqual({
         isChecking: false,
         isHomebrewInstalled: false,
+        homebrewCheckStatus: "incomplete",
         isMasInstalled: true,
         masAvailability: "available"
       });

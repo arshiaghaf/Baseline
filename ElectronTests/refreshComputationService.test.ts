@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppRecord, HomebrewManagedItem } from "../src/shared/domain";
 import { emptyHomebrewCaskIndex, emptyHomebrewFormulaIndex } from "../src/shared/domain";
 import { version } from "../src/shared/version";
+import type { CatalogueStatus } from "../src/main/catalogueCache";
 import type { HomebrewInventoryResult } from "../src/main/homebrewInventoryClient";
 import {
   RefreshComputationService,
@@ -87,6 +88,7 @@ function setup(scan: Promise<AppRecord[]>, inventory: HomebrewInventoryResult) {
     appStore: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
     sparkle: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
     homebrew: {
+      cacheStatus: undefined as CatalogueStatus | undefined,
       fetchIndex: vi.fn().mockResolvedValue(emptyHomebrewCaskIndex),
       lookupUpdate: vi.fn().mockReturnValue(undefined),
       searchCasks: vi.fn().mockReturnValue([])
@@ -302,7 +304,8 @@ describe("RefreshComputationService", () => {
       const task = service.compute(false, 1, {}, new AbortController().signal);
       try {
         scan.reject(new Error("Scanner failed"));
-        await vi.waitFor(() => expect(events).toContain("persist"));
+        await vi.waitFor(() => expect(events).toContain("error"));
+        expect(events).not.toContain("persist");
         expect(patches.some((patch) => patch.refreshErrorMessage === "Scanner failed")).toBe(true);
         expect((state as RefreshReadState & RefreshPatch).isRefreshing).toBe(true);
         expect(events).not.toContain("end");
@@ -528,8 +531,8 @@ describe("RefreshComputationService", () => {
     try {
       scan.reject(new Error("Scanner failed"));
       await task;
-      expect(patches[1]).toMatchObject({
-        refreshErrorMessage: "Scanner failed",
+      expect(patches[1]).toMatchObject({ refreshErrorMessage: "Scanner failed" });
+      expect(patches[2]).toMatchObject({
         lastRefreshNoticeMessage: "Inventory was refreshed.",
         homebrewItems: [{ id: item.id }]
       });
@@ -537,6 +540,7 @@ describe("RefreshComputationService", () => {
         "begin",
         "start",
         "error",
+        "patch",
         "invalidate",
         "persist",
         "queue",
@@ -548,5 +552,205 @@ describe("RefreshComputationService", () => {
       scan.resolve([]);
       await Promise.allSettled([task]);
     }
+  });
+});
+
+describe("refresh inventory success evidence", () => {
+  it.each([
+    { inventoryReadSucceededByKind: { formula: false, cask: true } },
+    { inventoryReadSucceededByKind: { formula: true, cask: false } },
+    { outdatedDetectionSucceeded: false },
+    { outdatedDetectionSucceededByKind: { formula: false, cask: true } },
+    { outdatedDetectionSucceededByKind: { formula: true, cask: false } }
+  ])("publishes incomplete health even without warning copy: %j", async (patch) => {
+    const fixture = setup(Promise.resolve([]), { ...completeInventory, ...patch });
+    await fixture.service.compute(false, 1, {}, new AbortController().signal);
+    expect(fixture.patches[0]).toMatchObject({
+      isRefreshing: true,
+      homebrewCheckStatus: "checking"
+    });
+    expect(fixture.state).toMatchObject({ homebrewCheckStatus: "incomplete", isRefreshing: false });
+    fixture.ports.fetchHomebrewInventory = async () => completeInventory;
+    await fixture.service.compute(false, 2, {}, new AbortController().signal);
+    expect(fixture.state).toMatchObject({ homebrewCheckStatus: "complete", isRefreshing: false });
+  });
+
+  it("retains installed rows after a rejected inventory read without claiming success", async () => {
+    const fixture = setup(Promise.resolve([]), completeInventory);
+    fixture.state.homebrewItems = [
+      {
+        id: "formula:example",
+        token: "example",
+        name: "Example",
+        kind: "formula",
+        installedVersion: version("1"),
+        latestVersion: version("2"),
+        isOutdated: true
+      }
+    ];
+    fixture.ports.fetchHomebrewInventory = async () => {
+      throw new Error("Inventory unavailable");
+    };
+    await fixture.service.compute(false, 1, {}, new AbortController().signal);
+    expect(fixture.state).toMatchObject({
+      homebrewCheckStatus: "incomplete",
+      isRefreshing: false,
+      homebrewItems: [{ id: "formula:example", isOutdated: false }]
+    });
+  });
+});
+
+it("scopes catalogue warnings to Homebrew and clears them after recovery", async () => {
+  const fixture = setup(Promise.resolve([]), completeInventory);
+  fixture.clients.homebrew.cacheStatus = { stale: true, unavailable: false };
+  await fixture.service.compute(false, 1, {}, new AbortController().signal);
+  expect(fixture.state).toMatchObject({
+    homebrewCheckStatus: "complete",
+    homebrewCheckNoticeMessage: "Using cached Homebrew catalogue metadata. Refresh to retry.",
+    lastRefreshNoticeMessage: "Using cached Homebrew catalogue metadata. Refresh to retry."
+  });
+  fixture.clients.homebrew.cacheStatus = { stale: false, unavailable: false };
+  await fixture.service.compute(false, 2, {}, new AbortController().signal);
+  expect(fixture.state).toMatchObject({
+    homebrewCheckNoticeMessage: undefined,
+    lastRefreshNoticeMessage: undefined
+  });
+});
+
+it("does not attribute an app-folder warning to Homebrew", async () => {
+  const fixture = setup(Promise.resolve([]), completeInventory);
+  fixture.scanner.scanApplications.mockImplementation(async (_directories, options) => {
+    options?.onRootRead?.({ directory: "/Applications", complete: false });
+    return [];
+  });
+  await fixture.service.compute(false, 1, {}, new AbortController().signal);
+  expect(fixture.state).toMatchObject({
+    homebrewCheckStatus: "complete",
+    homebrewCheckNoticeMessage: undefined
+  });
+  expect(
+    fixture.patches.some((patch) => patch.lastRefreshNoticeMessage?.includes("Some app folders"))
+  ).toBe(true);
+});
+
+it.each([
+  { stale: true, unavailable: false },
+  { stale: false, unavailable: true }
+])(
+  "keeps both inventory and catalogue warnings when final persistence rejects: %j",
+  async (status) => {
+    const fixture = setup(Promise.resolve([]), {
+      ...completeInventory,
+      warning: "Inventory warning."
+    });
+    fixture.clients.homebrew.cacheStatus = status;
+    fixture.ports.persist = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Fixture refresh save failure"))
+      .mockResolvedValue(undefined);
+    await fixture.service.compute(false, 1, {}, new AbortController().signal);
+    expect(fixture.state).toMatchObject({
+      homebrewCheckStatus: "complete",
+      refreshCheckFailed: true,
+      homebrewCheckNoticeMessage: expect.stringMatching(
+        /Inventory warning.*Homebrew catalogue metadata/
+      ),
+      lastRefreshNoticeMessage: expect.stringMatching(
+        /Inventory warning.*Homebrew catalogue metadata/
+      )
+    });
+  }
+);
+
+it("does not publish drained failure health after supersession", async () => {
+  const gate = deferred<void>();
+  const scan = deferred<AppRecord[]>();
+  const fixture = setup(scan.promise, completeInventory);
+  fixture.clients.homebrewFormula.fetchIndex.mockImplementation(async () => {
+    await gate.promise;
+    return emptyHomebrewFormulaIndex;
+  });
+  const task = fixture.service.compute(false, 1, {}, new AbortController().signal);
+  try {
+    scan.reject(new Error("Fixture early scan failure"));
+    await vi.waitFor(() => expect(fixture.events).toContain("error"));
+    fixture.supersede();
+    const count = fixture.patches.length;
+    gate.resolve();
+    await task;
+    expect(fixture.patches).toHaveLength(count);
+    expect(fixture.events).not.toContain("persist");
+    expect(fixture.events).toContain("end");
+  } finally {
+    gate.resolve();
+    await task;
+  }
+});
+
+it("drains a scan already started when catalogue startup throws synchronously", async () => {
+  const scan = deferred<AppRecord[]>();
+  const fixture = setup(scan.promise, completeInventory);
+  fixture.clients.homebrew.fetchIndex.mockImplementation(() => {
+    throw new Error("Fixture catalogue startup failure");
+  });
+  let settled = false;
+  const task = fixture.service.compute(false, 1, {}, new AbortController().signal).finally(() => {
+    settled = true;
+  });
+  try {
+    await vi.waitFor(() => expect(fixture.events).toContain("error"));
+    expect(settled).toBe(false);
+    expect(fixture.events).not.toContain("persist");
+    scan.resolve([]);
+    await task;
+    expect(fixture.events.indexOf("persist")).toBeLessThan(fixture.events.indexOf("end"));
+  } finally {
+    scan.resolve([]);
+    await task;
+  }
+});
+
+it("keeps unrelated notices published while failed refresh producers drain", async () => {
+  const scan = deferred<AppRecord[]>(),
+    gate = deferred<void>();
+  const fixture = setup(scan.promise, completeInventory);
+  fixture.clients.homebrewFormula.fetchIndex.mockImplementation(async () => {
+    await gate.promise;
+    return emptyHomebrewFormulaIndex;
+  });
+  const task = fixture.service.compute(false, 1, {}, new AbortController().signal);
+  try {
+    scan.reject(new Error("Fixture early scan failure"));
+    await vi.waitFor(() => expect(fixture.events).toContain("error"));
+    fixture.ports.patch({ lastRefreshNoticeMessage: "Failure details could not be saved." });
+    fixture.clients.homebrew.cacheStatus = { stale: true, unavailable: false };
+    gate.resolve();
+    await task;
+    expect(fixture.state).toMatchObject({
+      homebrewCheckNoticeMessage: "Using cached Homebrew catalogue metadata. Refresh to retry.",
+      lastRefreshNoticeMessage:
+        "Failure details could not be saved. Using cached Homebrew catalogue metadata. Refresh to retry."
+    });
+  } finally {
+    gate.resolve();
+    await task;
+  }
+});
+
+it("retains scoped warnings used by published results when a later failure sees fresher shared metadata", async () => {
+  const fixture = setup(Promise.resolve([]), completeInventory);
+  fixture.clients.homebrew.cacheStatus = { stale: true, unavailable: false };
+  fixture.ports.persist = vi
+    .fn()
+    .mockImplementationOnce(async () => {
+      fixture.clients.homebrew.cacheStatus = { stale: false, unavailable: false };
+      throw new Error("Fixture final save failure");
+    })
+    .mockResolvedValue(undefined);
+  await fixture.service.compute(false, 1, {}, new AbortController().signal);
+  expect(fixture.state).toMatchObject({
+    refreshCheckFailed: true,
+    homebrewCheckNoticeMessage: "Using cached Homebrew catalogue metadata. Refresh to retry.",
+    lastRefreshNoticeMessage: "Using cached Homebrew catalogue metadata. Refresh to retry."
   });
 });

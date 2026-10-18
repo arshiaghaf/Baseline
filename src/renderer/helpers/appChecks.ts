@@ -13,18 +13,28 @@ export function combinedUpdatesEmptyText(snapshot: BaselineSnapshot): string {
 
 function updatesEmptyText(snapshot: BaselineSnapshot, appsOnly: boolean): string {
   const checks = Object.values(snapshot.appProviderChecks ?? {});
-  if (snapshot.isRefreshing || checks.some((check) => check.status === "pending"))
+  if (
+    snapshot.isRefreshing ||
+    checks.some((check) => check.status === "pending") ||
+    (!appsOnly && snapshot.homebrewCheckStatus === "checking")
+  )
     return appsOnly
       ? "Checking app updates. Results are incomplete."
       : "Checking for updates. Results are incomplete.";
-  if (snapshot.refreshErrorMessage || checks.some((check) => check.status === "failed"))
+  if (
+    snapshot.refreshCheckFailed ||
+    checks.some((check) => check.status === "failed") ||
+    (!appsOnly && snapshot.homebrewCheckStatus === "incomplete")
+  )
     return appsOnly
       ? "Some app updates could not be checked."
       : "Some updates could not be checked.";
   // Inventory failures and cached catalogue warnings can complete a refresh
   // without a refresh error. Keep the combined result qualified in both cases.
-  if (!appsOnly && snapshot.lastRefreshNoticeMessage)
+  if (!appsOnly && (snapshot.lastRefreshNoticeMessage || snapshot.homebrewCheckNoticeMessage))
     return "Some update information may be incomplete. See the refresh notice for details.";
+  if (!appsOnly && snapshot.homebrewCheckStatus !== "complete")
+    return "Refresh to check for updates.";
   if (checks.some((check) => check.status === "unresolved"))
     return "No updates found in checked sources. Some apps have no verified update source.";
   if (!checks.length) {
@@ -45,4 +55,17 @@ export function appCheckLabel(check: AppProviderCheck | undefined): string | und
   if (check.status === "failed") return "Could not check updates";
   if (check.status === "unresolved") return "No verified update source";
   return undefined;
+}
+
+export function homebrewUpdatesEmptyText(snapshot: BaselineSnapshot): string {
+  if (snapshot.isRefreshing || snapshot.homebrewCheckStatus === "checking")
+    return "Checking Homebrew updates. Results are incomplete.";
+  if (snapshot.homebrewConfigurationBlocked || snapshot.homebrewCheckStatus === "incomplete")
+    return "Some Homebrew updates could not be checked. Refresh to retry.";
+  if (snapshot.homebrewCheckNoticeMessage)
+    return "Homebrew update information may be incomplete. See the refresh notice for details.";
+  if (snapshot.homebrewCheckStatus !== "complete") return "Refresh to check Homebrew updates.";
+  if (snapshot.homebrewItems.some((item) => item.isOutdated))
+    return "No Homebrew updates to show. Updates may be listed with apps, ignored, or pinned.";
+  return "All your Homebrew items are up to date.";
 }
