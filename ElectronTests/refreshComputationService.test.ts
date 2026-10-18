@@ -550,3 +550,48 @@ describe("RefreshComputationService", () => {
     }
   });
 });
+
+describe("refresh inventory success evidence", () => {
+  it.each([
+    { inventoryReadSucceededByKind: { formula: false, cask: true } },
+    { inventoryReadSucceededByKind: { formula: true, cask: false } },
+    { outdatedDetectionSucceeded: false },
+    { outdatedDetectionSucceededByKind: { formula: false, cask: true } },
+    { outdatedDetectionSucceededByKind: { formula: true, cask: false } }
+  ])("publishes incomplete health even without warning copy: %j", async (patch) => {
+    const fixture = setup(Promise.resolve([]), { ...completeInventory, ...patch });
+    await fixture.service.compute(false, 1, {}, new AbortController().signal);
+    expect(fixture.patches[0]).toMatchObject({
+      isRefreshing: true,
+      homebrewCheckStatus: "checking"
+    });
+    expect(fixture.state).toMatchObject({ homebrewCheckStatus: "incomplete", isRefreshing: false });
+    fixture.ports.fetchHomebrewInventory = async () => completeInventory;
+    await fixture.service.compute(false, 2, {}, new AbortController().signal);
+    expect(fixture.state).toMatchObject({ homebrewCheckStatus: "complete", isRefreshing: false });
+  });
+
+  it("retains installed rows after a rejected inventory read without claiming success", async () => {
+    const fixture = setup(Promise.resolve([]), completeInventory);
+    fixture.state.homebrewItems = [
+      {
+        id: "formula:example",
+        token: "example",
+        name: "Example",
+        kind: "formula",
+        installedVersion: version("1"),
+        latestVersion: version("2"),
+        isOutdated: true
+      }
+    ];
+    fixture.ports.fetchHomebrewInventory = async () => {
+      throw new Error("Inventory unavailable");
+    };
+    await fixture.service.compute(false, 1, {}, new AbortController().signal);
+    expect(fixture.state).toMatchObject({
+      homebrewCheckStatus: "incomplete",
+      isRefreshing: false,
+      homebrewItems: [{ id: "formula:example", isOutdated: false }]
+    });
+  });
+});

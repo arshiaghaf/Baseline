@@ -24,7 +24,11 @@ import {
 } from "./ItemViews";
 import { homebrewBatchActionState } from "../helpers/actionState";
 import { performHomebrewUpdateAllForItems, toggleCollapsedSection } from "../helpers/actions";
-import { appUpdatesEmptyText, combinedUpdatesEmptyText } from "../helpers/appChecks";
+import {
+  appUpdatesEmptyText,
+  combinedUpdatesEmptyText,
+  homebrewUpdatesEmptyText
+} from "../helpers/appChecks";
 
 export function SelectedTabContent({
   snapshot,
@@ -96,7 +100,7 @@ export function SearchResults({
           title="Homebrew Updates"
           items={derived.allHomebrewOutdated}
           snapshot={snapshot}
-          empty="All your Homebrew items are up to date."
+          empty={homebrewUpdatesEmptyText(snapshot)}
           showUpdateAll
           cardLayout
         />
@@ -189,7 +193,7 @@ export function AllTab({
           title={`Homebrew Updates (${derived.allHomebrewOutdated.length})`}
           items={derived.allHomebrewOutdated}
           snapshot={snapshot}
-          empty="All your Homebrew items are up to date."
+          empty={homebrewUpdatesEmptyText(snapshot)}
           showUpdateAll
         />
       </div>
@@ -555,7 +559,7 @@ export function HomebrewTab({
         title={`Outdated (${derived.allHomebrewOutdated.length})`}
         items={derived.allHomebrewOutdated}
         snapshot={snapshot}
-        empty="All your Homebrew items are up to date."
+        empty={homebrewUpdatesEmptyText(snapshot)}
         showUpdateAll
         cardLayout
       />

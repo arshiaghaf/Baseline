@@ -46,3 +46,19 @@ export function appCheckLabel(check: AppProviderCheck | undefined): string | und
   if (check.status === "unresolved") return "No verified update source";
   return undefined;
 }
+
+export function homebrewUpdatesEmptyText(snapshot: BaselineSnapshot): string {
+  if (snapshot.isRefreshing || snapshot.homebrewCheckStatus === "checking")
+    return "Checking Homebrew updates. Results are incomplete.";
+  if (snapshot.homebrewConfigurationBlocked || snapshot.homebrewCheckStatus === "incomplete")
+    return "Some Homebrew updates could not be checked. Refresh to retry.";
+  if (snapshot.refreshErrorMessage)
+    return "No Homebrew updates to show. The refresh did not complete.";
+  if (snapshot.lastRefreshNoticeMessage)
+    return "Homebrew update information may be incomplete. See the refresh notice for details.";
+  if (snapshot.homebrewCheckStatus !== "complete") return "Refresh to check Homebrew updates.";
+  if (snapshot.searchText.trim()) return "No Homebrew updates match your search.";
+  if (snapshot.homebrewItems.some((item) => item.isOutdated))
+    return "No Homebrew updates to show. Updates may be listed with apps, ignored, or pinned.";
+  return "All your Homebrew items are up to date.";
+}

@@ -64,6 +64,7 @@ export type RefreshPatch = Partial<
     | "appProviderChecks"
     | "appUpdateComparisonBaseline"
     | "isRefreshing"
+    | "homebrewCheckStatus"
     | "refreshErrorMessage"
     | "lastRefreshNoticeMessage"
     | "apps"
@@ -145,6 +146,7 @@ export class RefreshComputationService {
       // and unrelated preference saves, including a later relaunch.
       appUpdateComparisonBaseline: comparisonBaseline,
       isRefreshing: true,
+      homebrewCheckStatus: "checking",
       refreshErrorMessage: undefined,
       lastRefreshNoticeMessage: undefined
     });
@@ -334,6 +336,9 @@ export class RefreshComputationService {
           ...comparisonBaseline.filter((item) => retainedIDs.has(item.appID))
         ],
         homebrewItems: reconciledHomebrewItems,
+        homebrewCheckStatus: homebrewInventoryIsComplete(homebrewInventory)
+          ? "complete"
+          : "incomplete",
         homebrewFormulaIdentityContinuity,
         recentlyUpdated,
         homebrewRecentlyUpdated,
@@ -430,6 +435,10 @@ export class RefreshComputationService {
         now,
         { completedItemIDs: this.ports.readState().homebrewUpdatedPendingRefreshItemIDs }
       );
+      patch.homebrewCheckStatus =
+        recoveredHomebrewInventory && homebrewInventoryIsComplete(recoveredHomebrewInventory)
+          ? "complete"
+          : "incomplete";
       patch.lastRefreshNoticeMessage = recoveredHomebrewInventory?.warning;
       this.ports.patch(patch);
       if (this.ports.isCleanupInventoryRequired() || options.onHomebrewInventoryReconciled) {

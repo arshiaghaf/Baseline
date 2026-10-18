@@ -1099,6 +1099,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.homebrewOperations.cancelQueuedHomebrewUpdates();
     this.invalidateHomebrewUpdateTargets();
     this.patch({
+      homebrewCheckStatus: "incomplete",
       lastRefreshNoticeMessage:
         "Homebrew process cleanup could not be confirmed. Check running Homebrew processes before restarting Baseline."
     });
@@ -1113,6 +1114,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.patch({
       isHomebrewInstalled: true,
       homebrewConfigurationBlocked: true,
+      homebrewCheckStatus: "incomplete",
       homebrewConfigurationReason: safeConfigurationReason(reason),
       homebrewConfigurationValidated: false,
       lastRefreshNoticeMessage: homebrewConfigurationBlockedMessage

@@ -317,6 +317,8 @@ export type HomebrewConfigurationReason = {
 };
 
 export type RefreshState = {
+  /** Current-session inventory and outdated-check health; never persisted. */
+  homebrewCheckStatus?: "checking" | "complete" | "incomplete";
   isRefreshing: boolean;
   refreshErrorMessage?: string;
   lastRefreshNoticeMessage?: string;
