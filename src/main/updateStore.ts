@@ -24,7 +24,7 @@ import { homebrewCommandToken, installedCaskEntry } from "../shared/homebrewIden
 import type { PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
 import { isVersionEmpty, version, type VersionValue } from "../shared/version";
-import { AppStoreLookupClient } from "./appStoreLookupClient";
+import { AppStoreLookupClient, type AppStoreLookupSource } from "./appStoreLookupClient";
 import { BundleScannerClient } from "./bundleScanner";
 import {
   runBrewCommand as defaultRunBrewCommand,
@@ -111,7 +111,7 @@ const successfulUpdateHoldMs = 2000;
 export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly persistence: SnapshotPersistence;
   private readonly scanner: Pick<BundleScannerClient, "scanApplications">;
-  private readonly appStore: Pick<AppStoreLookupClient, "lookupOutcome">;
+  private readonly appStore: AppStoreLookupSource;
   private readonly sparkle: Pick<SparkleAppcastClient, "lookupOutcome">;
   private readonly homebrew: HomebrewCaskSource;
   private readonly homebrewFormula: HomebrewFormulaSource;
@@ -158,7 +158,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     openAppBundle: (bundlePath: string) => Promise<void>;
     clients?: Partial<{
       scanner: Pick<BundleScannerClient, "scanApplications">;
-      appStore: Pick<AppStoreLookupClient, "lookupOutcome">;
+      appStore: AppStoreLookupSource;
       sparkle: Pick<SparkleAppcastClient, "lookupOutcome">;
       homebrew: HomebrewCaskSource;
       homebrewFormula: HomebrewFormulaSource;

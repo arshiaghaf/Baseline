@@ -95,3 +95,66 @@ describe("lookupAppUpdates", () => {
     expect(updates).toBeUndefined();
   });
 });
+
+it("uses batch outcomes for every app without narrowing receipt coverage or changing precedence", async () => {
+  const records = [app, { ...app, id: "other", bundleIdentifier: "com.example.other" }];
+  const lookupOutcome = vi.fn();
+  const lookupOutcomes = vi
+    .fn()
+    .mockResolvedValue([
+      { type: "completed", value: { remoteVersion: version("2.0") } },
+      { type: "completed" }
+    ]);
+  const sparkle = vi
+    .fn()
+    .mockResolvedValue({ type: "completed", value: { remoteVersion: version("3.0") } });
+  const homebrew = vi.fn();
+  const result = await lookupAppUpdates(
+    {
+      appStore: { lookupOutcome, lookupOutcomes },
+      sparkle: { lookupOutcome: sparkle },
+      homebrew: { lookupUpdate: homebrew }
+    },
+    { ...input(), apps: records }
+  );
+  expect(result?.map((update) => [update.appID, update.source])).toEqual([
+    [app.id, "appStore"],
+    ["other", "sparkle"]
+  ]);
+  expect(lookupOutcomes).toHaveBeenCalledWith(
+    records.map((record) =>
+      expect.objectContaining({
+        bundleIdentifier: record.bundleIdentifier,
+        localVersion: record.localVersion
+      })
+    ),
+    expect.objectContaining({ force: true, signal: expect.any(AbortSignal) })
+  );
+  expect(lookupOutcome).not.toHaveBeenCalled();
+  expect(sparkle).toHaveBeenCalledTimes(1);
+  expect(homebrew).not.toHaveBeenCalled();
+});
+
+it("discards a superseded batch before dispatching lower-precedence lookups", async () => {
+  let current = true;
+  const lookupOutcome = vi.fn();
+  const lookupOutcomes = vi.fn(async () => {
+    current = false;
+    return [{ type: "completed" as const }];
+  });
+  const sparkle = vi.fn();
+  const homebrew = vi.fn();
+  expect(
+    await lookupAppUpdates(
+      {
+        appStore: { lookupOutcome, lookupOutcomes },
+        sparkle: { lookupOutcome: sparkle },
+        homebrew: { lookupUpdate: homebrew }
+      },
+      { ...input(), isCurrent: () => current }
+    )
+  ).toBeUndefined();
+  expect(lookupOutcome).not.toHaveBeenCalled();
+  expect(sparkle).not.toHaveBeenCalled();
+  expect(homebrew).not.toHaveBeenCalled();
+});

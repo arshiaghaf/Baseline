@@ -11,7 +11,7 @@ import type {
 import { emptyHomebrewCaskIndex, emptyHomebrewFormulaIndex } from "../shared/domain";
 import { caskIndexForInstalledItems } from "../shared/homebrewIdentity";
 import type { BundleScannerClient } from "./bundleScanner";
-import type { AppStoreLookupClient } from "./appStoreLookupClient";
+import type { AppStoreLookupSource } from "./appStoreLookupClient";
 import type { SparkleAppcastClient } from "./sparkleAppcastClient";
 import type { HomebrewCaskClient } from "./homebrewCaskClient";
 import type { HomebrewFormulaClient } from "./homebrewFormulaClient";
@@ -76,7 +76,7 @@ export type RefreshPatch = Partial<
 
 type RefreshClients = {
   scanner: Pick<BundleScannerClient, "scanApplications">;
-  appStore: Pick<AppStoreLookupClient, "lookupOutcome">;
+  appStore: AppStoreLookupSource;
   sparkle: Pick<SparkleAppcastClient, "lookupOutcome">;
   homebrew: Pick<HomebrewCaskClient, "fetchIndex" | "lookupUpdate" | "searchCasks"> &
     Partial<Pick<HomebrewCaskClient, "cacheStatus">>;

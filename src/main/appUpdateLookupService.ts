@@ -12,12 +12,12 @@ import type {
 import { isValidHomebrewToken } from "../shared/security";
 import { compareVersions, isVersionGreater, version } from "../shared/version";
 import { isSparkleVersionNewer, sparkleMarketingVersion } from "../shared/sparkleVersion";
-import type { AppStoreLookupClient } from "./appStoreLookupClient";
+import type { AppStoreLookupSource } from "./appStoreLookupClient";
 import type { SparkleAppcastClient } from "./sparkleAppcastClient";
 import type { HomebrewCaskClient } from "./homebrewCaskClient";
 
 type LookupClients = {
-  appStore: Pick<AppStoreLookupClient, "lookupOutcome">;
+  appStore: AppStoreLookupSource;
   sparkle: Pick<SparkleAppcastClient, "lookupOutcome">;
   homebrew: Pick<HomebrewCaskClient, "lookupUpdate">;
 };
@@ -58,22 +58,39 @@ export async function lookupAppUpdates(
     isSelfApp,
     canUseHomebrewAppUpdate
   } = input;
+  if (signal.aborted || !isCurrent()) return undefined;
+  const appStoreRecords = apps.filter((record) => record.bundleIdentifier && !isSelfApp(record));
+  const outcomes = clients.appStore.lookupOutcomes
+    ? await clients.appStore.lookupOutcomes(
+        appStoreRecords.map((record) => ({
+          bundleIdentifier: record.bundleIdentifier!,
+          localVersion: record.localVersion,
+          includeIOSAppStoreSoftware:
+            record.isIOSAppOnMac === true && record.hasAppStoreEvidence === true,
+          includeMacCapableAppStoreSoftware:
+            record.isIOSAppOnMac !== true && record.hasSafariWebExtension === true
+        })),
+        { signal, force }
+      )
+    : undefined;
+  if (signal.aborted || !isCurrent()) return undefined;
+  const appStoreOutcomes = new Map(
+    appStoreRecords.map((record, index) => [record, outcomes?.[index]])
+  );
   for (const appRecord of apps) {
     if (isSelfApp(appRecord)) continue;
     if (signal.aborted || !isCurrent()) return undefined;
     if (appRecord.bundleIdentifier) {
-      const outcome = await clients.appStore.lookupOutcome(
-        appRecord.bundleIdentifier,
-        appRecord.localVersion,
-        {
+      const outcome =
+        appStoreOutcomes.get(appRecord) ??
+        (await clients.appStore.lookupOutcome(appRecord.bundleIdentifier, appRecord.localVersion, {
           signal,
           force,
           includeIOSAppStoreSoftware:
             appRecord.isIOSAppOnMac === true && appRecord.hasAppStoreEvidence === true,
           includeMacCapableAppStoreSoftware:
             appRecord.isIOSAppOnMac !== true && appRecord.hasSafariWebExtension === true
-        }
-      );
+        }));
       if (signal.aborted || !isCurrent()) return undefined;
       if (outcome.type === "completed" && outcome.value) {
         updates.push({
