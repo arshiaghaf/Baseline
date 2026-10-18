@@ -30,7 +30,7 @@ export function RefreshFeedback({ snapshot }: { snapshot: BaselineSnapshot }) {
           <span>{snapshot.lastRefreshNoticeMessage}</span>
         </div>
       )}
-      {checks.length > 0 && (
+      {(pending > 0 || failed > 0 || unresolved > 0) && (
         <div className="notice app-check-notice" role="status">
           <div>
             {pending > 0 && (
@@ -51,6 +51,21 @@ export function RefreshFeedback({ snapshot }: { snapshot: BaselineSnapshot }) {
                 These apps may still have updates.
               </p>
             )}
+          </div>
+        </div>
+      )}
+      {checks.length > 0 && (
+        <div className="app-source-actions">
+          <button
+            className="ghost-button"
+            title="Search all app update sources now, including other sources for apps with a verified source."
+            disabled={snapshot.isRefreshing || snapshot.isHomebrewCleanupLocked}
+            onClick={() => void baseline.refresh(false, true)}
+          >
+            Search sources again
+          </button>
+          <details>
+            <summary>About source checks</summary>
             <p>
               Refresh checks known sources for new versions and searches apps with no verified
               source. Other sources for known apps are searched every six hours, when an app
@@ -59,14 +74,7 @@ export function RefreshFeedback({ snapshot }: { snapshot: BaselineSnapshot }) {
             {oldestSearch && (
               <p>Oldest source search: {new Date(oldestSearch).toLocaleString()}.</p>
             )}
-            <button
-              className="ghost-button"
-              disabled={snapshot.isRefreshing || snapshot.isHomebrewCleanupLocked}
-              onClick={() => void baseline.refresh(false, true)}
-            >
-              Search sources again
-            </button>
-          </div>
+          </details>
         </div>
       )}
     </>

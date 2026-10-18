@@ -3805,9 +3805,45 @@ describe("app refresh source visibility", () => {
       expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
       expect(
         screen.getByText(/Other sources for known apps are searched every six hours/)
-      ).toBeInTheDocument();
+      ).not.toBeVisible();
+      fireEvent.click(screen.getByText("About source checks"));
+      expect(
+        screen.getByText(/Other sources for known apps are searched every six hours/)
+      ).toBeVisible();
       fireEvent.click(screen.getByRole("button", { name: "Search sources again" }));
       expect(window.baseline.refresh).toHaveBeenCalledWith(false, true);
+    }
+  );
+
+  it.each([false, true])(
+    "keeps successful source checks unobtrusive with policy available on demand (compact=%s)",
+    (compact) => {
+      const { container } = render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            updates: [],
+            homebrewItems: [],
+            appProviderChecks: {
+              [app.id]: {
+                fingerprint: "fixture",
+                status: "checked",
+                source: "homebrew",
+                checkedAt: "2026-10-18T10:00:00.000Z",
+                discoveryCheckedAt: "2026-10-18T09:00:00.000Z"
+              }
+            }
+          })}
+        />
+      );
+      expect(container.querySelector(".app-check-notice")).toBeNull();
+      expect(screen.getByRole("button", { name: "Search sources again" })).toBeVisible();
+      expect(screen.getByText(/Refresh checks known sources/)).not.toBeVisible();
+      expect(screen.getByText(/Oldest source search:/)).not.toBeVisible();
+      fireEvent.click(screen.getByText("About source checks"));
+      expect(screen.getByText(/Refresh checks known sources/)).toBeVisible();
+      expect(screen.getByText(/Oldest source search:/)).toBeVisible();
     }
   );
 
