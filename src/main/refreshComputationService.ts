@@ -332,16 +332,11 @@ export class RefreshComputationService {
       );
       const preserveHomebrewCommandState =
         this.ports.isHomebrewMutationActive() && !options.allowHomebrewInventoryDuringActiveCommand;
-      const homebrewCheckNoticeMessage =
-        [
-          homebrewInventory.warning,
-          catalogueCacheNotice(
-            this.clients.homebrew.cacheStatus,
-            this.clients.homebrewFormula.cacheStatus
-          )
-        ]
-          .filter(Boolean)
-          .join(" ") || undefined;
+      const homebrewCheckNoticeMessage = homebrewRefreshNotice(
+        homebrewInventory.warning,
+        this.clients.homebrew.cacheStatus,
+        this.clients.homebrewFormula.cacheStatus
+      );
       this.ports.patch({
         apps,
         updates,
@@ -446,8 +441,12 @@ export class RefreshComputationService {
         recoveredHomebrewInventory && homebrewInventoryIsComplete(recoveredHomebrewInventory)
           ? "complete"
           : "incomplete";
-      patch.homebrewCheckNoticeMessage = recoveredHomebrewInventory?.warning;
-      patch.lastRefreshNoticeMessage = recoveredHomebrewInventory?.warning;
+      patch.homebrewCheckNoticeMessage = homebrewRefreshNotice(
+        recoveredHomebrewInventory?.warning,
+        this.clients.homebrew.cacheStatus,
+        this.clients.homebrewFormula.cacheStatus
+      );
+      patch.lastRefreshNoticeMessage = patch.homebrewCheckNoticeMessage;
       this.ports.patch(patch);
       if (this.ports.isCleanupInventoryRequired() || options.onHomebrewInventoryReconciled) {
         this.ports.setCleanupInventoryRequired(true, !lightweight);
@@ -511,6 +510,15 @@ export function homebrewInventoryIsComplete(inventory: HomebrewInventoryResult):
     inventory.outdatedDetectionSucceeded &&
     inventory.outdatedDetectionSucceededByKind?.formula !== false &&
     inventory.outdatedDetectionSucceededByKind?.cask !== false
+  );
+}
+
+function homebrewRefreshNotice(
+  inventoryWarning: string | undefined,
+  ...statuses: Array<CatalogueStatus | undefined>
+): string | undefined {
+  return (
+    [inventoryWarning, catalogueCacheNotice(...statuses)].filter(Boolean).join(" ") || undefined
   );
 }
 

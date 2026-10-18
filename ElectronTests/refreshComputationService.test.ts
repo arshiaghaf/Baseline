@@ -630,3 +630,32 @@ it("does not attribute an app-folder warning to Homebrew", async () => {
     fixture.patches.some((patch) => patch.lastRefreshNoticeMessage?.includes("Some app folders"))
   ).toBe(true);
 });
+
+it.each([
+  { stale: true, unavailable: false },
+  { stale: false, unavailable: true }
+])(
+  "keeps both inventory and catalogue warnings when final persistence rejects: %j",
+  async (status) => {
+    const fixture = setup(Promise.resolve([]), {
+      ...completeInventory,
+      warning: "Inventory warning."
+    });
+    fixture.clients.homebrew.cacheStatus = status;
+    fixture.ports.persist = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Fixture refresh save failure"))
+      .mockResolvedValue(undefined);
+    await fixture.service.compute(false, 1, {}, new AbortController().signal);
+    expect(fixture.state).toMatchObject({
+      homebrewCheckStatus: "complete",
+      refreshCheckFailed: true,
+      homebrewCheckNoticeMessage: expect.stringMatching(
+        /Inventory warning.*Homebrew catalogue metadata/
+      ),
+      lastRefreshNoticeMessage: expect.stringMatching(
+        /Inventory warning.*Homebrew catalogue metadata/
+      )
+    });
+  }
+);

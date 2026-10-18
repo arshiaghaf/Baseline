@@ -19,6 +19,7 @@ import {
   type PersistedSnapshot
 } from "../src/shared/domain";
 import type { CommandResult } from "../src/main/commandRunner";
+import type { CatalogueStatus } from "../src/main/catalogueCache";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -37,7 +38,8 @@ const missing: CommandResult = {
 
 async function fixture(
   runBrewCommand: NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>,
-  persisted: PersistedSnapshot = defaultPersistedSnapshot()
+  persisted: PersistedSnapshot = defaultPersistedSnapshot(),
+  catalogueStatus?: CatalogueStatus
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-update-status-"));
   directories.push(directory);
@@ -74,6 +76,7 @@ async function fixture(
       appStore: { lookupOutcome: async () => ({ type: "completed", providerFound: true }) },
       sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
       homebrew: {
+        cacheStatus: catalogueStatus,
         fetchIndex: async () => emptyHomebrewCaskIndex,
         lookupUpdate: () => undefined,
         searchCasks: () => []
@@ -423,4 +426,69 @@ it.each([true, false])(
     expect(trayUpdateTitle(store.getSnapshot())).toBe("✓");
   },
   10_000
+);
+
+it.each(
+  [
+    {
+      stale: true,
+      unavailable: false,
+      warning: "Using cached Homebrew catalogue metadata. Refresh to retry."
+    },
+    {
+      stale: false,
+      unavailable: true,
+      warning: "Homebrew catalogue metadata is unavailable. Refresh to retry."
+    }
+  ].flatMap((status) => [false, true].map((compact) => ({ ...status, compact })))
+)(
+  "retains catalogue warnings after a real refresh save failure and recovers (unavailable=$unavailable, compact=$compact)",
+  async ({ stale, unavailable, warning, compact }) => {
+    const status = { stale, unavailable };
+    const { store, persistence } = await fixture(
+      async () => available,
+      defaultPersistedSnapshot(),
+      status
+    );
+    const save = vi
+      .spyOn(persistence, "save")
+      .mockRejectedValueOnce(new Error("Fixture refresh save failure"));
+    try {
+      await store.refresh(false);
+      expect(store.getSnapshot()).toMatchObject({
+        refreshCheckFailed: true,
+        homebrewCheckStatus: "complete",
+        refreshErrorMessage: "Fixture refresh save failure",
+        homebrewCheckNoticeMessage: warning,
+        lastRefreshNoticeMessage: warning
+      });
+      const view = () => (
+        <Dashboard
+          compact={compact}
+          snapshot={{ ...store.getSnapshot(), selectedTab: "homebrew" }}
+          onOpenSettings={() => undefined}
+        />
+      );
+      const { rerender } = render(view());
+      expect(
+        screen.getByText(
+          "Homebrew update information may be incomplete. See the refresh notice for details."
+        )
+      ).toBeVisible();
+      expect(screen.getByText("Fixture refresh save failure")).toBeVisible();
+      expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
+      status.stale = false;
+      status.unavailable = false;
+      await store.refresh(false);
+      expect(store.getSnapshot()).toMatchObject({
+        refreshCheckFailed: false,
+        homebrewCheckNoticeMessage: undefined,
+        lastRefreshNoticeMessage: undefined
+      });
+      rerender(view());
+      expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
+    } finally {
+      save.mockRestore();
+    }
+  }
 );
