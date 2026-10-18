@@ -425,7 +425,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             homebrewDiscoverInstallingItemIDs,
             homebrewDiscoverInstalledPendingRefreshItemIDs,
             homebrewDiscoverProgressByItemID,
-            searchText
+            searchText,
+            homebrewCheckNoticeMessage,
+            lastRefreshNoticeMessage
           } = this.state;
           return {
             apps: this.state.apps,
@@ -441,7 +443,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             homebrewDiscoverInstallingItemIDs,
             homebrewDiscoverInstalledPendingRefreshItemIDs,
             homebrewDiscoverProgressByItemID,
-            searchText
+            searchText,
+            homebrewCheckNoticeMessage,
+            lastRefreshNoticeMessage
           };
         },
         patch: (patch) => this.patch(patch),

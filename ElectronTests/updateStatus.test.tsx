@@ -20,6 +20,7 @@ import {
 } from "../src/shared/domain";
 import type { CommandResult } from "../src/main/commandRunner";
 import type { CatalogueStatus } from "../src/main/catalogueCache";
+import { HomebrewFormulaClient } from "../src/main/homebrewFormulaClient";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -39,7 +40,8 @@ const missing: CommandResult = {
 async function fixture(
   runBrewCommand: NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>,
   persisted: PersistedSnapshot = defaultPersistedSnapshot(),
-  catalogueStatus?: CatalogueStatus
+  catalogueStatus?: CatalogueStatus,
+  formulaClient?: HomebrewFormulaClient
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-update-status-"));
   directories.push(directory);
@@ -81,7 +83,7 @@ async function fixture(
         lookupUpdate: () => undefined,
         searchCasks: () => []
       },
-      homebrewFormula: {
+      homebrewFormula: formulaClient ?? {
         fetchIndex: async () => emptyHomebrewFormulaIndex,
         searchFormulae: () => []
       },
@@ -492,3 +494,162 @@ it.each(
     }
   }
 );
+
+it.each([false, true])(
+  "waits for a late real formula-cache failure before publishing final Homebrew health (compact=%s)",
+  async (compact) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let failRequest = false,
+      enteredFailure = false;
+    const payload = JSON.stringify([{ name: "fixture-formula", versions: { stable: "1" } }]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        if (failRequest) {
+          enteredFailure = true;
+          await gate;
+          return new Response("", { status: 503 });
+        }
+        return new Response(payload, {
+          status: 200,
+          headers: { "cache-control": "public, max-age=600" }
+        });
+      })
+    );
+    let refresh: Promise<void> | undefined;
+    let restoreSave: (() => void) | undefined;
+    try {
+      const formula = new HomebrewFormulaClient();
+      expect((await formula.fetchIndex({ force: true })).byToken["fixture-formula"]).toBeTruthy();
+      const { store, scan, persistence } = await fixture(
+        async () => available,
+        defaultPersistedSnapshot(),
+        undefined,
+        formula
+      );
+      await store.refresh(false);
+      expect(formula.cacheStatus).toMatchObject({ stale: false, unavailable: false });
+      failRequest = true;
+      scan.mockRejectedValueOnce(new Error("Fixture early scan failure"));
+      const save = vi.spyOn(persistence, "save");
+      restoreSave = () => save.mockRestore();
+      refresh = store.refresh(false);
+      await waitFor(() => expect(store.getSnapshot().refreshCheckFailed).toBe(true));
+      expect(enteredFailure).toBe(true);
+      expect(store.getSnapshot().isRefreshing).toBe(true);
+      expect(formula.cacheStatus.stale).toBe(false);
+      expect(save).not.toHaveBeenCalled();
+      await store.openExternal("http://example.com/update");
+      release();
+      await refresh;
+      const failed = store.getSnapshot();
+      expect(formula.cacheStatus).toMatchObject({ stale: true, unavailable: false });
+      expect(failed).toMatchObject({
+        isRefreshing: false,
+        refreshCheckFailed: true,
+        refreshErrorMessage: "Blocked an unsafe external link.",
+        homebrewCheckStatus: "complete",
+        homebrewCheckNoticeMessage: expect.stringContaining(
+          "Using cached Homebrew catalogue metadata"
+        )
+      });
+      expect(failed.lastRefreshNoticeMessage).toBe(failed.homebrewCheckNoticeMessage);
+      const view = () => (
+        <Dashboard
+          compact={compact}
+          snapshot={{ ...store.getSnapshot(), selectedTab: "homebrew" }}
+          onOpenSettings={() => undefined}
+        />
+      );
+      const { rerender } = render(view());
+      expect(
+        screen.getByText(
+          "Homebrew update information may be incomplete. See the refresh notice for details."
+        )
+      ).toBeVisible();
+      expect(screen.queryByText("All your Homebrew items are up to date.")).not.toBeInTheDocument();
+      failRequest = false;
+      await store.refresh(false);
+      rerender(view());
+      expect(formula.cacheStatus.stale).toBe(false);
+      expect(store.getSnapshot()).toMatchObject({
+        refreshCheckFailed: false,
+        homebrewCheckNoticeMessage: undefined
+      });
+      expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
+    } finally {
+      release();
+      try {
+        await refresh;
+      } finally {
+        restoreSave?.();
+        vi.unstubAllGlobals();
+      }
+    }
+  }
+);
+
+it("does not publish a late obsolete catalogue warning after real-store supersession", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let failRequest = false,
+    enteredFailure = false,
+    revision = "1";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => {
+      if (failRequest) {
+        enteredFailure = true;
+        await gate;
+        return new Response("", { status: 503 });
+      }
+      return new Response(
+        JSON.stringify([{ name: "fixture-formula", versions: { stable: revision } }]),
+        { status: 200, headers: { "cache-control": "public, max-age=600" } }
+      );
+    })
+  );
+  let old: Promise<void> | undefined, replacement: Promise<void> | undefined;
+  try {
+    const formula = new HomebrewFormulaClient();
+    const { store, scan } = await fixture(
+      async () => available,
+      defaultPersistedSnapshot(),
+      undefined,
+      formula
+    );
+    await store.refresh(false);
+    failRequest = true;
+    scan.mockRejectedValueOnce(new Error("Fixture obsolete scan failure"));
+    old = store.refresh(false);
+    await waitFor(() => expect(store.getSnapshot().refreshCheckFailed).toBe(true));
+    expect(enteredFailure).toBe(true);
+    failRequest = false;
+    revision = "2";
+    replacement = store.refresh(false);
+    release();
+    await Promise.all([old, replacement]);
+    expect((await formula.fetchIndex()).byToken["fixture-formula"]?.version.raw).toBe("2");
+    expect(formula.cacheStatus).toMatchObject({ stale: false, unavailable: false });
+    expect(store.getSnapshot()).toMatchObject({
+      isRefreshing: false,
+      refreshCheckFailed: false,
+      homebrewCheckStatus: "complete",
+      homebrewCheckNoticeMessage: undefined,
+      lastRefreshNoticeMessage: undefined
+    });
+    expect(trayUpdateTitle(store.getSnapshot())).toBe("✓");
+  } finally {
+    release();
+    try {
+      await Promise.allSettled([old, replacement]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }
+});
