@@ -235,6 +235,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       homebrewConfigurationReason: undefined,
       homebrewConfigurationValidated: false,
       isMasInstalled: false,
+      masAvailability: "unknown",
       isHomebrewInstalled: false,
       isChecking: false,
       isRefreshing: false,
@@ -779,27 +780,47 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
     if (
       this.state.useMasForAppStoreUpdates &&
+      this.state.masAvailability !== "missing" &&
       update.source === "appStore" &&
       update.appStoreItemID
     ) {
       await this.withAppUpdating(appID, async () => {
         this.clearOperationFailure(appID, "update");
+        this.toolStatus.beginMasCommand();
         const result = await this.runMasCommand(["upgrade", String(update.appStoreItemID)]);
+        this.toolStatus.recordMasCommandResult(result);
         if (result.success) {
           this.patch({
             appUpdatedPendingRefreshIDs: addToArray(this.state.appUpdatedPendingRefreshIDs, appID)
           });
-          await this.profileStatsService.recordEvents([
-            appUpdateProfileStatsEvent({
-              appRecord,
-              update,
-              occurredAt: new Date().toISOString()
-            })
-          ]);
-          await this.holdSuccessfulUpdate();
-          await this.refresh(false, { forceMetadata: false });
+          let statsNotice: string | undefined;
+          try {
+            await this.profileStatsService.recordEvents([
+              appUpdateProfileStatsEvent({
+                appRecord,
+                update,
+                occurredAt: new Date().toISOString()
+              })
+            ]);
+          } catch {
+            statsNotice = "App update completed, but local update history could not be saved.";
+          }
+          try {
+            await this.holdSuccessfulUpdate();
+            await this.refresh(false, { forceMetadata: false });
+          } finally {
+            if (statsNotice) {
+              this.patch({
+                lastRefreshNoticeMessage: [this.state.lastRefreshNoticeMessage, statsNotice]
+                  .filter(Boolean)
+                  .join(" ")
+              });
+            }
+          }
         } else {
-          await this.recordOperationFailure(appID, "update", result);
+          if (!(result.failure?.kind === "spawn" && result.failure.code === "ENOENT")) {
+            await this.recordOperationFailure(appID, "update", result);
+          }
           await this.routeExternalUpdate(appRecord, update);
         }
       });

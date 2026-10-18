@@ -290,7 +290,7 @@ export class HomebrewOperationsService {
           [itemID]: HomebrewMaintenanceProgressStage.finalizing
         }
       });
-      await this.recordProfileStatsEvents([
+      const statsNotice = await this.recordCompletedUpdateHistory([
         profileStatsEvent ??
           homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
       ]);
@@ -304,8 +304,12 @@ export class HomebrewOperationsService {
           [itemID]: 1
         }
       });
-      await this.holdSuccessfulUpdate();
-      await this.refresh(true);
+      try {
+        await this.holdSuccessfulUpdate();
+        await this.refresh(true);
+      } finally {
+        this.applyOperationNotice(statsNotice);
+      }
     } else {
       await this.recordOperationFailure(itemID, "update", commandResult);
       this.patch({
@@ -458,9 +462,10 @@ export class HomebrewOperationsService {
     if (!success) {
       this.scheduleHomebrewBatchFailureClear(failedIDs);
     }
+    let statsNotice: string | undefined;
     if (completedIDs.length > 0) {
       const occurredAt = new Date().toISOString();
-      await this.recordProfileStatsEvents(
+      statsNotice = await this.recordCompletedUpdateHistory(
         itemsWithEvents
           .filter(({ item }) => completedIDs.includes(item.id))
           .map(
@@ -479,7 +484,11 @@ export class HomebrewOperationsService {
       });
       await this.holdSuccessfulUpdate();
     }
-    await this.refresh(true);
+    try {
+      await this.refresh(true);
+    } finally {
+      this.applyOperationNotice(statsNotice);
+    }
   }
 
   async performHomebrewUpdateAll(itemIDs?: string[]): Promise<void> {
@@ -641,9 +650,10 @@ export class HomebrewOperationsService {
       if (!success) {
         this.scheduleHomebrewBatchFailureClear(failedIDs);
       }
+      let statsNotice: string | undefined;
       if (completedIDs.length > 0) {
         const occurredAt = new Date().toISOString();
-        await this.recordProfileStatsEvents(
+        statsNotice = await this.recordCompletedUpdateHistory(
           affected
             .filter((item) => completedIDs.includes(item.id))
             .map((item) => homebrewUpdateProfileStatsEvent({ item, occurredAt }))
@@ -652,7 +662,11 @@ export class HomebrewOperationsService {
       if (success) {
         await this.holdSuccessfulUpdate();
       }
-      await this.refresh(true);
+      try {
+        await this.refresh(true);
+      } finally {
+        this.applyOperationNotice(statsNotice);
+      }
     } finally {
       this.releaseOperation(releaseHomebrewCommandLock);
     }
@@ -1132,6 +1146,19 @@ export class HomebrewOperationsService {
       )
     });
     for (const entry of entries) entry.resolve();
+  }
+
+  private async recordCompletedUpdateHistory(
+    events: ProfileStatsEvent[]
+  ): Promise<string | undefined> {
+    try {
+      await this.recordProfileStatsEvents(events);
+      return undefined;
+    } catch {
+      // A bookkeeping failure must not skip inventory reconciliation or make a
+      // confirmed package mutation look retryable. The caller keeps its reservation.
+      return "Some completed Homebrew updates could not be saved to history.";
+    }
   }
 
   private applyOperationNotice(message: string | undefined): void {

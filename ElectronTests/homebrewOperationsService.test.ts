@@ -114,6 +114,228 @@ function harness(
 }
 
 describe("HomebrewOperationsService", () => {
+  it.each(["single", "queued", "batch"] as const)(
+    "reconciles successful %s updates after a history save rejection without retrying commands",
+    async (scenario) => {
+      const h = harness();
+      const items = [
+        formula(),
+        formula({
+          id: "formula:other",
+          token: "other",
+          name: "Other",
+          formulaIdentity: { name: "other", fullName: "other", tap: "homebrew/core", oldNames: [] }
+        })
+      ].slice(0, scenario === "single" ? 1 : 2);
+      h.setState({ homebrewItems: items });
+      h.stats.mockRejectedValueOnce(new Error("fixture history failure"));
+      h.refresh.mockImplementation(async () => {
+        expect(h.lock.activeCommandCount).toBe(1);
+        expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual(items.map((item) => item.id));
+        h.setState({
+          homebrewItems: items.map((item) => ({
+            ...item,
+            installedVersion: version("2"),
+            isOutdated: false
+          })),
+          homebrewUpdatedPendingRefreshItemIDs: [],
+          lastRefreshNoticeMessage: "Inventory warning."
+        });
+      });
+      try {
+        if (scenario === "batch") await h.service.performHomebrewUpdateAll();
+        else {
+          h.lock.beginRefresh(71);
+          const pending = Promise.allSettled(
+            items.map((item) => h.service.performHomebrewUpdate(item.id))
+          );
+          h.lock.endRefresh(71);
+          await h.service.processHomebrewUpdateQueue();
+          expect((await pending).every((result) => result.status === "fulfilled")).toBe(true);
+        }
+        expect(h.refresh).toHaveBeenCalledOnce();
+        expect(h.stats).toHaveBeenCalledOnce();
+        expect(h.state.homebrewItems.map((item) => item.installedVersion.raw)).toEqual(
+          items.map(() => "2")
+        );
+        expect(h.state.lastRefreshNoticeMessage).toMatch(
+          /Inventory warning.*could not be saved to history/
+        );
+        expect(h.state.homebrewBatchFailedItemIDs).toEqual([]);
+        expect(h.failure).not.toHaveBeenCalled();
+        expect(h.failures).not.toHaveBeenCalled();
+        expect(h.lock.activeCommandCount).toBe(0);
+        expect(h.state.homebrewOperation).toBeUndefined();
+        expect(h.state.homebrewUpdatingItemIDs).toEqual([]);
+        const commands = h.runCommand.mock.calls.length;
+        await h.service.performHomebrewUpdate(items[0]!.id);
+        expect(h.runCommand).toHaveBeenCalledTimes(commands);
+      } finally {
+        h.service.dispose();
+      }
+    }
+  );
+
+  it.each(["batch", "queued"] as const)(
+    "reconciles partial %s success after a later command failure and history save rejection",
+    async (scenario) => {
+      const h = harness(async (args) =>
+        args.includes("--cask")
+          ? { success: false, status: 1, output: "" }
+          : { success: true, status: 0, output: "" }
+      );
+      const cask = formula({
+        id: "cask:other",
+        token: "other",
+        fullToken: "other",
+        kind: "cask",
+        formulaIdentity: undefined,
+        tap: "homebrew/cask"
+      });
+      h.setState({ homebrewItems: [formula(), cask] });
+      h.stats.mockRejectedValueOnce(new Error("fixture history failure"));
+      h.refresh.mockImplementation(async () => {
+        expect(h.lock.activeCommandCount).toBe(1);
+        expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual(["formula:example"]);
+        h.setState({
+          homebrewItems: [{ ...formula(), installedVersion: version("2"), isOutdated: false }, cask]
+        });
+      });
+      try {
+        if (scenario === "batch") await h.service.performHomebrewUpdateAll();
+        else {
+          h.lock.beginRefresh(72);
+          const pending = Promise.allSettled(
+            h.state.homebrewItems.map((item) => h.service.performHomebrewUpdate(item.id))
+          );
+          h.lock.endRefresh(72);
+          await h.service.processHomebrewUpdateQueue();
+          expect((await pending).every((result) => result.status === "fulfilled")).toBe(true);
+        }
+        expect(h.refresh).toHaveBeenCalledOnce();
+        expect(h.stats).toHaveBeenCalledWith([
+          expect.objectContaining({ targetID: "formula:example" })
+        ]);
+        expect(h.failures).toHaveBeenCalledWith(
+          expect.arrayContaining([expect.objectContaining({ entityID: cask.id })])
+        );
+        expect(h.state.homebrewBatchFailedItemIDs).toEqual([cask.id]);
+        expect(h.state.lastRefreshNoticeMessage).toContain("could not be saved to history");
+        expect(h.state.homebrewItems[0]!.installedVersion.raw).toBe("2");
+        expect(h.state.homebrewItems[1]!.isOutdated).toBe(true);
+        expect(h.lock.activeCommandCount).toBe(0);
+        expect(h.runCommand).toHaveBeenCalledTimes(scenario === "batch" ? 3 : 2);
+      } finally {
+        h.service.dispose();
+      }
+    }
+  );
+
+  it.each(["single", "queued", "batch"] as const)(
+    "retains the history notice and releases the reservation when %s reconciliation also rejects",
+    async (scenario) => {
+      const h = harness();
+      h.stats.mockRejectedValueOnce(new Error("fixture history failure"));
+      h.refresh.mockRejectedValueOnce(new Error("fixture refresh failure"));
+      if (scenario === "queued")
+        h.setState({
+          homebrewItems: [
+            formula(),
+            formula({
+              id: "cask:other",
+              token: "other",
+              fullToken: "other",
+              kind: "cask",
+              formulaIdentity: undefined,
+              tap: "homebrew/cask"
+            })
+          ]
+        });
+      try {
+        if (scenario === "batch")
+          await expect(h.service.performHomebrewUpdateAll()).rejects.toThrow(
+            "fixture refresh failure"
+          );
+        else {
+          h.lock.beginRefresh(73);
+          const pending = Promise.allSettled(
+            h.state.homebrewItems.map((item) => h.service.performHomebrewUpdate(item.id))
+          );
+          h.lock.endRefresh(73);
+          await h.service.processHomebrewUpdateQueue();
+          expect(await pending).toEqual(
+            h.state.homebrewItems.map(() => ({
+              status: "rejected",
+              reason: expect.objectContaining({ message: "fixture refresh failure" })
+            }))
+          );
+        }
+        expect(h.refresh).toHaveBeenCalledOnce();
+        expect(h.state.lastRefreshNoticeMessage).toContain("could not be saved to history");
+        expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual(
+          h.state.homebrewItems.map((item) => item.id)
+        );
+        expect(h.state.homebrewBatchFailedItemIDs).toEqual([]);
+        expect(h.lock.activeCommandCount).toBe(0);
+        expect(h.state.homebrewOperation).toBeUndefined();
+      } finally {
+        h.service.dispose();
+      }
+    }
+  );
+
+  it("keeps queued work reserved until reconciliation removes a stale target after history failure", async () => {
+    const h = harness();
+    const removed = formula({
+      id: "formula:removed",
+      token: "removed",
+      name: "Removed",
+      formulaIdentity: { name: "removed", fullName: "removed", tap: "homebrew/core", oldNames: [] }
+    });
+    h.setState({ homebrewItems: [formula(), removed] });
+    h.stats.mockRejectedValueOnce(new Error("fixture history failure"));
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    h.refresh.mockImplementationOnce(async () => {
+      await refreshGate;
+      h.setState({
+        homebrewItems: [{ ...formula(), installedVersion: version("2"), isOutdated: false }]
+      });
+    });
+    const pending: Promise<unknown>[] = [h.service.performHomebrewUpdate("formula:example")];
+    // Observe settlement independently from the gate so a timeout cannot release
+    // work that resumes the assertions during teardown.
+    const settled = Promise.allSettled(pending);
+    try {
+      await vi.waitFor(() => expect(h.refresh).toHaveBeenCalledOnce());
+      pending.push(h.service.performHomebrewUpdate(removed.id));
+      expect(h.state.homebrewQueuedItemIDs).toEqual([removed.id]);
+      expect(h.lock.activeCommandCount).toBe(1);
+      expect(h.runCommand).toHaveBeenCalledExactlyOnceWith(
+        ["upgrade", "example"],
+        expect.any(Function),
+        expect.any(Object)
+      );
+      releaseRefresh();
+      expect((await Promise.allSettled(pending)).map((result) => result.status)).toEqual([
+        "fulfilled",
+        "fulfilled"
+      ]);
+      expect(h.runCommand).toHaveBeenCalledOnce();
+      expect(h.state.homebrewItems.map((item) => item.id)).toEqual(["formula:example"]);
+      expect(h.state.homebrewQueuedItemIDs).toEqual([]);
+      expect(h.lock.activeCommandCount).toBe(0);
+      expect(h.state.lastRefreshNoticeMessage).toContain("could not be saved to history");
+    } finally {
+      releaseRefresh();
+      await Promise.allSettled(pending);
+      await settled;
+      h.service.dispose();
+    }
+  });
+
   it.each([
     ["single", true, false, false],
     ["queued", true, false, false],
