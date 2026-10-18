@@ -67,6 +67,7 @@ export type RefreshPatch = Partial<
     | "homebrewCheckStatus"
     | "homebrewCheckNoticeMessage"
     | "refreshErrorMessage"
+    | "refreshCheckFailed"
     | "lastRefreshNoticeMessage"
     | "apps"
     | "updates"
@@ -150,6 +151,7 @@ export class RefreshComputationService {
       homebrewCheckStatus: "checking",
       homebrewCheckNoticeMessage: undefined,
       refreshErrorMessage: undefined,
+      refreshCheckFailed: false,
       lastRefreshNoticeMessage: undefined
     });
     const now = new Date().toISOString();
@@ -401,6 +403,7 @@ export class RefreshComputationService {
         return;
       }
       const patch: RefreshPatch = {
+        refreshCheckFailed: true,
         appProviderChecks: Object.fromEntries(
           Object.entries(this.ports.readState().appProviderChecks ?? {}).map(([id, check]) => [
             id,

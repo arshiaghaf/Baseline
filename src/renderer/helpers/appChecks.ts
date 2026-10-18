@@ -22,7 +22,7 @@ function updatesEmptyText(snapshot: BaselineSnapshot, appsOnly: boolean): string
       ? "Checking app updates. Results are incomplete."
       : "Checking for updates. Results are incomplete.";
   if (
-    snapshot.refreshErrorMessage ||
+    snapshot.refreshCheckFailed ||
     checks.some((check) => check.status === "failed") ||
     (!appsOnly && snapshot.homebrewCheckStatus === "incomplete")
   )
@@ -33,6 +33,8 @@ function updatesEmptyText(snapshot: BaselineSnapshot, appsOnly: boolean): string
   // without a refresh error. Keep the combined result qualified in both cases.
   if (!appsOnly && (snapshot.lastRefreshNoticeMessage || snapshot.homebrewCheckNoticeMessage))
     return "Some update information may be incomplete. See the refresh notice for details.";
+  if (!appsOnly && snapshot.homebrewCheckStatus !== "complete")
+    return "Refresh to check for updates.";
   if (checks.some((check) => check.status === "unresolved"))
     return "No updates found in checked sources. Some apps have no verified update source.";
   if (!checks.length) {
@@ -60,8 +62,6 @@ export function homebrewUpdatesEmptyText(snapshot: BaselineSnapshot): string {
     return "Checking Homebrew updates. Results are incomplete.";
   if (snapshot.homebrewConfigurationBlocked || snapshot.homebrewCheckStatus === "incomplete")
     return "Some Homebrew updates could not be checked. Refresh to retry.";
-  if (snapshot.refreshErrorMessage)
-    return "No Homebrew updates to show. The refresh did not complete.";
   if (snapshot.homebrewCheckNoticeMessage)
     return "Homebrew update information may be incomplete. See the refresh notice for details.";
   if (snapshot.homebrewCheckStatus !== "complete") return "Refresh to check Homebrew updates.";

@@ -13,7 +13,9 @@ import { Dashboard } from "../src/renderer/components/Dashboard";
 import {
   defaultPersistedSnapshot,
   emptyHomebrewCaskIndex,
-  emptyHomebrewFormulaIndex
+  emptyHomebrewFormulaIndex,
+  type AppRecord,
+  type PersistedSnapshot
 } from "../src/shared/domain";
 import type { CommandResult } from "../src/main/commandRunner";
 
@@ -32,7 +34,10 @@ const missing: CommandResult = {
   failure: { kind: "spawn", code: "ENOENT", message: "Fixture helper missing" }
 };
 
-async function fixture(runBrewCommand: () => Promise<CommandResult>) {
+async function fixture(
+  runBrewCommand: () => Promise<CommandResult>,
+  persisted: PersistedSnapshot = defaultPersistedSnapshot()
+) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-update-status-"));
   directories.push(directory);
   const inventory = vi.fn(async () => ({
@@ -41,9 +46,20 @@ async function fixture(runBrewCommand: () => Promise<CommandResult>) {
     inventoryReadSucceededByKind: { formula: true, cask: true },
     outdatedDetectionSucceededByKind: { formula: true, cask: true }
   }));
+  const persistence = new SnapshotPersistence(directory);
+  const scan = vi.fn(async (): Promise<AppRecord[]> => [
+    {
+      id: "app:fixture",
+      bundlePath: "/Applications/Fixture.app",
+      displayName: "Fixture",
+      bundleIdentifier: "org.example.fixture",
+      sourceHint: "appStore",
+      localVersion: { raw: "1" }
+    }
+  ]);
   const store = new UpdateStore({
-    persistence: new SnapshotPersistence(directory),
-    persisted: defaultPersistedSnapshot(),
+    persistence,
+    persisted,
     runBrewCommand,
     runMasCommand: async () => missing,
     openExternalURL: async () => false,
@@ -53,18 +69,7 @@ async function fixture(runBrewCommand: () => Promise<CommandResult>) {
       seal: async (stats) => stats
     },
     clients: {
-      scanner: {
-        scanApplications: async () => [
-          {
-            id: "app:fixture",
-            bundlePath: "/Applications/Fixture.app",
-            displayName: "Fixture",
-            bundleIdentifier: "org.example.fixture",
-            sourceHint: "appStore",
-            localVersion: { raw: "1" }
-          }
-        ]
-      },
+      scanner: { scanApplications: scan },
       appStore: { lookupOutcome: async () => ({ type: "completed", providerFound: true }) },
       sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
       homebrew: {
@@ -86,7 +91,7 @@ async function fixture(runBrewCommand: () => Promise<CommandResult>) {
       }
     }
   });
-  return { store, inventory };
+  return { store, inventory, persistence, scan };
 }
 
 const failures: Array<[string, CommandResult]> = [
@@ -245,4 +250,95 @@ describe("Homebrew availability success evidence", () => {
     expect(store.getSnapshot().isHomebrewInstalled).toBe(true);
     expect(trayUpdateTitle(store.getSnapshot())).toBe("✓");
   });
+});
+
+it.each([false, true])(
+  "requires a current Homebrew check after real persisted state is reloaded (compact=%s)",
+  async (compact) => {
+    const initial = await fixture(async () => available);
+    await initial.store.refresh(false);
+    const persisted = await initial.persistence.load();
+    expect(persisted.lastRefreshDate).toBeTruthy();
+    expect(persisted.appProviderChecks?.["app:fixture"]?.status).toBe("checked");
+    expect(persisted).not.toHaveProperty("homebrewCheckStatus");
+    expect(persisted).not.toHaveProperty("refreshCheckFailed");
+    const restored = await fixture(async () => available, persisted);
+    const view = () => (
+      <Dashboard
+        compact={compact}
+        snapshot={{ ...restored.store.getSnapshot(), selectedTab: "all" }}
+        onOpenSettings={() => undefined}
+      />
+    );
+    const { rerender } = render(view());
+    expect(trayUpdateTitle(restored.store.getSnapshot())).toBe("");
+    expect(
+      screen.getByText(
+        compact ? "Refresh to check Homebrew updates." : "Refresh to check for updates."
+      )
+    ).toBeVisible();
+    expect(screen.queryByText("No updates found in the checked sources.")).not.toBeInTheDocument();
+    await restored.store.refresh(false);
+    rerender(view());
+    expect(
+      screen.getByText(
+        compact
+          ? "All your Homebrew items are up to date."
+          : "No updates found in the checked sources."
+      )
+    ).toBeVisible();
+  }
+);
+
+it.each([false, true])(
+  "keeps an actual invalid-link operation error separate from healthy checks (compact=%s)",
+  async (compact) => {
+    const { store } = await fixture(async () => available);
+    await store.refresh(false);
+    expect(await store.openExternal("http://example.com/update")).toBe(false);
+    expect(store.getSnapshot().refreshCheckFailed).toBe(false);
+    const view = (selectedTab: "all" | "homebrew") => (
+      <Dashboard
+        compact={compact}
+        snapshot={{ ...store.getSnapshot(), selectedTab }}
+        onOpenSettings={() => undefined}
+      />
+    );
+    const { rerender } = render(view("homebrew"));
+    expect(screen.getByText("Blocked an unsafe external link.")).toBeVisible();
+    expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
+    expect(screen.queryByText(/The refresh did not complete/)).not.toBeInTheDocument();
+    if (!compact) {
+      rerender(view("all"));
+      expect(screen.getByText("No updates found in the checked sources.")).toBeVisible();
+      expect(screen.getByText("Blocked an unsafe external link.")).toBeVisible();
+    }
+  }
+);
+
+it("retains real refresh-failure evidence through an operation error until healthy recovery", async () => {
+  const { store, scan } = await fixture(async () => available);
+  await store.refresh(false);
+  scan.mockRejectedValueOnce(new Error("Fixture scan unavailable"));
+  await store.refresh(false);
+  expect(store.getSnapshot()).toMatchObject({
+    refreshCheckFailed: true,
+    homebrewCheckStatus: "complete"
+  });
+  await store.openExternal("http://example.com/update");
+  const view = (selectedTab: "all" | "homebrew") => (
+    <Dashboard
+      compact={false}
+      snapshot={{ ...store.getSnapshot(), selectedTab }}
+      onOpenSettings={() => undefined}
+    />
+  );
+  const { rerender } = render(view("all"));
+  expect(screen.getByText("Some updates could not be checked.")).toBeVisible();
+  rerender(view("homebrew"));
+  expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
+  await store.refresh(false);
+  expect(store.getSnapshot().refreshCheckFailed).toBe(false);
+  rerender(view("all"));
+  expect(screen.getByText("No updates found in the checked sources.")).toBeVisible();
 });

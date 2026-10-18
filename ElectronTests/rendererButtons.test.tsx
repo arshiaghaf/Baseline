@@ -3791,6 +3791,7 @@ describe("app refresh source visibility", () => {
       const state = snapshot({
         updates: [],
         homebrewItems: [],
+        homebrewCheckStatus: "complete",
         appProviderChecks: {
           [app.id]: {
             fingerprint: "fixture",
@@ -3930,7 +3931,10 @@ describe("app refresh source visibility", () => {
   it.each([
     {
       name: "completed",
-      patch: { lastRefreshDate: "2026-10-18T10:00:00.000Z" },
+      patch: {
+        lastRefreshDate: "2026-10-18T10:00:00.000Z",
+        homebrewCheckStatus: "complete" as const
+      },
       expected: "No updates to show from the last refresh."
     },
     { name: "initial", patch: {}, expected: "Refresh to check for updates." },
@@ -3941,7 +3945,7 @@ describe("app refresh source visibility", () => {
     },
     {
       name: "failed",
-      patch: { refreshErrorMessage: "Inventory unavailable" },
+      patch: { refreshErrorMessage: "Inventory unavailable", refreshCheckFailed: true },
       expected: "Some updates could not be checked."
     },
     {
@@ -4062,9 +4066,7 @@ describe("truthful update success states", () => {
       rerender(
         view({ homebrewCheckStatus: "complete", refreshErrorMessage: "Source unavailable" })
       );
-      expect(
-        screen.getByText("No Homebrew updates to show. The refresh did not complete.")
-      ).toBeVisible();
+      expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
       rerender(
         view({
           homebrewCheckStatus: "complete",
