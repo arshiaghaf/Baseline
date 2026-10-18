@@ -350,7 +350,8 @@ export async function lookupAppUpdates(
       app.bundleIdentifier,
       path.basename(app.bundlePath),
       app.localVersion,
-      input.homebrewIndex
+      input.homebrewIndex,
+      (token) => input.canUseHomebrewAppUpdate(app, token, input.homebrewItems, input.homebrewIndex)
     );
     if (
       homebrewUpdate &&

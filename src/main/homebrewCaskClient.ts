@@ -57,17 +57,30 @@ export class HomebrewCaskClient {
     bundleIdentifier: string | undefined,
     appBundleName: string,
     localVersion: VersionValue,
-    index: HomebrewCaskIndex
+    index: HomebrewCaskIndex,
+    isEligible: (token: string) => boolean = () => true
   ): HomebrewLookupResult | undefined {
-    const byBundle = bundleIdentifier
-      ? index.byBundleIdentifier[bundleIdentifier.toLowerCase()]
-      : undefined;
+    const identifier = bundleIdentifier?.toLowerCase();
+    let byBundle = identifier ? index.byBundleIdentifier[identifier] : undefined;
+    if (byBundle && !isEligible(byBundle.token)) {
+      // The bundle index keeps one catalogue winner. Recover shadowed entries
+      // from the token index before ranking only ownership-eligible candidates.
+      byBundle = pickPreferredEntry(
+        Object.values(index.byToken).filter(
+          (entry) =>
+            entry.bundleIdentifiers.some((value) => value.toLowerCase() === identifier) &&
+            isEligible(entry.token)
+        )
+      );
+    }
     if (byBundle && isVersionGreater(byBundle.version, localVersion)) {
       return this.lookupResult(byBundle);
     }
 
     const normalizedName = normalizeAppBundleName(appBundleName);
-    const candidates = normalizedName ? [...(index.byAppBundleName[normalizedName] ?? [])] : [];
+    const candidates = normalizedName
+      ? (index.byAppBundleName[normalizedName] ?? []).filter((entry) => isEligible(entry.token))
+      : [];
     if (candidates.length === 0) {
       return undefined;
     }
