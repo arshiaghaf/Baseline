@@ -28,12 +28,17 @@ describe("App Store batch lookup", () => {
     const urls: string[] = [];
     const fetch = vi.fn(async (url: string) => {
       urls.push(url);
-      return response([entry("two"), entry("one")]);
+      return response([entry("two"), entry("present_with_underscore"), entry("one")]);
     });
     vi.stubGlobal("fetch", fetch);
     const client = new AppStoreLookupClient();
     const result = await client.lookupOutcomes(
-      [request("one"), request("two", "3"), request("absent_with_underscore"), request("one", "2")],
+      [
+        request("one"),
+        request("two", "3"),
+        request("present_with_underscore", "3"),
+        request("one", "2")
+      ],
       { force: true }
     );
     expect(result).toMatchObject([
@@ -46,8 +51,8 @@ describe("App Store batch lookup", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     const url = new URL(urls[0]!);
     expect(url.searchParams.get("bundleId")?.split(",")).toEqual([
-      "com.example.absent_with_underscore",
       "com.example.one",
+      "com.example.present_with_underscore",
       "com.example.two"
     ]);
   });
@@ -87,7 +92,12 @@ describe("App Store batch lookup", () => {
       expect(
         result.slice(1).every((outcome) => outcome.type === "completed" && outcome.value)
       ).toBe(true);
-      expect(urls.map((url) => url.searchParams.get("entity"))).toEqual(["macSoftware", null]);
+      expect(urls.map((url) => url.searchParams.get("entity"))).toEqual([
+        "macSoftware",
+        "macSoftware",
+        "macSoftware",
+        null
+      ]);
     } finally {
       await vi.runAllTimersAsync();
       await task;
@@ -105,7 +115,12 @@ describe("App Store batch lookup", () => {
         vi.fn(async (url: string) => {
           starts.push(Date.now());
           urls.push(new URL(url));
-          return response([]);
+          return response(
+            new URL(url).searchParams
+              .get("bundleId")!
+              .split(",")
+              .map((bundleId) => ({ ...entry("one"), bundleId }))
+          );
         })
       );
       const records = Array.from({ length: 70 }, (_, index) =>
@@ -182,7 +197,7 @@ describe("App Store batch lookup", () => {
       vi.fn(async (_url, options) => {
         source = options.signal;
         await gate;
-        return response([entry("one")]);
+        return response([entry("one"), entry("two")]);
       })
     );
     const client = new AppStoreLookupClient();
@@ -191,7 +206,9 @@ describe("App Store batch lookup", () => {
       force: true,
       signal: controller.signal
     });
-    const second = client.lookupOutcomes([request("two"), request("one", "3")], { force: true });
+    const second = client.lookupOutcomes([request("two", "3"), request("one", "3")], {
+      force: true
+    });
     try {
       await vi.waitFor(() => expect(source).toBeDefined());
       controller.abort();
@@ -226,16 +243,16 @@ describe("App Store batch lookup", () => {
 it("reuses fresh metadata for changed installed versions but revalidates forced manual batches", async () => {
   vi.useFakeTimers();
   let remote = "2";
-  const fetch = vi.fn(async () => response([{ ...entry("one"), version: remote }]));
+  const fetch = vi.fn(async () => response([{ ...entry("one"), version: remote }, entry("two")]));
   vi.stubGlobal("fetch", fetch);
   const client = new AppStoreLookupClient();
-  const first = await client.lookupOutcomes([request("one"), request("absent")]);
+  const first = await client.lookupOutcomes([request("one"), request("two", "3")]);
   expect(first[0]).toMatchObject({ type: "completed", value: { remoteVersion: version("2") } });
-  const cached = await client.lookupOutcomes([request("one", "2"), request("absent")]);
+  const cached = await client.lookupOutcomes([request("one", "2"), request("two", "3")]);
   expect(cached[0]).toMatchObject({ type: "completed", value: undefined });
   expect(fetch).toHaveBeenCalledTimes(1);
   remote = "3";
-  const forced = client.lookupOutcomes([request("one", "2"), request("absent")], { force: true });
+  const forced = client.lookupOutcomes([request("one", "2"), request("two", "3")], { force: true });
   try {
     await vi.runAllTimersAsync();
     expect((await forced)[0]).toMatchObject({
@@ -253,7 +270,7 @@ it("does not cache a cancelled batch or dispatch fallback after its last consume
   vi.useFakeTimers();
   const fetch = vi.fn(async () => {
     await new Promise((resolve) => setTimeout(resolve, 6000));
-    return response([entry("one")]);
+    return response([entry("one"), entry("two")]);
   });
   vi.stubGlobal("fetch", fetch);
   const client = new AppStoreLookupClient();
@@ -278,3 +295,137 @@ it("does not cache a cancelled batch or dispatch fallback after its last consume
     await first;
   }
 });
+
+it.each([false, true])(
+  "individually confirms a well-shaped partial batch for a previously known match: %s",
+  async (known) => {
+    vi.useFakeTimers();
+    const urls: URL[] = [];
+    let partial = !known;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const parsed = new URL(url);
+        urls.push(parsed);
+        if (parsed.searchParams.get("bundleId")!.includes(","))
+          return response(partial ? [entry("one")] : [entry("one"), entry("two")]);
+        return response([{ ...entry("two"), version: "3" }]);
+      })
+    );
+    const client = new AppStoreLookupClient();
+    const records = [request("one"), request("two")];
+    if (known)
+      expect((await client.lookupOutcomes(records))[1]).toMatchObject({
+        type: "completed",
+        value: { remoteVersion: version("2") }
+      });
+    partial = true;
+    const task = client.lookupOutcomes(records, { force: true });
+    try {
+      await vi.runAllTimersAsync();
+      expect((await task)[1]).toMatchObject({
+        type: "completed",
+        value: { remoteVersion: version("3") }
+      });
+      expect(urls.at(-1)!.searchParams.get("bundleId")).toBe("com.example.two");
+      expect(urls).toHaveLength(known ? 3 : 2);
+    } finally {
+      await vi.runAllTimersAsync();
+      await task;
+    }
+  }
+);
+
+it("accepts a missing identifier as a completed negative only after its individual confirmation", async () => {
+  vi.useFakeTimers();
+  const urls: URL[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      const parsed = new URL(url);
+      urls.push(parsed);
+      return response(parsed.searchParams.get("bundleId")!.includes(",") ? [entry("one")] : []);
+    })
+  );
+  const task = new AppStoreLookupClient().lookupOutcomes([request("one"), request("two")], {
+    force: true
+  });
+  try {
+    await vi.runAllTimersAsync();
+    expect((await task)[1]).toMatchObject({ type: "completed", value: undefined });
+    expect(urls).toHaveLength(2);
+    expect(urls[1]!.searchParams.get("bundleId")).toBe("com.example.two");
+  } finally {
+    await vi.runAllTimersAsync();
+    await task;
+  }
+});
+
+it("never promotes a cached omission to a completed miss after individual confirmation failed", async () => {
+  vi.useFakeTimers();
+  let singles = 0;
+  const fetch = vi.fn(async (url: string) => {
+    if (new URL(url).searchParams.get("bundleId")!.includes(",")) return response([entry("one")]);
+    singles++;
+    return singles === 1 ? new Response(null, { status: 503 }) : response([entry("two")]);
+  });
+  vi.stubGlobal("fetch", fetch);
+  const client = new AppStoreLookupClient();
+  const records = [request("one"), request("two")];
+  const first = client.lookupOutcomes(records, { force: true });
+  try {
+    await vi.runAllTimersAsync();
+    expect((await first)[1]).toEqual({ type: "transientFailure" });
+    const retry = client.lookupOutcomes(records);
+    await vi.runAllTimersAsync();
+    expect((await retry)[1]).toMatchObject({
+      type: "completed",
+      value: { remoteVersion: version("2") }
+    });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  } finally {
+    await vi.runAllTimersAsync();
+    await first;
+  }
+});
+
+it.each(["ios", "mac-compatible"])(
+  "confirms an omitted preferred platform record instead of trusting a lower-priority %s match",
+  async (platform) => {
+    vi.useFakeTimers();
+    const ios = platform === "ios";
+    const fetch = vi.fn(async (url: string) => {
+      const ids = new URL(url).searchParams.get("bundleId")!.split(",");
+      return response(
+        ids.map((bundleId) => ({
+          ...entry(
+            "one",
+            ids.length > 1 ? (ios ? "mac-software" : "software") : ios ? "software" : "mac-software"
+          ),
+          bundleId,
+          version: ids.length > 1 ? "2" : "3",
+          supportedDevices: ["MacDesktop-MacDesktop"]
+        }))
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    const records = [request("one"), request("two")].map((record) => ({
+      ...record,
+      includeIOSAppStoreSoftware: ios,
+      includeMacCapableAppStoreSoftware: !ios
+    }));
+    const task = new AppStoreLookupClient().lookupOutcomes(records, { force: true });
+    try {
+      await vi.runAllTimersAsync();
+      expect(
+        (await task).every(
+          (outcome) => outcome.type === "completed" && outcome.value?.remoteVersion.raw === "3"
+        )
+      ).toBe(true);
+      expect(fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      await vi.runAllTimersAsync();
+      await task;
+    }
+  }
+);

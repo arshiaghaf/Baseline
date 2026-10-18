@@ -158,3 +158,51 @@ it("discards a superseded batch before dispatching lower-precedence lookups", as
   expect(sparkle).not.toHaveBeenCalled();
   expect(homebrew).not.toHaveBeenCalled();
 });
+
+it("retains a previous App Store update if individual confirmation of a batch omission fails", async () => {
+  vi.useFakeTimers();
+  const { AppStoreLookupClient } = await import("../src/main/appStoreLookupClient");
+  const previous: UpdateRecord = {
+    id: app.id,
+    appID: app.id,
+    source: "appStore",
+    supportLevel: "supported",
+    localVersion: app.localVersion,
+    remoteVersion: version("2"),
+    checkedAt: "2026-10-17T00:00:00Z"
+  };
+  const fetch = vi.fn(async (url: string) =>
+    new URL(url).searchParams.get("bundleId")!.includes(",")
+      ? new Response(
+          JSON.stringify({
+            resultCount: 1,
+            results: [{ bundleId: "com.example.other", kind: "mac-software", version: "2" }]
+          })
+        )
+      : new Response(null, { status: 503 })
+  );
+  vi.stubGlobal("fetch", fetch);
+  const sparkle = vi.fn();
+  const task = lookupAppUpdates(
+    {
+      appStore: new AppStoreLookupClient(),
+      sparkle: { lookupOutcome: sparkle },
+      homebrew: { lookupUpdate: vi.fn() }
+    },
+    {
+      ...input([previous]),
+      apps: [app, { ...app, id: "other", bundleIdentifier: "com.example.other" }]
+    }
+  );
+  try {
+    await vi.runAllTimersAsync();
+    expect((await task)?.find((update) => update.appID === app.id)).toEqual(previous);
+    expect(sparkle).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  } finally {
+    await vi.runAllTimersAsync();
+    await task;
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  }
+});

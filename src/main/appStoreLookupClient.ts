@@ -90,12 +90,27 @@ export class AppStoreLookupClient {
                 options
               );
               const entries = validateBatch(buffer, current);
+              const unconfirmed = new Map<string, number[]>();
               for (const index of selected) {
                 const request = requests[index]!;
                 const matches = entries.filter(
                   (entry) =>
                     entry.bundleId!.toLowerCase() === request.bundleIdentifier.toLowerCase()
                 );
+                // A well-shaped bulk response cannot prove that an omitted
+                // identifier (or eligible platform record) was actually checked.
+                // Confirm every such result, including cold unknowns, individually.
+                const preferred = request.includeIOSAppStoreSoftware
+                  ? matches.find((entry) => isIOSAppStoreSoftware(entry, request.bundleIdentifier))
+                  : matches.find((entry) => entry.kind === "mac-software");
+                // Lower-priority compatible records cannot prove that the preferred
+                // platform record was absent. Preserve single-lookup precedence.
+                if (!preferred?.version?.trim()) {
+                  const indices = unconfirmed.get(request.bundleIdentifier) ?? [];
+                  indices.push(index);
+                  unconfirmed.set(request.bundleIdentifier, indices);
+                  continue;
+                }
                 outcomes[index] = {
                   type: "completed",
                   checkedAt: this.cache.checkedAt(url),
@@ -105,6 +120,21 @@ export class AppStoreLookupClient {
                     request
                   )
                 };
+              }
+              for (const indices of unconfirmed.values()) {
+                options.signal?.throwIfAborted();
+                // Copies sharing an identifier still compare their own installed
+                // versions. Concurrent consumers share the one fresh request.
+                await Promise.all(
+                  indices.map(async (index) => {
+                    const request = requests[index]!;
+                    outcomes[index] = await this.lookupOutcome(
+                      request.bundleIdentifier,
+                      request.localVersion,
+                      { ...request, ...options }
+                    );
+                  })
+                );
               }
               return;
             } catch {
@@ -200,15 +230,7 @@ export class AppStoreLookupClient {
     }
     const response = JSON.parse(data.toString("utf8")) as { results?: LookupEntry[] };
     const results = response.results ?? [];
-    const selected =
-      (options.includeIOSAppStoreSoftware
-        ? results.find((entry) => isIOSAppStoreSoftware(entry, options.bundleIdentifier))
-        : undefined) ??
-      results.find((entry) => entry.kind === "mac-software") ??
-      (options.includeMacCapableAppStoreSoftware
-        ? results.find((entry) => isMacCapableAppStoreSoftware(entry, options.bundleIdentifier))
-        : undefined) ??
-      (results.length === 1 && !results[0]?.kind ? results[0] : undefined);
+    const selected = selectLookupEntry(results, options);
     if (!selected) {
       return undefined;
     }
@@ -226,6 +248,22 @@ export class AppStoreLookupClient {
       appStoreItemID: selected.trackId
     };
   }
+}
+
+function selectLookupEntry(
+  results: LookupEntry[],
+  options: LookupOptions & { bundleIdentifier?: string }
+): LookupEntry | undefined {
+  return (
+    (options.includeIOSAppStoreSoftware
+      ? results.find((entry) => isIOSAppStoreSoftware(entry, options.bundleIdentifier))
+      : undefined) ??
+    results.find((entry) => entry.kind === "mac-software") ??
+    (options.includeMacCapableAppStoreSoftware
+      ? results.find((entry) => isMacCapableAppStoreSoftware(entry, options.bundleIdentifier))
+      : undefined) ??
+    (results.length === 1 && !results[0]?.kind ? results[0] : undefined)
+  );
 }
 
 function isIOSAppStoreSoftware(entry: LookupEntry, bundleIdentifier: string | undefined): boolean {
