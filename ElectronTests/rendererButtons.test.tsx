@@ -3943,6 +3943,31 @@ describe("app refresh source visibility", () => {
       name: "failed",
       patch: { refreshErrorMessage: "Inventory unavailable" },
       expected: "Some updates could not be checked."
+    },
+    {
+      name: "partial inventory",
+      patch: {
+        lastRefreshDate: "2026-10-18T10:00:00.000Z",
+        lastRefreshNoticeMessage: "Homebrew inventory could not be read reliably."
+      },
+      expected: "Some update information may be incomplete. See the refresh notice for details."
+    },
+    {
+      name: "partial outdated detection",
+      patch: {
+        lastRefreshDate: "2026-10-18T10:00:00.000Z",
+        lastRefreshNoticeMessage: "Homebrew outdated detection failed."
+      },
+      expected: "Some update information may be incomplete. See the refresh notice for details."
+    },
+    {
+      name: "cached catalogue",
+      patch: {
+        lastRefreshDate: "2026-10-18T10:00:00.000Z",
+        lastRefreshNoticeMessage: "Using cached Homebrew catalogue metadata.",
+        appProviderChecks: { example: { fingerprint: "fixture", status: "checked" as const } }
+      },
+      expected: "Some update information may be incomplete. See the refresh notice for details."
     }
   ])("includes Homebrew in the combined empty state ($name)", ({ patch, expected }) => {
     render(

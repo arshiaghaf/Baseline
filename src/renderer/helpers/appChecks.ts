@@ -21,6 +21,10 @@ function updatesEmptyText(snapshot: BaselineSnapshot, appsOnly: boolean): string
     return appsOnly
       ? "Some app updates could not be checked."
       : "Some updates could not be checked.";
+  // Inventory failures and cached catalogue warnings can complete a refresh
+  // without a refresh error. Keep the combined result qualified in both cases.
+  if (!appsOnly && snapshot.lastRefreshNoticeMessage)
+    return "Some update information may be incomplete. See the refresh notice for details.";
   if (checks.some((check) => check.status === "unresolved"))
     return "No updates found in checked sources. Some apps have no verified update source.";
   if (!checks.length) {

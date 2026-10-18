@@ -214,9 +214,13 @@ describe("durable provider routing", () => {
     }
   );
 
-  it.each(["none", "sparkle", "homebrew"] as const)(
-    "keeps a current ID-less Apple route independently of %s actionable results",
-    async (alternative) => {
+  it.each(
+    [false, true].flatMap((force) =>
+      (["none", "sparkle", "homebrew"] as const).map((alternative) => ({ force, alternative }))
+    )
+  )(
+    "keeps a current ID-less Apple route independently of $alternative results (force=$force)",
+    async ({ force, alternative }) => {
       const source = clients({ type: "completed", providerFound: true, checkedAt: input().now });
       if (alternative === "sparkle")
         vi.mocked(source.sparkle.lookupOutcome).mockResolvedValue({
@@ -273,38 +277,88 @@ describe("durable provider routing", () => {
       ]);
       const second = await run(source, {
         ...patch,
+        force,
         now: "2026-10-16T00:01:00.000Z",
         previousChecks: reloadedChecks,
         previousUpdates: new Map(first.updates!.map((update) => [update.appID, update]))
       });
       expect(source.appStore.lookupOutcomes).toHaveBeenCalledTimes(2);
+      expect(source.appStore.lookupOutcomes).toHaveBeenLastCalledWith(
+        [expect.objectContaining({ identity: undefined })],
+        expect.objectContaining({ force })
+      );
       expect(second.updates).toMatchObject([{ source: "appStore", remoteVersion: version("2") }]);
     }
   );
 
-  it("does not confuse a positive current bundle record without an ID with a broader no-match", async () => {
-    const source = clients({
-      type: "completed",
-      providerFound: true,
-      discovered: true,
-      checkedAt: input().now
-    });
-    vi.mocked(source.appStore.lookupOutcome).mockResolvedValue({
-      type: "completed",
-      identity,
-      value: { remoteVersion: version("3") }
-    });
+  it.each(
+    [false, true].flatMap((force) => [false, true].map((actionable) => ({ force, actionable })))
+  )(
+    "keeps positive ID-less bundle evidence over an older numeric product: %j",
+    async ({ force, actionable }) => {
+      const now = "2026-10-16T06:00:00.000Z";
+      const source = clients({
+        type: "completed",
+        providerFound: true,
+        discovered: true,
+        checkedAt: now,
+        value: actionable ? { remoteVersion: version("2") } : undefined
+      });
+      vi.mocked(source.appStore.lookupOutcome).mockResolvedValue({
+        type: "completed",
+        identity,
+        value: { remoteVersion: version("3") }
+      });
+      const result = await run(source, {
+        force,
+        now,
+        previousChecks: prior({ status: "checked", source: "appStore", appStoreIdentity: identity })
+      });
+      expect(source.appStore.lookupOutcome).not.toHaveBeenCalled();
+      if (actionable)
+        expect(result.updates).toMatchObject([{ source: "appStore", remoteVersion: version("2") }]);
+      else expect(result.updates).toEqual([]);
+      expect(result.checks[base.id]).toMatchObject({
+        status: "checked",
+        source: "appStore",
+        checkedAt: now
+      });
+      expect(result.checks[base.id]?.appStoreIdentity).toBeUndefined();
+    }
+  );
+
+  it.each(
+    [false, true].flatMap((force) =>
+      (["none", "sparkle", "homebrew"] as const).map((alternative) => ({ force, alternative }))
+    )
+  )("clears an ID-less Apple route after a real no-match: %j", async ({ force, alternative }) => {
+    const source = clients({ type: "completed", checkedAt: input().now });
+    const owned = alternative === "homebrew";
     const result = await run(source, {
-      forceAppDiscovery: true,
-      previousChecks: prior({ status: "checked", source: "appStore", appStoreIdentity: identity })
+      force,
+      apps: [
+        { ...base, sparkleFeedURL: alternative === "sparkle" ? app.sparkleFeedURL : undefined }
+      ],
+      previousChecks: prior({ status: "checked", source: "appStore", checkedAt }),
+      homebrewItems: owned
+        ? [
+            {
+              id: "cask:example",
+              token: "example",
+              name: "Example",
+              kind: "cask",
+              installedVersion: base.localVersion,
+              isOutdated: false
+            }
+          ]
+        : [],
+      canUseHomebrewAppUpdate: () => owned
     });
+    expect(source.appStore.lookupOutcomes).toHaveBeenCalledTimes(1);
     expect(source.appStore.lookupOutcome).not.toHaveBeenCalled();
     expect(result.updates).toEqual([]);
-    expect(result.checks[base.id]).toMatchObject({
-      status: "checked",
-      source: "appStore",
-      checkedAt: input().now
-    });
+    expect(result.checks[base.id]?.status).toBe(alternative === "none" ? "unresolved" : "checked");
+    expect(result.checks[base.id]?.source).toBe(alternative === "none" ? undefined : alternative);
     expect(result.checks[base.id]?.appStoreIdentity).toBeUndefined();
   });
 
