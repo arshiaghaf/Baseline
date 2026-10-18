@@ -33,9 +33,273 @@ function input(previousUpdates: UpdateRecord[] = []) {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+describe("independent provider scheduling", () => {
+  it("discards a cancelled speculative failure while waiting for the needed feed", async () => {
+    const gate = deferred<void>();
+    const controller = new AbortController();
+    const progress: Array<{ checks: Record<string, AppProviderCheck>; updates: UpdateRecord[] }> =
+      [];
+    const sparkle = vi.fn(async () => {
+      await gate.promise;
+      throw new Error("Cancelled feed");
+    });
+    const apple = vi.fn().mockResolvedValue({ type: "completed" });
+    const task = lookupAppUpdates(
+      {
+        appStore: { lookupOutcome: apple },
+        sparkle: { lookupOutcome: sparkle },
+        homebrew: { lookupUpdate: vi.fn() }
+      },
+      {
+        ...input(),
+        signal: controller.signal,
+        onProgress: (checks, updates) => progress.push({ checks, updates })
+      }
+    );
+    try {
+      await vi.waitFor(() => expect(apple).toHaveBeenCalledTimes(1));
+      expect(sparkle).toHaveBeenCalledTimes(1);
+      controller.abort();
+      gate.resolve();
+      expect(await task).toBeUndefined();
+      expect(progress).toHaveLength(1);
+      expect(progress[0]?.checks[app.id]?.status).toBe("pending");
+      expect(progress[0]?.updates).toEqual([]);
+    } finally {
+      controller.abort();
+      gate.resolve();
+      await Promise.allSettled([task]);
+    }
+  });
+
+  it.each(["no-match", "update", "failure"] as const)(
+    "overlaps a declared feed with delayed Apple discovery and preserves precedence on %s",
+    async (appleResult) => {
+      const gate = deferred<void>();
+      const progress: Array<{ checks: Record<string, AppProviderCheck>; updates: UpdateRecord[] }> =
+        [];
+      const sparkle = vi.fn().mockResolvedValue({
+        type: "completed",
+        checkedAt: "2026-10-15T23:59:00.000Z",
+        value: { remoteVersion: version("3") }
+      });
+      const task = lookupAppUpdates(
+        {
+          appStore: {
+            lookupOutcome: vi.fn(),
+            lookupOutcomes: vi.fn(async () => {
+              await gate.promise;
+              return [
+                appleResult === "failure"
+                  ? { type: "transientFailure" as const }
+                  : {
+                      type: "completed" as const,
+                      value: appleResult === "update" ? { remoteVersion: version("2") } : undefined
+                    }
+              ];
+            })
+          },
+          sparkle: { lookupOutcome: sparkle },
+          homebrew: { lookupUpdate: vi.fn() }
+        },
+        {
+          ...input(),
+          onProgress: (checks, updates) => progress.push({ checks, updates })
+        }
+      );
+      try {
+        await vi.waitFor(() => expect(sparkle).toHaveBeenCalledTimes(1));
+        expect(progress.at(-1)?.checks[app.id]?.status).toBe("pending");
+        expect(progress.flatMap((item) => item.updates)).toEqual([]);
+        gate.resolve();
+        const result = await task;
+        expect(result).toMatchObject([
+          {
+            source: appleResult === "update" ? "appStore" : "sparkle",
+            remoteVersion: version(appleResult === "update" ? "2" : "3")
+          }
+        ]);
+        expect(progress.at(-1)?.checks[app.id]?.status).toBe(
+          appleResult === "failure" ? "failed" : "checked"
+        );
+        if (appleResult !== "update")
+          expect(result?.[0]?.checkedAt).toBe("2026-10-15T23:59:00.000Z");
+      } finally {
+        gate.resolve();
+        await Promise.allSettled([task]);
+      }
+    }
+  );
+
+  it.each([false, true])(
+    "drains a speculative feed after an Apple winner (cancel=%s)",
+    async (cancel) => {
+      const gate = deferred<void>();
+      const controller = new AbortController();
+      const progress: UpdateRecord[][] = [];
+      let feedSignal: AbortSignal | undefined;
+      const sparkle = vi.fn(
+        async (
+          ...args: Parameters<Parameters<typeof lookupAppUpdates>[0]["sparkle"]["lookupOutcome"]>
+        ) => {
+          feedSignal = args[3]?.signal;
+          await gate.promise;
+          throw new Error("Unused feed failure");
+        }
+      );
+      let settled = false;
+      const task = lookupAppUpdates(
+        {
+          appStore: {
+            lookupOutcome: vi.fn().mockResolvedValue({
+              type: "completed",
+              value: { remoteVersion: version("2") }
+            })
+          },
+          sparkle: { lookupOutcome: sparkle },
+          homebrew: { lookupUpdate: vi.fn() }
+        },
+        {
+          ...input(),
+          signal: controller.signal,
+          onProgress: (_checks, updates) => progress.push(updates)
+        }
+      );
+      const observed = task.finally(() => {
+        settled = true;
+      });
+      try {
+        await vi.waitFor(() => expect(progress.at(-1)).toMatchObject([{ source: "appStore" }]));
+        expect(sparkle).toHaveBeenCalledTimes(1);
+        expect(feedSignal?.aborted).toBe(true);
+        if (cancel) controller.abort();
+        expect(settled).toBe(false);
+        const publications = progress.length;
+        gate.resolve();
+        if (cancel) expect(await observed).toBeUndefined();
+        else expect(await observed).toMatchObject([{ source: "appStore" }]);
+        expect(progress).toHaveLength(publications);
+      } finally {
+        gate.resolve();
+        await Promise.allSettled([task, observed]);
+      }
+    }
+  );
+
+  it("bounds speculative feeds and keeps their waits from occupying Apple workers", async () => {
+    const gate = deferred<void>();
+    const controller = new AbortController();
+    let active = 0;
+    let peak = 0;
+    const sparkle = vi.fn(async () => {
+      peak = Math.max(peak, ++active);
+      await gate.promise;
+      --active;
+      return { type: "completed" as const };
+    });
+    const apple = vi
+      .fn()
+      .mockResolvedValue({ type: "completed", value: { remoteVersion: version("2") } });
+    const apps = Array.from({ length: 8 }, (_, index) => ({
+      ...app,
+      id: `app-${index}`,
+      bundleIdentifier: `com.example.app${index}`
+    }));
+    const progress: UpdateRecord[][] = [];
+    const task = lookupAppUpdates(
+      {
+        appStore: { lookupOutcome: apple },
+        sparkle: { lookupOutcome: sparkle },
+        homebrew: { lookupUpdate: vi.fn() }
+      },
+      {
+        ...input(),
+        apps,
+        signal: controller.signal,
+        onProgress: (_checks, updates) => progress.push(updates)
+      }
+    );
+    try {
+      await vi.waitFor(() => expect(progress.at(-1)).toHaveLength(8));
+      expect(apple).toHaveBeenCalledTimes(8);
+      expect(sparkle).toHaveBeenCalledTimes(4);
+      expect(peak).toBe(4);
+      controller.abort();
+      gate.resolve();
+      expect(await task).toBeUndefined();
+      expect(sparkle).toHaveBeenCalledTimes(4);
+      expect(active).toBe(0);
+    } finally {
+      controller.abort();
+      gate.resolve();
+      await Promise.allSettled([task]);
+    }
+  });
+
+  it("keeps independent feed results ahead of slow speculative feeds for pending Apple apps", async () => {
+    const gate = deferred<void>();
+    const coldApps = Array.from({ length: 4 }, (_, index) => ({ ...app, id: `cold-${index}` }));
+    const independent = {
+      ...app,
+      id: "independent",
+      bundleIdentifier: undefined,
+      sparkleFeedURL: "https://example.com/independent.xml"
+    };
+    const progress: Array<{ checks: Record<string, AppProviderCheck>; updates: UpdateRecord[] }> =
+      [];
+    const task = lookupAppUpdates(
+      {
+        appStore: {
+          lookupOutcome: vi.fn(),
+          lookupOutcomes: vi.fn(async () => {
+            await gate.promise;
+            return coldApps.map(() => ({ type: "completed" as const }));
+          })
+        },
+        sparkle: {
+          lookupOutcome: vi.fn(async (feed: string) => {
+            if (feed !== independent.sparkleFeedURL) await gate.promise;
+            return { type: "completed" as const, value: { remoteVersion: version("3") } };
+          })
+        },
+        homebrew: { lookupUpdate: vi.fn() }
+      },
+      {
+        ...input(),
+        apps: [...coldApps, independent],
+        onProgress: (checks, updates) => progress.push({ checks, updates })
+      }
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(progress.at(-1)?.updates).toMatchObject([
+          { appID: independent.id, source: "sparkle" }
+        ])
+      );
+      for (const cold of coldApps) expect(progress.at(-1)?.checks[cold.id]?.status).toBe("pending");
+      gate.resolve();
+      expect(await task).toHaveLength(5);
+    } finally {
+      gate.resolve();
+      await Promise.allSettled([task]);
+    }
+  });
+});
+
 describe("lookupAppUpdates", () => {
   it("keeps App Store precedence when all sources could offer an update", async () => {
-    const sparkle = vi.fn();
+    const sparkle = vi.fn().mockResolvedValue({
+      type: "completed",
+      value: { remoteVersion: version("3.0") }
+    });
     const homebrew = vi.fn();
     const updates = await lookupAppUpdates(
       {
@@ -51,7 +315,7 @@ describe("lookupAppUpdates", () => {
       input()
     );
     expect(updates).toMatchObject([{ appID: "example", source: "appStore" }]);
-    expect(sparkle).not.toHaveBeenCalled();
+    expect(sparkle).toHaveBeenCalledTimes(1);
     expect(homebrew).not.toHaveBeenCalled();
   });
 
@@ -210,7 +474,9 @@ describe("durable provider routing", () => {
         status: "checked",
         checkedAt: nextCheck
       });
-      expect(source.sparkle.lookupOutcome).not.toHaveBeenCalled();
+      // Cold discovery overlaps the feed; the verified Apple route on the
+      // following refresh avoids repeating this speculative request.
+      expect(source.sparkle.lookupOutcome).toHaveBeenCalledTimes(1);
     }
   );
 
