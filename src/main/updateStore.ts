@@ -423,6 +423,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             searchText
           } = this.state;
           return {
+            apps: this.state.apps,
+            ignoredIDs: this.state.ignoredIDs,
             appProviderChecks,
             appUpdateComparisonBaseline,
             homebrewItems,
@@ -442,7 +444,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         scanDirectories: () => this.scanDirectories(),
         fetchHomebrewInventory: (lightweight, options) =>
           this.fetchHomebrewInventory(lightweight, options),
-        lookupSelfUpdate: (now) => this.lookupSelfUpdate(now),
+        lookupSelfUpdate: (now, signal) => this.lookupSelfUpdate(now, signal),
         isCurrent: (sequence) => this.refreshLifecycle.isCurrent(sequence),
         isSelfApp: (app) => this.isSelfApp(app),
         beginRefresh: (sequence) => this.homebrewWorkLock.beginRefresh(sequence),
@@ -1128,11 +1130,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     };
   }
 
-  private async lookupSelfUpdate(now: string): Promise<SelfUpdateRecord | undefined> {
+  private async lookupSelfUpdate(
+    now: string,
+    signal?: AbortSignal
+  ): Promise<SelfUpdateRecord | undefined> {
     if (isVersionEmpty(this.currentAppVersion)) {
       return undefined;
     }
-    return this.selfUpdate.lookup(this.currentAppVersion, now);
+    return this.selfUpdate.lookup(this.currentAppVersion, now, signal);
   }
 
   private async fetchHomebrewInventory(

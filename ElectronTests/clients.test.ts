@@ -994,3 +994,41 @@ describe("ported clients", () => {
     }
   );
 });
+
+describe("self-update read cancellation", () => {
+  it("forwards refresh cancellation to an in-flight release request", async () => {
+    const controller = new AbortController();
+    let networkSignal!: AbortSignal;
+    let rejectNetwork!: (reason: Error) => void;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementationOnce(
+      (_url, options) =>
+        new Promise((_resolve, reject) => {
+          rejectNetwork = reject;
+          networkSignal = options!.signal!;
+          networkSignal.addEventListener("abort", () => reject(networkSignal.reason), {
+            once: true
+          });
+        })
+    );
+    const task = new SelfUpdateClient().lookup(
+      version("1"),
+      "2026-10-18T00:00:00Z",
+      controller.signal
+    );
+    let failure: unknown;
+    const observed = task.catch((error: unknown) => {
+      failure = error;
+    });
+    try {
+      controller.abort(new Error("superseded"));
+      await vi.waitFor(() => expect(failure).toMatchObject({ message: "superseded" }), {
+        timeout: 200
+      });
+      expect(networkSignal.aborted).toBe(true);
+    } finally {
+      rejectNetwork(new Error("test teardown"));
+      await Promise.allSettled([task, observed]);
+      fetchMock.mockRestore();
+    }
+  });
+});

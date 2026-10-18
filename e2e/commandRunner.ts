@@ -19,6 +19,10 @@ const failedCommand: CommandResult = {
 };
 
 // Only the disposable E2E bundle uses this provider. Never execute host tools.
+export async function runCommand(): Promise<CommandResult> {
+  return failedCommand;
+}
+
 export async function runBrewCommand(): Promise<CommandResult> {
   return failedCommand;
 }

@@ -135,11 +135,11 @@ describe("performance store integration", () => {
       }
     });
     await store.refresh(true);
-    expect(fetchIndex).toHaveBeenLastCalledWith({ force: false });
+    expect(fetchIndex).toHaveBeenLastCalledWith({ force: false, signal: expect.any(AbortSignal) });
     await store.refresh(false);
-    expect(fetchIndex).toHaveBeenLastCalledWith({ force: true });
+    expect(fetchIndex).toHaveBeenLastCalledWith({ force: true, signal: expect.any(AbortSignal) });
     await store.refresh(false, { allowHomebrewInventoryDuringActiveCommand: true });
-    expect(fetchIndex).toHaveBeenLastCalledWith({ force: false });
+    expect(fetchIndex).toHaveBeenLastCalledWith({ force: false, signal: expect.any(AbortSignal) });
     expect(lookupOutcome).toHaveBeenLastCalledWith(
       expect.anything(),
       expect.anything(),
