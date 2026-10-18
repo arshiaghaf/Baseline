@@ -412,6 +412,40 @@ describe("snapshot persistence", () => {
 });
 
 describe("provider history migration", () => {
+  it("preserves a successful actionable App Store check whose product ID was omitted", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-provider-history-"));
+    tempDirs.push(userData);
+    const check = {
+      fingerprint: "installation-a",
+      storefront: "us",
+      status: "checked" as const,
+      source: "appStore" as const,
+      checkedAt: "2026-10-18T00:00:00.000Z",
+      discoveryCheckedAt: "2026-10-18T00:00:00.000Z"
+    };
+    const snapshot = {
+      ...defaultPersistedSnapshot(),
+      appProviderChecks: { example: check },
+      updates: [
+        {
+          id: "example",
+          appID: "example",
+          source: "appStore" as const,
+          supportLevel: "supported" as const,
+          localVersion: version("1"),
+          remoteVersion: version("2"),
+          updateURL: "https://example.com/release",
+          checkedAt: check.checkedAt
+        }
+      ]
+    };
+    await new SnapshotPersistence(userData).save(snapshot);
+    const reloaded = await new SnapshotPersistence(userData).load();
+    expect(reloaded.appProviderChecks?.example).toMatchObject(check);
+    expect(reloaded.appProviderChecks?.example?.appStoreIdentity).toBeUndefined();
+    expect(reloaded.updates).toMatchObject(snapshot.updates);
+  });
+
   it("round-trips verified current identities separately from updates and keeps preferences", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-provider-history-"));
     tempDirs.push(userData);
@@ -468,6 +502,14 @@ describe("provider history migration", () => {
             fingerprint: "b",
             status: "failed",
             appStoreIdentity: { productID: 123, platform: "other", storefront: "us" }
+          },
+          invalidProduct: {
+            fingerprint: "d",
+            storefront: "us",
+            status: "checked",
+            source: "appStore",
+            checkedAt: "2026-10-18T00:00:00.000Z",
+            appStoreIdentity: { productID: -1, platform: "mac", storefront: "us" }
           }
         }
       })
@@ -481,5 +523,7 @@ describe("provider history migration", () => {
     expect(checks.wrongPlatform?.appStoreIdentity).toBeUndefined();
     expect(checks.missingContext?.status).toBe("failed");
     expect(checks.missingContext?.appStoreIdentity).toBeUndefined();
+    expect(checks.invalidProduct?.status).toBe("failed");
+    expect(checks.invalidProduct?.appStoreIdentity).toBeUndefined();
   });
 });

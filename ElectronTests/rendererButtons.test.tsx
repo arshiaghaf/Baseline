@@ -3858,6 +3858,7 @@ describe("app refresh source visibility", () => {
             updates: [],
             homebrewItems: [],
             refreshErrorMessage: "Source temporarily unavailable",
+            selectedTab: "apps",
             appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "failed" } }
           })}
         />
@@ -3912,6 +3913,7 @@ describe("app refresh source visibility", () => {
           onOpenSettings={() => undefined}
           snapshot={snapshot({
             apps: [...apps],
+            selectedTab: "apps",
             updates: [],
             homebrewItems: [],
             appProviderChecks: {},
@@ -3924,6 +3926,46 @@ describe("app refresh source visibility", () => {
       expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
     }
   );
+
+  it.each([
+    {
+      name: "completed",
+      patch: { lastRefreshDate: "2026-10-18T10:00:00.000Z" },
+      expected: "No updates to show from the last refresh."
+    },
+    { name: "initial", patch: {}, expected: "Refresh to check for updates." },
+    {
+      name: "pending",
+      patch: { isRefreshing: true },
+      expected: "Checking for updates. Results are incomplete."
+    },
+    {
+      name: "failed",
+      patch: { refreshErrorMessage: "Inventory unavailable" },
+      expected: "Some updates could not be checked."
+    }
+  ])("includes Homebrew in the combined empty state ($name)", ({ patch, expected }) => {
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          apps: [],
+          updates: [],
+          homebrewItems: [
+            { ...cask, appID: undefined, latestVersion: cask.installedVersion, isOutdated: false }
+          ],
+          appProviderChecks: {},
+          selectedTab: "all",
+          ...patch
+        })}
+      />
+    );
+    expect(screen.getByText(expected)).toBeInTheDocument();
+    expect(
+      screen.queryByText("No app updates to show from the last refresh.")
+    ).not.toBeInTheDocument();
+  });
 
   it("labels an older actionable result when its current provider check failed", () => {
     render(

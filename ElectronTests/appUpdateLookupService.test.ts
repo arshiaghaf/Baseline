@@ -6,6 +6,7 @@ import type { AppRecord, UpdateRecord, AppProviderCheck } from "../src/shared/do
 import { emptyHomebrewCaskIndex } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 import { lookupAppUpdates } from "../src/main/appUpdateLookupService";
+import { normalizeAppProviderChecks } from "../src/main/appProviderChecks";
 
 const app: AppRecord = {
   id: "example",
@@ -186,6 +187,8 @@ describe("durable provider routing", () => {
       });
       expect(first.checks[base.id]).toMatchObject({ source: "appStore", status: "checked" });
       expect(first.checks[base.id]?.appStoreIdentity).toBeUndefined();
+      const reloadedChecks = normalizeAppProviderChecks(JSON.parse(JSON.stringify(first.checks)));
+      expect(reloadedChecks[base.id]?.status).toBe("checked");
 
       const nextCheck = "2026-10-16T00:01:00.000Z";
       vi.mocked(source.appStore.lookupOutcomes!).mockResolvedValue([
@@ -195,7 +198,7 @@ describe("durable provider routing", () => {
         apps: [currentApp],
         force,
         now: nextCheck,
-        previousChecks: first.checks,
+        previousChecks: reloadedChecks,
         previousUpdates: new Map(first.updates!.map((update) => [update.appID, update]))
       });
       expect(source.appStore.lookupOutcomes).toHaveBeenCalledTimes(2);

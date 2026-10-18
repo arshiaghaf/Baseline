@@ -43,12 +43,14 @@ export function normalizeAppProviderChecks(input: unknown): Record<string, AppPr
           ? value.source
           : undefined;
       const checkedAt = validDate(value.checkedAt);
+      // An actionable Apple response may omit its ID; a supplied invalid ID
+      // still indicates corrupt history rather than a successful check.
       if (
         status === "checked" &&
         (!storefront ||
           !source ||
           !checkedAt ||
-          (source === "appStore" && !appStoreIdentity) ||
+          (source === "appStore" && identity !== undefined && !appStoreIdentity) ||
           (source === "sparkle" && !sparkleFeedURL))
       )
         status = "failed";

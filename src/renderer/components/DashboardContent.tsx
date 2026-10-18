@@ -24,7 +24,7 @@ import {
 } from "./ItemViews";
 import { homebrewBatchActionState } from "../helpers/actionState";
 import { performHomebrewUpdateAllForItems, toggleCollapsedSection } from "../helpers/actions";
-import { appUpdatesEmptyText } from "../helpers/appChecks";
+import { appUpdatesEmptyText, combinedUpdatesEmptyText } from "../helpers/appChecks";
 
 export function SelectedTabContent({
   snapshot,
@@ -242,7 +242,7 @@ export function AllUpdatesSection({
         }
       />
       {items.length === 0 ? (
-        <Empty text={appUpdatesEmptyText(snapshot)} />
+        <Empty text={combinedUpdatesEmptyText(snapshot)} />
       ) : (
         <CardGrid sectionClassName="update-grid">
           {items.map((item) =>
