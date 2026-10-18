@@ -453,7 +453,11 @@ async function readInfoPlistAtPath(
       throw new DOMException("App metadata read timed out.", "TimeoutError");
     if (result.failure || result.cancelled || result.signal)
       throw new Error("App metadata helper could not complete.");
-    if (!result.success) return undefined;
+    if (!result.success) {
+      // A helper exit alone cannot distinguish malformed input from lost access.
+      await cancellableRead(directoryRuntime.access(infoPath, constants.R_OK), readSignal(signal));
+      return undefined;
+    }
     return JSON.parse(result.stdout ?? "") as InfoPlist;
   } catch (error) {
     rethrowCancelledRead(error, signal);

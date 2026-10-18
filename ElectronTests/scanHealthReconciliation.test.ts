@@ -441,3 +441,31 @@ it.each(["Contents", "Wrapper"])(
     expect(store.getSnapshot().lastRefreshNoticeMessage).toBeUndefined();
   }
 );
+
+it("does not confirm absence when a required plist becomes unreadable after the access preflight", async () => {
+  const root = await rootFixture();
+  const directory = `${root}/Apps`;
+  const unreadable = `${directory}/Unreadable.app`;
+  await app(unreadable);
+  await app(`${directory}/Good.app`);
+  const originalAccess = testingExports.directoryRuntime.access;
+  let changed = false;
+  vi.spyOn(testingExports.directoryRuntime, "access").mockImplementation(async (input, mode) => {
+    await originalAccess(input, mode);
+    if (input === `${unreadable}/Contents/Info.plist` && !changed) {
+      changed = true;
+      await chmod(`${unreadable}/Contents`, 0);
+    }
+  });
+  const previous = record(unreadable);
+  const store = await storeFixture(root, [directory], [previous]);
+  try {
+    await store.refresh(false);
+    const snapshot = store.getSnapshot();
+    expect(changed).toBe(true);
+    expect(snapshot.apps.some((app) => app.id === previous.id)).toBe(true);
+    expect(snapshot.lastRefreshNoticeMessage).toContain("could not");
+  } finally {
+    await chmod(`${unreadable}/Contents`, 0o700);
+  }
+});
