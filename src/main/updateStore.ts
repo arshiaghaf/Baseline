@@ -143,6 +143,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private snapshotRevision = 0;
   private closing = false;
   private refreshRequestedWhileClosing?: RefreshRecoveryRequest;
+  private refreshRecoveryRequired?: RefreshRecoveryRequest;
   private readonly activeRefreshRequests = new Set<RefreshRecoveryRequest>();
   private quitTask?: Promise<boolean>;
   private readonly pendingProducers = new Set<Promise<unknown>>();
@@ -154,8 +155,21 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   );
 
   private readonly refreshLifecycle = new RefreshLifecycle<RefreshOptions>(
-    (lightweight, sequence, options, signal) =>
-      this.refreshComputation.compute(lightweight, sequence, options, signal),
+    async (lightweight, sequence, options, signal) => {
+      await this.refreshComputation.compute(lightweight, sequence, options, signal);
+      const required = this.refreshRecoveryRequired;
+      const carried = this.refreshRequestStrength(lightweight, options);
+      if (
+        required &&
+        this.refreshLifecycle.isCurrent(sequence) &&
+        !signal.aborted &&
+        !this.state.refreshErrorMessage &&
+        (!required.forceMetadata || carried.forceMetadata) &&
+        (!required.forceAppDiscovery || carried.forceAppDiscovery)
+      ) {
+        this.refreshRecoveryRequired = undefined;
+      }
+    },
     () => void this.refresh(true)
   );
 
@@ -512,12 +526,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
-    const request: RefreshRecoveryRequest = {
-      forceMetadata:
-        options.forceMetadata ??
-        (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand),
-      forceAppDiscovery: options.forceAppDiscovery === true
-    };
+    const request = this.refreshRequestStrength(lightweight, options);
+    if (this.refreshRecoveryRequired) {
+      request.forceMetadata ||= this.refreshRecoveryRequired.forceMetadata;
+      request.forceAppDiscovery ||= this.refreshRecoveryRequired.forceAppDiscovery;
+      options = { ...options, ...request };
+      // Join a running recovery, but start a full scan when its work is still owed.
+      if (!this.refreshLifecycle.isRefreshActive) lightweight = false;
+    }
     if (this.closing) {
       this.deferRefresh(request);
       return;
@@ -528,6 +544,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     } finally {
       this.activeRefreshRequests.delete(request);
     }
+  }
+
+  private refreshRequestStrength(
+    lightweight: boolean,
+    options: RefreshOptions
+  ): RefreshRecoveryRequest {
+    return {
+      forceMetadata:
+        options.forceMetadata ??
+        (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand),
+      forceAppDiscovery: options.forceAppDiscovery === true
+    };
   }
 
   private deferRefresh(request: RefreshRecoveryRequest): void {
@@ -637,15 +665,25 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     } finally {
       const requestedRefresh = this.refreshRequestedWhileClosing;
       this.refreshRequestedWhileClosing = undefined;
-      if (!ready) {
+      if (ready) {
+        this.refreshRecoveryRequired = undefined;
+      } else {
+        if (interruptedRefresh || requestedRefresh || this.refreshRecoveryRequired) {
+          this.refreshRecoveryRequired = {
+            forceMetadata:
+              this.refreshRecoveryRequired?.forceMetadata === true ||
+              requestedRefresh?.forceMetadata === true,
+            forceAppDiscovery:
+              this.refreshRecoveryRequired?.forceAppDiscovery === true ||
+              requestedRefresh?.forceAppDiscovery === true
+          };
+        }
         this.closing = false;
         this.quitTask = undefined;
         this.patch({ isRefreshing: false });
         this.restartAutoRefreshLoop();
-        if ((interruptedRefresh || requestedRefresh) && !this.hasActiveUpdateOperation()) {
-          void this.refresh(false, { forceMetadata: false, ...requestedRefresh }).catch(
-            () => undefined
-          );
+        if (this.refreshRecoveryRequired && !this.hasActiveUpdateOperation()) {
+          void this.refresh(false, this.refreshRecoveryRequired).catch(() => undefined);
         }
       }
     }

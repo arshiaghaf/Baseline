@@ -527,14 +527,20 @@ describe("update store lifecycle boundaries", () => {
     }
   });
 
-  it.each([false, true])(
-    "retains interrupted source discovery and metadata strength (%s) with a joining refresh",
-    async (forceMetadata) => {
+  it.each([
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true]
+  ])(
+    "retains interrupted refresh strength (metadata=%s, replacement=%s)",
+    async (forceMetadata, replacesRecovery) => {
       const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-quit-interrupted-options-"));
       directories.push(directory);
       const persistence = new SnapshotPersistence(directory);
       vi.spyOn(persistence, "save").mockRejectedValueOnce(new Error("final save unavailable"));
       const oldScan = deferred<AppRecord[]>();
+      const recoveryScan = deferred<AppRecord[]>();
       const record = {
         ...app("2"),
         bundleIdentifier: "com.example.utility",
@@ -544,6 +550,9 @@ describe("update store lifecycle boundaries", () => {
       const scanApplications = vi
         .fn<() => Promise<AppRecord[]>>()
         .mockImplementationOnce(() => oldScan.promise)
+        .mockImplementationOnce(() =>
+          replacesRecovery ? recoveryScan.promise : Promise.resolve([record])
+        )
         .mockResolvedValue([record]);
       const lookupOutcome = vi.fn(async () => ({ type: "completed" as const }));
       const fetchIndex = vi.fn(async () => emptyHomebrewCaskIndex);
@@ -575,6 +584,7 @@ describe("update store lifecycle boundaries", () => {
       const refresh = store.refresh(false, { forceMetadata, forceAppDiscovery: true });
       const joining = store.refresh(true);
       let quit: Promise<boolean> | undefined;
+      let replacement: Promise<void> | undefined;
       try {
         await new Promise((resolve) => setImmediate(resolve));
         quit = store.prepareToQuit();
@@ -582,6 +592,12 @@ describe("update store lifecycle boundaries", () => {
         oldScan.resolve([record]);
         await rejected;
         await vi.waitFor(() => expect(scanApplications).toHaveBeenCalledTimes(2));
+        if (replacesRecovery) {
+          replacement = store.refresh(false, { forceMetadata: false });
+          recoveryScan.resolve([record]);
+          await replacement;
+          expect(scanApplications).toHaveBeenCalledTimes(3);
+        }
         await vi.waitFor(() => expect(store.getSnapshot().isRefreshing).toBe(false));
         expect(lookupOutcome).toHaveBeenCalledTimes(1);
         expect(lookupOutcome).toHaveBeenCalledWith(
@@ -590,10 +606,14 @@ describe("update store lifecycle boundaries", () => {
           expect.objectContaining({ force: true })
         );
         expect(fetchIndex).toHaveBeenLastCalledWith({ force: forceMetadata });
+        await store.refresh(false, { forceMetadata: false });
+        expect(lookupOutcome).toHaveBeenCalledTimes(1);
+        expect(fetchIndex).toHaveBeenLastCalledWith({ force: false });
         expect(await store.prepareToQuit()).toBe(true);
       } finally {
         oldScan.resolve([]);
-        await Promise.allSettled([refresh, joining, quit]);
+        recoveryScan.resolve([]);
+        await Promise.allSettled([refresh, joining, quit, replacement]);
         await store.refresh(true);
         await store.prepareToQuit();
       }
