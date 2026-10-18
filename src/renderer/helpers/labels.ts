@@ -63,6 +63,9 @@ export function versionLabelWithBuild(versionRaw: string, buildRaw?: string): st
 }
 
 export function homebrewReadyDetail(snapshot: BaselineSnapshot): string {
+  if (snapshot.homebrewConfigurationBlocked) {
+    return "Homebrew is installed, but its configuration prevents safe commands. Review its administrator password helper settings, then refresh Update Tools and check for updates again.";
+  }
   const caskCount = snapshot.homebrewItems.filter((item) => item.kind === "cask").length;
   const formulaCount = snapshot.homebrewItems.filter((item) => item.kind === "formula").length;
   const appLinkedCaskCount = snapshot.homebrewItems.filter(

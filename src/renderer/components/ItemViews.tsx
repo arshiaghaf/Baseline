@@ -15,9 +15,11 @@ import { isCask } from "../../shared/homebrewAppLinking";
 import { ActionConfirmationContext } from "./ActionConfirmation";
 import {
   appControlState,
+  appIsWaitingForAdmin,
   isHomebrewCommandActive,
   actionStateFromFlags,
-  homebrewControlState
+  homebrewControlState,
+  isWaitingForAdmin
 } from "../helpers/actionState";
 import {
   appSourceLabel,
@@ -111,6 +113,7 @@ export function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
             app.localVersion.raw || "unknown"
           )}
         </p>
+        <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
     </article>
   );
@@ -172,6 +175,7 @@ export function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
             ? updatedRelativeLabel(recentlyUpdatedRecord.updatedAt)
             : "Updated recently"}
         </p>
+        <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
     </article>
   );
@@ -240,6 +244,7 @@ export function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: Ba
             app.localVersion.raw || "unknown"
           )}
         </p>
+        <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
     </article>
   );
@@ -294,6 +299,7 @@ export function AppRow({
             app.localVersion.raw || "unknown"
           )}
         </p>
+        <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
       <div className="row-actions">
         {update && !isHomebrewUpdatePinned && (
@@ -334,7 +340,7 @@ export function DiscoverRow({
   const failed = snapshot.homebrewDiscoverFailedItemIDs.includes(item.id);
   const done = snapshot.homebrewDiscoverInstalledPendingRefreshItemIDs.includes(item.id);
   const progress = snapshot.homebrewDiscoverProgressByItemID[item.id];
-  const canInstall = snapshot.isHomebrewInstalled;
+  const canInstall = snapshot.isHomebrewInstalled && !snapshot.homebrewConfigurationBlocked;
   const busy = canInstall && !installing && !failed && !done && isHomebrewCommandActive(snapshot);
 
   return (
@@ -346,15 +352,32 @@ export function DiscoverRow({
           <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>
-          {canInstall
-            ? item.version.raw || item.token
-            : "Homebrew is not installed. Install Homebrew to enable this source."}
+          {snapshot.homebrewConfigurationBlocked
+            ? "Homebrew configuration needs attention. Check Update Tools in Settings."
+            : snapshot.isHomebrewInstalled
+              ? item.version.raw || item.token
+              : "Homebrew is not installed. Install Homebrew to enable this source."}
         </p>
+        <AdminPasswordStatus snapshot={snapshot} itemID={item.id} />
       </div>
       <div className="row-actions">
         <UpdateActionButton
-          state={actionStateFromFlags({ failed, updating: installing, progress, done })}
-          readyLabel={canInstall ? (busy ? "Busy" : "Install") : "Needs Homebrew"}
+          state={actionStateFromFlags({
+            failed,
+            updating: installing,
+            progress,
+            done,
+            waitingForAdmin: isWaitingForAdmin(snapshot, { itemID: item.id })
+          })}
+          readyLabel={
+            snapshot.homebrewConfigurationBlocked
+              ? "Check Homebrew"
+              : canInstall
+                ? busy
+                  ? "Busy"
+                  : "Install"
+                : "Needs Homebrew"
+          }
           disabled={!canInstall || busy}
           onAction={() => {
             if (canInstall && !busy) {
@@ -431,6 +454,7 @@ export function HomebrewUpdateCard({
             item.installedVersion.raw || "unknown"
           )}
         </p>
+        <AdminPasswordStatus snapshot={snapshot} itemID={item.id} />
       </div>
     </article>
   );
@@ -489,6 +513,7 @@ export function RecentHomebrewCard({
             ? updatedRelativeLabel(recentlyUpdatedRecord.updatedAt)
             : "Updated recently"}
         </p>
+        <AdminPasswordStatus snapshot={snapshot} itemID={item.id} />
       </div>
     </article>
   );
@@ -550,6 +575,7 @@ export function IgnoredHomebrewCard({
             item.installedVersion.raw || "unknown"
           )}
         </p>
+        <AdminPasswordStatus snapshot={snapshot} itemID={item.id} />
       </div>
     </article>
   );
@@ -594,6 +620,7 @@ export function HomebrewRow({
             item.installedVersion.raw || "unknown"
           )}
         </p>
+        <AdminPasswordStatus snapshot={snapshot} itemID={item.id} />
       </div>
       <div className="row-actions">
         {item.isOutdated && !item.pinned && (
@@ -669,4 +696,19 @@ export function HomebrewItemIcon({
   }
 
   return <div className={fallbackClassName}>{fallbackIcon}</div>;
+}
+
+function AdminPasswordStatus({
+  snapshot,
+  itemID,
+  app
+}: {
+  snapshot: BaselineSnapshot;
+  itemID?: string;
+  app?: AppRecord;
+}) {
+  const waiting = app
+    ? appIsWaitingForAdmin(app, snapshot)
+    : isWaitingForAdmin(snapshot, { itemID });
+  return waiting ? <p role="status">Waiting for admin password</p> : null;
 }

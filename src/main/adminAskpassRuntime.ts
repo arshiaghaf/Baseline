@@ -11,8 +11,8 @@ let configured = false;
 let active: AdminAskpassSession | undefined;
 let starting = false;
 
-/** Main-process-only setup. Nothing currently calls this in app startup. Neither
- * renderer IPC nor inherited environment can provide or enable a helper path. */
+/** Packaged main-process startup only. Neither renderer IPC nor inherited
+ * environment can provide or enable a helper path. */
 export async function configureAdminAskpass(resourcePath: string): Promise<void> {
   if (active || starting) throw new Error("The administrator password helper is busy.");
   configured = true;

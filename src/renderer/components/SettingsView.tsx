@@ -200,6 +200,7 @@ export function SettingsPane({
                 description="Find updates for installed casks and formulae."
                 missingDetail="Homebrew is not detected on this Mac. Install Homebrew to enable this source."
                 ready={snapshot.isHomebrewInstalled}
+                blocked={snapshot.homebrewConfigurationBlocked}
                 readyDetail={homebrewReadyDetail(snapshot)}
               />
               <div
@@ -221,7 +222,10 @@ export function SettingsPane({
                 <button
                   className="danger-button small-button"
                   disabled={
-                    !snapshot.isHomebrewInstalled || snapshot.isHomebrewCleanupLocked || cleaningUp
+                    !snapshot.isHomebrewInstalled ||
+                    snapshot.homebrewConfigurationBlocked ||
+                    snapshot.isHomebrewCleanupLocked ||
+                    cleaningUp
                   }
                   onClick={() => void cleanUp()}
                   title="Runs brew cleanup using your Homebrew settings. Unused dependencies may be removed."
@@ -708,6 +712,7 @@ export function ToolStatus({
   missingDetail,
   ready,
   readyDetail,
+  blocked = false,
   enabled = true
 }: {
   label: string;
@@ -715,10 +720,17 @@ export function ToolStatus({
   missingDetail: string;
   ready: boolean;
   readyDetail?: string;
+  blocked?: boolean;
   enabled?: boolean;
 }) {
-  const active = ready && enabled;
-  const statusLabel = ready ? (enabled ? "Enabled" : "Not used") : "Not detected";
+  const active = ready && enabled && !blocked;
+  const statusLabel = blocked
+    ? "Needs attention"
+    : ready
+      ? enabled
+        ? "Enabled"
+        : "Not used"
+      : "Not detected";
   const detail = ready ? (readyDetail ?? description) : `${description} ${missingDetail}`;
   return (
     <div className="settings-row settings-row-status">

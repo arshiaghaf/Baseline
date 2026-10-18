@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { configureAdminAskpass, focusAdminAskpass } from "./adminAskpassRuntime";
 import { confirmHomebrewCleanup } from "./homebrewCleanupConfirmation";
 import {
   app,
@@ -90,6 +91,10 @@ if (hasSingleInstanceLock) {
       copyright: "© 2026 Arshia Ghaf"
     });
 
+    if (app.isPackaged) {
+      await configureAdminAskpass(path.join(process.resourcesPath, "admin-askpass"));
+    }
+
     const persistence = new SnapshotPersistence(app.getPath("userData"));
     const persisted = await persistence.load();
     applyAppearancePreference(persisted.appearancePreference);
@@ -148,6 +153,9 @@ app.on("before-quit", (event) => {
   if (isQuitting || !store) return;
   event.preventDefault();
   if (store.hasActiveUpdateOperation()) {
+    // Keep the existing wait-before-quit policy. A waiting dialog must stay
+    // reachable so the user can answer or cancel, then quit after reconciliation.
+    if (focusCurrentAdminPrompt()) return;
     if (!quitNoticeOpen) {
       quitNoticeOpen = true;
       void dialog
@@ -385,6 +393,7 @@ function toggleMenuWindow(): void {
   }
   window.setAlwaysOnTop(true, "pop-up-menu");
   window.show();
+  focusCurrentAdminPrompt();
 }
 
 function hideMenuWindowForNativeDismissal(): void {
@@ -439,6 +448,14 @@ function showWindow(window?: BrowserWindow): void {
   }
   window.show();
   window.focus();
+  focusCurrentAdminPrompt();
+}
+
+function focusCurrentAdminPrompt(): boolean {
+  const operation = store?.getSnapshot().homebrewOperation;
+  return operation?.phase === "waiting" && operation.waitingPromptID
+    ? focusAdminAskpass(operation.id, operation.waitingPromptID)
+    : false;
 }
 
 function wireStoreEvents(): void {
