@@ -178,11 +178,30 @@ export type ProfileStatsResetNotice = {
   reason: "tamper";
 };
 
+export type ProfileStatsAggregate = Pick<
+  ProfileStatsEvent,
+  "type" | "targetID" | "displayName" | "channel"
+> & { count: number };
+
+export type ProfileStatsLifetime = {
+  coverage: "complete" | "lowerBound";
+  entries: ProfileStatsAggregate[];
+};
+
+export type ProfileStatsLifetimeSeal = {
+  version: 1;
+  eventSignature: string;
+  signature: string;
+};
+
 export type ProfileStats = {
   createdAt: string;
   startedUsingAt: string;
   signatureVersion: number;
   events: ProfileStatsEvent[];
+  lifetime?: ProfileStatsLifetime;
+  // null preserves a malformed envelope's presence through loading so verification fails closed.
+  lifetimeSeal?: ProfileStatsLifetimeSeal | null;
   resetNotice?: ProfileStatsResetNotice;
   signature?: string;
   integrityStatus: ProfileStatsIntegrityStatus;

@@ -9,9 +9,15 @@ import type {
   ProfileStatsEvent
 } from "../../shared/domain";
 import { homebrewPresentationLabel, sourceDisplayName } from "../../shared/domain";
+import { profileStatsLifetimeFromEvents } from "../../shared/profileStats";
 import { homebrewItemHasAppRepresentation } from "../../shared/homebrewAppLinking";
 
+type SummaryEvent = Pick<ProfileStatsEvent, "type" | "targetID" | "displayName" | "channel"> & {
+  count?: number;
+};
+
 export type ProfileSummary = {
+  incompleteHistory: boolean;
   differentApps: number;
   discoverInstalls: number;
   totalUpdates: number;
@@ -42,7 +48,13 @@ export type ProfileSummary = {
 };
 
 export function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary {
-  const events = snapshot.profileStats.events;
+  const lifetime =
+    snapshot.profileStats.lifetime ??
+    profileStatsLifetimeFromEvents(
+      snapshot.profileStats.events,
+      snapshot.profileStats.events.length === 0 ? "complete" : "lowerBound"
+    );
+  const events = lifetime.entries;
   const updateEvents = events.filter(isProfileUpdateEvent);
   const sourceMix = buildProfileSourceMix(updateEvents);
   const favorite = sourceMix.reduce((best, item) => (item.count > best.count ? item : best));
@@ -52,13 +64,16 @@ export function buildProfileSummary(snapshot: BaselineSnapshot): ProfileSummary 
     snapshot.homebrewItems,
     snapshot.apps
   );
-  const totalUpdates = updateEvents.length;
+  const totalUpdates = updateEvents.reduce((total, event) => total + event.count, 0);
   const differentApps = new Set(
     events.filter((event) => event.type === "appUpdate").map((event) => event.targetID)
   ).size;
-  const discoverInstalls = events.filter((event) => event.type === "homebrewInstall").length;
+  const discoverInstalls = events
+    .filter((event) => event.type === "homebrewInstall")
+    .reduce((total, event) => total + event.count, 0);
   const favoriteChannelLabel = favorite.count > 0 ? favorite.label : "No history";
   return {
+    incompleteHistory: lifetime.coverage === "lowerBound",
     differentApps,
     discoverInstalls,
     totalUpdates,
@@ -103,15 +118,15 @@ export function profileSourceCountLabel(source: ProfileSummary["sourceMix"][numb
   return `${source.count} update${source.count === 1 ? "" : "s"} via ${source.label}`;
 }
 
-export function isProfileUpdateEvent(event: ProfileStatsEvent): boolean {
+export function isProfileUpdateEvent(event: SummaryEvent): boolean {
   return event.type === "appUpdate" || event.type === "homebrewUpdate";
 }
 
-export function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSummary["sourceMix"] {
+export function buildProfileSourceMix(events: SummaryEvent[]): ProfileSummary["sourceMix"] {
   const channels: ProfileStatsChannel[] = ["appStore", "sparkle", "homebrew", "web", "unknown"];
   const counts = new Map<ProfileStatsChannel, number>(channels.map((channel) => [channel, 0]));
   for (const event of events) {
-    counts.set(event.channel, (counts.get(event.channel) ?? 0) + 1);
+    counts.set(event.channel, (counts.get(event.channel) ?? 0) + (event.count ?? 1));
   }
   return channels
     .map((channel) => ({
@@ -123,7 +138,7 @@ export function buildProfileSourceMix(events: ProfileStatsEvent[]): ProfileSumma
 }
 
 export function buildTopUpdatedApps(
-  events: ProfileStatsEvent[],
+  events: SummaryEvent[],
   apps: AppRecord[]
 ): ProfileSummary["topApps"] {
   const appByID = new Map(apps.map((app) => [app.id, app]));
@@ -140,7 +155,7 @@ export function buildTopUpdatedApps(
     counts.set(event.targetID, {
       targetID: event.targetID,
       displayName: app?.displayName ?? event.displayName,
-      count: (current?.count ?? 0) + 1,
+      count: (current?.count ?? 0) + (event.count ?? 1),
       iconDataURL: app?.iconDataURL,
       rank: 0
     });
@@ -155,7 +170,7 @@ export function buildTopUpdatedApps(
 }
 
 export function buildTopUpdatedHomebrewItems(
-  events: ProfileStatsEvent[],
+  events: SummaryEvent[],
   homebrewItems: HomebrewManagedItem[],
   apps: AppRecord[]
 ): ProfileSummary["topHomebrewItems"] {
@@ -182,7 +197,7 @@ export function buildTopUpdatedHomebrewItems(
     counts.set(event.targetID, {
       targetID: event.targetID,
       displayName: item?.name ?? event.displayName,
-      count: (current?.count ?? 0) + 1,
+      count: (current?.count ?? 0) + (event.count ?? 1),
       kindLabel: profileHomebrewKindLabel(event, item),
       rank: 0
     });
@@ -197,7 +212,7 @@ export function buildTopUpdatedHomebrewItems(
 }
 
 export function isProfileHomebrewToolEvent(
-  event: ProfileStatsEvent,
+  event: SummaryEvent,
   item: HomebrewManagedItem | undefined,
   apps: AppRecord[]
 ): boolean {
@@ -217,7 +232,7 @@ export function isProfileHomebrewToolEvent(
 }
 
 export function profileHomebrewKindLabel(
-  event: ProfileStatsEvent,
+  event: SummaryEvent,
   item: HomebrewManagedItem | undefined
 ): string {
   if (item?.presentation) {
