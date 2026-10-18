@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppRecord, HomebrewManagedItem } from "../src/shared/domain";
 import { emptyHomebrewCaskIndex, emptyHomebrewFormulaIndex } from "../src/shared/domain";
 import { version } from "../src/shared/version";
+import type { CatalogueStatus } from "../src/main/catalogueCache";
 import type { HomebrewInventoryResult } from "../src/main/homebrewInventoryClient";
 import {
   RefreshComputationService,
@@ -87,6 +88,7 @@ function setup(scan: Promise<AppRecord[]>, inventory: HomebrewInventoryResult) {
     appStore: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
     sparkle: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
     homebrew: {
+      cacheStatus: undefined as CatalogueStatus | undefined,
       fetchIndex: vi.fn().mockResolvedValue(emptyHomebrewCaskIndex),
       lookupUpdate: vi.fn().mockReturnValue(undefined),
       searchCasks: vi.fn().mockReturnValue([])
@@ -594,4 +596,37 @@ describe("refresh inventory success evidence", () => {
       homebrewItems: [{ id: "formula:example", isOutdated: false }]
     });
   });
+});
+
+it("scopes catalogue warnings to Homebrew and clears them after recovery", async () => {
+  const fixture = setup(Promise.resolve([]), completeInventory);
+  fixture.clients.homebrew.cacheStatus = { stale: true, unavailable: false };
+  await fixture.service.compute(false, 1, {}, new AbortController().signal);
+  expect(fixture.state).toMatchObject({
+    homebrewCheckStatus: "complete",
+    homebrewCheckNoticeMessage: "Using cached Homebrew catalogue metadata. Refresh to retry.",
+    lastRefreshNoticeMessage: "Using cached Homebrew catalogue metadata. Refresh to retry."
+  });
+  fixture.clients.homebrew.cacheStatus = { stale: false, unavailable: false };
+  await fixture.service.compute(false, 2, {}, new AbortController().signal);
+  expect(fixture.state).toMatchObject({
+    homebrewCheckNoticeMessage: undefined,
+    lastRefreshNoticeMessage: undefined
+  });
+});
+
+it("does not attribute an app-folder warning to Homebrew", async () => {
+  const fixture = setup(Promise.resolve([]), completeInventory);
+  fixture.scanner.scanApplications.mockImplementation(async (_directories, options) => {
+    options?.onRootRead?.({ directory: "/Applications", complete: false });
+    return [];
+  });
+  await fixture.service.compute(false, 1, {}, new AbortController().signal);
+  expect(fixture.state).toMatchObject({
+    homebrewCheckStatus: "complete",
+    homebrewCheckNoticeMessage: undefined
+  });
+  expect(
+    fixture.patches.some((patch) => patch.lastRefreshNoticeMessage?.includes("Some app folders"))
+  ).toBe(true);
 });

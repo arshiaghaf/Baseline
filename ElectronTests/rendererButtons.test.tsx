@@ -4066,7 +4066,11 @@ describe("truthful update success states", () => {
         screen.getByText("No Homebrew updates to show. The refresh did not complete.")
       ).toBeVisible();
       rerender(
-        view({ homebrewCheckStatus: "complete", lastRefreshNoticeMessage: "Cached catalogue" })
+        view({
+          homebrewCheckStatus: "complete",
+          homebrewCheckNoticeMessage: "Cached catalogue",
+          lastRefreshNoticeMessage: "Cached catalogue"
+        })
       );
       expect(
         screen.getByText(
@@ -4122,6 +4126,7 @@ describe("truthful update success states", () => {
     { lastRefreshDate: undefined },
     { refreshErrorMessage: "Unavailable" },
     { lastRefreshNoticeMessage: "Incomplete inventory" },
+    { homebrewCheckNoticeMessage: "Cached catalogue" },
     { homebrewConfigurationBlocked: true },
     ...(["pending", "failed", "unresolved"] as const).map((status) => ({
       appProviderChecks: { [app.id]: { fingerprint: "fixture", status } }
@@ -4150,4 +4155,34 @@ describe("truthful update success states", () => {
       })
     ).toBe("✓");
   });
+});
+
+describe("Homebrew empty copy scope", () => {
+  it.each([false, true])(
+    "keeps a closed search's retained term out of unfiltered copy (compact=%s)",
+    (compact) => {
+      const state = snapshot({
+        selectedTab: "homebrew",
+        searchText: "missing",
+        apps: [],
+        updates: [],
+        homebrewItems: [],
+        homebrewCheckStatus: "complete",
+        lastRefreshDate: "2026-10-18T10:00:00.000Z"
+      });
+      const view = (searchActive: boolean) => (
+        <Dashboard
+          compact={compact}
+          searchActive={searchActive}
+          snapshot={state}
+          onOpenSettings={() => undefined}
+        />
+      );
+      const { rerender } = render(view(true));
+      expect(screen.getByText("No matches found.")).toBeVisible();
+      rerender(view(false));
+      expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
+      expect(screen.queryByText(/No Homebrew updates match your search/)).not.toBeInTheDocument();
+    }
+  );
 });

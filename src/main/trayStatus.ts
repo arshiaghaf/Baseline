@@ -39,6 +39,7 @@ export function trayUpdateTitle(snapshot: BaselineSnapshot): string {
       !snapshot.isChecking &&
       !snapshot.refreshErrorMessage &&
       !snapshot.lastRefreshNoticeMessage &&
+      !snapshot.homebrewCheckNoticeMessage &&
       !snapshot.homebrewConfigurationBlocked &&
       checks.every((check) => check.status === "checked");
     return complete ? "✓" : "";

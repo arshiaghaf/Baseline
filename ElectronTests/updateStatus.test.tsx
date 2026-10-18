@@ -178,12 +178,26 @@ describe("Homebrew availability success evidence", () => {
       await store.refreshToolStatus();
       expect(store.getSnapshot().homebrewCheckStatus).toBe("incomplete");
       expect(trayUpdateTitle(store.getSnapshot())).toBe("");
+      const view = () => (
+        <Dashboard
+          snapshot={{ ...store.getSnapshot(), selectedTab: "all" }}
+          compact={false}
+          onOpenSettings={() => undefined}
+        />
+      );
+      const { rerender } = render(view());
+      expect(screen.getByText("Some updates could not be checked.")).toBeVisible();
+      expect(
+        screen.queryByText("No updates found in the checked sources.")
+      ).not.toBeInTheDocument();
       probeResult = available;
       await store.refreshToolStatus();
       expect(trayUpdateTitle(store.getSnapshot())).toBe("");
       await store.refresh(false);
       expect(inventory).toHaveBeenCalledTimes(2);
       expect(trayUpdateTitle(store.getSnapshot())).toBe("✓");
+      rerender(view());
+      expect(screen.getByText("No updates found in the checked sources.")).toBeVisible();
     }
   );
 

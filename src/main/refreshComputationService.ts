@@ -65,6 +65,7 @@ export type RefreshPatch = Partial<
     | "appUpdateComparisonBaseline"
     | "isRefreshing"
     | "homebrewCheckStatus"
+    | "homebrewCheckNoticeMessage"
     | "refreshErrorMessage"
     | "lastRefreshNoticeMessage"
     | "apps"
@@ -147,6 +148,7 @@ export class RefreshComputationService {
       appUpdateComparisonBaseline: comparisonBaseline,
       isRefreshing: true,
       homebrewCheckStatus: "checking",
+      homebrewCheckNoticeMessage: undefined,
       refreshErrorMessage: undefined,
       lastRefreshNoticeMessage: undefined
     });
@@ -328,6 +330,16 @@ export class RefreshComputationService {
       );
       const preserveHomebrewCommandState =
         this.ports.isHomebrewMutationActive() && !options.allowHomebrewInventoryDuringActiveCommand;
+      const homebrewCheckNoticeMessage =
+        [
+          homebrewInventory.warning,
+          catalogueCacheNotice(
+            this.clients.homebrew.cacheStatus,
+            this.clients.homebrewFormula.cacheStatus
+          )
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined;
       this.ports.patch({
         apps,
         updates,
@@ -343,17 +355,9 @@ export class RefreshComputationService {
         recentlyUpdated,
         homebrewRecentlyUpdated,
         lastRefreshDate: new Date().toISOString(),
+        homebrewCheckNoticeMessage,
         lastRefreshNoticeMessage:
-          [
-            scanNotice,
-            homebrewInventory.warning,
-            catalogueCacheNotice(
-              this.clients.homebrew.cacheStatus,
-              this.clients.homebrewFormula.cacheStatus
-            )
-          ]
-            .filter(Boolean)
-            .join(" ") || undefined,
+          [scanNotice, homebrewCheckNoticeMessage].filter(Boolean).join(" ") || undefined,
         appUpdatedPendingRefreshIDs: [],
         homebrewUpdatedPendingRefreshItemIDs: preserveHomebrewCommandState
           ? this.ports.readState().homebrewUpdatedPendingRefreshItemIDs
@@ -439,6 +443,7 @@ export class RefreshComputationService {
         recoveredHomebrewInventory && homebrewInventoryIsComplete(recoveredHomebrewInventory)
           ? "complete"
           : "incomplete";
+      patch.homebrewCheckNoticeMessage = recoveredHomebrewInventory?.warning;
       patch.lastRefreshNoticeMessage = recoveredHomebrewInventory?.warning;
       this.ports.patch(patch);
       if (this.ports.isCleanupInventoryRequired() || options.onHomebrewInventoryReconciled) {

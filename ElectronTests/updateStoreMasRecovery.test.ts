@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { createElement } from "react";
+import { render, screen } from "@testing-library/react";
+import { Dashboard } from "../src/renderer/components/Dashboard";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -39,7 +42,7 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-async function fixture() {
+async function fixture({ inventoryWarning = true } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "baseline-mas-recovery-"));
   dirs.push(dir);
   const persistence = new SnapshotPersistence(dir);
@@ -92,7 +95,7 @@ async function fixture() {
           outdatedDetectionSucceeded: true,
           outdatedDetectionSucceededByKind: { formula: true, cask: true },
           inventoryReadSucceededByKind: { formula: true, cask: true },
-          warning: "Inventory warning."
+          warning: inventoryWarning ? "Inventory warning." : undefined
         })
       },
       selfUpdate: {
@@ -337,3 +340,39 @@ describe("App Store update recovery", () => {
     }
   );
 });
+
+it.each([false, true])(
+  "keeps a successful Homebrew check separate from an actual history-save failure (compact=%s)",
+  async (compact) => {
+    const { store, persistence } = await fixture({ inventoryWarning: false });
+    const save = vi
+      .spyOn(persistence, "save")
+      .mockRejectedValueOnce(new Error("Fixture history write failure"));
+    try {
+      await store.performAppUpdate(app.id);
+      const snapshot = store.getSnapshot();
+      expect(snapshot.homebrewCheckStatus).toBe("complete");
+      expect(snapshot.homebrewCheckNoticeMessage).toBeUndefined();
+      expect(snapshot.refreshErrorMessage).toBeUndefined();
+      expect(snapshot.lastRefreshNoticeMessage).toContain(
+        "local update history could not be saved"
+      );
+      render(
+        createElement(Dashboard, {
+          snapshot: { ...snapshot, selectedTab: "homebrew" },
+          compact,
+          onOpenSettings: () => undefined
+        })
+      );
+      expect(screen.getByText("All your Homebrew items are up to date.")).toBeVisible();
+      expect(
+        screen.getByText(/App update completed, but local update history could not be saved/)
+      ).toBeVisible();
+      expect(
+        screen.queryByText(/Homebrew update information may be incomplete/)
+      ).not.toBeInTheDocument();
+    } finally {
+      save.mockRestore();
+    }
+  }
+);
