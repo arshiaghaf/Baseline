@@ -29,6 +29,114 @@ function fixture() {
 }
 
 describe("catalogue freshness and last-good indexes", () => {
+  it("cancels a subscriber without aborting another consumer of the same catalogue", async () => {
+    const { cache, fetchMock, response } = fixture();
+    let deliver!: (response: Response) => void;
+    let networkSignal!: AbortSignal;
+    fetchMock.mockImplementation((_url, options) => {
+      networkSignal = options!.signal!;
+      return new Promise<Response>((resolve) => {
+        deliver = resolve;
+      });
+    });
+    const controller = new AbortController();
+    const first = cache.fetch({ signal: controller.signal });
+    let failure: unknown;
+    const observed = first.catch((error: unknown) => {
+      failure = error;
+    });
+    const second = cache.fetch();
+    try {
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      controller.abort(new Error("superseded"));
+      await vi.waitFor(() => expect(failure).toMatchObject({ message: "superseded" }), {
+        timeout: 200
+      });
+      expect(networkSignal.aborted).toBe(false);
+      deliver(response());
+      expect(await second).toEqual(["first"]);
+      expect(await cache.fetch()).toEqual(["first"]);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      deliver(response());
+      await Promise.allSettled([first, second, observed]);
+    }
+  });
+
+  it("aborts the last cancelled network consumer and retries without poisoning last-good metadata", async () => {
+    const { cache, fetchMock, response } = fixture();
+    fetchMock.mockResolvedValueOnce(response());
+    const first = await cache.fetch();
+    const before = cache.status;
+    let networkSignal!: AbortSignal;
+    let rejectNetwork!: (reason: Error) => void;
+    fetchMock.mockImplementationOnce(
+      (_url, options) =>
+        new Promise((_resolve, reject) => {
+          rejectNetwork = reject;
+          networkSignal = options!.signal!;
+          networkSignal.addEventListener("abort", () => reject(networkSignal.reason), {
+            once: true
+          });
+        })
+    );
+    const controller = new AbortController();
+    const task = cache.fetch({ force: true, signal: controller.signal });
+    let failure: unknown;
+    const observed = task.catch((error: unknown) => {
+      failure = error;
+    });
+    try {
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+      controller.abort(new Error("superseded"));
+      await vi.waitFor(() => expect(failure).toMatchObject({ message: "superseded" }), {
+        timeout: 200
+      });
+      expect(networkSignal.aborted).toBe(true);
+      expect(cache.status).toEqual(before);
+      fetchMock.mockResolvedValueOnce(new Response('["new"]'));
+      expect(await cache.fetch({ force: true })).toEqual(["new"]);
+      expect(first).toEqual(["first"]);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      rejectNetwork(new Error("test teardown"));
+      await Promise.allSettled([task, observed]);
+    }
+  });
+
+  it("falls back to the network after a cache read deadline without clearing unavailable disk data", async () => {
+    vi.useRealTimers();
+    let rejectLoad!: (reason: Error) => void;
+    const load = new Promise<Buffer | undefined>((_resolve, reject) => {
+      rejectLoad = reject;
+    });
+    const storage = {
+      load: vi.fn(() => load),
+      save: vi.fn(async () => undefined),
+      clear: vi.fn(async () => undefined)
+    };
+    const deadline = new AbortController();
+    vi.spyOn(AbortSignal, "timeout").mockReturnValueOnce(deadline.signal);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response('["online"]'));
+    const cache = new CatalogueCache(
+      "https://example.com/catalogue",
+      [],
+      100,
+      (data) => JSON.parse(data.toString()) as string[],
+      storage
+    );
+    const task = cache.fetch();
+    try {
+      deadline.abort(Object.assign(new Error("cache read deadline"), { name: "TimeoutError" }));
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1), { timeout: 200 });
+      expect(await task).toEqual(["online"]);
+      expect(storage.clear).not.toHaveBeenCalled();
+    } finally {
+      rejectLoad(new Error("late cache failure"));
+      await Promise.allSettled([load, task]);
+    }
+  });
+
   it("shares concurrent requests and reuses fresh parsed indexes without fetching or parsing", async () => {
     const { cache, parse, fetchMock, response } = fixture();
     fetchMock.mockResolvedValue(response());

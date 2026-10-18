@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { runCommand } from "./commandRunner";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { app as electronApp, nativeImage, type NativeImage } from "electron";
@@ -12,8 +13,10 @@ import type { AppRecord, UpdateSource } from "../shared/domain";
 import { isAllowedFeedURL } from "../shared/security";
 import { version } from "../shared/version";
 import { IconCache, type IconLoadResult } from "./iconCache";
+import { cancellableRead, readSignal, rethrowCancelledRead } from "./readCancellation";
 
 const execFileAsync = promisify(execFile);
+const directoryRuntime = { readdir };
 
 type InfoPlist = Record<string, unknown>;
 type AppBundleInfo = {
@@ -27,7 +30,7 @@ type AppBundleInfo = {
 type IconExecFileAsync = (
   file: string,
   args: string[],
-  options?: { maxBuffer: number }
+  options?: { maxBuffer: number; timeout?: number; killSignal?: NodeJS.Signals }
 ) => Promise<{ stdout: string; stderr: string }>;
 type ResizedIconImage = Pick<NativeImage, "toDataURL">;
 type IconNativeImage = {
@@ -46,28 +49,54 @@ const iconRuntime: {
   execFileAsync: IconExecFileAsync;
 } = { ...defaultIconRuntime };
 
+export type ScanRootHealth = { directory: string; complete: boolean };
+export type ScanOptions = { signal?: AbortSignal; onRootRead?: (health: ScanRootHealth) => void };
+
 export class BundleScannerClient {
   private readonly icons = new IconCache(loadIconFileDataURL);
 
-  async scanApplications(directories: string[]): Promise<AppRecord[]> {
+  scanApplications(directories: string[], options: ScanOptions = {}): Promise<AppRecord[]> {
+    return new BundleScan(this.icons, options).scan(directories);
+  }
+}
+
+class BundleScan {
+  private rootComplete = true;
+  constructor(
+    private readonly icons: IconCache,
+    private readonly options: ScanOptions
+  ) {}
+
+  private read<T>(task: Promise<T>): Promise<T> {
+    return cancellableRead(task, readSignal(this.options.signal));
+  }
+
+  async scan(directories: string[]): Promise<AppRecord[]> {
     const seen = new Set<string>();
     const records: AppRecord[] = [];
-
     for (const directory of directories) {
-      const apps = await this.findApps(directory);
-      for (const appPath of apps) {
-        const canonicalPath = await canonicalAppPath(appPath);
-        if (seen.has(canonicalPath)) {
-          continue;
+      this.options.signal?.throwIfAborted();
+      this.rootComplete = true;
+      try {
+        const apps = await this.findApps(directory);
+        for (const appPath of apps) {
+          this.options.signal?.throwIfAborted();
+          const canonicalPath = await this.read(canonicalAppPath(appPath, this.options.signal));
+          if (seen.has(canonicalPath)) continue;
+          const record = await this.makeRecord(appPath);
+          if (record) {
+            seen.add(canonicalPath);
+            records.push(record);
+          }
         }
-        seen.add(canonicalPath);
-        const record = await this.makeRecord(appPath);
-        if (record) {
-          records.push(record);
-        }
+      } catch {
+        this.options.signal?.throwIfAborted();
+        // A read deadline is incomplete evidence, never an empty directory.
+        this.rootComplete = false;
       }
+      this.options.onRootRead?.({ directory, complete: this.rootComplete });
     }
-
+    this.options.signal?.throwIfAborted();
     return records.sort((lhs, rhs) =>
       lhs.displayName.localeCompare(rhs.displayName, undefined, { sensitivity: "base" })
     );
@@ -75,12 +104,16 @@ export class BundleScannerClient {
 
   private async findApps(directory: string): Promise<string[]> {
     try {
-      const entries = await readdir(directory, { withFileTypes: true });
+      const entries = await this.read(directoryRuntime.readdir(directory, { withFileTypes: true }));
       const apps: string[] = [];
       for (const entry of entries) {
         const entryPath = path.join(directory, entry.name);
         if (entry.name.endsWith(".app")) {
-          if (entry.isDirectory() || (entry.isSymbolicLink() && (await isDirectory(entryPath)))) {
+          if (
+            entry.isDirectory() ||
+            (entry.isSymbolicLink() &&
+              (await this.read(isDirectory(entryPath, this.options.signal))))
+          ) {
             apps.push(entryPath);
           }
           continue;
@@ -91,7 +124,9 @@ export class BundleScannerClient {
         apps.push(...(await this.findApps(entryPath)));
       }
       return apps;
-    } catch {
+    } catch (error) {
+      rethrowCancelledRead(error, this.options.signal);
+      this.rootComplete = false;
       return [];
     }
   }
@@ -99,6 +134,7 @@ export class BundleScannerClient {
   private async makeRecord(appPath: string): Promise<AppRecord | undefined> {
     const bundleInfo = await this.readAppBundleInfo(appPath);
     if (!bundleInfo) {
+      this.rootComplete = false;
       return undefined;
     }
     const { info, isIOSAppOnMac, hasAppStoreEvidence, hasSafariWebExtension, iconResourcesPath } =
@@ -127,15 +163,20 @@ export class BundleScannerClient {
     return {
       id: appPath,
       bundlePath: appPath,
-      providerFingerprint: await providerFingerprint(appPath, bundleInfo.providerFiles, {
-        bundleIdentifier,
-        rawVersion,
-        rawBundleVersion,
-        sparkleFeedURL,
-        isIOSAppOnMac,
-        hasAppStoreEvidence: hasMasReceipt || hasAppStoreEvidence,
-        hasSafariWebExtension
-      }),
+      providerFingerprint: await providerFingerprint(
+        appPath,
+        bundleInfo.providerFiles,
+        {
+          bundleIdentifier,
+          rawVersion,
+          rawBundleVersion,
+          sparkleFeedURL,
+          isIOSAppOnMac,
+          hasAppStoreEvidence: hasMasReceipt || hasAppStoreEvidence,
+          hasSafariWebExtension
+        },
+        this.options.signal
+      ),
       displayName,
       bundleIdentifier,
       localVersion: version(rawVersion),
@@ -167,18 +208,23 @@ export class BundleScannerClient {
   }
 
   private async readInfoPlist(appPath: string): Promise<InfoPlist | undefined> {
-    return readInfoPlistAtPath(path.join(appPath, "Contents", "Info.plist"));
+    return readInfoPlistAtPath(path.join(appPath, "Contents", "Info.plist"), this.options.signal);
   }
 
   private async readWrappedIOSAppBundleInfo(appPath: string): Promise<AppBundleInfo | undefined> {
     const wrapperPath = path.join(appPath, "Wrapper");
     try {
-      const entries = await readdir(wrapperPath, { withFileTypes: true });
+      const entries = await this.read(
+        directoryRuntime.readdir(wrapperPath, { withFileTypes: true })
+      );
       for (const entry of entries) {
         if (!entry.isDirectory() || !entry.name.endsWith(".app")) {
           continue;
         }
-        const info = await readInfoPlistAtPath(path.join(wrapperPath, entry.name, "Info.plist"));
+        const info = await readInfoPlistAtPath(
+          path.join(wrapperPath, entry.name, "Info.plist"),
+          this.options.signal
+        );
         if (info && isIOSAppOnMacInfo(info)) {
           return {
             info,
@@ -190,7 +236,8 @@ export class BundleScannerClient {
           };
         }
       }
-    } catch {
+    } catch (error) {
+      rethrowCancelledRead(error, this.options.signal);
       return undefined;
     }
     return undefined;
@@ -199,9 +246,10 @@ export class BundleScannerClient {
   private async hasMasReceipt(appPath: string): Promise<boolean> {
     try {
       const receipt = path.join(appPath, "Contents", "_MASReceipt", "receipt");
-      const receiptStat = await stat(receipt);
+      const receiptStat = await this.read(stat(receipt));
       return receiptStat.isFile();
-    } catch {
+    } catch (error) {
+      rethrowCancelledRead(error, this.options.signal);
       return false;
     }
   }
@@ -209,13 +257,16 @@ export class BundleScannerClient {
   private async hasSafariWebExtension(appPath: string): Promise<boolean> {
     const pluginsPath = path.join(appPath, "Contents", "PlugIns");
     try {
-      const entries = await readdir(pluginsPath, { withFileTypes: true });
+      const entries = await this.read(
+        directoryRuntime.readdir(pluginsPath, { withFileTypes: true })
+      );
       for (const entry of entries) {
         if (!entry.isDirectory() || !entry.name.endsWith(".appex")) {
           continue;
         }
         const info = await readInfoPlistAtPath(
-          path.join(pluginsPath, entry.name, "Contents", "Info.plist")
+          path.join(pluginsPath, entry.name, "Contents", "Info.plist"),
+          this.options.signal
         );
         if (
           stringValue(recordValue(info?.NSExtension)?.NSExtensionPointIdentifier) ===
@@ -224,7 +275,8 @@ export class BundleScannerClient {
           return true;
         }
       }
-    } catch {
+    } catch (error) {
+      rethrowCancelledRead(error, this.options.signal);
       return false;
     }
     return false;
@@ -238,7 +290,8 @@ export class BundleScannerClient {
     const wrapperPath = path.join(appPath, "Wrapper");
     const metadataBundleID = await readPlistRawValue(
       path.join(wrapperPath, "iTunesMetadata.plist"),
-      "softwareVersionBundleId"
+      "softwareVersionBundleId",
+      this.options.signal
     );
     const bundleIdentifier = stringValue(info.CFBundleIdentifier);
     if (!bundleIdentifier || metadataBundleID?.toLowerCase() !== bundleIdentifier.toLowerCase()) {
@@ -246,9 +299,10 @@ export class BundleScannerClient {
     }
 
     try {
-      const scInfo = await stat(path.join(wrapperPath, wrappedAppName, "SC_Info"));
+      const scInfo = await this.read(stat(path.join(wrapperPath, wrappedAppName, "SC_Info")));
       return scInfo.isDirectory();
-    } catch {
+    } catch (error) {
+      rethrowCancelledRead(error, this.options.signal);
       return false;
     }
   }
@@ -272,12 +326,13 @@ export class BundleScannerClient {
     }
 
     try {
-      const image = await electronApp.getFileIcon(appPath, { size: "normal" });
+      const image = await this.read(electronApp.getFileIcon(appPath, { size: "normal" }));
       if (image.isEmpty()) {
         return undefined;
       }
       return resizedIconDataURL(image);
-    } catch {
+    } catch (error) {
+      rethrowCancelledRead(error, this.options.signal);
       return undefined;
     }
   }
@@ -287,7 +342,7 @@ export class BundleScannerClient {
     info: InfoPlist
   ): Promise<IconLoadResult> {
     for (const iconPath of iconCandidatePaths(iconResourcesPath, info)) {
-      const result = await this.icons.get(iconPath);
+      const result = await this.read(this.icons.get(iconPath));
       if (result.dataURL) {
         return result;
       }
@@ -297,34 +352,45 @@ export class BundleScannerClient {
   }
 }
 
-async function canonicalAppPath(appPath: string): Promise<string> {
+async function canonicalAppPath(appPath: string, signal?: AbortSignal): Promise<string> {
   try {
-    return await realpath(appPath);
-  } catch {
+    return await cancellableRead(realpath(appPath), readSignal(signal));
+  } catch (error) {
+    rethrowCancelledRead(error, signal);
     return appPath;
   }
 }
 
-async function isDirectory(candidatePath: string): Promise<boolean> {
+async function isDirectory(candidatePath: string, signal?: AbortSignal): Promise<boolean> {
   try {
-    return (await stat(candidatePath)).isDirectory();
-  } catch {
+    return (await cancellableRead(stat(candidatePath), readSignal(signal))).isDirectory();
+  } catch (error) {
+    rethrowCancelledRead(error, signal);
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return false;
   }
 }
 
-async function readPlistRawValue(plistPath: string, key: string): Promise<string | undefined> {
+async function readPlistRawValue(
+  plistPath: string,
+  key: string,
+  signal?: AbortSignal
+): Promise<string | undefined> {
   try {
-    const { stdout } = await execFileAsync(
+    const result = await runCommand(
       "/usr/bin/plutil",
       ["-extract", key, "raw", "-o", "-", plistPath],
-      {
-        maxBuffer: 1024 * 1024
-      }
+      undefined,
+      { maxOutputBytes: 1024 * 1024, timeoutMs: 8000, signal }
     );
-    const value = stdout.trim();
+    signal?.throwIfAborted();
+    if (result.failure?.kind === "timeout")
+      throw new DOMException("App metadata read timed out.", "TimeoutError");
+    if (!result.success) return undefined;
+    const value = (result.stdout ?? "").trim();
     return value ? value : undefined;
-  } catch {
+  } catch (error) {
+    rethrowCancelledRead(error, signal);
     return undefined;
   }
 }
@@ -333,17 +399,24 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
-async function readInfoPlistAtPath(infoPath: string): Promise<InfoPlist | undefined> {
+async function readInfoPlistAtPath(
+  infoPath: string,
+  signal?: AbortSignal
+): Promise<InfoPlist | undefined> {
   try {
-    const { stdout } = await execFileAsync(
+    const result = await runCommand(
       "/usr/bin/plutil",
       ["-convert", "json", "-o", "-", infoPath],
-      {
-        maxBuffer: 4 * 1024 * 1024
-      }
+      undefined,
+      { maxOutputBytes: 4 * 1024 * 1024, timeoutMs: 8000, signal }
     );
-    return JSON.parse(stdout) as InfoPlist;
-  } catch {
+    signal?.throwIfAborted();
+    if (result.failure?.kind === "timeout")
+      throw new DOMException("App metadata read timed out.", "TimeoutError");
+    if (!result.success) return undefined;
+    return JSON.parse(result.stdout ?? "") as InfoPlist;
+  } catch (error) {
+    rethrowCancelledRead(error, signal);
     return undefined;
   }
 }
@@ -458,7 +531,9 @@ function resizedIconDataURL(image: Pick<IconNativeImage, "resize">): string {
 async function isGrayscalePNG(pngPath: string): Promise<boolean> {
   try {
     const { stdout } = await iconRuntime.execFileAsync("/usr/bin/sips", ["-g", "space", pngPath], {
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      timeout: 8000,
+      killSignal: "SIGKILL"
     });
     return isGrayscaleSipsOutput(stdout);
   } catch {
@@ -483,7 +558,9 @@ async function loadIconFileDataURL(iconPath: string): Promise<IconLoadResult> {
       "/usr/bin/sips",
       ["-s", "format", "png", iconPath, "--out", pngPath],
       {
-        maxBuffer: 4 * 1024 * 1024
+        maxBuffer: 4 * 1024 * 1024,
+        timeout: 8000,
+        killSignal: "SIGKILL"
       }
     );
     if (await shouldPadGrayscaleIcon(iconPath, pngPath)) {
@@ -517,7 +594,9 @@ async function loadRasterIconDataURL(iconPath: string): Promise<IconLoadResult> 
       "/usr/bin/sips",
       ["-s", "format", "png", iconPath, "--out", normalizedPath],
       {
-        maxBuffer: 4 * 1024 * 1024
+        maxBuffer: 4 * 1024 * 1024,
+        timeout: 8000,
+        killSignal: "SIGKILL"
       }
     );
     const normalizedImage = iconRuntime.createFromPath(normalizedPath);
@@ -548,13 +627,15 @@ async function paddedRasterIconDataURL(pngPath: string): Promise<string | undefi
       "/usr/bin/sips",
       ["-z", "54", "54", pngPath, "--out", resizedPath],
       {
-        maxBuffer: 4 * 1024 * 1024
+        maxBuffer: 4 * 1024 * 1024,
+        timeout: 8000,
+        killSignal: "SIGKILL"
       }
     );
     await iconRuntime.execFileAsync(
       "/usr/bin/sips",
       ["--padToHeightWidth", "64", "64", "--padColor", "FFFFFF", resizedPath, "--out", paddedPath],
-      { maxBuffer: 4 * 1024 * 1024 }
+      { maxBuffer: 4 * 1024 * 1024, timeout: 8000, killSignal: "SIGKILL" }
     );
     const image = iconRuntime.createFromPath(paddedPath);
     return image.isEmpty() ? undefined : image.toDataURL();
@@ -564,6 +645,7 @@ async function paddedRasterIconDataURL(pngPath: string): Promise<string | undefi
 }
 
 export const testingExports = {
+  directoryRuntime,
   iconRuntime,
   isGenericElectronIconName,
   isGrayscaleSipsOutput,
@@ -591,9 +673,10 @@ function bundleIdentityFiles(contentsPath: string, info: InfoPlist, flat: boolea
 async function providerFingerprint(
   appPath: string,
   providerFiles: string[],
-  evidence: object
+  evidence: object,
+  signal?: AbortSignal
 ): Promise<string> {
-  const canonicalRoot = await canonicalAppPath(appPath);
+  const canonicalRoot = await canonicalAppPath(appPath, signal);
   const files = [
     appPath,
     ...providerFiles,
@@ -603,14 +686,15 @@ async function providerFingerprint(
   const identities = await Promise.all(
     files.map(async (file) => {
       try {
-        const resolved = await realpath(file);
+        const resolved = await cancellableRead(realpath(file), readSignal(signal));
         const relative = path.relative(canonicalRoot, resolved);
         // Ignore executable/resource symlinks that escape the installed bundle.
         if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
           return null;
-        const value = await stat(resolved);
+        const value = await cancellableRead(stat(resolved), readSignal(signal));
         return [relative, value.dev, value.ino, value.size, value.mtimeMs, value.ctimeMs];
-      } catch {
+      } catch (error) {
+        rethrowCancelledRead(error, signal);
         return null;
       }
     })

@@ -20,14 +20,12 @@ export class KeychainProfileStatsIntegrity extends ProfileStatsIntegrityService 
 }
 
 async function keychainSecret(): Promise<string> {
-  const existing = await runCommand(securityExecutablePath, [
-    "find-generic-password",
-    "-s",
-    serviceName,
-    "-a",
-    accountName,
-    "-w"
-  ]);
+  const existing = await runCommand(
+    securityExecutablePath,
+    ["find-generic-password", "-s", serviceName, "-a", accountName, "-w"],
+    undefined,
+    { timeoutMs: 8000 }
+  );
   const secret = existing.stdout?.trim();
   if (existing.success && secret) {
     return secret;
@@ -53,6 +51,14 @@ async function keychainSecret(): Promise<string> {
 }
 
 function isMissingKeychainSecret(result: CommandResult): boolean {
+  if (
+    result.success ||
+    result.failure ||
+    result.cancelled ||
+    result.signal ||
+    result.outputTruncated
+  )
+    return false;
   const output = [result.stdout, result.stderr, result.output]
     .filter(Boolean)
     .join("\n")

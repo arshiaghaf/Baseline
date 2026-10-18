@@ -46,7 +46,9 @@ describe("profile integrity provider isolation", () => {
       expect(runCommandMock).toHaveBeenCalledTimes(1);
       expect(runCommandMock).toHaveBeenCalledWith(
         "/usr/bin/security",
-        expect.arrayContaining(["find-generic-password", "Baseline Profile Stats"])
+        expect.arrayContaining(["find-generic-password", "Baseline Profile Stats"]),
+        undefined,
+        { timeoutMs: 8000 }
       );
       expect(store.getSnapshot().profileStats.integrityStatus).toBe("verified");
     } finally {

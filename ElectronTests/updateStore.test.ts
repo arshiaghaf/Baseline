@@ -1986,7 +1986,11 @@ describe("update store helpers", () => {
 
     await store.refresh(false);
 
-    expect(lookup).toHaveBeenCalledWith(version("0.1.0"), expect.any(String));
+    expect(lookup).toHaveBeenCalledWith(
+      version("0.1.0"),
+      expect.any(String),
+      expect.any(AbortSignal)
+    );
     expect(store.getSnapshot().selfUpdate).toMatchObject({
       available: true,
       currentVersion: version("0.1.0"),

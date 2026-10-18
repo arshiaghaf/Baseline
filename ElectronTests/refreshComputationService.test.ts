@@ -27,6 +27,7 @@ function setup(scan: Promise<AppRecord[]>, inventory: HomebrewInventoryResult) {
   const events: string[] = [];
   const patches: RefreshPatch[] = [];
   const state: RefreshReadState = {
+    apps: [],
     homebrewItems: [],
     updates: [],
     recentlyUpdated: [],
@@ -75,9 +76,14 @@ function setup(scan: Promise<AppRecord[]>, inventory: HomebrewInventoryResult) {
       events.push("queue");
     }
   };
+  const scanner = {
+    scanApplications: vi.fn<
+      import("../src/main/bundleScanner").BundleScannerClient["scanApplications"]
+    >(() => scan)
+  };
   const service = new RefreshComputationService(
     {
-      scanner: { scanApplications: vi.fn(() => scan) },
+      scanner,
       appStore: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
       sparkle: { lookupOutcome: vi.fn().mockResolvedValue({ type: "completed" }) },
       homebrew: {
@@ -94,6 +100,7 @@ function setup(scan: Promise<AppRecord[]>, inventory: HomebrewInventoryResult) {
   );
   return {
     service,
+    scanner,
     events,
     patches,
     ports,
@@ -115,6 +122,93 @@ const completeInventory: HomebrewInventoryResult = {
 };
 
 describe("RefreshComputationService", () => {
+  it("retains unavailable-root apps without fresh checks or update actions, removes confirmed absent apps, and recovers on retry", async () => {
+    const app = (root: string, name: string): AppRecord => ({
+      id: `${root}/${name}.app`,
+      bundlePath: `${root}/${name}.app`,
+      displayName: name,
+      localVersion: version("1"),
+      sourceHint: "sparkle",
+      sparkleFeedURL: "https://example.com/feed"
+    });
+    const retained = app("/offline", "Retained");
+    const removed = app("/readable", "Removed");
+    const prefixSibling = app("/offline-other", "Sibling");
+    const fresh = app("/readable", "Fresh");
+    const removedUnderHealthyChild = app("/offline/Child", "Removed child");
+    const { service, scanner, state } = setup(Promise.resolve([fresh]), completeInventory);
+    state.apps = [retained, removed, prefixSibling, removedUnderHealthyChild];
+    state.updates = [
+      {
+        id: retained.id,
+        appID: retained.id,
+        source: "sparkle",
+        supportLevel: "limited",
+        localVersion: version("1"),
+        remoteVersion: version("2"),
+        checkedAt: "2026-01-01T00:00:00Z"
+      }
+    ];
+    state.appProviderChecks = {
+      [retained.id]: {
+        fingerprint: "previous",
+        storefront: "us",
+        status: "checked",
+        source: "sparkle",
+        checkedAt: "2026-01-01T00:00:00Z"
+      }
+    };
+    state.appUpdateComparisonBaseline = state.updates.map(({ appID, source, localVersion }) => ({
+      appID,
+      source,
+      localVersion
+    }));
+    const previousCheck = state.appProviderChecks[retained.id];
+    scanner.scanApplications.mockImplementationOnce(async (_roots, options) => {
+      options?.onRootRead?.({ directory: "/offline", complete: false });
+      options?.onRootRead?.({ directory: "/readable", complete: true });
+      options?.onRootRead?.({ directory: "/offline/Child", complete: true });
+      return [fresh];
+    });
+    await service.compute(false, 1, {}, new AbortController().signal);
+    expect(state.apps.map((item) => item.id)).toEqual([fresh.id, retained.id]);
+    expect(state.updates).toEqual([]);
+    expect(state.appUpdateComparisonBaseline?.map((item) => item.appID)).toEqual([retained.id]);
+    expect(state.appProviderChecks[retained.id]).toEqual({ ...previousCheck, status: "failed" });
+    expect((state as RefreshReadState & RefreshPatch).lastRefreshNoticeMessage).toContain(
+      "could not be fully read"
+    );
+    const replacement: AppRecord = {
+      ...retained,
+      displayName: "Replacement",
+      bundleIdentifier: "com.example.replacement",
+      providerFingerprint: "new-installation",
+      sourceHint: "unknown",
+      sparkleFeedURL: undefined
+    };
+    scanner.scanApplications.mockImplementationOnce(async (_roots, options) => {
+      options?.onRootRead?.({ directory: "/offline", complete: true });
+      return [fresh, replacement];
+    });
+    await service.compute(false, 2, {}, new AbortController().signal);
+    expect(state.apps).toContainEqual(replacement);
+    expect(state.updates).toEqual([]);
+    expect(state.appProviderChecks[retained.id]).toMatchObject({
+      status: "unresolved",
+      fingerprint: "new-installation"
+    });
+    expect(state.appProviderChecks[retained.id]?.source).toBeUndefined();
+    scanner.scanApplications.mockImplementationOnce(async (_roots, options) => {
+      options?.onRootRead?.({ directory: "/offline", complete: true });
+      return [fresh];
+    });
+    await service.compute(false, 3, {}, new AbortController().signal);
+    expect(state.apps).toEqual([fresh]);
+    expect(state.updates).toEqual([]);
+    expect(state.appProviderChecks[retained.id]).toBeUndefined();
+    expect((state as RefreshReadState & RefreshPatch).lastRefreshNoticeMessage).toBeUndefined();
+  });
+
   it("keeps freshly checked cask routes successful when only formula outdated detection fails", async () => {
     const app: AppRecord = {
       id: "/Applications/Example.app",

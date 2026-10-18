@@ -199,7 +199,7 @@ describe("update store lifecycle boundaries", () => {
       await store.updatePreferences({ autoRefreshEnabled: true, refreshIntervalMinutes: 5 });
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
       expect(scanApplications).toHaveBeenCalledTimes(1);
-      expect(fetchIndex).toHaveBeenCalledWith({ force: false });
+      expect(fetchIndex).toHaveBeenCalledWith({ force: false, signal: expect.any(AbortSignal) });
       joining = store.refresh(true);
       expect(scanApplications).toHaveBeenCalledTimes(1);
       scan.resolve([]);
@@ -475,7 +475,7 @@ describe("update store lifecycle boundaries", () => {
         const scannedDirectories = scanApplications.mock.calls[0]?.[0];
         if (change === "add") expect(scannedDirectories).toContain(additional);
         else expect(scannedDirectories).not.toContain(additional);
-        expect(fetchIndex).toHaveBeenCalledWith({ force: false });
+        expect(fetchIndex).toHaveBeenCalledWith({ force: false, signal: expect.any(AbortSignal) });
         await vi.waitFor(async () => expect((await persistence.load()).apps).toEqual([app("2")]));
         expect(await store.prepareToQuit()).toBe(true);
       } finally {
@@ -516,7 +516,12 @@ describe("update store lifecycle boundaries", () => {
       expect(fetchIndex).not.toHaveBeenCalled();
       release.resolve();
       await rejected;
-      await vi.waitFor(() => expect(fetchIndex).toHaveBeenCalledExactlyOnceWith({ force: true }));
+      await vi.waitFor(() =>
+        expect(fetchIndex).toHaveBeenCalledExactlyOnceWith({
+          force: true,
+          signal: expect.any(AbortSignal)
+        })
+      );
       await vi.waitFor(() => expect(store.getSnapshot().isRefreshing).toBe(false));
       expect(await store.prepareToQuit()).toBe(true);
     } finally {
@@ -605,10 +610,16 @@ describe("update store lifecycle boundaries", () => {
           record.localVersion,
           expect.objectContaining({ force: true })
         );
-        expect(fetchIndex).toHaveBeenLastCalledWith({ force: forceMetadata });
+        expect(fetchIndex).toHaveBeenLastCalledWith({
+          force: forceMetadata,
+          signal: expect.any(AbortSignal)
+        });
         await store.refresh(false, { forceMetadata: false });
         expect(lookupOutcome).toHaveBeenCalledTimes(1);
-        expect(fetchIndex).toHaveBeenLastCalledWith({ force: false });
+        expect(fetchIndex).toHaveBeenLastCalledWith({
+          force: false,
+          signal: expect.any(AbortSignal)
+        });
         expect(await store.prepareToQuit()).toBe(true);
       } finally {
         oldScan.resolve([]);

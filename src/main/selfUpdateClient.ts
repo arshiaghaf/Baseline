@@ -9,19 +9,28 @@ const latestReleaseURL = "https://api.github.com/repos/arshiaghaf/Baseline/relea
 const fallbackReleasePageURL = "https://github.com/arshiaghaf/Baseline/releases/latest";
 
 export class SelfUpdateClient {
-  async lookup(currentVersion: VersionValue, checkedAt: string): Promise<SelfUpdateRecord> {
+  async lookup(
+    currentVersion: VersionValue,
+    checkedAt: string,
+    signal?: AbortSignal
+  ): Promise<SelfUpdateRecord> {
+    signal?.throwIfAborted();
     try {
       const response = await fetch(latestReleaseURL, {
         headers: {
           Accept: "application/vnd.github+json"
         },
-        signal: AbortSignal.timeout(8000)
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(8000)])
+          : AbortSignal.timeout(8000)
       });
+      signal?.throwIfAborted();
       if (!response.ok) {
         return unavailableSelfUpdate(currentVersion, checkedAt);
       }
 
       const raw = (await response.json()) as any;
+      signal?.throwIfAborted();
       const latestVersion = version(latestVersionString(raw));
       const releaseURL = sanitizeExternalURL(raw?.html_url) ?? fallbackReleasePageURL;
       return {
@@ -32,6 +41,7 @@ export class SelfUpdateClient {
         checkedAt
       };
     } catch {
+      signal?.throwIfAborted();
       return unavailableSelfUpdate(currentVersion, checkedAt);
     }
   }

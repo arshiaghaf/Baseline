@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { cancellableRead, readSignal } from "./readCancellation";
 import { createHash } from "node:crypto";
 import type { CatalogueDecodeStatus } from "./catalogueDecode";
 import type { CatalogueStorage } from "./catalogueStorage";
 
-export type CatalogueFetchOptions = { force?: boolean };
+export type CatalogueFetchOptions = { force?: boolean; signal?: AbortSignal };
 export type CatalogueStatus = {
   checkedAt?: string;
   stale: boolean;
@@ -32,7 +33,7 @@ type Entry<T> = {
 
 export class CatalogueCache<T> {
   private entry?: Entry<T>;
-  private task?: Promise<T>;
+  private task?: { promise: Promise<T>; controller: AbortController; consumers: Set<symbol> };
   private preparation?: Promise<void>;
   private retryAfter = 0;
   private lastRequestFailed = false;
@@ -63,11 +64,21 @@ export class CatalogueCache<T> {
   }
 
   async fetch(options: CatalogueFetchOptions = {}): Promise<T> {
+    options.signal?.throwIfAborted();
     // Preparation is shared independently from network work. A cache-only caller
     // must never make a concurrent forced caller inherit its freshness decision.
     this.preparation ??= this.prepare();
-    await this.preparation;
-    if (this.task) return this.task;
+    await cancellableRead(this.preparation, options.signal);
+    options.signal?.throwIfAborted();
+    if (this.task?.controller.signal.aborted) {
+      // Drain cache writes before a replacement request can commit new metadata.
+      await cancellableRead(
+        this.task.promise.catch(() => undefined),
+        options.signal
+      );
+      return this.fetch(options);
+    }
+    if (this.task) return this.subscribe(this.task, options.signal);
     if (this.retryAfter > Date.now() + retryDelayMS) this.retryAfter = 0;
     const clockRolledBack = Boolean(this.entry && Date.now() < this.entry.checkedAt);
     if (!clockRolledBack && !options.force) {
@@ -75,12 +86,32 @@ export class CatalogueCache<T> {
       if (Date.now() < this.retryAfter) return this.lastGood();
     }
     // Only actual revalidation (including a necessary disk eviction) coalesces.
-    const task = this.revalidate(clockRolledBack);
+    const controller = new AbortController();
+    const task = {
+      promise: this.revalidate(controller.signal, clockRolledBack),
+      controller,
+      consumers: new Set<symbol>()
+    };
     this.task = task;
+    void task.promise
+      .finally(() => {
+        if (this.task === task) this.task = undefined;
+      })
+      .catch(() => undefined);
+    return this.subscribe(task, options.signal);
+  }
+
+  private async subscribe(
+    task: NonNullable<CatalogueCache<T>["task"]>,
+    signal?: AbortSignal
+  ): Promise<T> {
+    const consumer = Symbol();
+    task.consumers.add(consumer);
     try {
-      return await task;
+      return await cancellableRead(task.promise, signal);
     } finally {
-      if (this.task === task) this.task = undefined;
+      task.consumers.delete(consumer);
+      if (signal?.aborted && task.consumers.size === 0) task.controller.abort();
     }
   }
 
@@ -105,7 +136,10 @@ export class CatalogueCache<T> {
   private async prepare(): Promise<void> {
     if (!this.storage) return;
     try {
-      const data = await this.storage.load(this.maxBytes + maxHeaderBytes);
+      const data = await cancellableRead(
+        this.storage.load(this.maxBytes + maxHeaderBytes),
+        readSignal()
+      );
       if (!data) return;
       const newline = data.indexOf(10);
       if (newline < 0 || newline >= maxHeaderBytes) throw new Error("Invalid catalogue header");
@@ -144,7 +178,8 @@ export class CatalogueCache<T> {
         etag: meta.etag,
         modified: meta.modified
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError") return;
       // Corruption/cache IO failures are rebuildable and never expose payloads in logs.
       await this.storage.clear().catch(() => undefined);
     }
@@ -193,7 +228,7 @@ export class CatalogueCache<T> {
     }
   }
 
-  private async revalidate(clockRolledBack = false): Promise<T> {
+  private async revalidate(signal: AbortSignal, clockRolledBack = false): Promise<T> {
     let response: Response | undefined;
     try {
       if (clockRolledBack) {
@@ -204,11 +239,17 @@ export class CatalogueCache<T> {
       const headers: Record<string, string> = {};
       if (this.entry?.etag) headers["If-None-Match"] = this.entry.etag;
       if (this.entry?.modified) headers["If-Modified-Since"] = this.entry.modified;
-      response = await fetch(this.url, { headers, signal: AbortSignal.timeout(12000) });
+      response = await fetch(this.url, {
+        headers,
+        signal: AbortSignal.any([signal, AbortSignal.timeout(12000)])
+      });
       // Recover from a server/proxy 304 when no validated body survived startup.
       if (response.status === 304 && !this.entry) {
         await response.body?.cancel();
-        response = await fetch(this.url, { headers: {}, signal: AbortSignal.timeout(12000) });
+        response = await fetch(this.url, {
+          headers: {},
+          signal: AbortSignal.any([signal, AbortSignal.timeout(12000)])
+        });
       }
       if (response.status !== 304 && !response.ok) {
         await response.body?.cancel();
@@ -233,6 +274,7 @@ export class CatalogueCache<T> {
         response.status === 304
           ? previous?.payload
           : await readCatalogueBody(response, this.maxBytes);
+      signal.throwIfAborted();
       const value = response.status === 304 ? previous!.value : this.parse(payload!);
       this.entry = noStore
         ? undefined
@@ -260,7 +302,8 @@ export class CatalogueCache<T> {
       this.retryAfter = 0;
       await this.persist();
       return value;
-    } catch {
+    } catch (error) {
+      if (signal.aborted) throw error;
       this.lastRequestFailed = true;
       this.uncachedResponse = undefined;
       this.retryAfter = Date.now() + retryDelayMS;

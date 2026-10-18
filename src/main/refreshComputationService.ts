@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import path from "node:path";
 import type {
   AppRecord,
   AppUpdateComparison,
@@ -11,7 +12,7 @@ import type {
 } from "../shared/domain";
 import { emptyHomebrewCaskIndex, emptyHomebrewFormulaIndex } from "../shared/domain";
 import { caskIndexForInstalledItems } from "../shared/homebrewIdentity";
-import type { BundleScannerClient } from "./bundleScanner";
+import type { BundleScannerClient, ScanRootHealth } from "./bundleScanner";
 import type { AppStoreLookupClient } from "./appStoreLookupClient";
 import type { SparkleAppcastClient } from "./sparkleAppcastClient";
 import type { HomebrewCaskClient } from "./homebrewCaskClient";
@@ -40,6 +41,7 @@ export type RefreshOptions = {
 
 export type RefreshReadState = Pick<
   BaselineSnapshot,
+  | "apps"
   | "appProviderChecks"
   | "appUpdateComparisonBaseline"
   | "homebrewItems"
@@ -100,7 +102,7 @@ export type RefreshPorts = {
     lightweight: boolean,
     options: RefreshOptions
   ) => Promise<HomebrewInventoryResult>;
-  lookupSelfUpdate: (now: string) => Promise<SelfUpdateRecord | undefined>;
+  lookupSelfUpdate: (now: string, signal?: AbortSignal) => Promise<SelfUpdateRecord | undefined>;
   isCurrent: (sequence: number) => boolean;
   isSelfApp: (app: AppRecord) => boolean;
   beginRefresh: (sequence: number) => void;
@@ -150,17 +152,48 @@ export class RefreshComputationService {
     let homebrewInventoryTask: Promise<HomebrewInventoryResult> | undefined;
     try {
       homebrewInventoryTask = this.ports.fetchHomebrewInventory(lightweight, options);
-      const [apps, catalogueIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
+      const rootHealth: ScanRootHealth[] = [];
+      const [scannedApps, catalogueIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
         await Promise.all([
-          this.clients.scanner.scanApplications(this.ports.scanDirectories()),
-          this.clients.homebrew.fetchIndex({ force }),
-          this.clients.homebrewFormula.fetchIndex({ force }),
+          this.clients.scanner.scanApplications(this.ports.scanDirectories(), {
+            signal,
+            onRootRead: (health) => rootHealth.push(health)
+          }),
+          this.clients.homebrew.fetchIndex({ force, signal }),
+          this.clients.homebrewFormula.fetchIndex({ force, signal }),
           homebrewInventoryTask,
-          this.ports.lookupSelfUpdate(now)
+          this.ports.lookupSelfUpdate(now, signal)
         ]);
       if (!this.ports.isCurrent(sequence)) {
         return;
       }
+      const healthByRoot = new Map(
+        rootHealth.map((health) => [path.resolve(health.directory), health.complete])
+      );
+      const failedRoots = [...healthByRoot].filter(([, complete]) => !complete);
+      const scannedPaths = new Set(scannedApps.map((app) => app.bundlePath));
+      const retainedApps = this.ports.readState().apps.filter((app) => {
+        if (scannedPaths.has(app.bundlePath)) return false;
+        // A healthy, more specific root can confirm absence inside an unavailable parent.
+        const applicable = [...healthByRoot]
+          .filter(([root]) => {
+            const relative = path.relative(root, app.bundlePath);
+            return (
+              relative !== ".." &&
+              !relative.startsWith(`..${path.sep}`) &&
+              !path.isAbsolute(relative)
+            );
+          })
+          .sort(([a], [b]) => b.length - a.length);
+        return applicable[0]?.[1] === false;
+      });
+      const apps = [...scannedApps, ...retainedApps].sort((a, b) =>
+        a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
+      );
+      const scanNotice =
+        failedRoots.length > 0
+          ? "Some app folders could not be fully read. Previously found apps have been kept. Refresh to retry."
+          : undefined;
       const homebrewItems = preservePreviousHomebrewInventoryMembership(
         homebrewInventory.items,
         this.ports.readState().homebrewItems,
@@ -174,6 +207,14 @@ export class RefreshComputationService {
         this.ports.readState().updates.map((update) => [update.appID, update])
       );
       const previousChecks = this.ports.readState().appProviderChecks;
+      const retainedIDs = new Set(retainedApps.map((app) => app.id));
+      // Preserve discovery/comparison evidence, but stale bundle evidence must not
+      // authorize an update or claim a fresh successful check.
+      const retainedChecks = Object.fromEntries(
+        Object.entries(previousChecks ?? {})
+          .filter(([id]) => retainedIDs.has(id))
+          .map(([id, check]) => [id, { ...check, status: "failed" as const }])
+      );
       this.ports.patch({ apps });
       const updates = await lookupAppUpdates(
         {
@@ -182,7 +223,7 @@ export class RefreshComputationService {
           homebrew: this.clients.homebrew
         },
         {
-          apps,
+          apps: scannedApps,
           previousUpdates,
           previousChecks,
           homebrewVersionCheckSucceeded:
@@ -193,7 +234,11 @@ export class RefreshComputationService {
             !this.clients.homebrew.cacheStatus?.unavailable,
           forceAppDiscovery: options.forceAppDiscovery,
           onProgress: (appProviderChecks, updates) => {
-            if (this.ports.isCurrent(sequence)) this.ports.patch({ appProviderChecks, updates });
+            if (this.ports.isCurrent(sequence))
+              this.ports.patch({
+                appProviderChecks: { ...retainedChecks, ...appProviderChecks },
+                updates
+              });
           },
           homebrewItems,
           homebrewIndex,
@@ -218,7 +263,7 @@ export class RefreshComputationService {
           homebrewInventory.outdatedDetectionSucceededByKind
         ),
         updates,
-        apps,
+        scannedApps,
         homebrewIndex,
         previousHomebrewItems,
         (app) => this.ports.isSelfApp(app)
@@ -230,7 +275,7 @@ export class RefreshComputationService {
       );
       const recentlyUpdated = mergeRecentlyUpdated(
         this.ports.readState().recentlyUpdated,
-        apps,
+        scannedApps,
         updates,
         new Map(comparisonBaseline.map((update) => [update.appID, update])),
         now
@@ -250,7 +295,10 @@ export class RefreshComputationService {
       this.ports.patch({
         apps,
         updates,
-        appUpdateComparisonBaseline: appUpdateComparisons(updates),
+        appUpdateComparisonBaseline: [
+          ...appUpdateComparisons(updates),
+          ...comparisonBaseline.filter((item) => retainedIDs.has(item.appID))
+        ],
         homebrewItems: reconciledHomebrewItems,
         homebrewFormulaIdentityContinuity,
         recentlyUpdated,
@@ -258,6 +306,7 @@ export class RefreshComputationService {
         lastRefreshDate: new Date().toISOString(),
         lastRefreshNoticeMessage:
           [
+            scanNotice,
             homebrewInventory.warning,
             catalogueCacheNotice(
               this.clients.homebrew.cacheStatus,

@@ -29,6 +29,33 @@ beforeEach(() => {
 });
 
 describe("profile stats integrity", () => {
+  it.each(["timeout", "cancelled", "cleanup"] as const)(
+    "never initializes a secret from missing-item text after %s",
+    async (kind) => {
+      runCommandMock.mockResolvedValue({
+        success: false,
+        status: 44,
+        stdout: "",
+        stderr: "specified item could not be found",
+        output: "specified item could not be found",
+        failure: { kind, message: "read failed" }
+      });
+      const stats = { ...defaultProfileStats(), signature: "existing-signature" };
+      const result = await new KeychainProfileStatsIntegrity().verifyOrInitialize(stats);
+      expect(result).toMatchObject({
+        signature: "existing-signature",
+        integrityStatus: "unavailable"
+      });
+      expect(runCommandMock).toHaveBeenCalledTimes(1);
+      expect(runCommandMock).toHaveBeenCalledWith(
+        "/usr/bin/security",
+        expect.arrayContaining(["find-generic-password"]),
+        undefined,
+        expect.objectContaining({ timeoutMs: 8000 })
+      );
+    }
+  );
+
   it("detects local edits to the started using date", async () => {
     const integrity = new KeychainProfileStatsIntegrity();
     const sealed = await integrity.seal({
