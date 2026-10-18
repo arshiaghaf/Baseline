@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import type { Dirent } from "node:fs";
 import { readdir, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { IconCache } from "../src/main/iconCache";
 import { BundleScannerClient, testingExports } from "../src/main/bundleScanner";
 
 const electronMocks = vi.hoisted(() => ({
@@ -37,7 +39,7 @@ let tempDirs: string[] = [];
 afterEach(async () => {
   await Promise.all(tempDirs.map((directory) => rm(directory, { recursive: true, force: true })));
   tempDirs = [];
-  electronMocks.getFileIcon.mockClear();
+  electronMocks.getFileIcon.mockReset();
   electronMocks.createFromPath.mockClear();
   testingExports.resetIconRuntime();
   vi.restoreAllMocks();
@@ -142,41 +144,138 @@ describe("bundle scanner", () => {
     }
   });
 
-  it("cancels while a platform icon read is pending and does not emit a completed root", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-icon-cancel-"));
-    tempDirs.push(root);
-    await writeAppPlist(path.join(root, "Example.app"), {
-      displayName: "Example",
-      bundleIdentifier: "com.example.application",
-      version: "1"
-    });
-    let release!: (image: Awaited<ReturnType<typeof electronMocks.getFileIcon>>) => void;
-    const icon = new Promise<Awaited<ReturnType<typeof electronMocks.getFileIcon>>>((resolve) => {
-      release = resolve;
-    });
-    electronMocks.getFileIcon.mockReturnValueOnce(icon);
-    const controller = new AbortController();
-    const health = vi.fn();
-    const task = new BundleScannerClient().scanApplications([root], {
-      signal: controller.signal,
-      onRootRead: health
-    });
-    let failure: unknown;
-    const observed = task.catch((error: unknown) => {
-      failure = error;
-    });
-    try {
-      await vi.waitFor(() => expect(electronMocks.getFileIcon).toHaveBeenCalled());
-      controller.abort(new Error("cancelled scan"));
-      await vi.waitFor(() => expect(failure).toMatchObject({ message: "cancelled scan" }), {
-        timeout: 200
+  it.each(["platform", "bundle"] as const)(
+    "cancels while an optional %s icon read is pending without emitting a completed root",
+    async (kind) => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-icon-cancel-"));
+      tempDirs.push(root);
+      await writeAppPlist(path.join(root, "Example.app"), {
+        displayName: "Example",
+        bundleIdentifier: "com.example.application",
+        version: "1",
+        extraKeys:
+          kind === "bundle" ? "<key>CFBundleIconFile</key><string>Example.icns</string>" : undefined
       });
-      expect(health).not.toHaveBeenCalled();
-    } finally {
-      release({ isEmpty: () => true, resize: () => ({ toDataURL: () => "" }) });
-      await Promise.allSettled([icon, task, observed]);
+      let rejectIcon!: (reason: Error) => void;
+      const icon = new Promise<never>((_resolve, reject) => {
+        rejectIcon = reject;
+      });
+      const read =
+        kind === "platform"
+          ? electronMocks.getFileIcon.mockReturnValueOnce(icon)
+          : vi.spyOn(IconCache.prototype, "get").mockReturnValueOnce(icon);
+      const controller = new AbortController();
+      const health = vi.fn();
+      const task = new BundleScannerClient().scanApplications([root], {
+        signal: controller.signal,
+        onRootRead: health
+      });
+      let failure: unknown;
+      const observed = task.catch((error: unknown) => {
+        failure = error;
+      });
+      try {
+        await vi.waitFor(() => expect(read).toHaveBeenCalled());
+        controller.abort(new Error("cancelled scan"));
+        await vi.waitFor(() => expect(failure).toMatchObject({ message: "cancelled scan" }), {
+          timeout: 200
+        });
+        expect(health).not.toHaveBeenCalled();
+      } finally {
+        rejectIcon(new Error("late optional icon failure"));
+        await Promise.allSettled([icon, task, observed]);
+      }
     }
-  });
+  );
+
+  it.each(["platform", "bundle"] as const)(
+    "keeps readable app metadata and later apps after an optional %s icon deadline",
+    async (kind) => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "baseline-icon-deadline-"));
+      tempDirs.push(root);
+      const firstRoot = path.join(root, "First");
+      const secondRoot = path.join(root, "Second");
+      for (const [directory, name] of [
+        [firstRoot, "A"],
+        [firstRoot, "B"],
+        [secondRoot, "C"]
+      ] as const) {
+        await writeAppPlist(path.join(directory, `${name}.app`), {
+          displayName: name,
+          bundleIdentifier: `com.example.${name}`,
+          version: "1",
+          extraKeys:
+            kind === "bundle" && name === "A"
+              ? "<key>CFBundleIconFile</key><string>Example.icns</string>"
+              : undefined
+        });
+      }
+      const originalRead = readdir;
+      vi.spyOn(testingExports.directoryRuntime, "readdir").mockImplementation((async (
+        directory: string,
+        options: never
+      ) => {
+        const entries = (await originalRead(directory, options)) as unknown as Dirent[];
+        return directory === firstRoot
+          ? entries.sort((a, b) => a.name.localeCompare(b.name))
+          : entries;
+      }) as typeof readdir);
+      const deadline = new AbortController();
+      const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+      let iconActive = false;
+      vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) =>
+        iconActive ? deadline.signal : originalTimeout(ms)
+      );
+      let rejectIcon!: (reason: Error) => void;
+      const blockedIcon = new Promise<never>((_resolve, reject) => {
+        rejectIcon = reject;
+      });
+      const blockIcon = () => {
+        iconActive = true;
+        queueMicrotask(() => {
+          iconActive = false;
+          deadline.abort(
+            Object.assign(new Error("optional icon deadline"), { name: "TimeoutError" })
+          );
+        });
+        return blockedIcon;
+      };
+      if (kind === "platform") electronMocks.getFileIcon.mockImplementationOnce(blockIcon);
+      else vi.spyOn(IconCache.prototype, "get").mockImplementationOnce(blockIcon);
+      const health = vi.fn();
+      const task = new BundleScannerClient().scanApplications([firstRoot, secondRoot], {
+        onRootRead: health
+      });
+      let records: Awaited<typeof task> | undefined;
+      let failure: unknown;
+      const observed = task.then(
+        (value) => {
+          records = value;
+        },
+        (error: unknown) => {
+          failure = error;
+        }
+      );
+      try {
+        await vi.waitFor(() => expect(records).toBeDefined(), { timeout: 1000 });
+        expect(failure).toBeUndefined();
+        expect(records?.map((record) => record.displayName)).toEqual(["A", "B", "C"]);
+        expect(records?.[0]).toMatchObject({
+          bundleIdentifier: "com.example.A",
+          localVersion: { raw: "1" },
+          iconDataURL: undefined
+        });
+        expect(health.mock.calls.map(([value]) => value)).toEqual([
+          { directory: firstRoot, complete: true },
+          { directory: secondRoot, complete: true }
+        ]);
+        expect(electronMocks.getFileIcon).toHaveBeenCalledTimes(kind === "platform" ? 3 : 2);
+      } finally {
+        rejectIcon(new Error("late optional icon failure"));
+        await Promise.allSettled([blockedIcon, task, observed]);
+      }
+    }
+  );
 
   it.each([false, true])(
     "invalidates native/wrapped provider mappings for executable, actual plist and signature changes (wrapped=%s)",

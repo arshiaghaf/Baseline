@@ -320,19 +320,20 @@ class BundleScan {
     iconResourcesPath: string,
     info: InfoPlist
   ): Promise<string | undefined> {
-    const bundleIcon = await this.bundleIconDataURL(iconResourcesPath, info);
-    if (bundleIcon.dataURL) {
-      return bundleIcon.dataURL;
-    }
-
     try {
+      const bundleIcon = await this.bundleIconDataURL(iconResourcesPath, info);
+      if (bundleIcon.dataURL) {
+        return bundleIcon.dataURL;
+      }
       const image = await this.read(electronApp.getFileIcon(appPath, { size: "normal" }));
       if (image.isEmpty()) {
         return undefined;
       }
       return resizedIconDataURL(image);
-    } catch (error) {
-      rethrowCancelledRead(error, this.options.signal);
+    } catch {
+      // Icons are optional. Their deadlines must not discard readable app
+      // metadata, while cancellation of the scan must still stop immediately.
+      this.options.signal?.throwIfAborted();
       return undefined;
     }
   }
