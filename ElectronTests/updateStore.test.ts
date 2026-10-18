@@ -3251,7 +3251,12 @@ describe("update store helpers", () => {
       async (_args: string[], onOutputLine: (line: string) => void = () => undefined) => {
         onOutputLine("Error: still running");
         await gate;
-        return { success: false, status: 1, output: "Error: still running" };
+        return {
+          success: false,
+          status: 1,
+          output: "Error: still running",
+          outputTail: "Error: still running"
+        };
       }
     );
     const store = await makeStore({

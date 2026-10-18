@@ -4,7 +4,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { ipcChannels, type BaselineAPI, type PreferencePatch } from "../shared/ipc";
 import type { HomebrewCaskDiscoveryItem } from "../shared/domain";
-import type { HomebrewMaintenanceRunEvent } from "../shared/homebrewProgress";
 
 const api: BaselineAPI = {
   dismissOperationFailure: (id) => ipcRenderer.invoke(ipcChannels.dismissOperationFailure, id),
@@ -63,13 +62,6 @@ const api: BaselineAPI = {
     };
     ipcRenderer.on(ipcChannels.snapshotChanged, listener);
     return () => ipcRenderer.off(ipcChannels.snapshotChanged, listener);
-  },
-  onHomebrewCommandEvent: (callback) => {
-    const listener = (_event: Electron.IpcRendererEvent, event: HomebrewMaintenanceRunEvent) => {
-      callback(event);
-    };
-    ipcRenderer.on(ipcChannels.homebrewCommandEvent, listener);
-    return () => ipcRenderer.off(ipcChannels.homebrewCommandEvent, listener);
   }
 };
 

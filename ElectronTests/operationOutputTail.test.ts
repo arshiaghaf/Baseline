@@ -99,7 +99,7 @@ describe("ephemeral support tail", () => {
     expect(tail.text()).not.toContain("�");
   });
 
-  it("sanitizes before tiny raw capture truncation while preserving the separate legacy stream", async () => {
+  it("sanitizes before tiny raw capture truncation while preserving main-process parser input", async () => {
     const output = "ghp_" + "x".repeat(1000) + "\n🧪 final\n";
     const lines: string[] = [];
     const result = await runCommand(
