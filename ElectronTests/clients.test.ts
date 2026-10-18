@@ -18,7 +18,9 @@ const fixtures = path.join(process.cwd(), "ElectronTests", "Fixtures");
 describe("ported clients", () => {
   it("parses App Store lookup fixtures", () => {
     const data = readFileSync(path.join(fixtures, "app_store_lookup.json"));
-    const result = new AppStoreLookupClient().parseLookupResponse(data, version("2.0.0"));
+    const result = new AppStoreLookupClient().parseLookupResponse(data, version("2.0.0"), {
+      bundleIdentifier: "com.example.fixture"
+    });
     expect(result?.remoteVersion.raw).toBe("2.3.1");
     expect(result?.appStoreItemID).toBe(123456789);
   });
@@ -64,6 +66,7 @@ describe("ported clients", () => {
         results: [
           {
             kind: "mac-software",
+            bundleId: "com.example.fixture",
             trackId: 123,
             version: "1.0.0",
             trackViewUrl: "https://apps.apple.com/app/example/id123"
@@ -76,6 +79,7 @@ describe("ported clients", () => {
         results: [
           {
             kind: "mac-software",
+            bundleId: "com.example.fixture",
             trackId: 123,
             version: "1.0.0-beta.2",
             trackViewUrl: "https://apps.apple.com/app/example/id123"
@@ -84,14 +88,22 @@ describe("ported clients", () => {
       })
     );
 
-    expect(client.parseLookupResponse(stableRelease, version("1.0.0-beta.2"))).toMatchObject({
+    expect(
+      client.parseLookupResponse(stableRelease, version("1.0.0-beta.2"), {
+        bundleIdentifier: "com.example.fixture"
+      })
+    ).toMatchObject({
       remoteVersion: version("1.0.0"),
       appStoreItemID: 123
     });
-    expect(client.parseLookupResponse(betaRelease, version("1.0.0"))).toBeUndefined();
+    expect(
+      client.parseLookupResponse(betaRelease, version("1.0.0"), {
+        bundleIdentifier: "com.example.fixture"
+      })
+    ).toBeUndefined();
   });
 
-  it("accepts Mac-capable App Store software records only when fallback is enabled", () => {
+  it("accepts platform-qualified Mac-capable software records for native apps", () => {
     const data = Buffer.from(
       JSON.stringify({
         resultCount: 1,
@@ -112,7 +124,7 @@ describe("ported clients", () => {
       new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
         bundleIdentifier: "com.example.mac-capable"
       })
-    ).toBeUndefined();
+    ).toMatchObject({ remoteVersion: version("2.0") });
 
     const result = new AppStoreLookupClient().parseLookupResponse(data, version("1.0"), {
       bundleIdentifier: "com.example.mac-capable",
@@ -181,29 +193,51 @@ describe("ported clients", () => {
   });
 
   it("keeps Mac App Store lookup requests filtered to Mac software by default", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 })
-      );
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resultCount: 1,
+          results: [
+            {
+              bundleId: "com.example.mac-app",
+              kind: "mac-software",
+              trackId: 123,
+              version: "2.0"
+            }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
 
     try {
       await new AppStoreLookupClient().lookupOutcome("com.example.mac-app", version("1.0"));
 
       const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
       expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.mac-app");
-      expect(requestedURL.searchParams.get("entity")).toBe("macSoftware");
+      expect(requestedURL.searchParams.get("entity")).toBe("desktopSoftware");
     } finally {
       fetchMock.mockRestore();
     }
   });
 
   it("keeps Mac App Store lookup requests filtered when Mac-capable software fallback is enabled", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 })
-      );
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resultCount: 1,
+          results: [
+            {
+              bundleId: "com.example.safari-extension",
+              kind: "mac-software",
+              trackId: 123,
+              version: "2.0"
+            }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
 
     try {
       await new AppStoreLookupClient().lookupOutcome(
@@ -216,18 +250,24 @@ describe("ported clients", () => {
 
       const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
       expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.safari-extension");
-      expect(requestedURL.searchParams.get("entity")).toBe("macSoftware");
+      expect(requestedURL.searchParams.get("entity")).toBe("desktopSoftware");
     } finally {
       fetchMock.mockRestore();
     }
   });
 
-  it("omits the entity filter when iOS App Store software lookup is enabled", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ resultCount: 0, results: [] }), { status: 200 })
-      );
+  it("uses the iOS software scope for installed iOS-on-Mac apps", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resultCount: 1,
+          results: [
+            { bundleId: "com.example.ios-on-mac", kind: "software", trackId: 123, version: "2.0" }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
 
     try {
       await new AppStoreLookupClient().lookupOutcome("com.example.ios-on-mac", version("1.0"), {
@@ -236,7 +276,7 @@ describe("ported clients", () => {
 
       const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
       expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.ios-on-mac");
-      expect(requestedURL.searchParams.has("entity")).toBe(false);
+      expect(requestedURL.searchParams.get("entity")).toBe("software");
     } finally {
       fetchMock.mockRestore();
     }

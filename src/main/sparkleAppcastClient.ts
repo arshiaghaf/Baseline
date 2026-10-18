@@ -52,6 +52,7 @@ export class SparkleAppcastClient {
           const data = Buffer.from(await response.arrayBuffer());
           if (data.byteLength > byteLimits.sparkleAppcastMaxBytes)
             throw new Error("Appcast too large");
+          usableAppcast(data);
           this.parseAppcast(data, localVersion, localBuildVersion);
           return data;
         },
@@ -60,6 +61,7 @@ export class SparkleAppcastClient {
       return {
         type: "completed",
         checkedAt: this.cache.checkedAt(feedURL),
+        providerFound: usableAppcast(buffer),
         value: this.parseAppcast(buffer, localVersion, localBuildVersion)
       };
     } catch {
@@ -196,4 +198,19 @@ function stringText(value: unknown): string | undefined {
     return (value as any)["#text"];
   }
   return undefined;
+}
+
+/** A current release still proves the feed; an empty feed does not prove a version. */
+function usableAppcast(data: Buffer): boolean {
+  const parsed = parser.parse(data.toString("utf8"));
+  const channel = parsed?.rss?.channel;
+  if (!channel || typeof channel !== "object") throw new Error("Invalid appcast response");
+  const raw = Array.isArray(channel.item) ? channel.item : channel.item ? [channel.item] : [];
+  return raw
+    .map(normalizeItem)
+    .some(
+      (item: AppcastItem) =>
+        !isVersionEmpty(version(item.shortVersionString ?? item.buildVersion)) &&
+        Boolean(sanitizeExternalURL(item.enclosureURL) || sanitizeExternalURL(item.releaseNotesURL))
+    );
 }

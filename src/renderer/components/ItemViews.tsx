@@ -30,6 +30,7 @@ import {
 } from "../helpers/labels";
 import { UpdateActionButton, RowMoreActionButton, VersionChange } from "./CommonControls";
 import { matchingAppForHomebrewItem } from "../helpers/sections";
+import { appCheckLabel } from "../helpers/appChecks";
 
 export function AppIconButton({ app }: { app: AppRecord }) {
   return (
@@ -113,6 +114,7 @@ export function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
             app.localVersion.raw || "unknown"
           )}
         </p>
+        <AppProviderStatus snapshot={snapshot} app={app} />
         <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
     </article>
@@ -175,6 +177,7 @@ export function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
             ? updatedRelativeLabel(recentlyUpdatedRecord.updatedAt)
             : "Updated recently"}
         </p>
+        <AppProviderStatus snapshot={snapshot} app={app} />
         <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
     </article>
@@ -244,6 +247,7 @@ export function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: Ba
             app.localVersion.raw || "unknown"
           )}
         </p>
+        <AppProviderStatus snapshot={snapshot} app={app} />
         <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
     </article>
@@ -299,6 +303,7 @@ export function AppRow({
             app.localVersion.raw || "unknown"
           )}
         </p>
+        <AppProviderStatus snapshot={snapshot} app={app} />
         <AdminPasswordStatus snapshot={snapshot} app={app} />
       </div>
       <div className="row-actions">
@@ -711,4 +716,21 @@ function AdminPasswordStatus({
     ? appIsWaitingForAdmin(app, snapshot)
     : isWaitingForAdmin(snapshot, { itemID });
   return waiting ? <p role="status">Waiting for admin password</p> : null;
+}
+
+function AppProviderStatus({ snapshot, app }: { snapshot: BaselineSnapshot; app: AppRecord }) {
+  const check = snapshot.appProviderChecks?.[app.id];
+  const label = appCheckLabel(check);
+  if (!label) return null;
+  return (
+    <p className="app-provider-status">
+      {label}
+      {check?.status === "unresolved" && check.discoveryCheckedAt && (
+        <> · Source search: {new Date(check.discoveryCheckedAt).toLocaleString()}</>
+      )}
+      {check?.status === "failed" && check.checkedAt && (
+        <> · Last successful check: {new Date(check.checkedAt).toLocaleString()}</>
+      )}
+    </p>
+  );
 }

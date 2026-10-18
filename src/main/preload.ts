@@ -26,7 +26,8 @@ const api: BaselineAPI = {
   getToolStatus: () => ipcRenderer.invoke(ipcChannels.getToolStatus),
   cleanUpHomebrew: () => ipcRenderer.invoke(ipcChannels.cleanUpHomebrew),
   refreshToolStatus: () => ipcRenderer.invoke(ipcChannels.refreshToolStatus),
-  refresh: (lightweight?: boolean) => ipcRenderer.invoke(ipcChannels.refresh, lightweight),
+  refresh: (lightweight?: boolean, forceAppDiscovery?: boolean) =>
+    ipcRenderer.invoke(ipcChannels.refresh, lightweight, forceAppDiscovery),
   setSearchText: (searchText: string) => ipcRenderer.invoke(ipcChannels.setSearchText, searchText),
   setSelectedTab: (tab) => ipcRenderer.invoke(ipcChannels.setSelectedTab, tab),
   updatePreferences: (patch: PreferencePatch) =>

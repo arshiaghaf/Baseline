@@ -17,6 +17,7 @@ import {
 } from "../shared/domain";
 import { version } from "../shared/version";
 import { normalizeOperationFailures } from "../shared/operationFailures";
+import { normalizeAppProviderChecks } from "./appProviderChecks";
 import { normalizeAppVisibility } from "../shared/appVisibility";
 export { defaultPersistedSnapshot };
 
@@ -105,6 +106,7 @@ function normalizeSnapshot(
     ...defaults,
     ...input,
     ...normalizeAppVisibility(input),
+    appProviderChecks: normalizeAppProviderChecks(input.appProviderChecks),
     operationFailures: normalizeOperationFailures(input.operationFailures),
     selectedTab: "all",
     apps: (input.apps ?? []).map((app) => ({

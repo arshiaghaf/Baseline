@@ -3783,3 +3783,101 @@ describe("operation failure support", () => {
     expect(url.searchParams.get("template")).toBe("bug_report.yml");
   });
 });
+
+describe("app refresh source visibility", () => {
+  it.each([false, true])(
+    "keeps unresolved discovery explicit and offers a forced search (compact=%s)",
+    (compact) => {
+      const state = snapshot({
+        updates: [],
+        homebrewItems: [],
+        appProviderChecks: {
+          [app.id]: {
+            fingerprint: "fixture",
+            status: "unresolved",
+            discoveryCheckedAt: "2026-10-18T10:00:00.000Z"
+          }
+        }
+      });
+      render(<Dashboard snapshot={state} compact={compact} onOpenSettings={() => undefined} />);
+      expect(screen.getByText(/No verified update source for 1 app/)).toBeInTheDocument();
+      expect(screen.getByText(/Some apps have no verified update source/)).toBeInTheDocument();
+      expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/Other sources for known apps are searched every six hours/)
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Search sources again" }));
+      expect(window.baseline.refresh).toHaveBeenCalledWith(false, true);
+    }
+  );
+
+  it.each([false, true])(
+    "shows failed checks and refresh errors even without updates (compact=%s)",
+    (compact) => {
+      render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            updates: [],
+            homebrewItems: [],
+            refreshErrorMessage: "Source temporarily unavailable",
+            appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "failed" } }
+          })}
+        />
+      );
+      expect(screen.getByText("Source temporarily unavailable")).toBeInTheDocument();
+      expect(screen.getByText(/Could not check updates for 1 app/)).toBeInTheDocument();
+      expect(screen.getByText("Some app updates could not be checked.")).toBeInTheDocument();
+    }
+  );
+
+  it("keeps partial results incomplete and prevents a second source search during refresh", () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          updates: [],
+          homebrewItems: [],
+          isRefreshing: true,
+          appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "pending" } }
+        })}
+      />
+    );
+    expect(screen.getByText("Checking app updates. Results are incomplete.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search sources again" })).toBeDisabled();
+    expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
+  });
+
+  it("does not call legacy snapshots checked before the first refresh", () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ updates: [], homebrewItems: [], appProviderChecks: {} })}
+      />
+    );
+    expect(screen.getByText("Refresh to check app updates.")).toBeInTheDocument();
+    expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
+  });
+
+  it("labels an older actionable result when its current provider check failed", () => {
+    render(
+      <AppRow
+        app={app}
+        recentlyUpdated={false}
+        snapshot={snapshot({
+          appProviderChecks: {
+            [app.id]: {
+              fingerprint: "fixture",
+              status: "failed",
+              checkedAt: "2026-10-18T10:00:00.000Z"
+            }
+          }
+        })}
+      />
+    );
+    expect(screen.getByText(/Could not check updates.*Last successful check:/)).toBeInTheDocument();
+  });
+});

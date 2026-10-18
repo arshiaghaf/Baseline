@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +43,104 @@ afterEach(async () => {
 });
 
 describe("bundle scanner", () => {
+  it.each([false, true])(
+    "invalidates native/wrapped provider mappings for executable, actual plist and signature changes (wrapped=%s)",
+    async (wrapped) => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+      tempDirs.push(root);
+      const appPath = path.join(root, "Example.app");
+      const info = {
+        displayName: "Example",
+        bundleIdentifier: "com.example.application",
+        version: "1.0",
+        extraKeys: "<key>CFBundleExecutable</key><string>Example</string>"
+      };
+      if (wrapped) await writeWrappedIOSAppPlist(appPath, info);
+      else await writeAppPlist(appPath, info);
+      const contentsPath = wrapped
+        ? path.join(appPath, "Wrapper", "Example.app")
+        : path.join(appPath, "Contents");
+      const executablePath = path.join(contentsPath, ...(wrapped ? [] : ["MacOS"]), "Example");
+      const signaturePath = path.join(contentsPath, "_CodeSignature", "CodeResources");
+      const plistPath = path.join(contentsPath, "Info.plist");
+      await mkdir(path.dirname(executablePath), { recursive: true });
+      await mkdir(path.dirname(signaturePath), { recursive: true });
+      await writeFile(executablePath, "original executable");
+      await writeFile(signaturePath, "original signature");
+      const rootBefore = await stat(appPath);
+      const plistBefore = await readFile(plistPath, "utf8");
+      const scanner = new BundleScannerClient();
+      const first = (await scanner.scanApplications([root]))[0]!;
+      await writeFile(executablePath, "replacement executable with the same advertised version");
+      const replaced = (await scanner.scanApplications([root]))[0]!;
+      expect(replaced.providerFingerprint).not.toBe(first.providerFingerprint);
+      expect(replaced.localVersion).toEqual(first.localVersion);
+      expect(await readFile(plistPath, "utf8")).toBe(plistBefore);
+      expect((await stat(appPath)).mtimeMs).toBe(rootBefore.mtimeMs);
+      await writeFile(plistPath, `${plistBefore}\n`);
+      const plistChanged = (await scanner.scanApplications([root]))[0]!;
+      expect(plistChanged.providerFingerprint).not.toBe(replaced.providerFingerprint);
+      await writeFile(signaturePath, "replacement signature resource");
+      expect((await scanner.scanApplications([root]))[0]?.providerFingerprint).not.toBe(
+        plistChanged.providerFingerprint
+      );
+    }
+  );
+
+  it.each(["../../../outside", "linked-executable"])(
+    "ignores executable paths escaping the installed bundle (%s)",
+    async (executable) => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+      tempDirs.push(root);
+      const appPath = path.join(root, "Example.app");
+      const outside = path.join(root, "outside");
+      await writeFile(outside, "outside file");
+      await writeAppPlist(appPath, {
+        displayName: "Example",
+        bundleIdentifier: "com.example.application",
+        version: "1",
+        extraKeys: `<key>CFBundleExecutable</key><string>${executable}</string>`
+      });
+      await mkdir(path.join(appPath, "Contents", "MacOS"));
+      if (executable === "linked-executable")
+        await symlink(outside, path.join(appPath, "Contents", "MacOS", executable));
+      const scanner = new BundleScannerClient();
+      const first = (await scanner.scanApplications([root]))[0]!;
+      await writeFile(outside, "changed outside file");
+      expect((await scanner.scanApplications([root]))[0]?.providerFingerprint).toBe(
+        first.providerFingerprint
+      );
+    }
+  );
+
+  it("keeps unchanged provider evidence stable and invalidates it when an installation or receipt changes", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
+    tempDirs.push(root);
+    const appPath = path.join(root, "Example.app");
+    const plist = {
+      displayName: "Example",
+      bundleIdentifier: "com.example.application",
+      version: "1.0"
+    };
+    await writeAppPlist(appPath, plist);
+    const scanner = new BundleScannerClient();
+    const first = (await scanner.scanApplications([root]))[0]!;
+    expect(first.providerFingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect((await scanner.scanApplications([root]))[0]?.providerFingerprint).toBe(
+      first.providerFingerprint
+    );
+    const receiptDirectory = path.join(appPath, "Contents", "_MASReceipt");
+    await mkdir(receiptDirectory);
+    await writeFile(path.join(receiptDirectory, "receipt"), "generic receipt evidence");
+    const withReceipt = (await scanner.scanApplications([root]))[0]!;
+    expect(withReceipt.hasAppStoreEvidence).toBe(true);
+    expect(withReceipt.providerFingerprint).not.toBe(first.providerFingerprint);
+    await writeAppPlist(appPath, { ...plist, version: "2.0" });
+    expect((await scanner.scanApplications([root]))[0]?.providerFingerprint).not.toBe(
+      withReceipt.providerFingerprint
+    );
+  });
+
   it("recursively finds apps without descending into app bundles", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-"));
     tempDirs.push(root);
@@ -683,12 +781,14 @@ async function writeWrappedIOSAppPlist(
     displayName,
     bundleIdentifier,
     version,
-    includeAppStoreEvidence = true
+    includeAppStoreEvidence = true,
+    extraKeys = ""
   }: {
     displayName: string;
     bundleIdentifier: string;
     version: string;
     includeAppStoreEvidence?: boolean;
+    extraKeys?: string;
   }
 ): Promise<void> {
   const wrappedAppPath = path.join(appPath, "Wrapper", `${displayName}.app`);
@@ -723,6 +823,7 @@ async function writeWrappedIOSAppPlist(
     <integer>1</integer>
     <integer>2</integer>
   </array>
+${extraKeys}
 </dict>
 </plist>
 `

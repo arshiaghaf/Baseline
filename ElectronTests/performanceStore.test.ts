@@ -87,33 +87,46 @@ describe("performance store integration", () => {
   it("stops scheduling obsolete apps even when an injected source ignores cancellation", async () => {
     const records = Array.from({ length: 30 }, (_, i) => app(i));
     let finish!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let firstSignal: AbortSignal | undefined;
     let calls = 0;
     const signals: AbortSignal[] = [];
     const lookupOutcome = vi.fn(async (_id, _version, options) => {
       calls++;
-      signals.push(options!.signal!);
-      if (calls === 1)
-        await new Promise<void>((resolve) => {
-          finish = resolve;
-        });
+      const signal = options!.signal!;
+      firstSignal ??= signal;
+      signals.push(signal);
+      if (signal === firstSignal) await gate;
       return { type: "completed" as const };
     });
     const { store } = await fixture({
       clients: { scanner: { scanApplications: async () => records }, appStore: { lookupOutcome } }
     });
     const old = store.refresh(false);
-    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
-    const current = store.refresh(false);
-    finish();
-    await Promise.all([old, current]);
-    expect(calls).toBe(31);
-    expect(signals[0]!.aborted).toBe(true);
-    expect(store.getSnapshot().isRefreshing).toBe(false);
+    let current: Promise<void> | undefined;
+    try {
+      await vi.waitFor(() => expect(calls).toBe(4));
+      current = store.refresh(false);
+      finish();
+      await Promise.all([old, current]);
+      expect(calls).toBe(34);
+      expect(signals.filter((signal) => signal === firstSignal)).toHaveLength(4);
+      expect(signals[0]!.aborted).toBe(true);
+      expect(store.getSnapshot().isRefreshing).toBe(false);
+    } finally {
+      finish();
+      await Promise.allSettled([old, ...(current ? [current] : [])]);
+    }
   });
 
   it("uses fresh-source policies for manual checks and cached metadata after a local operation", async () => {
     const fetchIndex = vi.fn(async () => emptyHomebrewCaskIndex);
-    const lookupOutcome = vi.fn(async () => ({ type: "completed" as const }));
+    const lookupOutcome = vi.fn(async () => ({
+      type: "completed" as const,
+      identity: { productID: 123, platform: "mac" as const, storefront: "us" }
+    }));
     const { store } = await fixture({
       clients: {
         scanner: { scanApplications: async () => [app(1)] },
@@ -243,13 +256,14 @@ describe("performance store integration", () => {
 
 describe("cached lookup responses still compare current local versions", () => {
   it("shares App Store metadata, recomputes after a local update, and preserves the actual source check time", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(
-          JSON.stringify({ results: [{ kind: "mac-software", version: "2", trackId: 1 }] })
-        )
-      );
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          resultCount: 1,
+          results: [{ kind: "mac-software", bundleId: "com.example.app", version: "2", trackId: 1 }]
+        })
+      )
+    );
     const client = new AppStoreLookupClient();
     const [old, current] = await Promise.all([
       client.lookupOutcome("com.example.app", version("1")),

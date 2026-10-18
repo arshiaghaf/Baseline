@@ -3,6 +3,7 @@
   "results": [
     {
       "kind": "mac-software",
+      "bundleId": "com.example.fixture",
       "trackId": 123456789,
       "version": "2.3.1",
       "trackViewUrl": "https://apps.apple.com/app/id123456789",

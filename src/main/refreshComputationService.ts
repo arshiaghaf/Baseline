@@ -33,11 +33,13 @@ import {
 export type RefreshOptions = {
   allowHomebrewInventoryDuringActiveCommand?: boolean;
   forceMetadata?: boolean;
+  forceAppDiscovery?: boolean;
   onHomebrewInventoryReconciled?: (inventory: HomebrewInventoryResult) => void;
 };
 
 export type RefreshReadState = Pick<
   BaselineSnapshot,
+  | "appProviderChecks"
   | "homebrewItems"
   | "homebrewFormulaIdentityContinuity"
   | "updates"
@@ -53,6 +55,7 @@ export type RefreshReadState = Pick<
 export type RefreshPatch = Partial<
   Pick<
     BaselineSnapshot,
+    | "appProviderChecks"
     | "isRefreshing"
     | "refreshErrorMessage"
     | "lastRefreshNoticeMessage"
@@ -76,7 +79,8 @@ export type RefreshPatch = Partial<
 
 type RefreshClients = {
   scanner: Pick<BundleScannerClient, "scanApplications">;
-  appStore: Pick<AppStoreLookupClient, "lookupOutcome">;
+  appStore: Pick<AppStoreLookupClient, "lookupOutcome"> &
+    Partial<Pick<AppStoreLookupClient, "lookupOutcomes" | "storefront">>;
   sparkle: Pick<SparkleAppcastClient, "lookupOutcome">;
   homebrew: Pick<HomebrewCaskClient, "fetchIndex" | "lookupUpdate" | "searchCasks"> &
     Partial<Pick<HomebrewCaskClient, "cacheStatus">>;
@@ -159,6 +163,8 @@ export class RefreshComputationService {
       const previousUpdates = new Map(
         this.ports.readState().updates.map((update) => [update.appID, update])
       );
+      const previousChecks = this.ports.readState().appProviderChecks;
+      this.ports.patch({ apps });
       const updates = await lookupAppUpdates(
         {
           appStore: this.clients.appStore,
@@ -168,6 +174,17 @@ export class RefreshComputationService {
         {
           apps,
           previousUpdates,
+          previousChecks,
+          homebrewVersionCheckSucceeded:
+            (homebrewInventory.outdatedDetectionSucceededByKind?.cask ??
+              homebrewInventory.outdatedDetectionSucceeded) &&
+            homebrewInventory.inventoryReadSucceededByKind?.cask !== false &&
+            !this.clients.homebrew.cacheStatus?.stale &&
+            !this.clients.homebrew.cacheStatus?.unavailable,
+          forceAppDiscovery: options.forceAppDiscovery,
+          onProgress: (appProviderChecks, updates) => {
+            if (this.ports.isCurrent(sequence)) this.ports.patch({ appProviderChecks, updates });
+          },
           homebrewItems,
           homebrewIndex,
           now,
@@ -227,8 +244,7 @@ export class RefreshComputationService {
         homebrewFormulaIdentityContinuity,
         recentlyUpdated,
         homebrewRecentlyUpdated,
-        lastRefreshDate: now,
-        isRefreshing: false,
+        lastRefreshDate: new Date().toISOString(),
         lastRefreshNoticeMessage:
           [
             homebrewInventory.warning,
@@ -282,7 +298,12 @@ export class RefreshComputationService {
         return;
       }
       const patch: RefreshPatch = {
-        isRefreshing: false,
+        appProviderChecks: Object.fromEntries(
+          Object.entries(this.ports.readState().appProviderChecks ?? {}).map(([id, check]) => [
+            id,
+            check.status === "pending" ? { ...check, status: "failed" as const } : check
+          ])
+        ),
         refreshErrorMessage: error instanceof Error ? error.message : "Refresh failed."
       };
       const inventory = recoveredHomebrewInventory ?? {
@@ -326,6 +347,7 @@ export class RefreshComputationService {
       }
       void this.ports.processHomebrewUpdateQueue();
     } finally {
+      if (this.ports.isCurrent(sequence)) this.ports.patch({ isRefreshing: false });
       // Fresh identity, membership and pins must reach state before any queued
       // command can resume. A superseded refresh cannot release its successor.
       if (this.ports.endRefresh(sequence)) {

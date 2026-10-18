@@ -24,6 +24,7 @@ import {
 } from "./ItemViews";
 import { homebrewBatchActionState } from "../helpers/actionState";
 import { performHomebrewUpdateAllForItems, toggleCollapsedSection } from "../helpers/actions";
+import { appUpdatesEmptyText } from "../helpers/appChecks";
 
 export function SelectedTabContent({
   snapshot,
@@ -85,7 +86,7 @@ export function SearchResults({
           title="App Updates"
           apps={derived.availableApps}
           snapshot={snapshot}
-          empty="All your apps are up to date."
+          empty={appUpdatesEmptyText(snapshot)}
           cardLayout
         />
       )}
@@ -181,7 +182,7 @@ export function AllTab({
           title={`App Updates (${derived.availableApps.length})`}
           apps={derived.availableApps}
           snapshot={snapshot}
-          empty="All your apps are up to date."
+          empty={appUpdatesEmptyText(snapshot)}
         />
         <HomebrewSection
           sectionID="outdated"
@@ -241,7 +242,7 @@ export function AllUpdatesSection({
         }
       />
       {items.length === 0 ? (
-        <Empty text="All your apps and Homebrew items are up to date." />
+        <Empty text={appUpdatesEmptyText(snapshot)} />
       ) : (
         <CardGrid sectionClassName="update-grid">
           {items.map((item) =>
@@ -327,7 +328,7 @@ export function AppsTab({
         title={`Available (${derived.availableApps.length})`}
         apps={derived.availableApps}
         snapshot={snapshot}
-        empty="All your apps are up to date."
+        empty={appUpdatesEmptyText(snapshot)}
         cardLayout
       />
       <RecentlyUpdatedAppSection
