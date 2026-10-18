@@ -260,6 +260,20 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       expect(check.supported).toBe(true);
     });
 
+    it("refuses NUL records before classifying an apparently ignored assignment", async () => {
+      await writeFile(prefixFile, Buffer.from("\0SUDO_ASKPASS=/fixture/helper\n"));
+      const terminal = path.join(directory, "prefix/Library/Homebrew/brew.sh");
+      await mkdir(path.dirname(terminal), { recursive: true });
+      await writeFile(terminal, '#!/bin/bash\n[[ -z "${SUDO_ASKPASS+x}" ]]\n');
+      const child = spawnSync(executable, ["--version"], { env, encoding: "utf8", timeout: 2000 });
+      expect(child.status).toBe(0);
+      expect(await checkHomebrewConfiguration(executable, env)).toMatchObject({
+        supported: false,
+        reason: "unsupported",
+        detail: { kind: "unsupported-content" }
+      });
+    });
+
     it("follows a valid brew.env symlink and detects target replacement", async () => {
       const target = path.join(directory, "first.env");
       const replacement = path.join(directory, "second.env");

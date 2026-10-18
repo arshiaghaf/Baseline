@@ -122,6 +122,10 @@ function assignments(content: Buffer, file: string): Map<string, string> {
   // Bash's `while read -r line` does not process an unterminated final record.
   const lines = content.toString("utf8").split("\n").slice(0, -1);
   for (const [index, raw] of lines.entries()) {
+    // NUL changes the record Bash read -r passes to the launcher's prefix
+    // filter. Refuse it before deciding a raw record is ignored.
+    if (raw.includes("\0"))
+      throw new UnsupportedConfiguration("unsupported", fileReason("unsupported-content", file));
     const line = raw.replace(/^[ \t]+|[ \t]+$/gu, "");
     if (!/^(HOMEBREW_|SUDO_ASKPASS=|(all|no|ftp|https?)_proxy=)/u.test(line)) continue;
     if (

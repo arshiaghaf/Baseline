@@ -65,8 +65,7 @@ export function versionLabelWithBuild(versionRaw: string, buildRaw?: string): st
 
 export function homebrewReadyDetail(snapshot: BaselineSnapshot): string {
   if (snapshot.homebrewConfigurationBlocked) {
-    if (snapshot.lastRefreshNoticeMessage === homebrewConfigurationValidatedMessage)
-      return homebrewConfigurationValidatedMessage;
+    if (snapshot.homebrewConfigurationValidated) return homebrewConfigurationValidatedMessage;
     return homebrewConfigurationDetail(snapshot.homebrewConfigurationReason);
   }
   const caskCount = snapshot.homebrewItems.filter((item) => item.kind === "cask").length;

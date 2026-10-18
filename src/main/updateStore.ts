@@ -231,6 +231,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       homebrewOperation: undefined,
       homebrewConfigurationBlocked: false,
       homebrewConfigurationReason: undefined,
+      homebrewConfigurationValidated: false,
       isMasInstalled: false,
       isHomebrewInstalled: false,
       isChecking: false,
@@ -283,7 +284,10 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           ...(this.state.homebrewConfigurationBlocked &&
           patch.homebrewConfigurationBlocked === false &&
           patch.isHomebrewInstalled
-            ? { lastRefreshNoticeMessage: homebrewConfigurationValidatedMessage }
+            ? {
+                lastRefreshNoticeMessage: homebrewConfigurationValidatedMessage,
+                homebrewConfigurationValidated: true
+              }
             : {}),
           // The runner latches refusals; only reconciled inventory clears them.
           // A delayed availability publication must not overwrite that newer state.
@@ -292,7 +296,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           ),
           homebrewConfigurationReason: patch.homebrewConfigurationBlocked
             ? safeConfigurationReason(patch.homebrewConfigurationReason)
-            : this.state.homebrewConfigurationReason
+            : this.state.homebrewConfigurationReason,
+          ...(patch.homebrewConfigurationBlocked ? { homebrewConfigurationValidated: false } : {})
         }),
       reserveHomebrewCommandLock: () => this.reserveHomebrewCommandLock(),
       runBrewCommand: this.runBrewCommand,
@@ -419,7 +424,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           if (!required && fullRefresh && this.state.homebrewConfigurationBlocked) {
             this.patch({
               homebrewConfigurationBlocked: false,
-              homebrewConfigurationReason: undefined
+              homebrewConfigurationReason: undefined,
+              homebrewConfigurationValidated: false
             });
           }
         },
@@ -934,6 +940,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       isHomebrewInstalled: true,
       homebrewConfigurationBlocked: true,
       homebrewConfigurationReason: safeConfigurationReason(reason),
+      homebrewConfigurationValidated: false,
       lastRefreshNoticeMessage: homebrewConfigurationBlockedMessage
     });
   }

@@ -235,6 +235,8 @@ export type ToolStatus = {
   homebrewConfigurationBlocked?: boolean;
   /** Main-process validated diagnostic; runtime only, never persisted. */
   homebrewConfigurationReason?: HomebrewConfigurationReason;
+  /** Successful probe after a block; full inventory recovery is still required. Runtime only. */
+  homebrewConfigurationValidated?: boolean;
   isChecking: boolean;
 };
 

@@ -415,7 +415,9 @@ describe("renderer button parity", () => {
       <SettingsView
         snapshot={snapshot({
           homebrewConfigurationBlocked: true,
-          lastRefreshNoticeMessage: homebrewConfigurationValidatedMessage
+          homebrewConfigurationValidated: true,
+          homebrewConfigurationReason: { kind: "sudo-askpass", file: "~/brew.env" },
+          refreshErrorMessage: "A separate provider failed."
         })}
       />
     );
@@ -423,11 +425,7 @@ describe("renderer button parity", () => {
     expect(screen.queryByRole("button", { name: "Report issue" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
     await waitFor(() => expect(window.baseline.refresh).toHaveBeenCalledWith(false));
-    rerender(
-      <SettingsView
-        snapshot={snapshot({ lastRefreshNoticeMessage: homebrewConfigurationValidatedMessage })}
-      />
-    );
+    rerender(<SettingsView snapshot={snapshot({ homebrewConfigurationValidated: true })} />);
     expect(screen.queryByText(homebrewConfigurationValidatedMessage)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Check for updates" })).not.toBeInTheDocument();
   });

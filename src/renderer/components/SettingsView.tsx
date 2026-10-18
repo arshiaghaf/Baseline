@@ -14,7 +14,6 @@ import {
   XCircle
 } from "lucide-react";
 import type { AppMetadata } from "../../shared/appMetadata";
-import { homebrewConfigurationValidatedMessage } from "../../shared/homebrewConfiguration";
 import type { AppearancePreference, BaselineSnapshot } from "../../shared/domain";
 import type { SettingsSectionID, TogglePatch } from "../types";
 import {
@@ -166,8 +165,7 @@ export function SettingsPane({
   const cleanupMessage = snapshot.homebrewCleanupMessage ?? cleanupResponseMessage;
   const cleanupPending = useRef(false);
   const configurationValidated =
-    snapshot.homebrewConfigurationBlocked &&
-    snapshot.lastRefreshNoticeMessage === homebrewConfigurationValidatedMessage;
+    snapshot.homebrewConfigurationBlocked && snapshot.homebrewConfigurationValidated;
   const cleanUp = async () => {
     if (cleanupPending.current) return;
     cleanupPending.current = true;
