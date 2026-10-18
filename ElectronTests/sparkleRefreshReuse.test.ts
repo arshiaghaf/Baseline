@@ -14,7 +14,7 @@ const feedURL = "https://example.com/appcast.xml";
 const release = (marketing = "2.0", build = "201") =>
   `<item><enclosure url="https://example.com/release.zip" sparkle:shortVersionString="${marketing}" sparkle:version="${build}" /></item>`;
 const feed = (items = release()) => `<rss><channel><title>Example</title>${items}</channel></rss>`;
-const options = () => ({ signal: new AbortController().signal, force: true });
+const options = () => ({ signal: new AbortController().signal, force: true, refreshIdentity: {} });
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -64,7 +64,9 @@ describe("Sparkle refresh metadata reuse", () => {
       canUseHomebrewAppUpdate: () => false,
       onProgress: (next: Record<string, AppProviderCheck>) => Object.assign(checks, next)
     };
-    const first = await paced(lookupAppUpdates(clients, input));
+    const firstTask = lookupAppUpdates(clients, input);
+    await vi.runAllTimersAsync();
+    const first = await firstTask;
     expect(first?.map((update) => update.appID)).toEqual([
       "app-0",
       "app-1",
@@ -86,7 +88,9 @@ describe("Sparkle refresh metadata reuse", () => {
       ...options(),
       previousUpdates: new Map(first!.map((update) => [update.appID, update]))
     };
-    const second = await paced(lookupAppUpdates(clients, nextInput));
+    const secondTask = lookupAppUpdates(clients, nextInput);
+    await vi.runAllTimersAsync();
+    const second = await secondTask;
     expect(second).toHaveLength(9);
     expect(second?.every((update) => update.remoteVersion.raw === "3.0")).toBe(true);
     expect(second![0]!.checkedAt).not.toBe(checkedAt);
@@ -103,6 +107,50 @@ describe("Sparkle refresh metadata reuse", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(await failedTask).toEqual(second);
     expect(Object.values(checks).every((check) => check.status === "failed")).toBe(true);
+    expect(parse).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares explicit refresh identity across distinct consumer signals and refreshes it independently", async () => {
+    const fetchMock = vi.fn(async () => new Response(feed()));
+    vi.stubGlobal("fetch", fetchMock);
+    const parse = vi.spyOn(XMLParser.prototype, "parse");
+    const client = new SparkleAppcastClient();
+    const refreshIdentity = {};
+    const first = new AbortController();
+    const second = new AbortController();
+    const firstOptions = { signal: first.signal, force: true, refreshIdentity };
+    const original = await paced(
+      client.lookupOutcome(feedURL, version("1"), undefined, firstOptions)
+    );
+    first.abort();
+    expect(await client.lookupOutcome(feedURL, version("1"), undefined, firstOptions)).toEqual({
+      type: "transientFailure"
+    });
+    const secondOptions = { signal: second.signal, force: true, refreshIdentity };
+    expect(
+      await client.lookupOutcome(feedURL, version("2"), version("201"), secondOptions)
+    ).toMatchObject({ providerFound: true, value: undefined });
+    for (let i = 0; i < 9; i++) {
+      expect(
+        await client.lookupOutcome(feedURL, version("1"), undefined, {
+          ...secondOptions,
+          signal: new AbortController().signal
+        })
+      ).toEqual(original);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(parse).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockImplementation(async () => new Response(feed(release("3.0", "300"))));
+    expect(
+      await paced(
+        client.lookupOutcome(feedURL, version("1"), undefined, {
+          ...secondOptions,
+          refreshIdentity: {}
+        })
+      )
+    ).toMatchObject({ value: { remoteVersion: version("3.0") } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(parse).toHaveBeenCalledTimes(2);
   });
 
@@ -266,50 +314,57 @@ describe("Sparkle refresh metadata reuse", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps a shared in-flight fetch alive while another refresh still needs it", async () => {
-    let started!: () => void;
-    const ready = new Promise<void>((resolve) => {
-      started = resolve;
-    });
-    let releaseResponse!: (response: Response) => void;
-    const response = new Promise<Response>((resolve) => {
-      releaseResponse = resolve;
-    });
-    let networkSignal!: AbortSignal;
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-      networkSignal = init!.signal!;
-      started();
-      return response;
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const client = new SparkleAppcastClient();
-    const first = new AbortController();
-    const second = options();
-    const tasks = [
-      client.lookupOutcome(feedURL, version("1"), undefined, { signal: first.signal, force: true }),
-      client.lookupOutcome(feedURL, version("2"), version("201"), second)
-    ];
-    try {
-      await ready;
-      first.abort();
-      expect(await tasks[0]).toEqual({ type: "transientFailure" });
-      expect(networkSignal.aborted).toBe(false);
-      releaseResponse(new Response(feed()));
-      expect(await tasks[1]).toMatchObject({
-        type: "completed",
-        providerFound: true,
-        value: undefined
+  it.each([false, true])(
+    "keeps a shared in-flight fetch alive with shared refresh identity %s",
+    async (sharedIdentity) => {
+      let started!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        started = resolve;
       });
-      expect(await client.lookupOutcome(feedURL, version("1"), undefined, second)).toMatchObject({
-        value: { remoteVersion: version("2.0") }
+      let releaseResponse!: (response: Response) => void;
+      const response = new Promise<Response>((resolve) => {
+        releaseResponse = resolve;
       });
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    } finally {
-      first.abort();
-      releaseResponse(new Response(feed()));
-      await Promise.allSettled(tasks);
+      let networkSignal!: AbortSignal;
+      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+        networkSignal = init!.signal!;
+        started();
+        return response;
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const client = new SparkleAppcastClient();
+      const first = new AbortController();
+      const second = options();
+      const tasks = [
+        client.lookupOutcome(feedURL, version("1"), undefined, {
+          signal: first.signal,
+          force: true,
+          refreshIdentity: sharedIdentity ? second.refreshIdentity : undefined
+        }),
+        client.lookupOutcome(feedURL, version("2"), version("201"), second)
+      ];
+      try {
+        await ready;
+        first.abort();
+        expect(await tasks[0]).toEqual({ type: "transientFailure" });
+        expect(networkSignal.aborted).toBe(false);
+        releaseResponse(new Response(feed()));
+        expect(await tasks[1]).toMatchObject({
+          type: "completed",
+          providerFound: true,
+          value: undefined
+        });
+        expect(await client.lookupOutcome(feedURL, version("1"), undefined, second)).toMatchObject({
+          value: { remoteVersion: version("2.0") }
+        });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      } finally {
+        first.abort();
+        releaseResponse(new Response(feed()));
+        await Promise.allSettled(tasks);
+      }
     }
-  });
+  );
 
   it("aborts a fetch after its last consumer cancels and never reuses its late response", async () => {
     let started!: () => void;
