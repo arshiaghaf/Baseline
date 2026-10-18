@@ -8,6 +8,7 @@ import type {
   PersistedSnapshot,
   ProfileStats,
   ProfileStatsEvent,
+  ProfileStatsLifetime,
   ProfileStatsResetNotice
 } from "../shared/domain";
 import {
@@ -193,10 +194,46 @@ function normalizeProfileStats(
         ? input.signatureVersion
         : defaults.signatureVersion,
     events,
+    lifetime: normalizeProfileStatsLifetime(input?.lifetime),
     resetNotice: normalizeProfileStatsResetNotice(input?.resetNotice),
     signature: typeof input?.signature === "string" ? input.signature : undefined,
     integrityStatus: "pending"
   };
+}
+
+function normalizeProfileStatsLifetime(input: unknown): ProfileStatsLifetime | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const lifetime = input as Partial<ProfileStatsLifetime>;
+  if (
+    (lifetime.coverage !== "complete" && lifetime.coverage !== "lowerBound") ||
+    !Array.isArray(lifetime.entries)
+  )
+    return undefined;
+  const entries: ProfileStatsLifetime["entries"] = [];
+  for (const inputEntry of lifetime.entries) {
+    if (!inputEntry || typeof inputEntry !== "object") return undefined;
+    const entry = inputEntry as Partial<ProfileStatsLifetime["entries"][number]>;
+    const type = normalizeProfileStatsEventType(entry.type);
+    const channel = normalizeProfileStatsChannel(entry.channel);
+    if (
+      !type ||
+      !channel ||
+      typeof entry.targetID !== "string" ||
+      typeof entry.displayName !== "string" ||
+      typeof entry.count !== "number" ||
+      !Number.isSafeInteger(entry.count) ||
+      (entry.count ?? 0) <= 0
+    )
+      return undefined;
+    entries.push({
+      type,
+      channel,
+      targetID: entry.targetID,
+      displayName: entry.displayName,
+      count: entry.count
+    });
+  }
+  return { coverage: lifetime.coverage, entries };
 }
 
 function normalizeProfileStatsEvent(input: unknown): ProfileStatsEvent[] {

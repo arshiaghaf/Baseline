@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { profileStatsLifetimeFromEvents } from "../shared/profileStats";
 import { createHmac } from "node:crypto";
 import type { ProfileStats } from "../shared/domain";
 import { defaultProfileStatsAfterTamper, profileStatsSignatureVersion } from "../shared/domain";
@@ -20,7 +21,7 @@ export class ProfileStatsIntegrityService implements ProfileStatsIntegrity {
     try {
       const secret = await this.getSecret();
       if (!stats.signature) {
-        if (stats.events.length > 0) {
+        if (stats.events.length > 0 || (stats.lifetime?.entries.length ?? 0) > 0) {
           return sealProfileStats(defaultProfileStatsAfterTamper(), secret, "resetAfterTamper");
         }
         return sealProfileStats(stats, secret, "verified");
@@ -29,17 +30,10 @@ export class ProfileStatsIntegrityService implements ProfileStatsIntegrity {
         return normalizeProfileStatsSignature(stats, secret);
       }
       if (unversionedSignatureFor(stats, secret) === stats.signature) {
-        return sealProfileStats(stats, secret, "verified");
+        return migrateProfileStats(stats, secret);
       }
       if (legacySignatureFor(stats, secret) === stats.signature) {
-        return sealProfileStats(
-          {
-            ...stats,
-            startedUsingAt: stats.createdAt
-          },
-          secret,
-          "verified"
-        );
+        return migrateProfileStats({ ...stats, startedUsingAt: stats.createdAt }, secret);
       }
       return sealProfileStats(defaultProfileStatsAfterTamper(), secret, "resetAfterTamper");
     } catch {
@@ -61,7 +55,17 @@ function sealProfileStats(
   secret: string,
   integrityStatus: ProfileStats["integrityStatus"]
 ): ProfileStats {
-  const sealed = { ...stats, signatureVersion: profileStatsSignatureVersion, integrityStatus };
+  const sealed = {
+    ...stats,
+    lifetime:
+      stats.lifetime ??
+      profileStatsLifetimeFromEvents(
+        stats.events,
+        stats.events.length === 0 ? "complete" : "lowerBound"
+      ),
+    signatureVersion: profileStatsSignatureVersion,
+    integrityStatus
+  };
   return { ...sealed, signature: signatureFor(sealed, secret) };
 }
 
@@ -70,21 +74,39 @@ function signatureFor(stats: ProfileStats, secret: string): string {
 }
 
 function normalizeProfileStatsSignature(stats: ProfileStats, secret: string): ProfileStats {
-  if (stats.resetNotice) {
-    if (stats.signatureVersion === profileStatsSignatureVersion) {
-      return { ...stats, integrityStatus: "resetAfterTamper" };
-    }
-    return sealProfileStats(stats, secret, "resetAfterTamper");
+  if (stats.signatureVersion !== profileStatsSignatureVersion) {
+    return migrateProfileStats(stats, secret);
   }
-  if (stats.signatureVersion === profileStatsSignatureVersion) {
-    return { ...stats, integrityStatus: "verified" };
-  }
-  return sealProfileStats(stats, secret, "verified");
+  return { ...stats, integrityStatus: stats.resetNotice ? "resetAfterTamper" : "verified" };
+}
+
+function migrateProfileStats(stats: ProfileStats, secret: string): ProfileStats {
+  return sealProfileStats(
+    { ...stats, lifetime: profileStatsLifetimeFromEvents(stats.events) },
+    secret,
+    stats.resetNotice ? "resetAfterTamper" : "verified"
+  );
 }
 
 function canonicalProfileStats(stats: ProfileStats): string {
   return JSON.stringify({
     signatureVersion: stats.signatureVersion,
+    ...(stats.signatureVersion >= 3
+      ? {
+          lifetime: stats.lifetime
+            ? {
+                coverage: stats.lifetime.coverage,
+                entries: stats.lifetime.entries.map((entry) => ({
+                  type: entry.type,
+                  targetID: entry.targetID,
+                  displayName: entry.displayName,
+                  channel: entry.channel,
+                  count: entry.count
+                }))
+              }
+            : undefined
+        }
+      : {}),
     createdAt: stats.createdAt,
     startedUsingAt: stats.startedUsingAt,
     events: stats.events.map((event) => ({

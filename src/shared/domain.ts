@@ -178,17 +178,28 @@ export type ProfileStatsResetNotice = {
   reason: "tamper";
 };
 
+export type ProfileStatsAggregate = Pick<
+  ProfileStatsEvent,
+  "type" | "targetID" | "displayName" | "channel"
+> & { count: number };
+
+export type ProfileStatsLifetime = {
+  coverage: "complete" | "lowerBound";
+  entries: ProfileStatsAggregate[];
+};
+
 export type ProfileStats = {
   createdAt: string;
   startedUsingAt: string;
   signatureVersion: number;
   events: ProfileStatsEvent[];
+  lifetime?: ProfileStatsLifetime;
   resetNotice?: ProfileStatsResetNotice;
   signature?: string;
   integrityStatus: ProfileStatsIntegrityStatus;
 };
 
-export const profileStatsSignatureVersion = 2;
+export const profileStatsSignatureVersion = 3;
 
 export type HomebrewManagedItem = {
   id: string;

@@ -458,6 +458,18 @@ export function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
         <section className="panel settings-panel">
           <PanelTitle title="Stats" />
           <div className="settings-panel-box profile-panel-box">
+            {profile.incompleteHistory && (
+              <p className="profile-empty-state">
+                These totals and rankings include retained history and new activity. Earlier
+                activity may be missing, so counts are a known minimum.
+              </p>
+            )}
+            {snapshot.profileStats.integrityStatus === "unavailable" && (
+              <p className="profile-empty-state">
+                Stats verification is unavailable. New activity cannot be recorded until
+                verification recovers.
+              </p>
+            )}
             <div className="profile-stat-grid">
               <ProfileMetric label="Total updates" value={String(profile.totalUpdates)} />
               <ProfileMetric label="Unique apps" value={String(profile.differentApps)} />
