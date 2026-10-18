@@ -64,6 +64,33 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       expect((await checkHomebrewConfiguration(executable, env)).supported).toBe(true);
     });
 
+    it.each([" ", "\t", " \t", "\t "])(
+      "matches default-IFS trimming when a redirect ends in %j",
+      async (suffix) => {
+        const redirected = path.join(directory, "redirected");
+        const spacedConfig = path.join(`${redirected}${suffix}`, "homebrew/brew.env");
+        await mkdir(path.dirname(spacedConfig), { recursive: true });
+        await writeFile(spacedConfig, "SUDO_ASKPASS=/fixture-conflict\n");
+        await writeFile(prefixFile, `HOMEBREW_XDG_CONFIG_HOME=${redirected}${suffix}\n`);
+        const terminal = path.join(directory, "prefix/Library/Homebrew/brew.sh");
+        await mkdir(path.dirname(terminal), { recursive: true });
+        await writeFile(
+          terminal,
+          '#!/bin/bash\n[[ "$HOMEBREW_XDG_CONFIG_HOME" == "$HOMEBREW_FIXTURE_REDIRECT" && -z "${SUDO_ASKPASS+x}" ]]\n'
+        );
+        const child = spawnSync(executable, ["--version"], {
+          env: { ...env, HOMEBREW_FIXTURE_REDIRECT: redirected },
+          encoding: "utf8",
+          timeout: 2000
+        });
+        expect(child.error).toBeUndefined();
+        expect(child.status).toBe(0);
+        expect(child.stdout).toBe("");
+        expect(child.stderr).toBe("");
+        expect((await checkHomebrewConfiguration(executable, env)).supported).toBe(true);
+      }
+    );
+
     it("finds user configuration redirected by prefix configuration, with inherited XDG precedence", async () => {
       const redirected = path.join(directory, "redirected");
       const config = path.join(redirected, "homebrew/brew.env");
