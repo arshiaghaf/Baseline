@@ -214,6 +214,100 @@ describe("durable provider routing", () => {
     }
   );
 
+  it.each(["none", "sparkle", "homebrew"] as const)(
+    "keeps a current ID-less Apple route independently of %s actionable results",
+    async (alternative) => {
+      const source = clients({ type: "completed", providerFound: true, checkedAt: input().now });
+      if (alternative === "sparkle")
+        vi.mocked(source.sparkle.lookupOutcome).mockResolvedValue({
+          type: "completed",
+          providerFound: true,
+          checkedAt: "2026-10-16T00:00:01.000Z",
+          value: { remoteVersion: version("3") }
+        });
+      if (alternative === "homebrew")
+        vi.mocked(source.homebrew.lookupUpdate).mockReturnValue({
+          token: "example",
+          remoteVersion: version("3")
+        });
+      const patch = {
+        apps: [
+          { ...base, sparkleFeedURL: alternative === "sparkle" ? app.sparkleFeedURL : undefined }
+        ],
+        canUseHomebrewAppUpdate: () => alternative === "homebrew",
+        homebrewItems:
+          alternative === "homebrew"
+            ? [
+                {
+                  id: "cask:example",
+                  token: "example",
+                  name: "Example",
+                  kind: "cask" as const,
+                  installedVersion: base.localVersion,
+                  isOutdated: true,
+                  latestVersion: version("3")
+                }
+              ]
+            : []
+      };
+      const first = await run(source, patch);
+      expect(first.checks[base.id]).toMatchObject({
+        source: "appStore",
+        status: "checked",
+        checkedAt: input().now
+      });
+      expect(first.checks[base.id]?.appStoreIdentity).toBeUndefined();
+      if (alternative === "none") expect(first.updates).toEqual([]);
+      else
+        expect(first.updates).toMatchObject([{ source: alternative, remoteVersion: version("3") }]);
+      const reloadedChecks = normalizeAppProviderChecks(JSON.parse(JSON.stringify(first.checks)));
+      expect(reloadedChecks[base.id]?.status).toBe("checked");
+
+      vi.mocked(source.appStore.lookupOutcomes!).mockResolvedValue([
+        {
+          type: "completed",
+          providerFound: true,
+          checkedAt: "2026-10-16T00:01:00.000Z",
+          value: { remoteVersion: version("2") }
+        }
+      ]);
+      const second = await run(source, {
+        ...patch,
+        now: "2026-10-16T00:01:00.000Z",
+        previousChecks: reloadedChecks,
+        previousUpdates: new Map(first.updates!.map((update) => [update.appID, update]))
+      });
+      expect(source.appStore.lookupOutcomes).toHaveBeenCalledTimes(2);
+      expect(second.updates).toMatchObject([{ source: "appStore", remoteVersion: version("2") }]);
+    }
+  );
+
+  it("does not confuse a positive current bundle record without an ID with a broader no-match", async () => {
+    const source = clients({
+      type: "completed",
+      providerFound: true,
+      discovered: true,
+      checkedAt: input().now
+    });
+    vi.mocked(source.appStore.lookupOutcome).mockResolvedValue({
+      type: "completed",
+      identity,
+      value: { remoteVersion: version("3") }
+    });
+    const result = await run(source, {
+      forceAppDiscovery: true,
+      previousChecks: prior({ status: "checked", source: "appStore", appStoreIdentity: identity })
+    });
+    expect(source.appStore.lookupOutcome).not.toHaveBeenCalled();
+    expect(result.updates).toEqual([]);
+    expect(result.checks[base.id]).toMatchObject({
+      status: "checked",
+      source: "appStore",
+      checkedAt: input().now
+    });
+    expect(result.checks[base.id]?.appStoreIdentity).toBeUndefined();
+  });
+
   const previousAppleUpdate: UpdateRecord = {
     id: base.id,
     appID: base.id,

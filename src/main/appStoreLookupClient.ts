@@ -23,6 +23,7 @@ export type LookupOutcome<T> =
       value?: T;
       checkedAt?: string;
       identity?: AppStoreProviderIdentity;
+      /** A matching provider exists independently of whether an update is actionable. */
       providerFound?: boolean;
       /** True only when metadata came from bundle discovery rather than a known numeric ID. */
       discovered?: boolean;
@@ -333,6 +334,7 @@ function makeOutcome(
 ): LookupOutcome<AppStoreLookupResult> {
   return {
     type: "completed",
+    providerFound: true,
     checkedAt,
     discovered,
     value: updateValue(selected, request.localVersion),

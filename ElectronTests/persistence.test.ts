@@ -412,39 +412,44 @@ describe("snapshot persistence", () => {
 });
 
 describe("provider history migration", () => {
-  it("preserves a successful actionable App Store check whose product ID was omitted", async () => {
-    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-provider-history-"));
-    tempDirs.push(userData);
-    const check = {
-      fingerprint: "installation-a",
-      storefront: "us",
-      status: "checked" as const,
-      source: "appStore" as const,
-      checkedAt: "2026-10-18T00:00:00.000Z",
-      discoveryCheckedAt: "2026-10-18T00:00:00.000Z"
-    };
-    const snapshot = {
-      ...defaultPersistedSnapshot(),
-      appProviderChecks: { example: check },
-      updates: [
-        {
-          id: "example",
-          appID: "example",
-          source: "appStore" as const,
-          supportLevel: "supported" as const,
-          localVersion: version("1"),
-          remoteVersion: version("2"),
-          updateURL: "https://example.com/release",
-          checkedAt: check.checkedAt
-        }
-      ]
-    };
-    await new SnapshotPersistence(userData).save(snapshot);
-    const reloaded = await new SnapshotPersistence(userData).load();
-    expect(reloaded.appProviderChecks?.example).toMatchObject(check);
-    expect(reloaded.appProviderChecks?.example?.appStoreIdentity).toBeUndefined();
-    expect(reloaded.updates).toMatchObject(snapshot.updates);
-  });
+  it.each([true, false])(
+    "preserves a successful App Store check without a product ID (actionable=%s)",
+    async (actionable) => {
+      const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-provider-history-"));
+      tempDirs.push(userData);
+      const check = {
+        fingerprint: "installation-a",
+        storefront: "us",
+        status: "checked" as const,
+        source: "appStore" as const,
+        checkedAt: "2026-10-18T00:00:00.000Z",
+        discoveryCheckedAt: "2026-10-18T00:00:00.000Z"
+      };
+      const snapshot = {
+        ...defaultPersistedSnapshot(),
+        appProviderChecks: { example: check },
+        updates: actionable
+          ? [
+              {
+                id: "example",
+                appID: "example",
+                source: "appStore" as const,
+                supportLevel: "supported" as const,
+                localVersion: version("1"),
+                remoteVersion: version("2"),
+                updateURL: "https://example.com/release",
+                checkedAt: check.checkedAt
+              }
+            ]
+          : []
+      };
+      await new SnapshotPersistence(userData).save(snapshot);
+      const reloaded = await new SnapshotPersistence(userData).load();
+      expect(reloaded.appProviderChecks?.example).toMatchObject(check);
+      expect(reloaded.appProviderChecks?.example?.appStoreIdentity).toBeUndefined();
+      expect(reloaded.updates).toMatchObject(snapshot.updates);
+    }
+  );
 
   it("round-trips verified current identities separately from updates and keeps preferences", async () => {
     const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-provider-history-"));

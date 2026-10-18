@@ -38,6 +38,21 @@ afterEach(() => {
 });
 
 describe("platform-qualified App Store metadata", () => {
+  it("recognizes a current matching provider even when its product ID is omitted", async () => {
+    const fetch = vi.fn(async () =>
+      response([{ bundleId: "com.example.app1", kind: "mac-software", version: "2" }])
+    );
+    vi.stubGlobal("fetch", fetch);
+    const result = await new AppStoreLookupClient().lookupOutcomes(
+      [{ ...request(1, "2"), identity: undefined }],
+      { force: true }
+    );
+    expect(result).toMatchObject([
+      { type: "completed", providerFound: true, value: undefined, identity: undefined }
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("retains current-product identities and compares duplicate installed copies independently", async () => {
     const fetch = vi.fn(async () =>
       response([entry(2), { ...entry(1, "software"), supportedDevices: ["MacDesktop-MacDesktop"] }])

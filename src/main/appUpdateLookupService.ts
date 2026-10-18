@@ -131,7 +131,7 @@ export async function lookupAppUpdates(
     (app) =>
       eligibleForApple(app) &&
       !previousFor(app)?.appStoreIdentity &&
-      // An actionable Apple record can omit its product ID. Keep checking by
+      // A matching Apple record can omit its product ID. Keep checking by
       // bundle until it has a durable identity instead of deferring that source.
       (previousFor(app)?.source === "appStore" ||
         (input.force && !hasKnownAlternative(app)) ||
@@ -211,15 +211,23 @@ export async function lookupAppUpdates(
     const finish = (
       status: AppProviderCheck["status"],
       source?: AppProviderCheck["source"],
-      checkedAt?: string
+      resultCheckedAt?: string
     ) => {
       if (result) updates.set(app.id, result);
       else updates.delete(app.id);
+      // Without a numeric ID, source is the durable evidence for this verified
+      // Apple route even when a lower-priority source offers the update.
+      const preserveAppleCheck =
+        status === "checked" && checkedSource === "appStore" && !check.appStoreIdentity;
       checks[app.id] = {
         ...check,
         status,
-        source: source ?? (status === "failed" ? check.source : undefined),
-        checkedAt: checkedAt ?? (status === "failed" ? check.checkedAt : undefined)
+        source: preserveAppleCheck
+          ? "appStore"
+          : (source ?? (status === "failed" ? check.source : undefined)),
+        checkedAt: preserveAppleCheck
+          ? checkedAt
+          : (resultCheckedAt ?? (status === "failed" ? check.checkedAt : undefined))
       };
       publish();
     };
@@ -232,6 +240,7 @@ export async function lookupAppUpdates(
         outcome.type === "completed" &&
         !outcome.identity &&
         !outcome.value &&
+        outcome.providerFound !== true &&
         !usedIdentity &&
         check.appStoreIdentity
       ) {
@@ -267,7 +276,7 @@ export async function lookupAppUpdates(
             checkedAt: outcome.checkedAt ?? input.now
           };
         }
-        if (outcome.identity || outcome.value) {
+        if (outcome.identity || outcome.value || outcome.providerFound === true) {
           checkedSource = "appStore";
           checkedAt = outcome.checkedAt ?? input.now;
           if (outcome.value) {
