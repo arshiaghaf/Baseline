@@ -8,6 +8,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SnapshotPersistence } from "../src/main/persistence";
 import { ProfileStatsIntegrityService } from "../src/main/profileStatsIntegrityService";
+import { preserveFormulaIdentityContinuity } from "../src/main/homebrewReconciliation";
+import type { HomebrewManagedItem } from "../src/shared/domain";
 import { defaultPersistedSnapshot } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
@@ -40,6 +42,59 @@ const preferences = {
 };
 
 describe("saved snapshot field recovery", () => {
+  it("does not repopulate an explicitly empty frozen formula inventory after loading", async () => {
+    const previous: HomebrewManagedItem = {
+      id: "formula:old-tool",
+      token: "old-tool",
+      name: "Tool",
+      kind: "formula",
+      installedVersion: version("1"),
+      isOutdated: false,
+      pinned: true,
+      formulaIdentity: {
+        name: "old-tool",
+        fullName: "example/tools/old-tool",
+        tap: "example/tools",
+        oldNames: []
+      }
+    };
+    const loaded = await load({
+      ...preferences,
+      homebrewItems: [previous],
+      homebrewFormulaIdentityContinuity: []
+    });
+    const frozen = preserveFormulaIdentityContinuity([], loaded, {
+      formula: false,
+      cask: true
+    });
+    expect(frozen).toEqual([]);
+    expect(loaded).toMatchObject(preferences);
+  });
+
+  it.each([undefined, null, {}, { raw: 5 }, { raw: null }, { raw: "" }, { raw: "  " }])(
+    "drops a damaged required remote version while retaining valid sibling updates and preferences: %j",
+    async (remoteVersion) => {
+      const update = {
+        id: "valid",
+        appID: "valid",
+        source: "appStore",
+        supportLevel: "supported",
+        localVersion: version("1"),
+        remoteVersion: version("2"),
+        appStoreItemID: 123,
+        updateURL: "https://example.com/update",
+        checkedAt: "2026-10-18T00:00:00.000Z"
+      };
+      const loaded = await load({
+        ...preferences,
+        updates: [{ ...update, id: "damaged", appID: "damaged", remoteVersion }, update]
+      });
+      expect(loaded).toMatchObject(preferences);
+      expect(loaded.updates).toMatchObject([update]);
+      expect(loaded.appUpdateComparisonBaseline?.map((record) => record.appID)).toEqual(["valid"]);
+    }
+  );
+
   it.each([
     { apps: {} },
     { apps: [null] },

@@ -129,17 +129,17 @@ function normalizeSnapshot(input: SavedRecord): PersistedSnapshot {
     ),
     recentlyUpdated: normalizeRows(input.recentlyUpdated, normalizeRecentApp),
     homebrewItems: normalizeRows(input.homebrewItems, normalizeHomebrewItem),
-    homebrewFormulaIdentityContinuity: normalizeRows(
-      input.homebrewFormulaIdentityContinuity,
-      normalizeHomebrewItem
-    )
-      .filter((item) => item.kind === "formula")
-      .map((item) => ({
-        ...item,
-        formulaIdentityVerified: false,
-        isOutdated: false,
-        latestVersion: undefined
-      })),
+    homebrewFormulaIdentityContinuity:
+      input.homebrewFormulaIdentityContinuity === undefined
+        ? undefined
+        : normalizeRows(input.homebrewFormulaIdentityContinuity, normalizeHomebrewItem)
+            .filter((item) => item.kind === "formula")
+            .map((item) => ({
+              ...item,
+              formulaIdentityVerified: false,
+              isOutdated: false,
+              latestVersion: undefined
+            })),
     homebrewRecentlyUpdated: normalizeRows(input.homebrewRecentlyUpdated, normalizeRecentHomebrew),
     ignoredIDs: strings(input.ignoredIDs),
     ignoredHomebrewItemIDs: strings(input.ignoredHomebrewItemIDs),
@@ -253,11 +253,12 @@ function normalizeComparison(value: SavedRecord): AppUpdateComparison | undefine
 
 function normalizeUpdate(value: SavedRecord): UpdateRecord | undefined {
   const comparison = normalizeComparison(value);
-  if (!comparison) return undefined;
+  const remoteVersion = optionalVersion(value.remoteVersion);
+  if (!comparison || !remoteVersion?.raw) return undefined;
   return {
     ...comparison,
     id: text(value.id) ?? comparison.appID,
-    remoteVersion: savedVersion(value.remoteVersion),
+    remoteVersion,
     remoteBuildVersion: optionalVersion(value.remoteBuildVersion),
     sparkleVersionComparison:
       value.sparkleVersionComparison === "marketing" || value.sparkleVersionComparison === "build"
