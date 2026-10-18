@@ -222,4 +222,88 @@ describe("App Store update recovery", () => {
       expect(store.getSnapshot().profileStats.events).toEqual([]);
     }
   );
+  it.each([
+    { success: false, status: 1, output: "" },
+    {
+      success: false,
+      status: null,
+      output: "",
+      failure: { kind: "timeout", message: "Probe timed out." }
+    },
+    {
+      success: false,
+      status: null,
+      output: "",
+      failure: { kind: "signal", message: "Probe was interrupted." }
+    },
+    {
+      success: false,
+      status: null,
+      output: "",
+      failure: { kind: "spawn", code: "EACCES", message: "Probe could not start." }
+    }
+  ] satisfies CommandResult[])(
+    "does not hide an upgrade failure after an inconclusive probe: %j",
+    async (probeResult) => {
+      const { store, mas, external } = await fixture();
+      mas.mockImplementation(async (args) =>
+        args[0] === "version" ? probeResult : { success: false, status: 1, output: "" }
+      );
+      await store.refreshToolStatus();
+      await store.performAppUpdate(app.id);
+      expect(mas.mock.calls.map(([args]) => args)).toEqual([["version"], ["upgrade", "123"]]);
+      expect(external).toHaveBeenCalledOnce();
+      expect(store.getSnapshot().operationFailures).toMatchObject([
+        { entityID: app.id, operation: "update", reason: "command" }
+      ]);
+    }
+  );
+
+  it.each([
+    [true, true],
+    [true, false],
+    [false, true],
+    [false, false]
+  ] as const)(
+    "retains newer command availability when a probe settles late (probe first: %s, command succeeds: %s)",
+    async (probeFirst, succeeds) => {
+      const { store, mas } = await fixture();
+      let releaseProbe!: (result: CommandResult) => void;
+      const probeGate = new Promise<CommandResult>((resolve) => {
+        releaseProbe = resolve;
+      });
+      let releaseCommand!: (result: CommandResult) => void;
+      const commandGate = new Promise<CommandResult>((resolve) => {
+        releaseCommand = resolve;
+      });
+      mas.mockImplementation((args) => (args[0] === "version" ? probeGate : commandGate));
+      const tasks: Promise<void>[] = [];
+      const start = async (probe: boolean) => {
+        const task = probe ? store.refreshToolStatus() : store.performAppUpdate(app.id);
+        tasks.push(task);
+        void task.catch(() => undefined);
+        await vi.waitFor(() =>
+          expect(mas).toHaveBeenCalledWith(probe ? ["version"] : ["upgrade", "123"])
+        );
+        return { task };
+      };
+      try {
+        const first = await start(probeFirst);
+        const second = await start(!probeFirst);
+        const updating = probeFirst ? second.task : first.task;
+        const checking = probeFirst ? first.task : second.task;
+        releaseCommand(succeeds ? available : missing);
+        await updating;
+        releaseProbe(succeeds ? missing : available);
+        await checking;
+        expect(store.getSnapshot().isMasInstalled).toBe(succeeds);
+        expect(store.getSnapshot().masAvailability).toBe(succeeds ? "available" : "missing");
+        expect(store.getSnapshot().operationFailures).toEqual([]);
+      } finally {
+        releaseCommand(succeeds ? available : missing);
+        releaseProbe(succeeds ? missing : available);
+        await Promise.allSettled(tasks);
+      }
+    }
+  );
 });

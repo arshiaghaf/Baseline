@@ -255,6 +255,8 @@ export type PersistedSnapshot = {
 
 export type ToolStatus = {
   isMasInstalled: boolean;
+  /** Runtime evidence only; an unsuccessful readiness probe need not mean missing. */
+  masAvailability?: "unknown" | "available" | "missing";
   isHomebrewInstalled: boolean;
   homebrewConfigurationBlocked?: boolean;
   /** Main-process validated diagnostic; runtime only, never persisted. */

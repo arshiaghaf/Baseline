@@ -130,7 +130,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly successRefreshDelayMS: number;
   private homebrewCleanupRequiresInventory = false;
   private hasCheckedHomebrewAvailability = false;
-  private hasCheckedMasAvailability = false;
   private readonly homebrewWorkLock: HomebrewWorkLock<HomebrewInventoryResult>;
   private readonly homebrewOperations: HomebrewOperationsService;
   private readonly toolStatus: ToolStatusService;
@@ -236,6 +235,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       homebrewConfigurationReason: undefined,
       homebrewConfigurationValidated: false,
       isMasInstalled: false,
+      masAvailability: "unknown",
       isHomebrewInstalled: false,
       isChecking: false,
       isRefreshing: false,
@@ -281,8 +281,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       persist: () => this.persist()
     });
     this.toolStatus = new ToolStatusService({
-      patch: (patch) => {
-        if (patch.isMasInstalled !== undefined) this.hasCheckedMasAvailability = true;
+      patch: (patch) =>
         this.patch({
           ...patch,
           ...(this.state.homebrewConfigurationBlocked &&
@@ -302,8 +301,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             ? safeConfigurationReason(patch.homebrewConfigurationReason)
             : this.state.homebrewConfigurationReason,
           ...(patch.homebrewConfigurationBlocked ? { homebrewConfigurationValidated: false } : {})
-        });
-      },
+        }),
       reserveHomebrewCommandLock: () => this.reserveHomebrewCommandLock(),
       runBrewCommand: this.runBrewCommand,
       runMasCommand: this.runMasCommand,
@@ -777,17 +775,17 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
     if (
       this.state.useMasForAppStoreUpdates &&
-      (!this.hasCheckedMasAvailability || this.state.isMasInstalled) &&
+      this.state.masAvailability !== "missing" &&
       update.source === "appStore" &&
       update.appStoreItemID
     ) {
       await this.withAppUpdating(appID, async () => {
         this.clearOperationFailure(appID, "update");
+        this.toolStatus.beginMasCommand();
         const result = await this.runMasCommand(["upgrade", String(update.appStoreItemID)]);
+        this.toolStatus.recordMasCommandResult(result);
         if (result.success) {
-          this.hasCheckedMasAvailability = true;
           this.patch({
-            isMasInstalled: true,
             appUpdatedPendingRefreshIDs: addToArray(this.state.appUpdatedPendingRefreshIDs, appID)
           });
           let statsNotice: string | undefined;
@@ -815,10 +813,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             }
           }
         } else {
-          if (result.failure?.kind === "spawn" && result.failure.code === "ENOENT") {
-            this.hasCheckedMasAvailability = true;
-            this.patch({ isMasInstalled: false });
-          } else {
+          if (!(result.failure?.kind === "spawn" && result.failure.code === "ENOENT")) {
             await this.recordOperationFailure(appID, "update", result);
           }
           await this.routeExternalUpdate(appRecord, update);

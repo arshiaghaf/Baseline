@@ -233,7 +233,12 @@ function actionRouteForUpdate(
         ? "Open app"
         : externalOrAppRoute(update);
   }
-  if (update.source === "appStore" && snapshot.useMasForAppStoreUpdates && update.appStoreItemID) {
+  if (
+    update.source === "appStore" &&
+    snapshot.useMasForAppStoreUpdates &&
+    snapshot.masAvailability !== "missing" &&
+    update.appStoreItemID
+  ) {
     return "App Store helper";
   }
   return externalOrAppRoute(update);
