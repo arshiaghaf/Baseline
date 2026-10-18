@@ -856,14 +856,9 @@ export class HomebrewOperationsService {
       homebrewUninstallingItemIDs: addToArray(this.state.homebrewUninstallingItemIDs, itemID)
     });
     try {
-      let outputTail = "";
       const result = await this.runBrewWithResultEvents(
         ["uninstall", "--cask", homebrewCommandToken(item)!],
-        (event) => {
-          if (event.type === "outputLine") {
-            outputTail = `${outputTail}\n${event.line}`.slice(-4096);
-          }
-        }
+        () => undefined
       );
       if (await this.reconcileStoppedOperation(result, [itemID])) return;
       this.patch({
@@ -872,7 +867,7 @@ export class HomebrewOperationsService {
       await this.refresh(true);
       if (!result.success) {
         await this.recordOperationFailure(itemID, "uninstall", result);
-        const output = (outputTail || result.output).trim();
+        const output = result.outputTail?.trim() ?? "";
         this.patch({
           refreshErrorMessage: homebrewUninstallFailureMessage(item, output)
         });

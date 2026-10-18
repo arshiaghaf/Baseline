@@ -110,8 +110,7 @@ for (const surface of ["main", "tray"] as const) {
                 // Unexpected intents fail instead of reaching host operations or opening URLs.
                 const events = new Set<string>([
                   channels.snapshotChanged,
-                  channels.snapshotProgress,
-                  channels.homebrewCommandEvent
+                  channels.snapshotProgress
                 ]);
                 const navigation = new Set<string>([
                   channels.showMainWindow,

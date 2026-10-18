@@ -10,7 +10,6 @@ import type {
   ToolStatus
 } from "./domain";
 import type { SnapshotProgressEvent } from "./domain";
-import type { HomebrewMaintenanceRunEvent } from "./homebrewProgress";
 import type { AppMetadata } from "./appMetadata";
 import type { HomebrewDiagnosticsRequest, HomebrewDiagnosticsReport } from "./homebrewDiagnostics";
 import type { HomebrewInstalledContext } from "./homebrewInstalledContext";
@@ -46,8 +45,7 @@ export const ipcChannels = {
   showMainWindow: "baseline:showMainWindow",
   showSettings: "baseline:showSettings",
   snapshotChanged: "baseline:snapshotChanged",
-  snapshotProgress: "baseline:snapshotProgress",
-  homebrewCommandEvent: "baseline:homebrewCommandEvent"
+  snapshotProgress: "baseline:snapshotProgress"
 } as const;
 
 export type PreferencePatch = Partial<{
@@ -95,7 +93,6 @@ export type BaselineAPI = {
   showSettings(): Promise<void>;
   onSnapshotChanged(callback: (snapshot: BaselineSnapshot) => void): () => void;
   onSnapshotProgress(callback: (event: SnapshotProgressEvent) => void): () => void;
-  onHomebrewCommandEvent(callback: (event: HomebrewMaintenanceRunEvent) => void): () => void;
 };
 
 export type {
