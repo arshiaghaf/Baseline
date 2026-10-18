@@ -14,7 +14,8 @@ export type DiagnosticFailure =
   | "output-limit"
   | "callback"
   | "cleanup"
-  | "admin-helper";
+  | "admin-helper"
+  | "configuration-blocked";
 export type DiagnosticSection = {
   status: DiagnosticSectionStatus;
   exitStatus: number | null;

@@ -6,6 +6,7 @@ import { runBrewCommand, runMasCommand, type CommandResult } from "./commandRunn
 export type ToolStatusPatch = {
   isChecking?: boolean;
   isHomebrewInstalled?: boolean;
+  homebrewConfigurationBlocked?: boolean;
   isMasInstalled?: boolean;
 };
 
@@ -80,6 +81,17 @@ export class ToolStatusService {
     const brew: Promise<CommandResult | undefined> = release
       ? Promise.resolve()
           .then(() => this.options.runBrewCommand(["--version"]))
+          .then((result) => {
+            // Publish while this probe still owns the Homebrew reservation.
+            // Waiting for mas could overwrite a newer inventory recovery.
+            this.options.markHomebrewAvailabilityChecked();
+            const homebrewConfigurationBlocked = result.failure?.kind === "configuration-blocked";
+            this.options.patch({
+              homebrewConfigurationBlocked,
+              isHomebrewInstalled: homebrewConfigurationBlocked || result.success
+            });
+            return result;
+          })
           .finally(() => {
             try {
               release();
@@ -91,10 +103,6 @@ export class ToolStatusService {
     const [brewResult, masResult] = await Promise.allSettled([brew, mas]);
     const status: ToolStatusPatch = {};
     try {
-      if (brewResult.status === "fulfilled" && brewResult.value) {
-        this.options.markHomebrewAvailabilityChecked();
-        status.isHomebrewInstalled = brewResult.value.success;
-      }
       if (masResult.status === "fulfilled") {
         status.isMasInstalled = masResult.value.success;
       }

@@ -13,6 +13,13 @@ const control = vi.hoisted(() => ({
   onSpawn: undefined as undefined | (() => void)
 }));
 
+// These process-cleanup fixtures intentionally replace executable resolution and
+// spawning; configuration/real-launcher behavior has its own isolated fixtures.
+vi.mock("../src/main/homebrewConfiguration", async (original) => ({
+  ...(await original<typeof import("../src/main/homebrewConfiguration")>()),
+  checkHomebrewConfiguration: vi.fn(async () => ({ supported: true, revalidate: async () => true }))
+}));
+
 // All executable resolution and launch paths are redirected. These tests never
 // invoke real Homebrew, even on a host where it is installed.
 vi.mock("node:fs/promises", async (original) => ({

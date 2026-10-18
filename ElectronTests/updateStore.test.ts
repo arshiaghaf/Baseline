@@ -32,6 +32,8 @@ import type {
 import { version } from "../src/shared/version";
 import { homebrewCommandToken } from "../src/shared/homebrewIdentity";
 import { trayMenuTemplate } from "../src/main/trayMenu";
+import { configurationBlockedInventory } from "../src/main/homebrewInventoryClient";
+import type { CommandResult } from "../src/main/commandRunner";
 
 let tempDirs: string[] = [];
 const fixtureCleanups: (() => Promise<void>)[] = [];
@@ -92,6 +94,371 @@ function caskIndexForSelfUpdatingApp(latestVersion: ReturnType<typeof version>):
 }
 
 describe("update store helpers", () => {
+  it("cancels queued mutations before a configuration-blocked refresh releases its reservation", async () => {
+    const item = homebrewItem({
+      id: "cask:queued",
+      token: "queued",
+      kind: "cask",
+      name: "Queued",
+      isOutdated: true,
+      latestVersion: version("2")
+    });
+    let started!: () => void,
+      finish!: (value: ReturnType<typeof configurationBlockedInventory>) => void;
+    const inventoryStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const inventoryResult = new Promise<ReturnType<typeof configurationBlockedInventory>>(
+      (resolve) => {
+        finish = resolve;
+      }
+    );
+    const run = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeVerifiedStore({
+      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+      runBrewCommand: run,
+      clients: {
+        homebrewInventory: {
+          fetchInventory: async () => {
+            started();
+            return inventoryResult;
+          }
+        }
+      }
+    });
+    const refresh = store.refresh(false);
+    let queued: Promise<void> | undefined;
+    try {
+      await inventoryStarted;
+      queued = store.performHomebrewUpdate(item.id);
+      expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual([item.id]);
+    } finally {
+      finish(configurationBlockedInventory());
+      await refresh;
+      await queued;
+    }
+    expect(run).not.toHaveBeenCalled();
+    expect(store.getSnapshot()).toMatchObject({
+      isHomebrewInstalled: true,
+      homebrewConfigurationBlocked: true,
+      homebrewQueuedItemIDs: [],
+      homebrewUpdatingItemIDs: [],
+      operationFailures: []
+    });
+    expect(store.getSnapshot().homebrewItems.map((entry) => entry.id)).toEqual([item.id]);
+  });
+
+  it("preserves inventory and revokes queued authority through configuration refusal and recovery", async () => {
+    const formula = homebrewItem({
+      id: "formula:fixture",
+      token: "fixture",
+      name: "Fixture",
+      isOutdated: true,
+      latestVersion: version("2")
+    });
+    const cask = homebrewItem({
+      id: "cask:other",
+      token: "other",
+      name: "Other",
+      kind: "cask",
+      isOutdated: true,
+      latestVersion: version("2")
+    });
+    let blocked = false;
+    const run = vi.fn(async (): Promise<CommandResult> =>
+      blocked
+        ? {
+            success: false,
+            status: null,
+            output: "",
+            failure: { kind: "configuration-blocked", message: "fixture configuration refusal" }
+          }
+        : { success: true, status: 0, output: "" }
+    );
+    const inventory = vi.fn(async () =>
+      blocked
+        ? configurationBlockedInventory()
+        : {
+            items: [formula, cask],
+            inventoryReadSucceededByKind: { formula: true, cask: true },
+            outdatedDetectionSucceeded: true,
+            outdatedDetectionSucceededByKind: { formula: true, cask: true }
+          }
+    );
+    const store = await makeVerifiedStore({
+      persisted: {
+        ...defaultPersistedSnapshot(),
+        homebrewItems: [formula, cask],
+        ignoredHomebrewItemIDs: ["formula:retained"]
+      },
+      runBrewCommand: run,
+      clients: { homebrewInventory: { fetchInventory: inventory } }
+    });
+    await store.refreshToolStatus();
+    blocked = true;
+    await store.refreshToolStatus();
+    expect(store.getSnapshot()).toMatchObject({
+      isHomebrewInstalled: true,
+      homebrewConfigurationBlocked: true
+    });
+    await store.refresh(false);
+    const retained = store.getSnapshot();
+    expect(retained.homebrewItems.map((item) => item.id).sort()).toEqual(
+      [formula.id, cask.id].sort()
+    );
+    expect(
+      retained.homebrewItems.find((item) => item.kind === "formula")?.formulaIdentityVerified
+    ).toBe(false);
+    expect(retained.ignoredHomebrewItemIDs).toContain("formula:retained");
+    expect(retained.homebrewItems.every((item) => !item.isOutdated)).toBe(true);
+    expect(retained.lastRefreshNoticeMessage).toContain("Homebrew configuration");
+    run.mockClear();
+    await store.performHomebrewUpdate(formula.id);
+    await store.performHomebrewUpdateAll([formula.id, cask.id]);
+    await store.uninstallHomebrewItem(cask.id);
+    await store.installHomebrewItem({
+      id: "cask:new",
+      kind: "cask",
+      token: "new",
+      displayName: "New",
+      version: version("1")
+    });
+    expect(run).not.toHaveBeenCalled();
+    expect(store.getSnapshot().operationFailures).toEqual([]);
+    expect(store.getSnapshot().profileStats.events).toEqual([]);
+    blocked = false;
+    await store.refreshToolStatus();
+    expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+    const confirmCleanup = vi.fn(async () => true);
+    expect(await store.cleanUpHomebrew(confirmCleanup)).toContain("Refresh");
+    expect(confirmCleanup).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
+    await store.performHomebrewUpdate(formula.id);
+    expect(run).toHaveBeenCalledTimes(1); // Probe success alone cannot restore authority.
+    await store.refresh(false);
+    expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(false);
+    expect(
+      store.getSnapshot().homebrewItems.find((item) => item.id === formula.id)
+        ?.formulaIdentityVerified
+    ).not.toBe(false);
+    await store.performHomebrewUpdate(formula.id);
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(store.getSnapshot().operationFailures).toEqual([]);
+  });
+
+  it.each(["timeout", "missing", "rejected"] as const)(
+    "keeps recovery inventory unverified after a %s availability probe",
+    async (failure) => {
+      const formula = homebrewItem({ id: "formula:retained", token: "retained", name: "Retained" });
+      const cask = homebrewItem({ id: "cask:other", token: "other", name: "Other", kind: "cask" });
+      let probe: "blocked" | "healthy" | typeof failure = "blocked";
+      const run = vi.fn(async (): Promise<CommandResult> => {
+        if (probe === "rejected") throw new Error("Fixture probe rejected");
+        if (probe === "healthy") return { success: true, status: 0, output: "" };
+        return {
+          success: false,
+          status: null,
+          output: "",
+          failure:
+            probe === "blocked"
+              ? { kind: "configuration-blocked", message: "Fixture configuration conflict" }
+              : probe === "timeout"
+                ? { kind: "timeout", message: "Fixture timeout" }
+                : { kind: "spawn", code: "ENOENT", message: "Fixture executable missing" }
+        };
+      });
+      const inventory = vi.fn(async () => ({
+        items: [formula, cask],
+        inventoryReadSucceededByKind: { formula: true, cask: true },
+        outdatedDetectionSucceeded: true,
+        outdatedDetectionSucceededByKind: { formula: true, cask: true }
+      }));
+      const store = await makeVerifiedStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [formula, cask] },
+        runBrewCommand: run,
+        clients: { homebrewInventory: { fetchInventory: inventory } }
+      });
+      await store.refreshToolStatus();
+      probe = failure;
+      await store.refreshToolStatus().catch(() => undefined);
+      expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+      // A rejected probe retains the previous availability bit; a returned
+      // failure marks it unavailable. Neither is an empty inventory observation.
+      await store.refresh(false);
+      expect(
+        store
+          .getSnapshot()
+          .homebrewItems.map((item) => item.id)
+          .sort()
+      ).toEqual([formula.id, cask.id].sort());
+      if (failure !== "rejected") {
+        expect(inventory).not.toHaveBeenCalled();
+        expect(
+          store.getSnapshot().homebrewItems.find((item) => item.id === formula.id)
+            ?.formulaIdentityVerified
+        ).toBe(false);
+        expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+        const confirm = vi.fn(async () => true);
+        expect(await store.cleanUpHomebrew(confirm)).toContain("Refresh");
+        expect(confirm).not.toHaveBeenCalled();
+        probe = "healthy";
+        await store.refreshToolStatus();
+        expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+        await store.refresh(false);
+      }
+      expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(false);
+      expect(inventory).toHaveBeenCalledTimes(1);
+      expect(store.getSnapshot().operationFailures).toEqual([]);
+      expect(store.getSnapshot().profileStats.events).toEqual([]);
+    }
+  );
+
+  it.each(["configuration-blocked", "timeout", "missing"] as const)(
+    "does not restore stale %s availability when a delayed mas probe settles",
+    async (failure) => {
+      const item = homebrewItem({ id: "formula:retained", token: "retained", name: "Retained" });
+      let mode: "healthy" | "configuration-blocked" | typeof failure = "configuration-blocked";
+      let gateMas = false;
+      let finishMas!: () => void;
+      const masGate = new Promise<void>((resolve) => {
+        finishMas = resolve;
+      });
+      const store = await makeVerifiedStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+        runBrewCommand: async () =>
+          mode === "healthy"
+            ? { success: true, status: 0, output: "" }
+            : {
+                success: false,
+                status: null,
+                output: "",
+                failure:
+                  mode === "missing"
+                    ? { kind: "spawn", code: "ENOENT", message: "Fixture executable missing" }
+                    : { kind: mode, message: "Fixture availability failure" }
+              },
+        runMasCommand: async () => {
+          if (gateMas) await masGate;
+          return { success: true, status: 0, output: "" };
+        },
+        clients: {
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items: [item],
+              inventoryReadSucceededByKind: { formula: true, cask: true },
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true }
+            })
+          }
+        }
+      });
+      await store.refreshToolStatus();
+      mode = failure;
+      gateMas = true;
+      const checking = store.refreshToolStatus();
+      try {
+        await vi.waitFor(() => {
+          expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+        });
+        expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+        mode = "healthy";
+        await store.refresh(false);
+        expect(store.getSnapshot()).toMatchObject({
+          homebrewConfigurationBlocked: false,
+          isHomebrewInstalled: true
+        });
+      } finally {
+        finishMas();
+        await checking;
+      }
+      expect(store.getSnapshot()).toMatchObject({
+        homebrewConfigurationBlocked: false,
+        isHomebrewInstalled: true
+      });
+    }
+  );
+
+  it.each(["outdated", "provider-rejected", "provider-pending"] as const)(
+    "keeps configuration recovery blocked through a %s refresh",
+    async (mode) => {
+      const item = homebrewItem({ id: "formula:retained", token: "retained", name: "Retained" });
+      let blocked = true;
+      let complete = false;
+      let releaseProvider!: () => void;
+      let observedInventory!: () => void;
+      const providerGate = new Promise<void>((resolve) => {
+        releaseProvider = resolve;
+      });
+      const inventoryObserved = new Promise<void>((resolve) => {
+        observedInventory = resolve;
+      });
+      const run = vi.fn(async (): Promise<CommandResult> =>
+        blocked
+          ? {
+              success: false,
+              status: null,
+              output: "",
+              failure: { kind: "configuration-blocked", message: "Fixture conflict" }
+            }
+          : { success: true, status: 0, output: "" }
+      );
+      const store = await makeVerifiedStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+        runBrewCommand: run,
+        clients: {
+          homebrewInventory: {
+            fetchInventory: async () => {
+              observedInventory();
+              return {
+                items: [item],
+                inventoryReadSucceededByKind: { formula: true, cask: true },
+                outdatedDetectionSucceeded: complete || mode !== "outdated",
+                outdatedDetectionSucceededByKind: {
+                  formula: complete || mode !== "outdated",
+                  cask: true
+                }
+              };
+            }
+          },
+          scanner: {
+            scanApplications: async () => {
+              if (!complete && mode === "provider-rejected") throw new Error("Fixture scan failed");
+              if (!complete && mode === "provider-pending") await providerGate;
+              return [];
+            }
+          }
+        }
+      });
+      await store.refreshToolStatus();
+      blocked = false;
+      await store.refreshToolStatus();
+      const refresh = store.refresh(false);
+      try {
+        if (mode === "provider-pending") {
+          await inventoryObserved;
+          // Let inventory reconciliation settle while the unrelated provider waits.
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+        } else {
+          await refresh;
+          expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+          const confirm = vi.fn(async () => true);
+          expect(await store.cleanUpHomebrew(confirm)).toContain("Refresh");
+          expect(confirm).not.toHaveBeenCalled();
+        }
+      } finally {
+        releaseProvider();
+        await refresh;
+      }
+      complete = true;
+      await store.refresh(false);
+      expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(false);
+      expect(store.getSnapshot().homebrewItems.map((entry) => entry.id)).toEqual([item.id]);
+      expect(store.getSnapshot().operationFailures).toEqual([]);
+      expect(store.getSnapshot().profileStats.events).toEqual([]);
+    }
+  );
+
   it.each([false, true])(
     "keeps cancellation out of persisted failures/runtime state (cleanup uncertain: %s)",
     async (uncertain) => {
