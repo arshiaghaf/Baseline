@@ -608,8 +608,10 @@ function wireIpc(): void {
     store.cleanUpHomebrew(() => confirmHomebrewCleanup(BrowserWindow.fromWebContents(event.sender)))
   );
   ipcMain.handle(ipcChannels.refreshToolStatus, () => store.refreshToolStatus());
-  ipcMain.handle(ipcChannels.refresh, (_event, lightweight?: boolean) =>
-    store.refresh(Boolean(lightweight))
+  ipcMain.handle(
+    ipcChannels.refresh,
+    (_event, lightweight?: boolean, forceAppDiscovery?: boolean) =>
+      store.refresh(Boolean(lightweight), { forceAppDiscovery: Boolean(forceAppDiscovery) })
   );
   ipcMain.handle(ipcChannels.setSearchText, (_event, value: string) =>
     store.setSearchText(String(value))

@@ -13,6 +13,8 @@ export type HomebrewPresentation = "formula" | "app" | "cli" | "package" | "cask
 export type AppRecord = {
   id: string;
   bundlePath: string;
+  /** Scanner evidence for invalidating saved provider mappings after replacement. */
+  providerFingerprint?: string;
   displayName: string;
   bundleIdentifier?: string;
   localVersion: VersionValue;
@@ -23,6 +25,27 @@ export type AppRecord = {
   hasSafariWebExtension?: boolean;
   sparkleFeedURL?: string;
   iconDataURL?: string;
+};
+
+export type AppStoreProviderIdentity = {
+  productID: number;
+  platform: "mac" | "ios";
+  storefront: string;
+};
+
+/** Provider identity is independent of actionable updates and version freshness. */
+export type AppProviderCheck = {
+  fingerprint: string;
+  /** Catalogue context for positive identities and no-match discovery alike. */
+  storefront?: string;
+  appStoreIdentity?: AppStoreProviderIdentity;
+  sparkleFeedURL?: string;
+  /** Last successful App Store source search, including a confirmed no-match. */
+  discoveryCheckedAt?: string;
+  status: "pending" | "checked" | "failed" | "unresolved";
+  source?: "appStore" | "sparkle" | "homebrew";
+  /** Successful version check; never advanced by a failed request or reused discovery. */
+  checkedAt?: string;
 };
 
 export type AppStoreLookupResult = {
@@ -204,6 +227,7 @@ export type SelfUpdateRecord = {
 };
 
 export type PersistedSnapshot = {
+  appProviderChecks?: Record<string, AppProviderCheck>;
   operationFailures?: import("./operationFailures").OperationFailure[];
   apps: AppRecord[];
   updates: UpdateRecord[];
@@ -353,6 +377,7 @@ export const emptyHomebrewFormulaIndex: HomebrewFormulaIndex = {
 
 export function defaultPersistedSnapshot(now = new Date().toISOString()): PersistedSnapshot {
   return {
+    appProviderChecks: {},
     operationFailures: [],
     apps: [],
     updates: [],

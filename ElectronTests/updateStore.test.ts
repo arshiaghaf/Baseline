@@ -2482,7 +2482,7 @@ describe("update store helpers", () => {
     });
   });
 
-  it("only enables iOS App Store lookup for installed iOS-on-Mac apps", async () => {
+  it("uses installed platform evidence and preserves broad native discovery without requiring receipts", async () => {
     const iOSAppOnMac = appRecord({
       bundlePath: "/Applications/App Store iPad App.app",
       displayName: "App Store iPad App",
@@ -2542,26 +2542,22 @@ describe("update store helpers", () => {
         includeMacCapableAppStoreSoftware: false
       })
     );
-    expect(lookupOutcome).toHaveBeenNthCalledWith(
-      2,
+    expect(lookupOutcome).not.toHaveBeenCalledWith(
       sideloadedIOSAppOnMac.bundleIdentifier,
-      sideloadedIOSAppOnMac.localVersion,
-      expect.objectContaining({
-        includeIOSAppStoreSoftware: false,
-        includeMacCapableAppStoreSoftware: false
-      })
+      expect.anything(),
+      expect.anything()
     );
     expect(lookupOutcome).toHaveBeenNthCalledWith(
-      3,
+      2,
       nativeMacApp.bundleIdentifier,
       nativeMacApp.localVersion,
       expect.objectContaining({
         includeIOSAppStoreSoftware: false,
-        includeMacCapableAppStoreSoftware: false
+        includeMacCapableAppStoreSoftware: true
       })
     );
     expect(lookupOutcome).toHaveBeenNthCalledWith(
-      4,
+      3,
       safariExtensionApp.bundleIdentifier,
       safariExtensionApp.localVersion,
       expect.objectContaining({

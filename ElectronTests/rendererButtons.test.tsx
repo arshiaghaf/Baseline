@@ -3783,3 +3783,231 @@ describe("operation failure support", () => {
     expect(url.searchParams.get("template")).toBe("bug_report.yml");
   });
 });
+
+describe("app refresh source visibility", () => {
+  it.each([false, true])(
+    "keeps unresolved discovery explicit and offers a forced search (compact=%s)",
+    (compact) => {
+      const state = snapshot({
+        updates: [],
+        homebrewItems: [],
+        appProviderChecks: {
+          [app.id]: {
+            fingerprint: "fixture",
+            status: "unresolved",
+            discoveryCheckedAt: "2026-10-18T10:00:00.000Z"
+          }
+        }
+      });
+      render(<Dashboard snapshot={state} compact={compact} onOpenSettings={() => undefined} />);
+      expect(screen.getByText(/No verified update source for 1 app/)).toBeInTheDocument();
+      expect(screen.getByText(/Some apps have no verified update source/)).toBeInTheDocument();
+      expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/Other sources for known apps are searched every six hours/)
+      ).not.toBeVisible();
+      fireEvent.click(screen.getByText("About source checks"));
+      expect(
+        screen.getByText(/Other sources for known apps are searched every six hours/)
+      ).toBeVisible();
+      fireEvent.click(screen.getByRole("button", { name: "Search sources again" }));
+      expect(window.baseline.refresh).toHaveBeenCalledWith(false, true);
+    }
+  );
+
+  it.each([false, true])(
+    "keeps successful source checks unobtrusive with policy available on demand (compact=%s)",
+    (compact) => {
+      const { container } = render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            updates: [],
+            homebrewItems: [],
+            appProviderChecks: {
+              [app.id]: {
+                fingerprint: "fixture",
+                status: "checked",
+                source: "homebrew",
+                checkedAt: "2026-10-18T10:00:00.000Z",
+                discoveryCheckedAt: "2026-10-18T09:00:00.000Z"
+              }
+            }
+          })}
+        />
+      );
+      expect(container.querySelector(".app-check-notice")).toBeNull();
+      expect(screen.getByRole("button", { name: "Search sources again" })).toBeVisible();
+      expect(screen.getByText(/Refresh checks known sources/)).not.toBeVisible();
+      expect(screen.getByText(/Oldest source search:/)).not.toBeVisible();
+      fireEvent.click(screen.getByText("About source checks"));
+      expect(screen.getByText(/Refresh checks known sources/)).toBeVisible();
+      expect(screen.getByText(/Oldest source search:/)).toBeVisible();
+    }
+  );
+
+  it.each([false, true])(
+    "shows failed checks and refresh errors even without updates (compact=%s)",
+    (compact) => {
+      render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            updates: [],
+            homebrewItems: [],
+            refreshErrorMessage: "Source temporarily unavailable",
+            selectedTab: "apps",
+            appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "failed" } }
+          })}
+        />
+      );
+      expect(screen.getByText("Source temporarily unavailable")).toBeInTheDocument();
+      expect(screen.getByText(/Could not check updates for 1 app/)).toBeInTheDocument();
+      expect(screen.getByText("Some app updates could not be checked.")).toBeInTheDocument();
+    }
+  );
+
+  it("keeps partial results incomplete and prevents a second source search during refresh", () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          updates: [],
+          homebrewItems: [],
+          isRefreshing: true,
+          appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "pending" } }
+        })}
+      />
+    );
+    expect(screen.getByText("Checking app updates. Results are incomplete.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search sources again" })).toBeDisabled();
+    expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
+  });
+
+  it("does not call legacy snapshots checked before the first refresh", () => {
+    render(
+      <Dashboard
+        compact
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({ updates: [], homebrewItems: [], appProviderChecks: {} })}
+      />
+    );
+    expect(screen.getByText("Refresh to check app updates.")).toBeInTheDocument();
+    expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [false, []],
+    [true, []],
+    [false, [app]],
+    [true, [app]]
+  ] as const)(
+    "does not prompt another refresh for a completed scan with no provider checks (compact=%s, apps=%j)",
+    (compact, apps) => {
+      render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            apps: [...apps],
+            selectedTab: "apps",
+            updates: [],
+            homebrewItems: [],
+            appProviderChecks: {},
+            lastRefreshDate: "2026-10-18T10:00:00.000Z"
+          })}
+        />
+      );
+      expect(screen.getByText("No app updates to show from the last refresh.")).toBeInTheDocument();
+      expect(screen.queryByText("Refresh to check app updates.")).not.toBeInTheDocument();
+      expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
+    }
+  );
+
+  it.each([
+    {
+      name: "completed",
+      patch: { lastRefreshDate: "2026-10-18T10:00:00.000Z" },
+      expected: "No updates to show from the last refresh."
+    },
+    { name: "initial", patch: {}, expected: "Refresh to check for updates." },
+    {
+      name: "pending",
+      patch: { isRefreshing: true },
+      expected: "Checking for updates. Results are incomplete."
+    },
+    {
+      name: "failed",
+      patch: { refreshErrorMessage: "Inventory unavailable" },
+      expected: "Some updates could not be checked."
+    },
+    {
+      name: "partial inventory",
+      patch: {
+        lastRefreshDate: "2026-10-18T10:00:00.000Z",
+        lastRefreshNoticeMessage: "Homebrew inventory could not be read reliably."
+      },
+      expected: "Some update information may be incomplete. See the refresh notice for details."
+    },
+    {
+      name: "partial outdated detection",
+      patch: {
+        lastRefreshDate: "2026-10-18T10:00:00.000Z",
+        lastRefreshNoticeMessage: "Homebrew outdated detection failed."
+      },
+      expected: "Some update information may be incomplete. See the refresh notice for details."
+    },
+    {
+      name: "cached catalogue",
+      patch: {
+        lastRefreshDate: "2026-10-18T10:00:00.000Z",
+        lastRefreshNoticeMessage: "Using cached Homebrew catalogue metadata.",
+        appProviderChecks: { example: { fingerprint: "fixture", status: "checked" as const } }
+      },
+      expected: "Some update information may be incomplete. See the refresh notice for details."
+    }
+  ])("includes Homebrew in the combined empty state ($name)", ({ patch, expected }) => {
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          apps: [],
+          updates: [],
+          homebrewItems: [
+            { ...cask, appID: undefined, latestVersion: cask.installedVersion, isOutdated: false }
+          ],
+          appProviderChecks: {},
+          selectedTab: "all",
+          ...patch
+        })}
+      />
+    );
+    expect(screen.getByText(expected)).toBeInTheDocument();
+    expect(
+      screen.queryByText("No app updates to show from the last refresh.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("labels an older actionable result when its current provider check failed", () => {
+    render(
+      <AppRow
+        app={app}
+        recentlyUpdated={false}
+        snapshot={snapshot({
+          appProviderChecks: {
+            [app.id]: {
+              fingerprint: "fixture",
+              status: "failed",
+              checkedAt: "2026-10-18T10:00:00.000Z"
+            }
+          }
+        })}
+      />
+    );
+    expect(screen.getByText(/Could not check updates.*Last successful check:/)).toBeInTheDocument();
+  });
+});

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { app as electronApp, nativeImage, type NativeImage } from "electron";
 import { mkdtemp, readdir, realpath, rm, stat } from "node:fs/promises";
@@ -21,6 +22,7 @@ type AppBundleInfo = {
   hasAppStoreEvidence: boolean;
   hasSafariWebExtension: boolean;
   iconResourcesPath: string;
+  providerFiles: string[];
 };
 type IconExecFileAsync = (
   file: string,
@@ -125,6 +127,15 @@ export class BundleScannerClient {
     return {
       id: appPath,
       bundlePath: appPath,
+      providerFingerprint: await providerFingerprint(appPath, bundleInfo.providerFiles, {
+        bundleIdentifier,
+        rawVersion,
+        rawBundleVersion,
+        sparkleFeedURL,
+        isIOSAppOnMac,
+        hasAppStoreEvidence: hasMasReceipt || hasAppStoreEvidence,
+        hasSafariWebExtension
+      }),
       displayName,
       bundleIdentifier,
       localVersion: version(rawVersion),
@@ -144,6 +155,7 @@ export class BundleScannerClient {
       const hasAppStoreEvidence = await this.hasMasReceipt(appPath);
       return {
         info,
+        providerFiles: bundleIdentityFiles(path.join(appPath, "Contents"), info, false),
         isIOSAppOnMac:
           isIOSAppOnMacInfo(info) || (hasAppStoreEvidence && isUIKitMacAppStoreInfo(info)),
         hasAppStoreEvidence,
@@ -170,6 +182,7 @@ export class BundleScannerClient {
         if (info && isIOSAppOnMacInfo(info)) {
           return {
             info,
+            providerFiles: bundleIdentityFiles(path.join(wrapperPath, entry.name), info, true),
             isIOSAppOnMac: true,
             hasAppStoreEvidence: await this.hasWrappedAppStoreEvidence(appPath, entry.name, info),
             hasSafariWebExtension: false,
@@ -561,3 +574,48 @@ export const testingExports = {
   },
   shouldPadGrayscaleIcon
 };
+
+function bundleIdentityFiles(contentsPath: string, info: InfoPlist, flat: boolean): string[] {
+  const files = [
+    path.join(contentsPath, "Info.plist"),
+    path.join(contentsPath, "_CodeSignature", "CodeResources")
+  ];
+  const executable = stringValue(info.CFBundleExecutable);
+  // The plist field names a single file, never a relative or absolute path.
+  if (executable && executable !== "." && executable !== ".." && !/[\\/\0]/.test(executable)) {
+    files.push(path.join(contentsPath, ...(flat ? [] : ["MacOS"]), executable));
+  }
+  return files;
+}
+
+async function providerFingerprint(
+  appPath: string,
+  providerFiles: string[],
+  evidence: object
+): Promise<string> {
+  const canonicalRoot = await canonicalAppPath(appPath);
+  const files = [
+    appPath,
+    ...providerFiles,
+    path.join(appPath, "Contents", "_MASReceipt", "receipt"),
+    path.join(appPath, "Wrapper")
+  ];
+  const identities = await Promise.all(
+    files.map(async (file) => {
+      try {
+        const resolved = await realpath(file);
+        const relative = path.relative(canonicalRoot, resolved);
+        // Ignore executable/resource symlinks that escape the installed bundle.
+        if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+          return null;
+        const value = await stat(resolved);
+        return [relative, value.dev, value.ino, value.size, value.mtimeMs, value.ctimeMs];
+      } catch {
+        return null;
+      }
+    })
+  );
+  return createHash("sha256")
+    .update(JSON.stringify([canonicalRoot, evidence, identities]))
+    .digest("hex");
+}

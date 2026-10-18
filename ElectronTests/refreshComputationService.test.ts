@@ -96,6 +96,8 @@ function setup(scan: Promise<AppRecord[]>, inventory: HomebrewInventoryResult) {
     service,
     events,
     patches,
+    ports,
+    state,
     supersede: () => {
       current = false;
     },
@@ -113,6 +115,65 @@ const completeInventory: HomebrewInventoryResult = {
 };
 
 describe("RefreshComputationService", () => {
+  it("keeps freshly checked cask routes successful when only formula outdated detection fails", async () => {
+    const app: AppRecord = {
+      id: "/Applications/Example.app",
+      bundlePath: "/Applications/Example.app",
+      displayName: "Example",
+      localVersion: version("1"),
+      sourceHint: "unknown"
+    };
+    const cask: HomebrewManagedItem = {
+      id: "cask:example",
+      token: "example",
+      fullToken: "example",
+      tap: "homebrew/cask",
+      name: "Example",
+      kind: "cask",
+      appID: app.id,
+      installedVersion: version("1"),
+      isOutdated: false
+    };
+    const { service, state } = setup(Promise.resolve([app]), {
+      ...completeInventory,
+      items: [cask],
+      outdatedDetectionSucceeded: false,
+      outdatedDetectionSucceededByKind: { formula: false, cask: true }
+    });
+    await service.compute(false, 1, {}, new AbortController().signal);
+    expect(state.appProviderChecks?.[app.id]).toMatchObject({
+      status: "checked",
+      source: "homebrew"
+    });
+    expect(state.appProviderChecks?.[app.id]?.checkedAt).toBeDefined();
+  });
+
+  it("keeps refresh active through persistence and releases its lock only after the final write settles", async () => {
+    const drain = deferred<void>();
+    const { service, ports, state, patches, events } = setup(
+      Promise.resolve([]),
+      completeInventory
+    );
+    ports.persist = async () => {
+      events.push("persist");
+      await drain.promise;
+    };
+    const task = service.compute(false, 1, {}, new AbortController().signal);
+    try {
+      await vi.waitFor(() => expect(events).toContain("persist"));
+      expect((state as unknown as { isRefreshing: boolean }).isRefreshing).toBe(true);
+      expect(events).not.toContain("end");
+      expect(patches.some((patch) => patch.isRefreshing === false)).toBe(false);
+      drain.resolve();
+      await task;
+      expect(patches.at(-1)).toEqual({ isRefreshing: false });
+      expect(events.indexOf("persist")).toBeLessThan(events.indexOf("end"));
+    } finally {
+      drain.resolve();
+      await Promise.allSettled([task]);
+    }
+  });
+
   it("begins lock and refresh state synchronously, then skips a superseded provider result", async () => {
     const scan = deferred<AppRecord[]>();
     const { service, events, patches, supersede } = setup(scan.promise, completeInventory);
@@ -151,7 +212,6 @@ describe("RefreshComputationService", () => {
       scan.reject(new Error("Scanner failed"));
       await task;
       expect(patches[1]).toMatchObject({
-        isRefreshing: false,
         refreshErrorMessage: "Scanner failed",
         lastRefreshNoticeMessage: "Inventory was refreshed.",
         homebrewItems: [{ id: item.id }]
@@ -163,6 +223,7 @@ describe("RefreshComputationService", () => {
         "invalidate",
         "persist",
         "queue",
+        "patch",
         "end",
         "queue"
       ]);

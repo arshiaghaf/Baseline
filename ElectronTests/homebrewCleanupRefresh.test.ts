@@ -749,10 +749,11 @@ describe("Homebrew cleanup inventory barrier", () => {
       outdatedDetectionSucceededByKind: { formula: true, cask: true },
       inventoryReadSucceededByKind: { formula: true, cask: true }
     }));
+    const scanApplications = vi.fn(async () => (includeApp ? [app] : []));
     const store = await fixture({
       runBrewCommand,
       clients: {
-        scanner: { scanApplications: async () => (includeApp ? [app] : []) },
+        scanner: { scanApplications },
         appStore: { lookupOutcome },
         homebrewInventory: { fetchInventory }
       }
@@ -778,6 +779,7 @@ describe("Homebrew cleanup inventory barrier", () => {
     expect(store.getSnapshot().homebrewItems).toEqual([]);
     await obsolete;
     expect(lookupOutcome).toHaveBeenCalledTimes(2);
+    expect(scanApplications).toHaveBeenCalledTimes(3);
     expect(store.getSnapshot().homebrewItems).toEqual([]);
     expect(runBrewCommand.mock.calls.map(([args]) => args)).toEqual([["--version"], ["cleanup"]]);
   });

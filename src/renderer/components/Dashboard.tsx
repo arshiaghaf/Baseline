@@ -4,7 +4,6 @@
 import { baseline } from "../ipc";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle,
   AppWindowMac,
   Beer,
   CheckCircle2,
@@ -27,6 +26,7 @@ import { ToolbarSearch, SearchPalette } from "./Search";
 import { toolbarIconStrokeWidth, sidebarIconStrokeWidth } from "../constants";
 import { OperationFailures } from "./OperationFailures";
 import { SelectedTabContent } from "./DashboardContent";
+import { RefreshFeedback } from "./RefreshFeedback";
 import { selectedTabTitle } from "../helpers/labels";
 import { ActionConfirmationContext, ActionConfirmationOverlay } from "./ActionConfirmation";
 
@@ -245,6 +245,7 @@ export function Dashboard({
             </button>
           </div>
         </header>
+        <RefreshFeedback snapshot={snapshot} />
         <OperationFailures snapshot={snapshot} />
         <section className="content single">
           <SelectedTabContent
@@ -295,18 +296,7 @@ export function Dashboard({
             </div>
           </header>
 
-          {snapshot.refreshErrorMessage && (
-            <div className="notice danger">
-              <AlertTriangle size={15} />
-              <span>{snapshot.refreshErrorMessage}</span>
-            </div>
-          )}
-          {snapshot.lastRefreshNoticeMessage && !snapshot.refreshErrorMessage && (
-            <div className="notice">
-              <AlertTriangle size={15} />
-              <span>{snapshot.lastRefreshNoticeMessage}</span>
-            </div>
-          )}
+          <RefreshFeedback snapshot={snapshot} />
 
           <section className="content">
             <OperationFailures snapshot={snapshot} />

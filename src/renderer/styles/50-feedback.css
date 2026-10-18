@@ -153,6 +153,25 @@
   color: #9f1f18;
 }
 
+.app-source-actions {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 6px 16px 0;
+  color: #6e6e73;
+  font-size: 12px;
+}
+
+.app-source-actions details {
+  flex: 1;
+  min-width: 130px;
+}
+
+.app-source-actions summary {
+  cursor: pointer;
+}
+
 .operation-failures {
   flex-shrink: 0;
   max-height: min(50vh, 28rem);

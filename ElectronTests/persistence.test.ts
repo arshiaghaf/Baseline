@@ -410,3 +410,125 @@ describe("snapshot persistence", () => {
     });
   });
 });
+
+describe("provider history migration", () => {
+  it.each([true, false])(
+    "preserves a successful App Store check without a product ID (actionable=%s)",
+    async (actionable) => {
+      const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-provider-history-"));
+      tempDirs.push(userData);
+      const check = {
+        fingerprint: "installation-a",
+        storefront: "us",
+        status: "checked" as const,
+        source: "appStore" as const,
+        checkedAt: "2026-10-18T00:00:00.000Z",
+        discoveryCheckedAt: "2026-10-18T00:00:00.000Z"
+      };
+      const snapshot = {
+        ...defaultPersistedSnapshot(),
+        appProviderChecks: { example: check },
+        updates: actionable
+          ? [
+              {
+                id: "example",
+                appID: "example",
+                source: "appStore" as const,
+                supportLevel: "supported" as const,
+                localVersion: version("1"),
+                remoteVersion: version("2"),
+                updateURL: "https://example.com/release",
+                checkedAt: check.checkedAt
+              }
+            ]
+          : []
+      };
+      await new SnapshotPersistence(userData).save(snapshot);
+      const reloaded = await new SnapshotPersistence(userData).load();
+      expect(reloaded.appProviderChecks?.example).toMatchObject(check);
+      expect(reloaded.appProviderChecks?.example?.appStoreIdentity).toBeUndefined();
+      expect(reloaded.updates).toMatchObject(snapshot.updates);
+    }
+  );
+
+  it("round-trips verified current identities separately from updates and keeps preferences", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-provider-history-"));
+    tempDirs.push(userData);
+    const persistence = new SnapshotPersistence(userData);
+    const snapshot = {
+      ...defaultPersistedSnapshot(),
+      ignoredIDs: ["example"],
+      additionalDirectories: ["/Extra"],
+      refreshIntervalMinutes: 30,
+      appProviderChecks: {
+        example: {
+          fingerprint: "installation-a",
+          storefront: "us",
+          status: "checked" as const,
+          source: "appStore" as const,
+          appStoreIdentity: { productID: 123, platform: "mac" as const, storefront: "us" },
+          checkedAt: "2026-10-18T00:00:00.000Z",
+          discoveryCheckedAt: "2026-10-18T00:00:00.000Z"
+        }
+      }
+    };
+    await persistence.save(snapshot);
+    expect(await new SnapshotPersistence(userData).load()).toMatchObject(snapshot);
+    expect((await persistence.load()).updates).toEqual([]);
+  });
+
+  it("defaults old histories and rejects malformed identities, unsafe feeds and unfinished checks", async () => {
+    const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-provider-history-"));
+    tempDirs.push(userData);
+    const snapshotPath = path.join(userData, "baseline-snapshot.json");
+    await writeFile(snapshotPath, JSON.stringify({ ignoredIDs: ["example"] }));
+    expect((await new SnapshotPersistence(userData).load()).appProviderChecks).toEqual({});
+    await writeFile(
+      snapshotPath,
+      JSON.stringify({
+        appProviderChecks: {
+          invalid: { status: "checked" },
+          unfinished: {
+            fingerprint: "a",
+            status: "pending",
+            checkedAt: "bad",
+            sparkleFeedURL: "https://localhost/private",
+            appStoreIdentity: { productID: -1, platform: "mac", storefront: "us" }
+          },
+          missingContext: {
+            fingerprint: "c",
+            status: "checked",
+            source: "appStore",
+            checkedAt: "2026-10-18T00:00:00.000Z",
+            storefront: "us",
+            appStoreIdentity: { productID: 123, platform: "mac" }
+          },
+          wrongPlatform: {
+            fingerprint: "b",
+            status: "failed",
+            appStoreIdentity: { productID: 123, platform: "other", storefront: "us" }
+          },
+          invalidProduct: {
+            fingerprint: "d",
+            storefront: "us",
+            status: "checked",
+            source: "appStore",
+            checkedAt: "2026-10-18T00:00:00.000Z",
+            appStoreIdentity: { productID: -1, platform: "mac", storefront: "us" }
+          }
+        }
+      })
+    );
+    const checks = (await new SnapshotPersistence(userData).load()).appProviderChecks!;
+    expect(checks.invalid).toBeUndefined();
+    expect(checks.unfinished).toMatchObject({ status: "failed" });
+    expect(checks.unfinished?.checkedAt).toBeUndefined();
+    expect(checks.unfinished?.sparkleFeedURL).toBeUndefined();
+    expect(checks.unfinished?.appStoreIdentity).toBeUndefined();
+    expect(checks.wrongPlatform?.appStoreIdentity).toBeUndefined();
+    expect(checks.missingContext?.status).toBe("failed");
+    expect(checks.missingContext?.appStoreIdentity).toBeUndefined();
+    expect(checks.invalidProduct?.status).toBe("failed");
+    expect(checks.invalidProduct?.appStoreIdentity).toBeUndefined();
+  });
+});

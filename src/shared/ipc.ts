@@ -72,7 +72,7 @@ export type BaselineAPI = {
   getToolStatus(): Promise<ToolStatus>;
   refreshToolStatus(): Promise<void>;
   cleanUpHomebrew(): Promise<string>;
-  refresh(lightweight?: boolean): Promise<void>;
+  refresh(lightweight?: boolean, forceAppDiscovery?: boolean): Promise<void>;
   setSearchText(searchText: string): Promise<void>;
   setSelectedTab(tab: MenuTab): Promise<void>;
   updatePreferences(patch: PreferencePatch): Promise<void>;

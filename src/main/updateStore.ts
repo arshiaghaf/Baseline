@@ -111,7 +111,8 @@ const successfulUpdateHoldMs = 2000;
 export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly persistence: SnapshotPersistence;
   private readonly scanner: Pick<BundleScannerClient, "scanApplications">;
-  private readonly appStore: Pick<AppStoreLookupClient, "lookupOutcome">;
+  private readonly appStore: Pick<AppStoreLookupClient, "lookupOutcome"> &
+    Partial<Pick<AppStoreLookupClient, "lookupOutcomes" | "storefront">>;
   private readonly sparkle: Pick<SparkleAppcastClient, "lookupOutcome">;
   private readonly homebrew: HomebrewCaskSource;
   private readonly homebrewFormula: HomebrewFormulaSource;
@@ -158,7 +159,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     openAppBundle: (bundlePath: string) => Promise<void>;
     clients?: Partial<{
       scanner: Pick<BundleScannerClient, "scanApplications">;
-      appStore: Pick<AppStoreLookupClient, "lookupOutcome">;
+      appStore: Pick<AppStoreLookupClient, "lookupOutcome"> &
+        Partial<Pick<AppStoreLookupClient, "lookupOutcomes" | "storefront">>;
       sparkle: Pick<SparkleAppcastClient, "lookupOutcome">;
       homebrew: HomebrewCaskSource;
       homebrewFormula: HomebrewFormulaSource;
@@ -383,6 +385,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       {
         readState: (): RefreshReadState => {
           const {
+            appProviderChecks,
             homebrewItems,
             homebrewFormulaIdentityContinuity,
             updates,
@@ -395,6 +398,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
             searchText
           } = this.state;
           return {
+            appProviderChecks,
             homebrewItems,
             homebrewFormulaIdentityContinuity,
             updates,
@@ -1301,6 +1305,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
 function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
   return {
+    appProviderChecks: snapshot.appProviderChecks,
     apps: snapshot.apps,
     updates: snapshot.updates,
     recentlyUpdated: snapshot.recentlyUpdated,
