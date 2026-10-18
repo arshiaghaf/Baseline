@@ -373,4 +373,61 @@ describe("profile history during field recovery", () => {
     const verified = await integrity.verifyOrInitialize(reloaded.profileStats);
     expect(verified.integrityStatus).toBe("resetAfterTamper");
   });
+
+  it.each([
+    null,
+    { coverage: "complete", entries: [null] },
+    {
+      coverage: "complete",
+      entries: [
+        {
+          type: event.type,
+          channel: event.channel,
+          targetID: event.targetID,
+          displayName: event.displayName,
+          count: 0
+        }
+      ]
+    }
+  ])(
+    "retains malformed unsigned v3 lifetime evidence through durable recovery: %j",
+    async (lifetime) => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-v3-recovery-"));
+      directories.push(directory);
+      await writeFile(
+        path.join(directory, "baseline-snapshot.json"),
+        JSON.stringify({
+          ...preferences,
+          profileStats: {
+            ...defaultPersistedSnapshot().profileStats,
+            signatureVersion: 3,
+            lifetime
+          }
+        })
+      );
+      const persistence = new SnapshotPersistence(directory);
+      const loaded = await persistence.load();
+      expect(loaded).toMatchObject(preferences);
+      expect(loaded.profileStats.lifetimeSeal).toBeNull();
+      await persistence.save(loaded);
+      const reloaded = await new SnapshotPersistence(directory).load();
+      expect((await integrity.verifyOrInitialize(reloaded.profileStats)).integrityStatus).toBe(
+        "resetAfterTamper"
+      );
+
+      const unavailable = new ProfileStatsIntegrityService(async () => {
+        throw new Error("fixture integrity unavailable");
+      });
+      const pending = await unavailable.verifyOrInitialize(reloaded.profileStats);
+      expect(pending.integrityStatus).toBe("unavailable");
+      await persistence.save({ ...reloaded, profileStats: pending });
+      const recovered = await new SnapshotPersistence(directory).load();
+      expect(recovered).toMatchObject(preferences);
+      expect(recovered.profileStats.lifetimeSeal).toBeNull();
+      const verified = await integrity.verifyOrInitialize(recovered.profileStats);
+      expect(verified.integrityStatus).toBe("resetAfterTamper");
+      expect(verified.events).toEqual([]);
+      expect(verified.lifetime?.entries).toEqual([]);
+    }
+  );
 });

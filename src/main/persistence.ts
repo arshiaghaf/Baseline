@@ -414,6 +414,7 @@ function normalizeProfileStats(value: unknown, legacyStartedUsingAt?: unknown): 
   const events = Array.isArray(input?.events)
     ? input.events.flatMap((event) => normalizeProfileStatsEvent(event))
     : [];
+  const lifetime = normalizeProfileStatsLifetime(input?.lifetime);
   // Dropping malformed authenticated data must not recreate a previously valid
   // payload (or an empty first-run history). Keep an invalid envelope marker so
   // integrity verification rejects it, even when the original signature matches.
@@ -427,6 +428,7 @@ function normalizeProfileStats(value: unknown, legacyStartedUsingAt?: unknown): 
       (typeof input.signatureVersion !== "number" ||
         !Number.isSafeInteger(input.signatureVersion))) ||
     (input?.signature !== undefined && typeof input.signature !== "string") ||
+    (input !== undefined && Object.hasOwn(input, "lifetime") && !lifetime) ||
     (input?.resetNotice !== undefined && !normalizeProfileStatsResetNotice(input.resetNotice));
   return {
     createdAt: typeof input?.createdAt === "string" ? input.createdAt : defaults.createdAt,
@@ -441,7 +443,7 @@ function normalizeProfileStats(value: unknown, legacyStartedUsingAt?: unknown): 
         ? input.signatureVersion
         : defaults.signatureVersion,
     events,
-    lifetime: normalizeProfileStatsLifetime(input?.lifetime),
+    lifetime,
     lifetimeSeal: malformed ? null : normalizeProfileStatsLifetimeSeal(input),
     resetNotice: normalizeProfileStatsResetNotice(input?.resetNotice),
     signature: typeof input?.signature === "string" ? input.signature : undefined,
