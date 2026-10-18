@@ -1029,7 +1029,9 @@ describe("update store helpers", () => {
     const refreshing = store.refresh(false);
     const changingPreferences = store.updatePreferences({ showDockIcon: false });
     try {
-      await store.prepareToQuit();
+      // Finish the synthetic inventory check; the app scan remains in flight.
+      await new Promise((resolve) => setImmediate(resolve));
+      const quitting = store.prepareToQuit();
       finishScan([
         appRecord({
           bundlePath: "/Applications/Late Utility.app",
@@ -1037,7 +1039,7 @@ describe("update store helpers", () => {
           localVersion: version("1")
         })
       ]);
-      await Promise.all([refreshing, changingPreferences]);
+      await Promise.all([refreshing, changingPreferences, quitting]);
       expect(store.getSnapshot().apps).toEqual([]);
       await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
         showDockIcon: false,
