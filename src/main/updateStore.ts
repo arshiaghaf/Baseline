@@ -422,6 +422,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           } = this.state;
           return {
             apps: this.state.apps,
+            ignoredIDs: this.state.ignoredIDs,
             appProviderChecks,
             appUpdateComparisonBaseline,
             homebrewItems,

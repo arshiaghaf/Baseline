@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import path from "node:path";
+import { reconcileScannedApps } from "./scanReconciliation";
 import type {
   AppRecord,
   AppUpdateComparison,
@@ -42,6 +43,7 @@ export type RefreshOptions = {
 export type RefreshReadState = Pick<
   BaselineSnapshot,
   | "apps"
+  | "ignoredIDs"
   | "appProviderChecks"
   | "appUpdateComparisonBaseline"
   | "homebrewItems"
@@ -153,11 +155,13 @@ export class RefreshComputationService {
     try {
       homebrewInventoryTask = this.ports.fetchHomebrewInventory(lightweight, options);
       const rootHealth: ScanRootHealth[] = [];
-      const [scannedApps, catalogueIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
+      const canonicalPaths = new Map<string, string>();
+      const [scanResult, catalogueIndex, homebrewFormulaIndex, homebrewInventory, selfUpdate] =
         await Promise.all([
           this.clients.scanner.scanApplications(this.ports.scanDirectories(), {
             signal,
-            onRootRead: (health) => rootHealth.push(health)
+            onRootRead: (health) => rootHealth.push(health),
+            onAppRead: (bundlePath, canonical) => canonicalPaths.set(bundlePath, canonical)
           }),
           this.clients.homebrew.fetchIndex({ force, signal }),
           this.clients.homebrewFormula.fetchIndex({ force, signal }),
@@ -171,8 +175,9 @@ export class RefreshComputationService {
         rootHealth.map((health) => [path.resolve(health.directory), health.complete])
       );
       const failedRoots = [...healthByRoot].filter(([, complete]) => !complete);
-      const scannedPaths = new Set(scannedApps.map((app) => app.bundlePath));
-      const retainedApps = this.ports.readState().apps.filter((app) => {
+      const scannedPaths = new Set(scanResult.map((app) => app.bundlePath));
+      const previousApps = this.ports.readState().apps;
+      const retentionCandidates = previousApps.filter((app) => {
         if (scannedPaths.has(app.bundlePath)) return false;
         // A healthy, more specific root can confirm absence inside an unavailable parent.
         const applicable = [...healthByRoot]
@@ -187,6 +192,15 @@ export class RefreshComputationService {
           .sort(([a], [b]) => b.length - a.length);
         return applicable[0]?.[1] === false;
       });
+      const { scannedApps, retainedApps } = await reconcileScannedApps(
+        scanResult,
+        retentionCandidates,
+        previousApps,
+        canonicalPaths,
+        this.ports.readState().ignoredIDs,
+        signal
+      );
+      if (!this.ports.isCurrent(sequence)) return;
       const apps = [...scannedApps, ...retainedApps].sort((a, b) =>
         a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
       );

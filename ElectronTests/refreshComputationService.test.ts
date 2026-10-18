@@ -28,6 +28,7 @@ function setup(scan: Promise<AppRecord[]>, inventory: HomebrewInventoryResult) {
   const patches: RefreshPatch[] = [];
   const state: RefreshReadState = {
     apps: [],
+    ignoredIDs: [],
     homebrewItems: [],
     updates: [],
     recentlyUpdated: [],

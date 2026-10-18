@@ -5,10 +5,11 @@ import { runCommand } from "./commandRunner";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { app as electronApp, nativeImage, type NativeImage } from "electron";
-import { mkdtemp, readdir, realpath, rm, stat } from "node:fs/promises";
+import { access, lstat, mkdtemp, readdir, realpath, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { constants } from "node:fs";
 import type { AppRecord, UpdateSource } from "../shared/domain";
 import { isAllowedFeedURL } from "../shared/security";
 import { version } from "../shared/version";
@@ -16,7 +17,7 @@ import { IconCache, type IconLoadResult } from "./iconCache";
 import { cancellableRead, readSignal, rethrowCancelledRead } from "./readCancellation";
 
 const execFileAsync = promisify(execFile);
-const directoryRuntime = { readdir };
+const directoryRuntime = { readdir, access, lstat };
 
 type InfoPlist = Record<string, unknown>;
 type AppBundleInfo = {
@@ -50,7 +51,11 @@ const iconRuntime: {
 } = { ...defaultIconRuntime };
 
 export type ScanRootHealth = { directory: string; complete: boolean };
-export type ScanOptions = { signal?: AbortSignal; onRootRead?: (health: ScanRootHealth) => void };
+export type ScanOptions = {
+  signal?: AbortSignal;
+  onRootRead?: (health: ScanRootHealth) => void;
+  onAppRead?: (bundlePath: string, canonicalPath: string) => void;
+};
 
 export class BundleScannerClient {
   private readonly icons = new IconCache(loadIconFileDataURL);
@@ -62,6 +67,7 @@ export class BundleScannerClient {
 
 class BundleScan {
   private rootComplete = true;
+  private rootDirectory = "";
   constructor(
     private readonly icons: IconCache,
     private readonly options: ScanOptions
@@ -77,15 +83,20 @@ class BundleScan {
     for (const directory of directories) {
       this.options.signal?.throwIfAborted();
       this.rootComplete = true;
+      this.rootDirectory = directory;
       try {
         const apps = await this.findApps(directory);
         for (const appPath of apps) {
           this.options.signal?.throwIfAborted();
           const canonicalPath = await this.read(canonicalAppPath(appPath, this.options.signal));
-          if (seen.has(canonicalPath)) continue;
+          if (seen.has(canonicalPath)) {
+            this.options.onAppRead?.(appPath, canonicalPath);
+            continue;
+          }
           const record = await this.makeRecord(appPath);
           if (record) {
             seen.add(canonicalPath);
+            this.options.onAppRead?.(appPath, canonicalPath);
             records.push(record);
           }
         }
@@ -126,17 +137,39 @@ class BundleScan {
       return apps;
     } catch (error) {
       rethrowCancelledRead(error, this.options.signal);
-      this.rootComplete = false;
+      if (!(await this.isAbsentOptionalRoot(directory, error))) this.rootComplete = false;
       return [];
+    }
+  }
+
+  private async isAbsentOptionalRoot(directory: string, error: unknown): Promise<boolean> {
+    const home = os.homedir();
+    if (
+      directory !== this.rootDirectory ||
+      path.resolve(directory) !== path.join(home, "Applications") ||
+      (error as NodeJS.ErrnoException).code !== "ENOENT"
+    )
+      return false;
+    try {
+      // lstat must see no entry: readdir's ENOENT also describes broken aliases.
+      await this.read(directoryRuntime.lstat(directory));
+      return false;
+    } catch (probeError) {
+      rethrowCancelledRead(probeError, this.options.signal);
+      if ((probeError as NodeJS.ErrnoException).code !== "ENOENT") return false;
+    }
+    try {
+      const entries = await this.read(directoryRuntime.readdir(home, { withFileTypes: true }));
+      return !entries.some((entry) => entry.name === "Applications");
+    } catch (probeError) {
+      rethrowCancelledRead(probeError, this.options.signal);
+      return false;
     }
   }
 
   private async makeRecord(appPath: string): Promise<AppRecord | undefined> {
     const bundleInfo = await this.readAppBundleInfo(appPath);
-    if (!bundleInfo) {
-      this.rootComplete = false;
-      return undefined;
-    }
+    if (!bundleInfo) return undefined;
     const { info, isIOSAppOnMac, hasAppStoreEvidence, hasSafariWebExtension, iconResourcesPath } =
       bundleInfo;
     if (isWebAppBundle(info)) {
@@ -238,6 +271,7 @@ class BundleScan {
       }
     } catch (error) {
       rethrowCancelledRead(error, this.options.signal);
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       return undefined;
     }
     return undefined;
@@ -405,6 +439,9 @@ async function readInfoPlistAtPath(
   signal?: AbortSignal
 ): Promise<InfoPlist | undefined> {
   try {
+    // A missing plist or unsupported format is not a failed directory read.
+    // Permission and filesystem failures remain incomplete scan evidence.
+    await cancellableRead(directoryRuntime.access(infoPath, constants.R_OK), readSignal(signal));
     const result = await runCommand(
       "/usr/bin/plutil",
       ["-convert", "json", "-o", "-", infoPath],
@@ -414,10 +451,14 @@ async function readInfoPlistAtPath(
     signal?.throwIfAborted();
     if (result.failure?.kind === "timeout")
       throw new DOMException("App metadata read timed out.", "TimeoutError");
+    if (result.failure || result.cancelled || result.signal)
+      throw new Error("App metadata helper could not complete.");
     if (!result.success) return undefined;
     return JSON.parse(result.stdout ?? "") as InfoPlist;
   } catch (error) {
     rethrowCancelledRead(error, signal);
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT" && !(error instanceof SyntaxError))
+      throw error;
     return undefined;
   }
 }
