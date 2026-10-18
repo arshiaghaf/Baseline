@@ -41,7 +41,7 @@ it("overlaps slow independent feeds without increasing App Store request frequen
         return new Response(
           isAppStore
             ? '{"results":[]}'
-            : '<rss><channel><item><enclosure sparkle:shortVersionString="2.0" sparkle:version="2" /></item></channel></rss>'
+            : '<rss><channel><item><enclosure sparkle:shortVersionString="2.0" sparkle:version="2" url="https://downloads.example.com/Example.dmg" /></item></channel></rss>'
         );
       })
     );
@@ -82,7 +82,20 @@ it("overlaps slow independent feeds without increasing App Store request frequen
   }
   const serial = await measure(true);
   const parallel = await measure(false);
-  expect(parallel.updates).toEqual(serial.updates);
+  expect(serial.updates).toHaveLength(12);
+  // Request completion times intentionally differ when work overlaps.
+  const withoutCheckTimes = (updates: typeof serial.updates) =>
+    updates?.map((update) => ({ ...update, checkedAt: undefined }));
+  expect(withoutCheckTimes(parallel.updates)).toEqual(withoutCheckTimes(serial.updates));
+  expect(parallel.updates).toEqual(
+    records.map((record) =>
+      expect.objectContaining({
+        appID: record.id,
+        source: "sparkle",
+        remoteVersion: version("2.0")
+      })
+    )
+  );
   expect(parallel.requests.sort()).toEqual(serial.requests.sort());
   for (let i = 1; i < parallel.starts.length; i++) {
     expect(parallel.starts[i]! - parallel.starts[i - 1]!).toBeGreaterThanOrEqual(3100);
