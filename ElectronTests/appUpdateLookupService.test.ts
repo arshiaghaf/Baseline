@@ -362,6 +362,64 @@ describe("durable provider routing", () => {
     expect(result.checks[base.id]?.appStoreIdentity).toBeUndefined();
   });
 
+  it.each(
+    [false, true].flatMap((force) => [false, true].map((actionable) => ({ force, actionable })))
+  )(
+    "keeps failed ID-less checks visibly failed without advancing freshness: %j",
+    async ({ force, actionable }) => {
+      const previous: UpdateRecord = {
+        id: base.id,
+        appID: base.id,
+        source: "appStore",
+        supportLevel: "supported",
+        localVersion: base.localVersion,
+        remoteVersion: version("2"),
+        checkedAt
+      };
+      const source = clients({ type: "transientFailure" });
+      const discoveryCheckedAt = "2026-10-15T23:00:00.000Z";
+      const result = await run(source, {
+        force,
+        previousChecks: normalizeAppProviderChecks(
+          prior({
+            source: "appStore",
+            status: "checked",
+            checkedAt,
+            discoveryCheckedAt
+          })
+        ),
+        previousUpdates: new Map(actionable ? [[base.id, previous]] : [])
+      });
+      expect(result.checks[base.id]).toMatchObject({
+        source: "appStore",
+        status: "failed",
+        checkedAt,
+        discoveryCheckedAt
+      });
+      expect(result.checks[base.id]?.appStoreIdentity).toBeUndefined();
+      expect(result.updates).toEqual(actionable ? [previous] : []);
+    }
+  );
+
+  it("keeps the actual cached ID-less background check time distinct from refresh time", async () => {
+    const source = clients({ type: "completed", providerFound: true, checkedAt });
+    const result = await run(source, {
+      force: false,
+      previousChecks: prior({ source: "appStore", status: "checked", checkedAt })
+    });
+    expect(result.updates).toEqual([]);
+    expect(result.checks[base.id]).toMatchObject({
+      source: "appStore",
+      status: "checked",
+      checkedAt,
+      discoveryCheckedAt: checkedAt
+    });
+    expect(source.appStore.lookupOutcomes).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ force: false })
+    );
+  });
+
   const previousAppleUpdate: UpdateRecord = {
     id: base.id,
     appID: base.id,
