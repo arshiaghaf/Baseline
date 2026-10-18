@@ -139,6 +139,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private state: BaselineSnapshot;
   private snapshotRevision = 0;
+  private closing = false;
+  private quitTask?: Promise<boolean>;
+  private readonly pendingProducers = new Set<Promise<unknown>>();
   private mutationGeneration = 0;
   private readonly failureGenerations = new Map<string, number>();
   private readonly resultGenerations = new WeakMap<CommandResult, number>();
@@ -489,6 +492,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async start(): Promise<void> {
+    this.requireOpen();
     await this.refreshToolStatus();
     this.restartAutoRefreshLoop();
     void this.refresh(false);
@@ -499,27 +503,33 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async verifyProfileStatsIntegrity(): Promise<void> {
+    this.requireOpen();
     await this.profileStatsService.verifyIntegrity();
   }
 
   async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
-    return this.refreshLifecycle.refresh(lightweight, options);
+    if (this.closing) return;
+    return this.trackProducer(this.refreshLifecycle.refresh(lightweight, options));
   }
 
   async refreshToolStatus(): Promise<void> {
-    await this.toolStatus.check();
+    this.requireOpen();
+    await this.trackProducer(this.toolStatus.check());
   }
 
   async setSearchText(searchText: string): Promise<void> {
+    this.requireOpen();
     this.patch({ searchText });
     this.refreshComputation.refreshDiscoverItems();
   }
 
   async setSelectedTab(selectedTab: MenuTab): Promise<void> {
+    this.requireOpen();
     this.patch({ selectedTab });
   }
 
   async updatePreferences(patch: PreferencePatch): Promise<void> {
+    this.requireOpen();
     const refreshIntervalMinutes =
       patch.refreshIntervalMinutes === undefined
         ? this.state.refreshIntervalMinutes
@@ -538,12 +548,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async checkForSelfUpdate(): Promise<SelfUpdateRecord | undefined> {
+    this.requireOpen();
     if (this.selfUpdateCheckTask) return this.selfUpdateCheckTask;
     const task = this.lookupSelfUpdate(new Date().toISOString()).then((selfUpdate) => {
       this.patch({ selfUpdate });
       return selfUpdate;
     });
     this.selfUpdateCheckTask = task;
+    void this.trackProducer(task).catch(() => undefined);
     try {
       return await task;
     } finally {
@@ -564,17 +576,63 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     );
   }
 
-  async prepareToQuit(): Promise<boolean> {
-    await this.profileStatsService.drain();
-    await this.persist();
-    if (this.hasActiveUpdateOperation()) return false;
+  prepareToQuit(): Promise<boolean> {
+    if (this.quitTask) return this.quitTask;
+    if (this.hasActiveUpdateOperation()) return Promise.resolve(false);
+    // Fence admission before yielding, then invalidate refresh commits and timers.
+    this.closing = true;
+    const interruptedRefresh = this.refreshLifecycle.isRefreshActive;
     this.refreshLifecycle.stop();
-    this.homebrewOperations.dispose();
-    this.progressPublisher.dispose();
-    return true;
+    const task = this.finishPreparingToQuit(interruptedRefresh);
+    this.quitTask = task;
+    return task;
+  }
+
+  private async finishPreparingToQuit(interruptedRefresh: boolean): Promise<boolean> {
+    let ready = false;
+    try {
+      // Include superseded refreshes and writes already accepted before the fence.
+      // A producer may enqueue a save while settling, so drain to quiescence.
+      while (this.pendingProducers.size > 0) {
+        await Promise.allSettled([...this.pendingProducers]);
+      }
+      await this.profileStatsService.drain();
+      if (this.hasActiveUpdateOperation()) return false;
+      this.patch({ isRefreshing: false });
+      await this.persist();
+      if (this.hasActiveUpdateOperation()) return false;
+      this.homebrewOperations.dispose();
+      this.progressPublisher.dispose();
+      ready = true;
+      return true;
+    } finally {
+      if (!ready) {
+        this.closing = false;
+        this.quitTask = undefined;
+        this.patch({ isRefreshing: false });
+        this.restartAutoRefreshLoop();
+        if (interruptedRefresh && !this.hasActiveUpdateOperation()) {
+          void this.refresh(false, { forceMetadata: false }).catch(() => undefined);
+        }
+      }
+    }
+  }
+
+  private requireOpen(): void {
+    if (this.closing) throw new Error("Baseline is finishing saving before quitting.");
+  }
+
+  private async trackProducer<T>(task: Promise<T>): Promise<T> {
+    this.pendingProducers.add(task);
+    try {
+      return await task;
+    } finally {
+      this.pendingProducers.delete(task);
+    }
   }
 
   async toggleIgnoredApp(appID: string): Promise<void> {
+    this.requireOpen();
     const ignored = new Set(this.state.ignoredIDs);
     toggleSet(ignored, appID);
     this.patch({ ignoredIDs: [...ignored].sort() });
@@ -582,6 +640,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async toggleIgnoredHomebrew(itemID: string): Promise<void> {
+    this.requireOpen();
     const ignored = new Set(this.state.ignoredHomebrewItemIDs);
     toggleSet(ignored, itemID);
     this.patch({ ignoredHomebrewItemIDs: [...ignored].sort() });
@@ -589,6 +648,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async acknowledgeProfileStatsReset(): Promise<void> {
+    this.requireOpen();
     const resetID = this.state.profileStats.resetNotice?.id;
     if (!resetID || this.state.profileStatsResetAcknowledgedID === resetID) {
       return;
@@ -605,6 +665,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async dismissOperationFailure(id: string): Promise<void> {
+    this.requireOpen();
     const failures = this.state.operationFailures ?? [];
     const remaining = failures.filter((failure) => failure.id !== id);
     if (remaining.length === failures.length) return;
@@ -712,6 +773,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async addDirectory(directory: string): Promise<void> {
+    this.requireOpen();
     const resolved = path.resolve(directory);
     if (
       this.state.additionalDirectories.some((candidate) => path.resolve(candidate) === resolved)
@@ -725,6 +787,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async removeDirectory(directory: string): Promise<void> {
+    this.requireOpen();
     const resolved = path.resolve(directory);
     const directories = this.state.additionalDirectories.filter(
       (candidate) => path.resolve(candidate) !== resolved
@@ -740,6 +803,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async openApp(appID: string): Promise<void> {
+    this.requireOpen();
     const appRecord = this.state.apps.find((app) => app.id === appID);
     if (appRecord) {
       await this.openAppBundle(appRecord.bundlePath);
@@ -747,6 +811,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async openExternal(url: string): Promise<boolean> {
+    this.requireOpen();
     if (!isAllowedExternalURL(url)) {
       this.patch({ refreshErrorMessage: "Blocked an unsafe external link." });
       return false;
@@ -755,6 +820,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private beginUserMutation(): void {
+    this.requireOpen();
     this.mutationGeneration++;
     this.failureGenerations.clear();
     this.patch({ operationFailureDetails: {} });
@@ -852,6 +918,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   collectHomebrewDiagnostics(
     request: HomebrewDiagnosticsRequest = {}
   ): Promise<HomebrewDiagnosticsReport> {
+    if (this.closing) return Promise.resolve({ status: "busy" });
     return this.homebrewDiagnostics.collect(request);
   }
 
@@ -920,6 +987,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private reserveHomebrewCommandLock(
     options: { allowRefreshSupersession?: boolean } = {}
   ): (() => void) | undefined {
+    if (this.closing) return undefined;
     return this.homebrewWorkLock.reserveCommand(options);
   }
 
@@ -1099,6 +1167,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async cleanUpHomebrew(confirm: () => Promise<boolean>): Promise<string> {
+    this.requireOpen();
     const inventoryRequired = "Refresh installed packages before cleaning up Homebrew.";
     if (this.homebrewCleanupRequiresInventory) return inventoryRequired;
     this.beginUserMutation();
@@ -1235,6 +1304,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private async withAppUpdating(appID: string, operation: () => Promise<void>): Promise<void> {
+    this.requireOpen();
     if (this.state.appUpdatingIDs.includes(appID)) {
       return;
     }
@@ -1255,13 +1325,13 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private restartAutoRefreshLoop(): void {
     this.refreshLifecycle.restartAutoRefreshLoop(
-      this.state.autoRefreshEnabled,
+      !this.closing && this.state.autoRefreshEnabled,
       this.state.refreshIntervalMinutes
     );
   }
 
   private async persist(): Promise<void> {
-    await this.persistence.save(snapshotForPersistence(this.state));
+    await this.trackProducer(this.persistence.save(snapshotForPersistence(this.state)));
   }
 
   private patch(patch: Partial<BaselineSnapshot>): void {
