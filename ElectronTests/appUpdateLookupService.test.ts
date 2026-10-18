@@ -162,6 +162,52 @@ describe("durable provider routing", () => {
     ]);
   });
 
+  it.each([false, true])(
+    "keeps checking an actionable Apple source without a product ID (force=%s)",
+    async (force) => {
+      const currentApp = { ...base, sparkleFeedURL: app.sparkleFeedURL };
+      const source = clients({
+        type: "completed",
+        value: { remoteVersion: version("2") },
+        checkedAt: input().now
+      });
+      const first = await run(source, {
+        apps: [currentApp],
+        forceAppDiscovery: true,
+        previousChecks: prior({
+          status: "checked",
+          source: "sparkle",
+          sparkleFeedURL: app.sparkleFeedURL,
+          checkedAt
+        })
+      });
+      expect(first.checks[base.id]).toMatchObject({ source: "appStore", status: "checked" });
+      expect(first.checks[base.id]?.appStoreIdentity).toBeUndefined();
+
+      const nextCheck = "2026-10-16T00:01:00.000Z";
+      vi.mocked(source.appStore.lookupOutcomes!).mockResolvedValue([
+        { type: "completed", value: { remoteVersion: version("3") }, checkedAt: nextCheck }
+      ]);
+      const second = await run(source, {
+        apps: [currentApp],
+        force,
+        now: nextCheck,
+        previousChecks: first.checks,
+        previousUpdates: new Map(first.updates!.map((update) => [update.appID, update]))
+      });
+      expect(source.appStore.lookupOutcomes).toHaveBeenCalledTimes(2);
+      expect(second.updates).toMatchObject([
+        { appID: base.id, source: "appStore", remoteVersion: version("3"), checkedAt: nextCheck }
+      ]);
+      expect(second.checks[base.id]).toMatchObject({
+        source: "appStore",
+        status: "checked",
+        checkedAt: nextCheck
+      });
+      expect(source.sparkle.lookupOutcome).not.toHaveBeenCalled();
+    }
+  );
+
   it("keeps cached no-match searches visibly unresolved and forces an explicit source search", async () => {
     const source = clients();
     const result = await run(source, { previousChecks: prior(), force: false });

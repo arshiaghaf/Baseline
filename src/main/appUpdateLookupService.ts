@@ -131,7 +131,11 @@ export async function lookupAppUpdates(
     (app) =>
       eligibleForApple(app) &&
       !previousFor(app)?.appStoreIdentity &&
-      ((input.force && !hasKnownAlternative(app)) || discoveryDue(app))
+      // An actionable Apple record can omit its product ID. Keep checking by
+      // bundle until it has a durable identity instead of deferring that source.
+      (previousFor(app)?.source === "appStore" ||
+        (input.force && !hasKnownAlternative(app)) ||
+        discoveryDue(app))
   );
   const requests = (group: AppRecord[]) =>
     group.map((app) => ({

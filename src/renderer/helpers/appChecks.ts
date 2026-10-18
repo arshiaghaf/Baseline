@@ -11,7 +11,10 @@ export function appUpdatesEmptyText(snapshot: BaselineSnapshot): string {
     return "Some app updates could not be checked.";
   if (checks.some((check) => check.status === "unresolved"))
     return "No updates found in checked sources. Some apps have no verified update source.";
-  if (!checks.length) return "Refresh to check app updates.";
+  if (!checks.length)
+    return snapshot.lastRefreshDate
+      ? "No app updates to show from the last refresh."
+      : "Refresh to check app updates.";
   return "No app updates found in the checked sources.";
 }
 

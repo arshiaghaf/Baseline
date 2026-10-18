@@ -3898,6 +3898,33 @@ describe("app refresh source visibility", () => {
     expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
   });
 
+  it.each([
+    [false, []],
+    [true, []],
+    [false, [app]],
+    [true, [app]]
+  ] as const)(
+    "does not prompt another refresh for a completed scan with no provider checks (compact=%s, apps=%j)",
+    (compact, apps) => {
+      render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            apps: [...apps],
+            updates: [],
+            homebrewItems: [],
+            appProviderChecks: {},
+            lastRefreshDate: "2026-10-18T10:00:00.000Z"
+          })}
+        />
+      );
+      expect(screen.getByText("No app updates to show from the last refresh.")).toBeInTheDocument();
+      expect(screen.queryByText("Refresh to check app updates.")).not.toBeInTheDocument();
+      expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
+    }
+  );
+
   it("labels an older actionable result when its current provider check failed", () => {
     render(
       <AppRow
