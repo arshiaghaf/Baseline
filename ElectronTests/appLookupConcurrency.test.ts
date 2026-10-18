@@ -90,9 +90,9 @@ it("shares overlapping feeds but compares each installed version independently",
         (update) => update.source === "sparkle" && update.remoteVersion.raw === "2.0"
       )
     ).toBe(true);
-    // Each four-worker wave shares one in-flight feed; manual checks still
-    // revalidate metadata when the next wave starts after the first completed.
-    expect(fetch).toHaveBeenCalledTimes(2);
+    // All worker waves share this refresh's feed metadata; a new manual
+    // refresh gets a new signal and revalidates the feed.
+    expect(fetch).toHaveBeenCalledTimes(1);
   } finally {
     await vi.runAllTimersAsync();
     await task;
