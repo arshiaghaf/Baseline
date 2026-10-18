@@ -122,6 +122,7 @@ async function setup(
   const options = {
     persistence,
     persisted,
+    currentAppVersion: "1.0.0",
     clients,
     openExternalURL: async () => true,
     openAppBundle: async () => undefined,
@@ -134,6 +135,119 @@ async function setup(
 }
 
 describe("refresh history comparison evidence", () => {
+  it.each(
+    (["formula", "selfUpdate"] as const).flatMap((provider) =>
+      [false, true].flatMap((priorUpdate) =>
+        [false, true].map((buildOnly) => ({ provider, priorUpdate, buildOnly }))
+      )
+    )
+  )(
+    "persists streamed comparisons through $provider failure and relaunch (prior update: $priorUpdate, build only: $buildOnly)",
+    async ({ provider, priorUpdate, buildOnly }) => {
+      const { app, persisted } = fixture(buildOnly);
+      if (!priorUpdate) {
+        persisted.updates = [];
+        persisted.appUpdateComparisonBaseline = [];
+      }
+      const apple = vi.fn<AppleLookup>().mockResolvedValue(
+        buildOnly
+          ? { type: "completed" }
+          : {
+              type: "completed",
+              value: { remoteVersion: version("3"), updateURL: "https://example.com/update" }
+            }
+      );
+      const { store, persistence, options } = await setup(app, persisted, apple);
+      if (buildOnly)
+        options.clients.sparkle!.lookupOutcome = async () => ({
+          type: "completed",
+          providerFound: true,
+          value: {
+            remoteVersion: app.localVersion,
+            remoteBuildVersion: version("300"),
+            versionComparison: "build"
+          }
+        });
+      const gate = deferred<void>();
+      const failure = new Error("Unrelated metadata failed");
+      const formulaLookup = options.clients.homebrewFormula!.fetchIndex;
+      const selfLookup = options.clients.selfUpdate!.lookup;
+      if (provider === "formula")
+        options.clients.homebrewFormula!.fetchIndex = async () => {
+          await gate.promise;
+          throw failure;
+        };
+      else
+        options.clients.selfUpdate!.lookup = async () => {
+          await gate.promise;
+          throw failure;
+        };
+      const refresh = store.refresh(false);
+      let relaunched: UpdateStore | undefined;
+      let stopped = false;
+      try {
+        await vi.waitFor(() =>
+          expect(store.getSnapshot().updates).toMatchObject([
+            {
+              localVersion: app.localVersion,
+              ...(buildOnly ? { localBuildVersion: app.bundleVersion } : {})
+            }
+          ])
+        );
+        expect(store.getSnapshot().isRefreshing).toBe(true);
+        gate.resolve();
+        await refresh;
+        expect(store.getSnapshot().refreshErrorMessage).toBe(failure.message);
+        await store.prepareToQuit();
+        stopped = true;
+        const saved = await persistence.load();
+        expect(saved.updates).toHaveLength(1);
+        expect(saved.appUpdateComparisonBaseline).toMatchObject([
+          {
+            appID: app.id,
+            localVersion: app.localVersion,
+            ...(buildOnly ? { localBuildVersion: app.bundleVersion } : {})
+          }
+        ]);
+        expect(saved.appUpdateComparisonBaseline?.[0]).not.toHaveProperty("updateURL");
+        expect(saved.appUpdateComparisonBaseline?.[0]).not.toHaveProperty("homebrewToken");
+
+        options.clients.homebrewFormula!.fetchIndex = formulaLookup;
+        options.clients.selfUpdate!.lookup = selfLookup;
+        const installed = {
+          ...app,
+          ...(buildOnly ? { bundleVersion: version("300") } : { localVersion: version("3") })
+        };
+        options.clients.scanner!.scanApplications = async () => [installed];
+        apple.mockResolvedValue({ type: "completed", providerFound: !buildOnly });
+        options.clients.sparkle!.lookupOutcome = async () => ({
+          type: "completed",
+          providerFound: true
+        });
+        relaunched = new UpdateStore({ ...options, persisted: saved });
+        await relaunched.refresh(false);
+        const history = {
+          appID: app.id,
+          source: buildOnly ? "sparkle" : "appStore",
+          fromVersion: app.localVersion,
+          toVersion: installed.localVersion,
+          ...(buildOnly
+            ? { fromBuildVersion: app.bundleVersion, toBuildVersion: installed.bundleVersion }
+            : {})
+        };
+        expect(relaunched.getSnapshot().recentlyUpdated).toMatchObject([history]);
+        await relaunched.refresh(false);
+        expect(relaunched.getSnapshot().recentlyUpdated).toMatchObject([history]);
+        expect(relaunched.getSnapshot().recentlyUpdated).toHaveLength(1);
+      } finally {
+        gate.resolve();
+        await Promise.allSettled([refresh]);
+        if (!stopped) await store.prepareToQuit();
+        await relaunched?.prepareToQuit();
+      }
+    }
+  );
+
   it("advances the committed comparison when an installed upgrade still has a newer pending update", async () => {
     const { app, persisted } = fixture();
     const apple = vi.fn<AppleLookup>().mockResolvedValue({

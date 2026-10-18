@@ -122,6 +122,39 @@ const completeInventory: HomebrewInventoryResult = {
 };
 
 describe("RefreshComputationService", () => {
+  it("does not restore consumed comparisons when persistence fails after final reconciliation", async () => {
+    const app: AppRecord = {
+      id: "example",
+      bundlePath: "/Applications/Example.app",
+      bundleIdentifier: "com.example.app",
+      displayName: "Example",
+      localVersion: version("2"),
+      sourceHint: "appStore"
+    };
+    const { service, ports, state } = setup(Promise.resolve([app]), completeInventory);
+    state.updates = [
+      {
+        id: app.id,
+        appID: app.id,
+        source: "appStore",
+        supportLevel: "supported",
+        localVersion: version("1"),
+        remoteVersion: app.localVersion,
+        checkedAt: "2026-10-01T00:00:00Z"
+      }
+    ];
+    ports.persist = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Save failed"))
+      .mockResolvedValue(undefined);
+    await service.compute(false, 1, {}, new AbortController().signal);
+    expect(state.recentlyUpdated).toMatchObject([
+      { appID: app.id, fromVersion: version("1"), toVersion: app.localVersion }
+    ]);
+    expect(state.appUpdateComparisonBaseline).toEqual([]);
+    expect((state as RefreshReadState & RefreshPatch).refreshErrorMessage).toBe("Save failed");
+  });
+
   it.each(["formula", "selfUpdate"] as const)(
     "streams app updates before a delayed %s result, but waits to reconcile and persist",
     async (delayed) => {
@@ -210,10 +243,16 @@ describe("RefreshComputationService", () => {
       Promise.resolve([app]),
       completeInventory
     );
+    const priorComparison = {
+      appID: "prior",
+      source: "sparkle" as const,
+      localVersion: version("1")
+    };
+    state.appUpdateComparisonBaseline = [priorComparison];
     clients.homebrewFormula.fetchIndex.mockRejectedValue(new Error("Formula metadata failed"));
     clients.appStore.lookupOutcome.mockImplementation(async () => {
       await gate.promise;
-      return { type: "completed" };
+      return { type: "completed", value: { remoteVersion: version("2") } };
     });
     const task = service.compute(false, 1, {}, new AbortController().signal);
     try {
@@ -225,7 +264,11 @@ describe("RefreshComputationService", () => {
       expect(patches.some((patch) => patch.refreshErrorMessage === "Formula metadata failed")).toBe(
         true
       );
-      expect(state.appProviderChecks?.[app.id]?.status).toBe("unresolved");
+      expect(state.appProviderChecks?.[app.id]?.status).toBe("checked");
+      expect(state.appUpdateComparisonBaseline).toMatchObject([
+        priorComparison,
+        { appID: app.id, source: "appStore", localVersion: app.localVersion }
+      ]);
       expect(events.indexOf("error")).toBeLessThan(events.indexOf("persist"));
       expect(events.indexOf("persist")).toBeLessThan(events.indexOf("end"));
     } finally {
