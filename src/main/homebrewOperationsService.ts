@@ -8,6 +8,8 @@ import type {
   HomebrewManagedItemKind,
   ProfileStatsEvent
 } from "../shared/domain";
+import { homebrewItemID, type HomebrewRuntimeOperation } from "../shared/domain";
+import { randomBytes } from "node:crypto";
 import {
   HomebrewMaintenanceOutputParser,
   HomebrewMaintenanceProgressStage,
@@ -17,7 +19,11 @@ import { homebrewItemHasAppRepresentation } from "../shared/homebrewAppLinking";
 import { homebrewCommandToken, homebrewItemIdentity } from "../shared/homebrewIdentity";
 import { isValidHomebrewToken } from "../shared/security";
 import { isVersionGreater, type VersionValue } from "../shared/version";
-import { runBrewCommand as defaultRunBrewCommand, type CommandResult } from "./commandRunner";
+import {
+  runBrewCommand as defaultRunBrewCommand,
+  commandWasCancelled,
+  type CommandResult
+} from "./commandRunner";
 import type { OperationFailure } from "../shared/operationFailures";
 import {
   homebrewUpdateProfileStatsEvent,
@@ -27,6 +33,7 @@ import {
 export type HomebrewOperationsState = Pick<
   BaselineSnapshot,
   | "homebrewItems"
+  | "homebrewOperation"
   | "updates"
   | "apps"
   | "ignoredIDs"
@@ -51,6 +58,7 @@ export type HomebrewOperationsPatch = Partial<
   Pick<
     HomebrewOperationsState,
     | "homebrewUpdatingItemIDs"
+    | "homebrewOperation"
     | "homebrewQueuedItemIDs"
     | "homebrewBatchFailedItemIDs"
     | "homebrewBatchProgressByItemID"
@@ -86,6 +94,7 @@ const TRANSIENT_HOMEBREW_FAILURE_MS = 4000;
 const successfulUpdateHoldMs = 2000;
 
 export class HomebrewOperationsService {
+  private activeOperation?: HomebrewRuntimeOperation;
   private readonly homebrewBatchFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private readonly homebrewDiscoverFailureClearTimers = new Map<string, NodeJS.Timeout>();
   private disposed = false;
@@ -253,13 +262,24 @@ export class HomebrewOperationsService {
         : ["upgrade", homebrewCommandToken(item)!];
     const progressTokens = homebrewItemProgressTokens(item);
     const parser = new HomebrewMaintenanceOutputParser(progressTokens);
+    const completedItemIDs = new Set<string>();
     const commandResult = await this.runBrewWithResultEvents(command, (event) => {
       this.applyHomebrewProgressEvent(
         event,
         parser,
-        new Map(progressTokens.map((token) => [token, [itemID]]))
+        new Map(progressTokens.map((token) => [token, [itemID]])),
+        new Map([[itemID, item.kind]]),
+        completedItemIDs
       );
     });
+    if (
+      await this.reconcileCancellation(
+        commandResult,
+        [itemID],
+        completedItemIDs.has(itemID) ? [{ item, profileStatsEvent }] : []
+      )
+    )
+      return;
     if (commandResult.success) {
       this.patch({
         refreshErrorMessage: undefined,
@@ -365,6 +385,16 @@ export class HomebrewOperationsService {
           completedItemIDs
         );
       });
+      if (
+        await this.reconcileCancellation(
+          commandResult,
+          affectedIDs,
+          itemsWithEvents
+            .filter(({ item }) => completedItemIDs.has(item.id))
+            .map(({ item, entry }) => ({ item, profileStatsEvent: entry.profileStatsEvent }))
+        )
+      )
+        return;
       const result = commandResult.success;
       if (result) {
         const upgradedKind = homebrewUpgradeKindForCommand(command);
@@ -528,6 +558,14 @@ export class HomebrewOperationsService {
             completedItemIDs
           );
         });
+        if (
+          await this.reconcileCancellation(
+            commandResult,
+            affectedIDs,
+            affected.filter((item) => completedItemIDs.has(item.id)).map((item) => ({ item }))
+          )
+        )
+          return;
         const result = commandResult.success;
         if (result) {
           const upgradedKind = homebrewUpgradeKindForCommand(command);
@@ -615,7 +653,7 @@ export class HomebrewOperationsService {
       }
       await this.refresh(true);
     } finally {
-      releaseHomebrewCommandLock();
+      this.releaseOperation(releaseHomebrewCommandLock);
     }
   }
 
@@ -702,6 +740,7 @@ export class HomebrewOperationsService {
         const commandResult = await this.runBrewWithResultEvents(command, (event) => {
           this.applyDiscoverInstallEvent(event, parser, itemID, item.token.toLowerCase());
         });
+        if (await this.reconcileCancellation(commandResult, [itemID])) return;
         const success = commandResult.success;
         // Carry only this operation's persistence notice, not unrelated old state.
         const failureNotice = success
@@ -821,6 +860,7 @@ export class HomebrewOperationsService {
           }
         }
       );
+      if (await this.reconcileCancellation(result, [itemID])) return;
       this.patch({
         homebrewUninstallingItemIDs: removeFromArray(this.state.homebrewUninstallingItemIDs, itemID)
       });
@@ -841,7 +881,7 @@ export class HomebrewOperationsService {
           )
         });
       }
-      releaseHomebrewCommandLock();
+      this.releaseOperation(releaseHomebrewCommandLock);
     }
   }
 
@@ -858,7 +898,7 @@ export class HomebrewOperationsService {
         }
         const entries = this.homebrewUpdateQueue.splice(0);
         if (entries.length === 0) {
-          releaseHomebrewCommandLock();
+          this.releaseOperation(releaseHomebrewCommandLock);
           continue;
         }
         const entryIDs = entries.map((entry) => entry.item.id);
@@ -892,7 +932,7 @@ export class HomebrewOperationsService {
               homebrewQueuedItemIDs: queuedItemIDs
             });
           }
-          releaseHomebrewCommandLock();
+          this.releaseOperation(releaseHomebrewCommandLock);
         }
       }
     } finally {
@@ -911,7 +951,7 @@ export class HomebrewOperationsService {
     try {
       await operation();
     } finally {
-      releaseHomebrewCommandLock();
+      this.releaseOperation(releaseHomebrewCommandLock);
     }
   }
 
@@ -922,11 +962,59 @@ export class HomebrewOperationsService {
     const started: HomebrewMaintenanceRunEvent = { type: "commandStarted", command };
     this.emitHomebrewCommand(started);
     onEvent(started);
-    const result = await this.runBrewCommand(command, (line) => {
+    const tracked = ["upgrade", "install", "uninstall"].includes(command[0] ?? "");
+    const tokens = new Set(command.slice(1).filter((arg) => !arg.startsWith("-")));
+    const kind = command.includes("--cask") ? "cask" : "formula";
+    const items = this.state.homebrewItems.filter(
+      (item) => item.kind === kind && tokens.has(homebrewCommandToken(item) ?? "")
+    );
+    const operation: HomebrewRuntimeOperation | undefined = tracked
+      ? {
+          id: randomBytes(16).toString("hex"),
+          itemIDs:
+            command[0] === "install"
+              ? [...tokens].map((token) => homebrewItemID(kind, token))
+              : items.map((item) => item.id),
+          appIDs: [...new Set(items.flatMap((item) => (item.appID ? [item.appID] : [])))],
+          phase: "running"
+        }
+      : undefined;
+    if (operation) {
+      this.activeOperation = operation;
+      this.patch({ homebrewOperation: operation });
+    }
+    const onLine = (line: string) => {
       const event: HomebrewMaintenanceRunEvent = { type: "outputLine", command, line };
       this.emitHomebrewCommand(event);
       onEvent(event);
-    });
+    };
+    let result: CommandResult;
+    let acceptingStatus = true;
+    try {
+      result = operation
+        ? await this.runBrewCommand(command, onLine, {
+            adminOperation: {
+              operationID: operation.id,
+              onWaitingChanged: (waitingPromptID) => {
+                if (!acceptingStatus || this.activeOperation?.id !== operation.id) return;
+                if (waitingPromptID !== undefined && !/^[a-f0-9]{32}$/u.test(waitingPromptID))
+                  throw new Error("Invalid admin helper prompt identity.");
+                this.patch({
+                  homebrewOperation: {
+                    ...operation,
+                    waitingPromptID,
+                    phase: waitingPromptID ? "waiting" : "running"
+                  }
+                });
+              }
+            }
+          })
+        : await this.runBrewCommand(command, onLine);
+    } finally {
+      acceptingStatus = false;
+      if (operation && this.activeOperation?.id === operation.id)
+        this.patch({ homebrewOperation: { ...operation, phase: "reconciling" } });
+    }
     if (result.success && !this.state.isHomebrewInstalled) {
       this.markHomebrewAvailabilityChecked();
       this.patch({ isHomebrewInstalled: true });
@@ -939,6 +1027,96 @@ export class HomebrewOperationsService {
     this.emitHomebrewCommand(finished);
     onEvent(finished);
     return result;
+  }
+
+  private releaseOperation(release: () => void): void {
+    try {
+      this.finishOperation();
+    } finally {
+      release();
+    }
+  }
+
+  private finishOperation(): void {
+    if (!this.activeOperation) return;
+    this.activeOperation = undefined;
+    this.patch({ homebrewOperation: undefined });
+  }
+
+  private async reconcileCancellation(
+    result: CommandResult,
+    itemIDs: string[],
+    completedUpdates: { item: HomebrewManagedItem; profileStatsEvent?: ProfileStatsEvent }[] = []
+  ): Promise<boolean> {
+    if (!commandWasCancelled(result)) return false;
+    if (completedUpdates.length > 0) {
+      this.patch({
+        homebrewUpdatedPendingRefreshItemIDs: [
+          ...new Set([
+            ...this.state.homebrewUpdatedPendingRefreshItemIDs,
+            ...completedUpdates.map(({ item }) => item.id)
+          ])
+        ]
+      });
+    }
+    const affected = new Set(itemIDs);
+    const retain = (ids: string[]) => ids.filter((id) => !affected.has(id));
+    const progress = (values: Record<string, number>) =>
+      Object.fromEntries(Object.entries(values).filter(([id]) => !affected.has(id)));
+    for (const id of itemIDs) {
+      this.clearHomebrewBatchFailureTimer(id);
+      this.clearHomebrewDiscoverFailureTimer(id);
+    }
+    this.patch({
+      isRunningHomebrewMaintenance: false,
+      homebrewUpdatingItemIDs: retain(this.state.homebrewUpdatingItemIDs),
+      homebrewQueuedItemIDs: retain(this.state.homebrewQueuedItemIDs),
+      homebrewUninstallingItemIDs: retain(this.state.homebrewUninstallingItemIDs),
+      homebrewDiscoverInstallingItemIDs: retain(this.state.homebrewDiscoverInstallingItemIDs),
+      homebrewBatchFailedItemIDs: retain(this.state.homebrewBatchFailedItemIDs),
+      homebrewDiscoverFailedItemIDs: retain(this.state.homebrewDiscoverFailedItemIDs),
+      homebrewBatchProgressByItemID: progress(this.state.homebrewBatchProgressByItemID),
+      homebrewDiscoverProgressByItemID: progress(this.state.homebrewDiscoverProgressByItemID)
+    });
+    let completionHistoryFailed = false;
+    if (completedUpdates.length > 0) {
+      const occurredAt = new Date().toISOString();
+      try {
+        await this.recordProfileStatsEvents(
+          completedUpdates.map(
+            ({ item, profileStatsEvent }) =>
+              profileStatsEvent ?? homebrewUpdateProfileStatsEvent({ item, occurredAt })
+          )
+        );
+      } catch {
+        // History persistence cannot prevent cancellation reconciliation or leave
+        // mutation state active after the reservation is released.
+        completionHistoryFailed = true;
+      }
+    }
+    // A cancelled command may have made changes. Never imply rollback or emit
+    // failure history or infer success for unconfirmed targets. Preserve already
+    // confirmed completions; fresh inventory is authoritative for remaining state.
+    try {
+      await this.refresh(true);
+    } finally {
+      if (completionHistoryFailed) {
+        this.applyOperationNotice("Some completed Homebrew updates could not be saved to history.");
+      }
+      if (result.failure?.kind === "admin-helper") {
+        this.patch({
+          refreshErrorMessage: [
+            ...new Set(
+              [
+                this.state.refreshErrorMessage,
+                "The administrator password helper failed. Refresh before retrying."
+              ].filter(Boolean)
+            )
+          ].join(" ")
+        });
+      }
+    }
+    return true;
   }
 
   cancelQueuedHomebrewUpdates(): void {
