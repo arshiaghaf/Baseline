@@ -26,6 +26,19 @@ type AppcastCandidate = {
   releaseNotesURL?: string;
 };
 
+type FeedMetadata = {
+  data: Buffer;
+  checkedAt?: string;
+};
+
+type RefreshFeeds = {
+  entries: Map<string, FeedMetadata>;
+  bytes: number;
+};
+
+const maxRefreshEntries = 512;
+const maxRefreshBytes = 8 * 1024 * 1024;
+
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
@@ -35,6 +48,11 @@ const parser = new XMLParser({
 
 export class SparkleAppcastClient {
   private readonly cache = new LookupCache(1000);
+  private readonly decoded = new WeakMap<Buffer, AppcastCandidate[]>();
+  // RefreshLifecycle supplies a distinct signal for each refresh generation.
+  // Only forced lookups need extra retention: ordinary lookups already reuse
+  // LookupCache metadata. Never let an earlier cached read satisfy a forced one.
+  private readonly refreshFeeds = new WeakMap<AbortSignal, RefreshFeeds>();
 
   async lookupOutcome(
     feedURL: string,
@@ -47,31 +65,40 @@ export class SparkleAppcastClient {
     }
 
     try {
-      const buffer = await this.cache.get(
-        feedURL,
-        async (signal) => {
-          const response = await fetch(feedURL, {
-            signal: AbortSignal.any([signal, AbortSignal.timeout(8000)])
-          });
-          if (!response.ok) {
-            if (response.status === 429)
-              this.cache.backoff(feedURL, response.headers.get("retry-after"));
-            throw new Error("Appcast unavailable");
-          }
-          const data = Buffer.from(await response.arrayBuffer());
-          if (data.byteLength > byteLimits.sparkleAppcastMaxBytes)
-            throw new Error("Appcast too large");
-          usableAppcast(data);
-          this.parseAppcast(data, localVersion, localBuildVersion);
-          return data;
-        },
-        options
-      );
+      options.signal?.throwIfAborted();
+      const refresh = options.force && options.signal ? this.feedsFor(options.signal) : undefined;
+      let metadata = refresh?.entries.get(feedURL);
+      if (!metadata) {
+        const buffer = await this.cache.get(
+          feedURL,
+          async (signal) => {
+            const response = await fetch(feedURL, {
+              signal: AbortSignal.any([signal, AbortSignal.timeout(8000)])
+            });
+            if (!response.ok) {
+              if (response.status === 429)
+                this.cache.backoff(feedURL, response.headers.get("retry-after"));
+              throw new Error("Appcast unavailable");
+            }
+            const data = Buffer.from(await response.arrayBuffer());
+            if (data.byteLength > byteLimits.sparkleAppcastMaxBytes)
+              throw new Error("Appcast too large");
+            this.decodeMetadata(data);
+            return data;
+          },
+          options
+        );
+        options.signal?.throwIfAborted();
+        metadata = { data: buffer, checkedAt: this.cache.checkedAt(feedURL) };
+        if (refresh) this.rememberFeed(refresh, feedURL, metadata);
+      }
+      options.signal?.throwIfAborted();
+      const candidates = this.decodeMetadata(metadata.data);
       return {
         type: "completed",
-        checkedAt: this.cache.checkedAt(feedURL),
-        providerFound: usableAppcast(buffer),
-        value: this.parseAppcast(buffer, localVersion, localBuildVersion)
+        checkedAt: metadata.checkedAt,
+        providerFound: candidates.length > 0,
+        value: selectUpdate(candidates, localVersion, localBuildVersion)
       };
     } catch {
       return { type: "transientFailure" };
@@ -87,42 +114,70 @@ export class SparkleAppcastClient {
       return undefined;
     }
 
-    const parsed = parser.parse(data.toString("utf8")) as any;
-    const channel = parsed?.rss?.channel;
-    const rawItems: unknown[] = Array.isArray(channel?.item)
-      ? channel.item
-      : channel?.item
-        ? [channel.item]
-        : [];
-    const candidates = rawItems
-      .map(normalizeItem)
-      .map(usableCandidate)
-      .filter((candidate): candidate is AppcastCandidate => candidate !== undefined)
-      .filter((candidate) =>
-        isSparkleVersionNewer(
-          candidate,
-          sparkleMarketingVersion(localVersion, localBuildVersion),
-          localBuildVersion
-        )
-      );
-    // Use one comparison domain for the entire pool: switching between
-    // marketing and machine versions per pair can produce a cyclic sort.
-    const useBuildOrder = candidates.some((candidate) => !candidate.hasMarketingVersion);
-    const best = candidates.sort((lhs, rhs) => -compareAppcastItems(lhs, rhs, useBuildOrder))[0];
-
-    if (!best) {
-      return undefined;
-    }
-
-    return {
-      remoteVersion: best.parsedVersion,
-      remoteBuildVersion: isVersionEmpty(best.buildVersion) ? undefined : best.buildVersion,
-      versionComparison: best.hasMarketingVersion ? "marketing" : "build",
-      updateURL: best.updateURL,
-      releaseNotesURL: best.releaseNotesURL,
-      releaseDate: best.item.publicationDate
-    };
+    return selectUpdate(decodeAppcast(data).candidates, localVersion, localBuildVersion);
   }
+
+  private decodeMetadata(data: Buffer): AppcastCandidate[] {
+    const cached = this.decoded.get(data);
+    if (cached) return cached;
+    const decoded = decodeAppcast(data);
+    if (!decoded.validChannel) throw new Error("Invalid appcast response");
+    this.decoded.set(data, decoded.candidates);
+    return decoded.candidates;
+  }
+
+  private feedsFor(signal: AbortSignal): RefreshFeeds {
+    let feeds = this.refreshFeeds.get(signal);
+    if (!feeds) {
+      feeds = { entries: new Map(), bytes: 0 };
+      this.refreshFeeds.set(signal, feeds);
+    }
+    return feeds;
+  }
+
+  private rememberFeed(feeds: RefreshFeeds, url: string, metadata: FeedMetadata): void {
+    const previous = feeds.entries.get(url);
+    if (previous) feeds.bytes -= previous.data.byteLength;
+    feeds.entries.delete(url);
+    feeds.entries.set(url, metadata);
+    feeds.bytes += metadata.data.byteLength;
+    while (feeds.entries.size > maxRefreshEntries || feeds.bytes > maxRefreshBytes) {
+      const oldest = feeds.entries.keys().next().value!;
+      feeds.bytes -= feeds.entries.get(oldest)!.data.byteLength;
+      feeds.entries.delete(oldest);
+    }
+  }
+}
+
+function selectUpdate(
+  decoded: AppcastCandidate[],
+  localVersion: VersionValue,
+  localBuildVersion?: VersionValue
+): SparkleLookupResult | undefined {
+  const candidates = decoded.filter((candidate) =>
+    isSparkleVersionNewer(
+      candidate,
+      sparkleMarketingVersion(localVersion, localBuildVersion),
+      localBuildVersion
+    )
+  );
+  // Use one comparison domain for the entire pool: switching between
+  // marketing and machine versions per pair can produce a cyclic sort.
+  const useBuildOrder = candidates.some((candidate) => !candidate.hasMarketingVersion);
+  const best = candidates.sort((lhs, rhs) => -compareAppcastItems(lhs, rhs, useBuildOrder))[0];
+
+  if (!best) {
+    return undefined;
+  }
+
+  return {
+    remoteVersion: { ...best.parsedVersion },
+    remoteBuildVersion: isVersionEmpty(best.buildVersion) ? undefined : { ...best.buildVersion },
+    versionComparison: best.hasMarketingVersion ? "marketing" : "build",
+    updateURL: best.updateURL,
+    releaseNotesURL: best.releaseNotesURL,
+    releaseDate: best.item.publicationDate
+  };
 }
 
 function usableCandidate(item: AppcastItem): AppcastCandidate | undefined {
@@ -214,11 +269,20 @@ function stringText(value: unknown): string | undefined {
   return undefined;
 }
 
-/** A current release still proves the feed; an empty feed does not prove a version. */
-function usableAppcast(data: Buffer): boolean {
+/** Decode source metadata once; select a release separately for each installed app. */
+function decodeAppcast(data: Buffer): { validChannel: boolean; candidates: AppcastCandidate[] } {
   const parsed = parser.parse(data.toString("utf8"));
   const channel = parsed?.rss?.channel;
-  if (!channel || typeof channel !== "object") throw new Error("Invalid appcast response");
-  const raw = Array.isArray(channel.item) ? channel.item : channel.item ? [channel.item] : [];
-  return raw.map(normalizeItem).some((item: AppcastItem) => usableCandidate(item) !== undefined);
+  const raw: unknown[] = Array.isArray(channel?.item)
+    ? channel.item
+    : channel?.item
+      ? [channel.item]
+      : [];
+  return {
+    validChannel: Boolean(channel && typeof channel === "object"),
+    candidates: raw
+      .map(normalizeItem)
+      .map(usableCandidate)
+      .filter((candidate): candidate is AppcastCandidate => candidate !== undefined)
+  };
 }
