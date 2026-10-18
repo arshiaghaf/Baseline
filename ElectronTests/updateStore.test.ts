@@ -313,53 +313,70 @@ describe("update store helpers", () => {
     }
   );
 
-  it("does not restore a stale configuration block when a delayed mas probe settles", async () => {
-    const item = homebrewItem({ id: "formula:retained", token: "retained", name: "Retained" });
-    let blocked = true;
-    let finishMas!: () => void;
-    const masGate = new Promise<void>((resolve) => {
-      finishMas = resolve;
-    });
-    const store = await makeVerifiedStore({
-      persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
-      runBrewCommand: async () =>
-        blocked
-          ? {
-              success: false,
-              status: null,
-              output: "",
-              failure: { kind: "configuration-blocked", message: "Fixture conflict" }
-            }
-          : { success: true, status: 0, output: "" },
-      runMasCommand: async () => {
-        await masGate;
-        return { success: true, status: 0, output: "" };
-      },
-      clients: {
-        homebrewInventory: {
-          fetchInventory: async () => ({
-            items: [item],
-            inventoryReadSucceededByKind: { formula: true, cask: true },
-            outdatedDetectionSucceeded: true,
-            outdatedDetectionSucceededByKind: { formula: true, cask: true }
-          })
-        }
-      }
-    });
-    const checking = store.refreshToolStatus();
-    try {
-      await vi.waitFor(() => {
-        expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+  it.each(["configuration-blocked", "timeout", "missing"] as const)(
+    "does not restore stale %s availability when a delayed mas probe settles",
+    async (failure) => {
+      const item = homebrewItem({ id: "formula:retained", token: "retained", name: "Retained" });
+      let mode: "healthy" | "configuration-blocked" | typeof failure = "configuration-blocked";
+      let gateMas = false;
+      let finishMas!: () => void;
+      const masGate = new Promise<void>((resolve) => {
+        finishMas = resolve;
       });
-      blocked = false;
-      await store.refresh(false);
-      expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(false);
-    } finally {
-      finishMas();
-      await checking;
+      const store = await makeVerifiedStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+        runBrewCommand: async () =>
+          mode === "healthy"
+            ? { success: true, status: 0, output: "" }
+            : {
+                success: false,
+                status: null,
+                output: "",
+                failure:
+                  mode === "missing"
+                    ? { kind: "spawn", code: "ENOENT", message: "Fixture executable missing" }
+                    : { kind: mode, message: "Fixture availability failure" }
+              },
+        runMasCommand: async () => {
+          if (gateMas) await masGate;
+          return { success: true, status: 0, output: "" };
+        },
+        clients: {
+          homebrewInventory: {
+            fetchInventory: async () => ({
+              items: [item],
+              inventoryReadSucceededByKind: { formula: true, cask: true },
+              outdatedDetectionSucceeded: true,
+              outdatedDetectionSucceededByKind: { formula: true, cask: true }
+            })
+          }
+        }
+      });
+      await store.refreshToolStatus();
+      mode = failure;
+      gateMas = true;
+      const checking = store.refreshToolStatus();
+      try {
+        await vi.waitFor(() => {
+          expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
+        });
+        expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+        mode = "healthy";
+        await store.refresh(false);
+        expect(store.getSnapshot()).toMatchObject({
+          homebrewConfigurationBlocked: false,
+          isHomebrewInstalled: true
+        });
+      } finally {
+        finishMas();
+        await checking;
+      }
+      expect(store.getSnapshot()).toMatchObject({
+        homebrewConfigurationBlocked: false,
+        isHomebrewInstalled: true
+      });
     }
-    expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(false);
-  });
+  );
 
   it.each(["outdated", "provider-rejected", "provider-pending"] as const)(
     "keeps configuration recovery blocked through a %s refresh",
