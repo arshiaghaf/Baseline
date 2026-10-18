@@ -171,7 +171,14 @@ describe("update store helpers", () => {
             success: false,
             status: null,
             output: "",
-            failure: { kind: "configuration-blocked", message: "fixture configuration refusal" }
+            failure: {
+              kind: "configuration-blocked",
+              message: "fixture configuration refusal",
+              configurationReason: {
+                kind: "sudo-askpass",
+                file: "/Users/alice/.homebrew/brew.env"
+              }
+            }
           }
         : { success: true, status: 0, output: "" }
     );
@@ -185,7 +192,11 @@ describe("update store helpers", () => {
             outdatedDetectionSucceededByKind: { formula: true, cask: true }
           }
     );
+    let persistence!: SnapshotPersistence;
     const store = await makeVerifiedStore({
+      onPersistence: (value) => {
+        persistence = value;
+      },
       persisted: {
         ...defaultPersistedSnapshot(),
         homebrewItems: [formula, cask],
@@ -199,7 +210,11 @@ describe("update store helpers", () => {
     await store.refreshToolStatus();
     expect(store.getSnapshot()).toMatchObject({
       isHomebrewInstalled: true,
-      homebrewConfigurationBlocked: true
+      homebrewConfigurationBlocked: true,
+      homebrewConfigurationReason: {
+        kind: "sudo-askpass",
+        file: "~/.homebrew/brew.env"
+      }
     });
     await store.refresh(false);
     const retained = store.getSnapshot();
@@ -229,14 +244,28 @@ describe("update store helpers", () => {
     blocked = false;
     await store.refreshToolStatus();
     expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+    expect(store.getSnapshot().homebrewConfigurationValidated).toBe(true);
+    expect(store.getSnapshot().lastRefreshNoticeMessage).toBe(
+      "Homebrew’s configuration now passes validation. Check for updates again to finish refreshing installed packages."
+    );
     const confirmCleanup = vi.fn(async () => true);
     expect(await store.cleanUpHomebrew(confirmCleanup)).toContain("Refresh");
     expect(confirmCleanup).not.toHaveBeenCalled();
     expect(run).toHaveBeenCalledTimes(1);
     await store.performHomebrewUpdate(formula.id);
     expect(run).toHaveBeenCalledTimes(1); // Probe success alone cannot restore authority.
+    await store.refresh(true);
+    expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+    expect(store.getSnapshot().homebrewConfigurationValidated).toBe(true);
+    expect(await persistence.load()).not.toHaveProperty("homebrewConfigurationValidated");
+    expect(await persistence.load()).not.toHaveProperty("homebrewConfigurationReason");
     await store.refresh(false);
     expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(false);
+    expect(store.getSnapshot().homebrewConfigurationReason).toBeUndefined();
+    expect(store.getSnapshot().homebrewConfigurationValidated).toBe(false);
+    expect(store.getSnapshot().lastRefreshNoticeMessage).not.toBe(
+      "Homebrew’s configuration now passes validation. Check for updates again to finish refreshing installed packages."
+    );
     expect(
       store.getSnapshot().homebrewItems.find((item) => item.id === formula.id)
         ?.formulaIdentityVerified
@@ -432,6 +461,7 @@ describe("update store helpers", () => {
       await store.refreshToolStatus();
       blocked = false;
       await store.refreshToolStatus();
+      expect(store.getSnapshot().homebrewConfigurationValidated).toBe(true);
       const refresh = store.refresh(false);
       try {
         if (mode === "provider-pending") {
@@ -439,9 +469,11 @@ describe("update store helpers", () => {
           // Let inventory reconciliation settle while the unrelated provider waits.
           await new Promise<void>((resolve) => setTimeout(resolve, 0));
           expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+          expect(store.getSnapshot().homebrewConfigurationValidated).toBe(true);
         } else {
           await refresh;
           expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(true);
+          expect(store.getSnapshot().homebrewConfigurationValidated).toBe(true);
           const confirm = vi.fn(async () => true);
           expect(await store.cleanUpHomebrew(confirm)).toContain("Refresh");
           expect(confirm).not.toHaveBeenCalled();
@@ -453,6 +485,7 @@ describe("update store helpers", () => {
       complete = true;
       await store.refresh(false);
       expect(store.getSnapshot().homebrewConfigurationBlocked).toBe(false);
+      expect(store.getSnapshot().homebrewConfigurationValidated).toBe(false);
       expect(store.getSnapshot().homebrewItems.map((entry) => entry.id)).toEqual([item.id]);
       expect(store.getSnapshot().operationFailures).toEqual([]);
       expect(store.getSnapshot().profileStats.events).toEqual([]);

@@ -10,6 +10,7 @@ import type {
   UpdateRecord
 } from "../../shared/domain";
 import { homebrewPresentationLabel, sourceDisplayName } from "../../shared/domain";
+import { homebrewConfigurationValidatedMessage } from "../../shared/homebrewConfiguration";
 import { compareVersions } from "../../shared/version";
 import { compactVersionLabelMaxLength } from "../constants";
 import { uninstallableHomebrewItemForApp } from "./sections";
@@ -64,7 +65,8 @@ export function versionLabelWithBuild(versionRaw: string, buildRaw?: string): st
 
 export function homebrewReadyDetail(snapshot: BaselineSnapshot): string {
   if (snapshot.homebrewConfigurationBlocked) {
-    return "Homebrew is installed, but its configuration prevents safe commands. Review its administrator password helper settings, then refresh Update Tools and check for updates again.";
+    if (snapshot.homebrewConfigurationValidated) return homebrewConfigurationValidatedMessage;
+    return homebrewConfigurationDetail(snapshot.homebrewConfigurationReason);
   }
   const caskCount = snapshot.homebrewItems.filter((item) => item.kind === "cask").length;
   const formulaCount = snapshot.homebrewItems.filter((item) => item.kind === "formula").length;
@@ -88,6 +90,52 @@ export function homebrewReadyDetail(snapshot: BaselineSnapshot): string {
     "formula",
     "formulae"
   )}.`;
+}
+
+export function homebrewConfigurationDetail(
+  reason: BaselineSnapshot["homebrewConfigurationReason"]
+): string {
+  const file = reason?.file;
+  switch (reason?.kind) {
+    case "sudo-askpass":
+      return `${file ?? "A Homebrew configuration file"} sets SUDO_ASKPASS, which conflicts with Baseline’s password prompt. Remove that assignment.`;
+    case "reserved-askpass":
+      return `${file ?? "A Homebrew configuration file"} sets a reserved HOMEBREW_BASELINE_ASKPASS_* setting. Remove that assignment so Baseline can manage its password prompt.`;
+    case "unsupported-content":
+      return `${file ?? "A Homebrew configuration file"} has unsupported characters or line endings in a Homebrew setting. Edit that setting or comment out its line.`;
+    case "invalid-assignment":
+      if (file && reason.line && Number.isSafeInteger(reason.line) && reason.line > 0)
+        return `${file}, line ${reason.line}, has an invalid assignment. Use NAME=value syntax or comment out that line.`;
+      return `${file ?? "A Homebrew configuration line"} has an invalid assignment. Use NAME=value syntax or comment out that line.`;
+    case "unreadable":
+      return `Baseline couldn’t read ${file ?? "a Homebrew configuration file"}. Check that your account can access the file and its parent folders.`;
+    case "non-regular":
+      return `${file ?? "A brew.env path"} doesn’t point to a regular file. Use a regular brew.env text file at this location.`;
+    case "oversize":
+      return `${file ?? "A Homebrew configuration file"} exceeds 64 KiB. Reduce its size to 64 KiB or less.`;
+    case "invalid-setting-path":
+      if (reason.setting) {
+        return file
+          ? `${file} sets an invalid ${reason.setting} path. Use an absolute path without . or .. components.`
+          : `The ${reason.setting} environment setting has an invalid path. Use an absolute path without . or .. components.`;
+      }
+      break;
+    case "invalid-folder":
+      return `Baseline couldn’t access ${file ?? "a Homebrew configuration file"} because its folder path is invalid. Repair the missing link or invalid folder.`;
+    case "invalid-executable":
+      return reason.path
+        ? `Baseline couldn’t validate Homebrew at ${reason.path}. Check that it points to an accessible Homebrew executable at an absolute path ending in /bin/brew.`
+        : "Baseline couldn’t validate the Homebrew executable. Check that it is accessible at an absolute path ending in /bin/brew.";
+    case "changed":
+      return file
+        ? `${file} changed while Baseline checked it. Finish any configuration changes.`
+        : "Homebrew configuration changed while Baseline checked it. Finish any configuration changes.";
+    case "incomplete-read":
+      return `Baseline couldn’t finish reading ${file ?? "a Homebrew configuration file"}. Check that the file is accessible and no longer being changed.`;
+  }
+  return file
+    ? `Baseline couldn’t validate the Homebrew configuration at ${file}. Check that it’s accessible and finish any configuration changes.`
+    : "Baseline couldn’t validate the Homebrew configuration. Check that it’s accessible and finish any configuration changes.";
 }
 
 export function countLabel(count: number, singular: string, plural = `${singular}s`): string {

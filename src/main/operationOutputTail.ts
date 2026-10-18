@@ -2,24 +2,26 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { StringDecoder } from "node:string_decoder";
+import { redactHomePaths } from "./redactHomePaths";
 
 const rawLineLimit = 16 * 1024;
 export const operationTailBytes = 8 * 1024;
 
 /** Best effort for support output, not a guarantee that arbitrary logs contain no secrets. */
 export function sanitizeOperationLine(line: string): string {
-  return line
-    .replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/gi, "[REDACTED]")
-    .replace(
-      /HOMEBREW_(?:GITHUB|ARTIFACTORY|DOCKER)_API_TOKEN\s*=\s*.*/gi,
-      "HOMEBREW_API_TOKEN=[REDACTED]"
-    )
-    .replace(/Authorization\s*:\s*.*/gi, "Authorization: [REDACTED]")
-    .replace(/\bBearer\s*\S+/gi, "Bearer [REDACTED]")
-    .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s<>"']+/gi, (url) =>
-      url.includes("@") ? "[REDACTED URL]" : url
-    )
-    .replace(/\/Users\/[^/\s]+/g, "~");
+  return redactHomePaths(
+    line
+      .replace(/(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+/gi, "[REDACTED]")
+      .replace(
+        /HOMEBREW_(?:GITHUB|ARTIFACTORY|DOCKER)_API_TOKEN\s*=\s*.*/gi,
+        "HOMEBREW_API_TOKEN=[REDACTED]"
+      )
+      .replace(/Authorization\s*:\s*.*/gi, "Authorization: [REDACTED]")
+      .replace(/\bBearer\s*\S+/gi, "Bearer [REDACTED]")
+      .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s<>"']+/gi, (url) =>
+        url.includes("@") ? "[REDACTED URL]" : url
+      )
+  );
 }
 
 /** Per-pipe decoding and terminal state; never emit a partial or overlong raw line.

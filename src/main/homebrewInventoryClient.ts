@@ -5,7 +5,8 @@ import { realpath } from "node:fs/promises";
 import type {
   HomebrewCaskEntry,
   HomebrewManagedItem,
-  HomebrewManagedItemKind
+  HomebrewManagedItemKind,
+  HomebrewConfigurationReason
 } from "../shared/domain";
 import { homebrewItemID } from "../shared/domain";
 import { maxVersion, version } from "../shared/version";
@@ -37,6 +38,7 @@ export type HomebrewInventoryResult = {
   warning?: string;
   cleanupUnconfirmed?: boolean;
   configurationBlocked?: boolean;
+  configurationReason?: HomebrewConfigurationReason;
   /** Read-only installed evidence. Keep out of persisted snapshots and automatic exports. */
   installedMetadataByItemID?: Record<string, HomebrewInstalledMetadata>;
 };
@@ -50,7 +52,7 @@ export class HomebrewInventoryClient {
     const updateResult = options.updateMetadata ? await this.run(["update"]) : undefined;
     if (updateResult && cleanupUnconfirmed(updateResult)) return cleanupFailure();
     if (updateResult?.failure?.kind === "configuration-blocked")
-      return configurationBlockedInventory();
+      return configurationBlockedInventory(updateResult.failure.configurationReason);
     const [combinedInfo, formulaVersions, caskVersions, formulaOutdated, caskOutdated] =
       await Promise.all([
         this.run(["info", "--installed", "--json=v2"]),
@@ -70,12 +72,14 @@ export class HomebrewInventoryClient {
       )
     )
       return cleanupFailure();
-    if (
-      [combinedInfo, formulaVersions, caskVersions, formulaOutdated, caskOutdated].some(
-        (result) => result.failure?.kind === "configuration-blocked"
-      )
-    )
-      return configurationBlockedInventory();
+    const blockedRead = [
+      combinedInfo,
+      formulaVersions,
+      caskVersions,
+      formulaOutdated,
+      caskOutdated
+    ].find((result) => result.failure?.kind === "configuration-blocked");
+    if (blockedRead) return configurationBlockedInventory(blockedRead.failure?.configurationReason);
     const formulaSection = installedInfoSection(combinedInfo, "formula");
     const caskSection = installedInfoSection(combinedInfo, "cask");
     // A combined failure must not couple the two inventories. Retry only unusable
@@ -85,8 +89,10 @@ export class HomebrewInventoryClient {
       caskSection ? combinedInfo : this.run(["info", "--cask", "--installed", "--json=v2"])
     ]);
     if ([formulaInfo, caskInfo].some(cleanupUnconfirmed)) return cleanupFailure();
-    if ([formulaInfo, caskInfo].some((result) => result.failure?.kind === "configuration-blocked"))
-      return configurationBlockedInventory();
+    const blockedInfo = [formulaInfo, caskInfo].find(
+      (result) => result.failure?.kind === "configuration-blocked"
+    );
+    if (blockedInfo) return configurationBlockedInventory(blockedInfo.failure?.configurationReason);
 
     const metadataReady = !updateResult || updateResult.success;
     const parsed = this.parser.buildInventoryWithStatus(
@@ -148,10 +154,13 @@ export class HomebrewInventoryClient {
   }
 }
 
-export function configurationBlockedInventory(): HomebrewInventoryResult {
+export function configurationBlockedInventory(
+  configurationReason?: HomebrewConfigurationReason
+): HomebrewInventoryResult {
   return {
     items: [],
     configurationBlocked: true,
+    configurationReason,
     inventoryReadSucceededByKind: { formula: false, cask: false },
     outdatedDetectionSucceeded: false,
     outdatedDetectionSucceededByKind: { formula: false, cask: false },

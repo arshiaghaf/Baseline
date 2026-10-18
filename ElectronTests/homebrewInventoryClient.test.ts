@@ -36,11 +36,16 @@ describe("HomebrewInventoryClient", () => {
         success: false,
         status: null,
         output: "",
-        failure: { kind: "configuration-blocked" as const, message: "fixture refusal" }
+        failure: {
+          kind: "configuration-blocked" as const,
+          message: "fixture refusal",
+          configurationReason: { kind: "oversize" as const, file: "~/brew.env" }
+        }
       }));
       const result = await new HomebrewInventoryClient(run).fetchInventory({ updateMetadata });
       expect(result).toMatchObject({
         configurationBlocked: true,
+        configurationReason: { kind: "oversize", file: "~/brew.env" },
         items: [],
         inventoryReadSucceededByKind: { formula: false, cask: false },
         outdatedDetectionSucceeded: false,

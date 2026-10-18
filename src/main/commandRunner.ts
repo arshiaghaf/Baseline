@@ -5,9 +5,11 @@ import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { basename } from "node:path";
+import type { HomebrewConfigurationReason } from "../shared/domain";
 import {
   checkHomebrewConfiguration,
-  homebrewConfigurationBlockedMessage
+  homebrewConfigurationBlockedMessage,
+  type HomebrewRevalidation
 } from "./homebrewConfiguration";
 import { OperationOutputTail } from "./operationOutputTail";
 import { CommandCapture, CommandOutputStream } from "./commandOutput";
@@ -69,6 +71,7 @@ export type CommandFailure = {
     | "configuration-blocked";
   message: string;
   code?: string;
+  configurationReason?: HomebrewConfigurationReason;
 };
 
 export type CommandOptions = {
@@ -400,16 +403,27 @@ export async function runBrewCommand(
     const configuration = await preflight.run(() =>
       checkHomebrewConfiguration(executable, commandOptions.env!, preflight.cancellationSignal)
     );
-    const blocked = (): CommandResult => ({
+    const blocked = (configurationReason: HomebrewConfigurationReason): CommandResult => ({
       success: false,
       status: null,
       output: "",
       stdout: "",
       stderr: "",
-      failure: { kind: "configuration-blocked", message: homebrewConfigurationBlockedMessage }
+      failure: {
+        kind: "configuration-blocked",
+        message: homebrewConfigurationBlockedMessage,
+        configurationReason
+      }
     });
-    if (!configuration.supported || !(await preflight.run(configuration.revalidate)))
-      return respond(blocked());
+    if (!configuration.supported) return respond(blocked(configuration.detail));
+    const revalidate = async (): Promise<HomebrewRevalidation> =>
+      typeof configuration.revalidateDetailed === "function"
+        ? configuration.revalidateDetailed()
+        : (await configuration.revalidate())
+          ? { valid: true }
+          : { valid: false, detail: { kind: "changed" } };
+    const firstRevalidation = await preflight.run(revalidate);
+    if (!firstRevalidation.valid) return respond(blocked(firstRevalidation.detail));
     if (homebrewCleanupUnconfirmed) return respond(quarantinedHomebrew());
     const operation = options.adminOperation;
     try {
@@ -451,7 +465,8 @@ export async function runBrewCommand(
     if (admin) commandOptions.env = { ...commandOptions.env, ...admin.environment };
     if (homebrewCleanupUnconfirmed) return respond(quarantinedHomebrew());
     // Socket setup is asynchronous; the final revalidation shares the budget.
-    if (!(await preflight.run(configuration.revalidate))) return respond(blocked());
+    const finalRevalidation = await preflight.run(revalidate);
+    if (!finalRevalidation.valid) return respond(blocked(finalRevalidation.detail));
     commandOptions.timeoutMs = preflight.remainingMs();
     preflight.dispose();
     return respond(
