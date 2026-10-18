@@ -17,6 +17,42 @@ afterEach(async () => {
 });
 
 describe("snapshot persistence", () => {
+  it.each([undefined, []])(
+    "migrates a missing comparison baseline while preserving an explicit empty baseline (%s)",
+    async (baseline) => {
+      const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));
+      tempDirs.push(userData);
+      await writeFile(
+        path.join(userData, "baseline-snapshot.json"),
+        JSON.stringify({
+          updates: [
+            {
+              appID: "/fixture/Example.app",
+              source: "sparkle",
+              localVersion: { raw: "1" },
+              localBuildVersion: { raw: "100" },
+              remoteVersion: { raw: "2" },
+              updateURL: "https://example.com/update",
+              homebrewToken: "unrelated-token"
+            }
+          ],
+          appUpdateComparisonBaseline: baseline
+        })
+      );
+      const loaded = await new SnapshotPersistence(userData).load();
+      expect(loaded.appUpdateComparisonBaseline).toEqual(
+        baseline ?? [
+          {
+            appID: "/fixture/Example.app",
+            source: "sparkle",
+            localVersion: version("1"),
+            localBuildVersion: version("100")
+          }
+        ]
+      );
+    }
+  );
+
   it.each([
     ["marketing", "marketing"],
     ["build", "build"],

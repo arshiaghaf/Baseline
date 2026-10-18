@@ -132,6 +132,14 @@ function normalizeSnapshot(
           ? update.sparkleVersionComparison
           : undefined
     })),
+    appUpdateComparisonBaseline: (input.appUpdateComparisonBaseline ?? input.updates ?? []).map(
+      ({ appID, source, localVersion, localBuildVersion }) => ({
+        appID,
+        source,
+        localVersion: version(localVersion?.raw),
+        localBuildVersion: localBuildVersion ? version(localBuildVersion.raw) : undefined
+      })
+    ),
     recentlyUpdated: (input.recentlyUpdated ?? []).map((record) => ({
       ...record,
       id: record.id ?? record.appID,

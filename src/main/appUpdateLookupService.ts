@@ -5,6 +5,7 @@ import path from "node:path";
 import type {
   AppRecord,
   AppProviderCheck,
+  AppUpdateComparison,
   HomebrewCaskIndex,
   HomebrewManagedItem,
   RecentlyUpdatedRecord,
@@ -539,7 +540,7 @@ export function mergeRecentlyUpdated(
   previousRecords: RecentlyUpdatedRecord[],
   apps: AppRecord[],
   updates: UpdateRecord[],
-  previousUpdates: Map<string, UpdateRecord>,
+  previousUpdates: Map<string, AppUpdateComparison>,
   now: string
 ) {
   const currentUpdateIDs = new Set(updates.map((update) => update.appID));
@@ -579,7 +580,10 @@ export function mergeRecentlyUpdated(
   return [...deduped.values()].slice(0, 40);
 }
 
-function hasInstalledAppAdvanced(appRecord: AppRecord, previousUpdate: UpdateRecord): boolean {
+function hasInstalledAppAdvanced(
+  appRecord: AppRecord,
+  previousUpdate: AppUpdateComparison
+): boolean {
   if (isVersionGreater(appRecord.localVersion, previousUpdate.localVersion)) {
     return true;
   }
