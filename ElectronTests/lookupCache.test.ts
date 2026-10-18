@@ -8,6 +8,93 @@ afterEach(() => vi.useRealTimers());
 const url = "https://example.com/source";
 
 describe("remote lookup metadata scheduling", () => {
+  it("keeps queued forced requests paced by elapsed time after wall-clock rollback", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-10-18T12:00:00Z");
+    const cache = new LookupCache(3100);
+    const starts: number[] = [];
+    const load = vi.fn(async () => {
+      starts.push(performance.now());
+      return Buffer.from("ok");
+    });
+    await cache.get(url, load);
+    await vi.advanceTimersByTimeAsync(1000);
+    vi.setSystemTime("2026-10-18T11:00:00Z");
+    const second = cache.get(url, load, { force: true });
+    const third = cache.get(`${url}/other`, load, { force: true });
+    try {
+      await vi.advanceTimersByTimeAsync(2099);
+      expect(load).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(starts).toEqual([0, 3100]);
+      await second;
+      await vi.advanceTimersByTimeAsync(3100);
+      await third;
+      expect(starts).toEqual([0, 3100, 6200]);
+    } finally {
+      await vi.runAllTimersAsync();
+      await Promise.allSettled([second, third]);
+    }
+  });
+
+  it.each([-1, 1])(
+    "expires metadata by elapsed age after a wall-clock shift of %s days",
+    async (days) => {
+      vi.useFakeTimers();
+      const now = Date.parse("2026-10-18T12:00:00Z");
+      vi.setSystemTime(now);
+      const cache = new LookupCache(0, 10_000);
+      const load = vi.fn(async () => Buffer.from("old"));
+      await cache.get(url, load);
+      const originalCheckedAt = cache.checkedAt(url);
+      vi.setSystemTime(now + days * 24 * 60 * 60 * 1000);
+      await vi.advanceTimersByTimeAsync(9999);
+      expect((await cache.get(url, load)).toString()).toBe("old");
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(cache.checkedAt(url)).toBe(originalCheckedAt);
+      await vi.advanceTimersByTimeAsync(1);
+      load.mockResolvedValue(Buffer.from("fresh"));
+      expect((await cache.get(url, load)).toString()).toBe("fresh");
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(cache.checkedAt(url)).toBe(new Date(Date.now()).toISOString());
+    }
+  );
+
+  it.each(["seconds", "date", "invalid"])(
+    "preserves a %s Retry-After delay across clock rollback with work queued",
+    async (header) => {
+      vi.useFakeTimers();
+      vi.setSystemTime("2026-10-18T12:00:00Z");
+      const cache = new LookupCache(3100);
+      const load = vi.fn(async () => Buffer.from("ok"));
+      await cache.get(url, load);
+      const queued = cache.get(`${url}/queued`, load);
+      const rejected = expect(queued).rejects.toThrow("temporarily paused");
+      cache.backoff(
+        url,
+        header === "seconds"
+          ? "60"
+          : header === "date"
+            ? new Date(Date.now() + 60_000).toUTCString()
+            : "invalid"
+      );
+      vi.setSystemTime("2026-10-18T11:00:00Z");
+      try {
+        await vi.advanceTimersByTimeAsync(3100);
+        await rejected;
+        await vi.advanceTimersByTimeAsync(56_899);
+        await expect(cache.get(url, load, { force: true })).rejects.toThrow("temporarily paused");
+        expect(load).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+        await cache.get(url, load, { force: true });
+        expect(load).toHaveBeenCalledTimes(2);
+      } finally {
+        await vi.runAllTimersAsync();
+        await Promise.allSettled([queued]);
+      }
+    }
+  );
+
   it("shares in-flight source requests and caches successful metadata across consumers", async () => {
     const cache = new LookupCache(0);
     const load = vi.fn(async () => Buffer.from("metadata"));
