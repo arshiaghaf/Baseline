@@ -106,6 +106,8 @@ type HomebrewCaskSource = Pick<HomebrewCaskClient, "fetchIndex" | "lookupUpdate"
 type HomebrewFormulaSource = Pick<HomebrewFormulaClient, "fetchIndex" | "searchFormulae"> &
   Partial<Pick<HomebrewFormulaClient, "cacheStatus">>;
 
+type RefreshRecoveryRequest = Required<Pick<RefreshOptions, "forceMetadata" | "forceAppDiscovery">>;
+
 const successfulUpdateHoldMs = 2000;
 
 export class UpdateStore extends EventEmitter<StoreEvents> {
@@ -140,10 +142,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private state: BaselineSnapshot;
   private snapshotRevision = 0;
   private closing = false;
-  private refreshRequestedWhileClosing?: Pick<
-    RefreshOptions,
-    "forceMetadata" | "forceAppDiscovery"
-  >;
+  private refreshRequestedWhileClosing?: RefreshRecoveryRequest;
+  private readonly activeRefreshRequests = new Set<RefreshRecoveryRequest>();
   private quitTask?: Promise<boolean>;
   private readonly pendingProducers = new Set<Promise<unknown>>();
   private mutationGeneration = 0;
@@ -512,19 +512,31 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   async refresh(lightweight = false, options: RefreshOptions = {}): Promise<void> {
+    const request: RefreshRecoveryRequest = {
+      forceMetadata:
+        options.forceMetadata ??
+        (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand),
+      forceAppDiscovery: options.forceAppDiscovery === true
+    };
     if (this.closing) {
-      this.refreshRequestedWhileClosing = {
-        forceMetadata:
-          this.refreshRequestedWhileClosing?.forceMetadata === true ||
-          (options.forceMetadata ??
-            (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand)),
-        forceAppDiscovery:
-          this.refreshRequestedWhileClosing?.forceAppDiscovery === true ||
-          options.forceAppDiscovery === true
-      };
+      this.deferRefresh(request);
       return;
     }
-    return this.trackProducer(this.refreshLifecycle.refresh(lightweight, options));
+    this.activeRefreshRequests.add(request);
+    try {
+      await this.trackProducer(this.refreshLifecycle.refresh(lightweight, options));
+    } finally {
+      this.activeRefreshRequests.delete(request);
+    }
+  }
+
+  private deferRefresh(request: RefreshRecoveryRequest): void {
+    this.refreshRequestedWhileClosing = {
+      forceMetadata:
+        this.refreshRequestedWhileClosing?.forceMetadata === true || request.forceMetadata,
+      forceAppDiscovery:
+        this.refreshRequestedWhileClosing?.forceAppDiscovery === true || request.forceAppDiscovery
+    };
   }
 
   async refreshToolStatus(): Promise<void> {
@@ -597,6 +609,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     // Fence admission before yielding, then invalidate refresh commits and timers.
     this.closing = true;
     this.refreshRequestedWhileClosing = undefined;
+    for (const request of this.activeRefreshRequests) this.deferRefresh(request);
     const interruptedRefresh = this.refreshLifecycle.isRefreshActive;
     this.refreshLifecycle.stop();
     const task = this.finishPreparingToQuit(interruptedRefresh);

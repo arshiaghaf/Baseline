@@ -5,6 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { appProviderFingerprint } from "../src/main/appUpdateLookupService";
 import { SnapshotPersistence } from "../src/main/persistence";
 import { UpdateStore } from "../src/main/updateStore";
 import {
@@ -525,4 +526,77 @@ describe("update store lifecycle boundaries", () => {
       await store.prepareToQuit();
     }
   });
+
+  it.each([false, true])(
+    "retains interrupted source discovery and metadata strength (%s) with a joining refresh",
+    async (forceMetadata) => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-quit-interrupted-options-"));
+      directories.push(directory);
+      const persistence = new SnapshotPersistence(directory);
+      vi.spyOn(persistence, "save").mockRejectedValueOnce(new Error("final save unavailable"));
+      const oldScan = deferred<AppRecord[]>();
+      const record = {
+        ...app("2"),
+        bundleIdentifier: "com.example.utility",
+        sparkleFeedURL: "https://example.test/appcast.xml"
+      };
+      const now = new Date().toISOString();
+      const scanApplications = vi
+        .fn<() => Promise<AppRecord[]>>()
+        .mockImplementationOnce(() => oldScan.promise)
+        .mockResolvedValue([record]);
+      const lookupOutcome = vi.fn(async () => ({ type: "completed" as const }));
+      const fetchIndex = vi.fn(async () => emptyHomebrewCaskIndex);
+      const store = await makeStore(
+        {
+          scanner: { scanApplications },
+          appStore: { lookupOutcome },
+          homebrew: { fetchIndex, lookupUpdate: () => undefined, searchCasks: () => [] }
+        },
+        {},
+        {
+          persistence,
+          persisted: {
+            ...defaultPersistedSnapshot(),
+            appProviderChecks: {
+              [record.id]: {
+                fingerprint: appProviderFingerprint(record),
+                storefront: "us",
+                status: "checked",
+                source: "sparkle",
+                sparkleFeedURL: record.sparkleFeedURL,
+                checkedAt: now,
+                discoveryCheckedAt: now
+              }
+            }
+          }
+        }
+      );
+      const refresh = store.refresh(false, { forceMetadata, forceAppDiscovery: true });
+      const joining = store.refresh(true);
+      let quit: Promise<boolean> | undefined;
+      try {
+        await new Promise((resolve) => setImmediate(resolve));
+        quit = store.prepareToQuit();
+        const rejected = expect(quit).rejects.toThrow("final save unavailable");
+        oldScan.resolve([record]);
+        await rejected;
+        await vi.waitFor(() => expect(scanApplications).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(store.getSnapshot().isRefreshing).toBe(false));
+        expect(lookupOutcome).toHaveBeenCalledTimes(1);
+        expect(lookupOutcome).toHaveBeenCalledWith(
+          record.bundleIdentifier,
+          record.localVersion,
+          expect.objectContaining({ force: true })
+        );
+        expect(fetchIndex).toHaveBeenLastCalledWith({ force: forceMetadata });
+        expect(await store.prepareToQuit()).toBe(true);
+      } finally {
+        oldScan.resolve([]);
+        await Promise.allSettled([refresh, joining, quit]);
+        await store.refresh(true);
+        await store.prepareToQuit();
+      }
+    }
+  );
 });
