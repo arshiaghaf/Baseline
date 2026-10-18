@@ -4,7 +4,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UpdateStore } from "../src/main/updateStore";
 import { SnapshotPersistence } from "../src/main/persistence";
@@ -15,6 +15,7 @@ import {
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
   type AppRecord,
+  type BaselineSnapshot,
   type PersistedSnapshot
 } from "../src/shared/domain";
 import type { CommandResult } from "../src/main/commandRunner";
@@ -35,7 +36,7 @@ const missing: CommandResult = {
 };
 
 async function fixture(
-  runBrewCommand: () => Promise<CommandResult>,
+  runBrewCommand: NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>,
   persisted: PersistedSnapshot = defaultPersistedSnapshot()
 ) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-update-status-"));
@@ -342,3 +343,84 @@ it("retains real refresh-failure evidence through an operation error until healt
   rerender(view("all"));
   expect(screen.getByText("No updates found in the checked sources.")).toBeVisible();
 });
+
+it.each([true, false])(
+  "keeps tray success withheld when a Discover success clears an earlier scan error during the default hold (empty provider map=%s)",
+  async (emptyProviderMap) => {
+    const runBrewCommand = vi.fn<
+      NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+    >(async () => available);
+    const { store, scan } = await fixture(runBrewCommand);
+    if (emptyProviderMap) scan.mockResolvedValueOnce([]);
+    await store.refreshToolStatus();
+    await store.refresh(false);
+    expect(Object.keys(store.getSnapshot().appProviderChecks ?? {})).toHaveLength(
+      emptyProviderMap ? 0 : 1
+    );
+    expect(trayUpdateTitle(store.getSnapshot())).toBe("✓");
+    // Both the earlier scan and the install's automatic follow-up fail. Command
+    // success alone cannot repair the missing check in between those scans.
+    scan.mockRejectedValueOnce(new Error("Fixture scan unavailable"));
+    scan.mockRejectedValueOnce(new Error("Fixture follow-up scan unavailable"));
+    await store.refresh(false);
+    expect(store.getSnapshot().refreshCheckFailed).toBe(true);
+    expect(trayUpdateTitle(store.getSnapshot())).toBe("");
+    const item = {
+      id: "formula:fixture-tool",
+      token: "fixture-tool",
+      displayName: "Fixture Tool",
+      kind: "formula" as const,
+      version: { raw: "1" }
+    };
+    const heldSnapshots: BaselineSnapshot[] = [];
+    const listener = (state: BaselineSnapshot) => {
+      if (
+        state.refreshCheckFailed &&
+        !state.refreshErrorMessage &&
+        !state.isRefreshing &&
+        state.homebrewDiscoverInstalledPendingRefreshItemIDs.includes(item.id)
+      )
+        heldSnapshots.push(state);
+    };
+    store.on("snapshot", listener);
+    const install = store.installHomebrewItem(item);
+    try {
+      await waitFor(() => expect(heldSnapshots.length).toBeGreaterThan(0), { timeout: 5_000 });
+      expect(
+        runBrewCommand.mock.calls.some(([args]) => args[0] === "install" && args[1] === item.token)
+      ).toBe(true);
+      for (const held of heldSnapshots) {
+        expect(held).toMatchObject({
+          refreshCheckFailed: true,
+          homebrewCheckStatus: "complete",
+          refreshErrorMessage: undefined,
+          lastRefreshNoticeMessage: undefined,
+          isChecking: false,
+          isRefreshing: false
+        });
+        expect(trayUpdateTitle(held)).toBe("");
+      }
+      render(
+        <Dashboard
+          compact={false}
+          snapshot={{ ...heldSnapshots[0]!, selectedTab: "all" }}
+          onOpenSettings={() => undefined}
+        />
+      );
+      expect(screen.getByText("Some updates could not be checked.")).toBeVisible();
+    } finally {
+      try {
+        await install;
+      } finally {
+        store.off("snapshot", listener);
+      }
+    }
+    expect(store.getSnapshot().refreshCheckFailed).toBe(true);
+    expect(trayUpdateTitle(store.getSnapshot())).toBe("");
+    if (emptyProviderMap) scan.mockResolvedValueOnce([]);
+    await store.refresh(false);
+    expect(store.getSnapshot().refreshCheckFailed).toBe(false);
+    expect(trayUpdateTitle(store.getSnapshot())).toBe("✓");
+  },
+  10_000
+);

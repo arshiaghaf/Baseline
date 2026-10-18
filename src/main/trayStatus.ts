@@ -38,6 +38,7 @@ export function trayUpdateTitle(snapshot: BaselineSnapshot): string {
       !snapshot.isRefreshing &&
       !snapshot.isChecking &&
       !snapshot.refreshErrorMessage &&
+      !snapshot.refreshCheckFailed &&
       !snapshot.lastRefreshNoticeMessage &&
       !snapshot.homebrewCheckNoticeMessage &&
       !snapshot.homebrewConfigurationBlocked &&
