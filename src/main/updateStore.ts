@@ -23,6 +23,7 @@ import { emptyHomebrewCaskIndex, normalizeAppearancePreference } from "../shared
 import type { HomebrewMaintenanceRunEvent } from "../shared/homebrewProgress";
 import { homebrewCommandToken, installedCaskEntry } from "../shared/homebrewIdentity";
 import type { PreferencePatch } from "../shared/ipc";
+import { validatedPreferencePatch } from "./preferenceValidation";
 import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
 import { isVersionEmpty, version, type VersionValue } from "../shared/version";
 import { AppStoreLookupClient } from "./appStoreLookupClient";
@@ -592,6 +593,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   async updatePreferences(patch: PreferencePatch): Promise<void> {
     this.requireOpen();
+    patch = validatedPreferencePatch(patch);
     const refreshIntervalMinutes =
       patch.refreshIntervalMinutes === undefined
         ? this.state.refreshIntervalMinutes
