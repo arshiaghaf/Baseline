@@ -271,7 +271,7 @@ class BundleScan {
       }
     } catch (error) {
       rethrowCancelledRead(error, this.options.signal);
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
       return undefined;
     }
     return undefined;
@@ -457,7 +457,10 @@ async function readInfoPlistAtPath(
     return JSON.parse(result.stdout ?? "") as InfoPlist;
   } catch (error) {
     rethrowCancelledRead(error, signal);
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT" && !(error instanceof SyntaxError))
+    if (
+      !["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? "") &&
+      !(error instanceof SyntaxError)
+    )
       throw error;
     return undefined;
   }

@@ -424,3 +424,20 @@ it("preserves Ignore when a duplicated alias disappears only because healthy ove
   expect(snapshot.apps).toHaveLength(1);
   expect(snapshot.ignoredIDs).toContain(snapshot.apps[0]!.id);
 });
+
+it.each(["Contents", "Wrapper"])(
+  "skips an unsupported non-directory %s layout without retaining unrelated absent apps",
+  async (component) => {
+    const root = await rootFixture();
+    const directory = `${root}/Apps`;
+    await app(`${directory}/Good.app`);
+    await mkdir(`${directory}/Unsupported.app`);
+    await writeFile(`${directory}/Unsupported.app/${component}`, "not a directory");
+    const store = await storeFixture(root, [directory], [record(`${directory}/Removed.app`)]);
+    await store.refresh(false);
+    expect(store.getSnapshot().apps.map((app) => app.bundlePath)).toEqual([
+      `${directory}/Good.app`
+    ]);
+    expect(store.getSnapshot().lastRefreshNoticeMessage).toBeUndefined();
+  }
+);
