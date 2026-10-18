@@ -202,11 +202,22 @@ export async function lookupAppUpdates(
     }
   }
 
-  const lookupSparkle = (app: AppRecord, signal = input.signal) =>
-    clients.sparkle.lookupOutcome(app.sparkleFeedURL!, app.localVersion, app.bundleVersion, {
+  // All feed consumers in this lookup generation share metadata identity,
+  // while each speculative consumer retains its own cancellation signal.
+  const refreshIdentity = {};
+  const lookupSparkle = (app: AppRecord, signal = input.signal) => {
+    const options = {
       signal,
-      force: input.force
-    });
+      force: input.force,
+      refreshIdentity
+    };
+    return clients.sparkle.lookupOutcome(
+      app.sparkleFeedURL!,
+      app.localVersion,
+      app.bundleVersion,
+      options
+    );
+  };
   type SparkleOutcome = Awaited<ReturnType<typeof lookupSparkle>>;
   const earlySparkle = new Map<string, Promise<PromiseSettledResult<SparkleOutcome>>>();
   const sparkleControllers = new Map<string, AbortController>();

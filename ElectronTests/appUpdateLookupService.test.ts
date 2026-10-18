@@ -42,6 +42,43 @@ function deferred<T>() {
 }
 
 describe("independent provider scheduling", () => {
+  it("shares one refresh identity across distinct feed consumers and replaces it on the next lookup", async () => {
+    const scopes: Array<object | undefined> = [];
+    const signals: Array<AbortSignal | undefined> = [];
+    const sparkle = vi.fn(
+      async (
+        ...args: Parameters<Parameters<typeof lookupAppUpdates>[0]["sparkle"]["lookupOutcome"]>
+      ) => {
+        const options = args[3] as { signal?: AbortSignal; refreshIdentity?: object };
+        scopes.push(options.refreshIdentity);
+        signals.push(options.signal);
+        return { type: "completed" as const, value: { remoteVersion: version("3") } };
+      }
+    );
+    const apps = Array.from({ length: 9 }, (_, index) => ({
+      ...app,
+      id: `app-${index}`,
+      bundleIdentifier: undefined
+    }));
+    const clients = {
+      appStore: { lookupOutcome: vi.fn() },
+      sparkle: { lookupOutcome: sparkle },
+      homebrew: { lookupUpdate: vi.fn() }
+    };
+    // Even if an injected caller reuses its cancellation signal, a new lookup
+    // generation must not reuse completed forced metadata from the last one.
+    const lookupInput = { ...input(), apps };
+    expect(await lookupAppUpdates(clients, lookupInput)).toHaveLength(9);
+    expect(scopes[0]).toBeDefined();
+    expect(new Set(scopes).size).toBe(1);
+    expect(new Set(signals).size).toBe(9);
+    const firstScope = scopes[0];
+    expect(await lookupAppUpdates(clients, lookupInput)).toHaveLength(9);
+    expect(new Set(scopes.slice(9)).size).toBe(1);
+    expect(scopes[9]).toBeDefined();
+    expect(scopes[9]).not.toBe(firstScope);
+  });
+
   it("discards a cancelled speculative failure while waiting for the needed feed", async () => {
     const gate = deferred<void>();
     const controller = new AbortController();
