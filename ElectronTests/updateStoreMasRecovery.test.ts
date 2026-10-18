@@ -205,6 +205,12 @@ describe("App Store update recovery", () => {
       status: null,
       output: "",
       failure: { kind: "spawn", code: "EACCES", message: "Command could not start." }
+    },
+    {
+      success: false,
+      status: null,
+      output: "",
+      failure: { kind: "timeout", message: "Command timed out." }
     }
   ] satisfies CommandResult[])(
     "retains genuine installed-mas failures before fallback: %j",
@@ -217,11 +223,35 @@ describe("App Store update recovery", () => {
       expect(mas).toHaveBeenCalledExactlyOnceWith(["upgrade", "123"]);
       expect(external).toHaveBeenCalledWith("https://apps.apple.com/app/example");
       expect(store.getSnapshot().operationFailures).toMatchObject([
-        { entityID: app.id, operation: "update", reason: "command" }
+        {
+          entityID: app.id,
+          operation: "update",
+          reason: result.failure?.kind === "timeout" ? "interrupted" : "command"
+        }
       ]);
       expect(store.getSnapshot().profileStats.events).toEqual([]);
+      expect(store.getSnapshot().isMasInstalled).toBe(true);
+      expect(store.getSnapshot().masAvailability).toBe("unknown");
     }
   );
+
+  it("preserves detected readiness after an inconclusive version probe and still uses mas", async () => {
+    const { store, mas } = await fixture();
+    await store.refreshToolStatus();
+    mas.mockResolvedValueOnce({
+      success: false,
+      status: null,
+      output: "",
+      failure: { kind: "timeout", message: "Probe timed out." }
+    });
+    await store.refreshToolStatus();
+    expect(store.getSnapshot().isMasInstalled).toBe(true);
+    expect(store.getSnapshot().masAvailability).toBe("unknown");
+    await store.performAppUpdate(app.id);
+    expect(mas).toHaveBeenCalledWith(["upgrade", "123"]);
+    expect(store.getSnapshot().profileStats.events).toHaveLength(1);
+  });
+
   it.each([
     { success: false, status: 1, output: "" },
     {

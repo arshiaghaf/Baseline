@@ -137,7 +137,8 @@ export class ToolStatusService {
 function masStatus(result: CommandResult): ToolStatusPatch {
   const missing = result.failure?.kind === "spawn" && result.failure.code === "ENOENT";
   return {
-    isMasInstalled: result.success,
+    // An inconclusive failure must not disable controls for a detected helper.
+    ...(result.success || missing ? { isMasInstalled: result.success } : {}),
     masAvailability: result.success ? "available" : missing ? "missing" : "unknown"
   };
 }
