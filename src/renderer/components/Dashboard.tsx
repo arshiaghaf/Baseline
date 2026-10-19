@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Download,
   EyeOff,
-  RefreshCcw,
   Search,
   Server,
   Settings
@@ -23,10 +22,10 @@ import {
   suppressCompactPopoverControlFocus
 } from "../helpers/focus";
 import { ToolbarSearch, SearchPalette } from "./Search";
-import { toolbarIconStrokeWidth, sidebarIconStrokeWidth } from "../constants";
+import { sidebarIconStrokeWidth } from "../constants";
 import { OperationFailures } from "./OperationFailures";
 import { SelectedTabContent } from "./DashboardContent";
-import { RefreshFeedback } from "./RefreshFeedback";
+import { RefreshFeedback, RefreshControl, UpdateCheckStatus } from "./RefreshFeedback";
 import { selectedTabTitle } from "../helpers/labels";
 import { ActionConfirmationContext, ActionConfirmationOverlay } from "./ActionConfirmation";
 
@@ -223,18 +222,8 @@ export function Dashboard({
               onClose={() => setSearchActive(false)}
               toolbarButtonTabIndex={-1}
             />
-            <button
-              className="toolbar-button refresh-button"
-              onClick={() => void baseline.refresh(false)}
-              title="Refresh"
-              tabIndex={-1}
-            >
-              <RefreshCcw
-                className={snapshot.isRefreshing ? "spin" : undefined}
-                size={16}
-                strokeWidth={toolbarIconStrokeWidth}
-              />
-            </button>
+            <UpdateCheckStatus snapshot={snapshot} />
+            <RefreshControl snapshot={snapshot} compact={compact} />
             <button
               className="toolbar-button"
               onClick={onOpenSettings}
@@ -282,17 +271,8 @@ export function Dashboard({
               {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
                 <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
               ) : null}
-              <button
-                className="toolbar-button refresh-button"
-                onClick={() => void baseline.refresh(false)}
-                title="Refresh"
-              >
-                <RefreshCcw
-                  className={snapshot.isRefreshing ? "spin" : undefined}
-                  size={16}
-                  strokeWidth={toolbarIconStrokeWidth}
-                />
-              </button>
+              <UpdateCheckStatus snapshot={snapshot} />
+              <RefreshControl snapshot={snapshot} compact={compact} />
             </div>
           </header>
 

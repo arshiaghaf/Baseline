@@ -822,7 +822,7 @@ describe("renderer button parity", () => {
       <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={snapshot()} />
     );
 
-    expect(toolbarButtonLabels(container)).toEqual(["Refresh"]);
+    expect(toolbarButtonLabels(container)).toEqual(["Refresh", "Refresh options"]);
 
     rerender(
       <Dashboard
@@ -840,7 +840,11 @@ describe("renderer button parity", () => {
       />
     );
 
-    expect(toolbarButtonLabels(container)).toEqual(["New Baseline Update Available", "Refresh"]);
+    expect(toolbarButtonLabels(container)).toEqual([
+      "New Baseline Update Available",
+      "Refresh",
+      "Refresh options"
+    ]);
 
     fireEvent.click(screen.getByRole("button", { name: "New Baseline Update Available" }));
 
@@ -3786,7 +3790,7 @@ describe("operation failure support", () => {
 
 describe("app refresh source visibility", () => {
   it.each([false, true])(
-    "keeps unresolved discovery explicit and offers a forced search (compact=%s)",
+    "keeps unresolved coverage on demand and puts rediscovery in Refresh options (compact=%s)",
     (compact) => {
       const state = snapshot({
         updates: [],
@@ -3801,23 +3805,28 @@ describe("app refresh source visibility", () => {
         }
       });
       render(<Dashboard snapshot={state} compact={compact} onOpenSettings={() => undefined} />);
-      expect(screen.getByText(/No verified update source for 1 app/)).toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("menuitem", { name: "Search sources again" })
+      ).not.toBeInTheDocument();
       expect(screen.getByText(/Some apps have no verified update source/)).toBeInTheDocument();
       expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
-      expect(
-        screen.getByText(/Other sources for known apps are searched every six hours/)
-      ).not.toBeVisible();
-      fireEvent.click(screen.getByText("About source checks"));
-      expect(
-        screen.getByText(/Other sources for known apps are searched every six hours/)
-      ).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "Search sources again" }));
+      fireEvent.click(screen.getByRole("button", { name: "Update check details" }));
+      const details = screen.getByRole("dialog", { name: "Update check details" });
+      expect(within(details).getByText("Example")).toBeInTheDocument();
+      expect(within(details).getByText(/1 app has no verified update source/)).toBeInTheDocument();
+      expect(within(details).getByText(/These apps may still have updates/)).toBeVisible();
+      fireEvent.click(within(details).getByRole("button", { name: "Retry checks" }));
+      expect(window.baseline.refresh).toHaveBeenCalledWith(false);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Refresh options" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Search sources again" }));
       expect(window.baseline.refresh).toHaveBeenCalledWith(false, true);
     }
   );
 
   it.each([false, true])(
-    "keeps successful source checks unobtrusive with policy available on demand (compact=%s)",
+    "keeps successful source checks out of the content layout (compact=%s)",
     (compact) => {
       const { container } = render(
         <Dashboard
@@ -3831,25 +3840,26 @@ describe("app refresh source visibility", () => {
                 fingerprint: "fixture",
                 status: "checked",
                 source: "homebrew",
-                checkedAt: "2026-10-18T10:00:00.000Z",
-                discoveryCheckedAt: "2026-10-18T09:00:00.000Z"
+                checkedAt: "2026-10-18T10:00:00.000Z"
               }
             }
           })}
         />
       );
-      expect(container.querySelector(".app-check-notice")).toBeNull();
-      expect(screen.getByRole("button", { name: "Search sources again" })).toBeVisible();
-      expect(screen.getByText(/Refresh checks known sources/)).not.toBeVisible();
-      expect(screen.getByText(/Oldest source search:/)).not.toBeVisible();
-      fireEvent.click(screen.getByText("About source checks"));
-      expect(screen.getByText(/Refresh checks known sources/)).toBeVisible();
-      expect(screen.getByText(/Oldest source search:/)).toBeVisible();
+      expect(container.querySelector(".app-check-notice, .app-source-actions")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Update check details" })
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("About source checks")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+      expect(window.baseline.refresh).toHaveBeenCalledWith(false);
+      fireEvent.click(screen.getByRole("button", { name: "Refresh options" }));
+      expect(screen.getByRole("menuitem", { name: "Search sources again" })).toBeVisible();
     }
   );
 
   it.each([false, true])(
-    "shows failed checks and refresh errors even without updates (compact=%s)",
+    "shows failed checks and preserves refresh errors without updates (compact=%s)",
     (compact) => {
       render(
         <Dashboard
@@ -3860,33 +3870,89 @@ describe("app refresh source visibility", () => {
             homebrewItems: [],
             refreshErrorMessage: "Source temporarily unavailable",
             selectedTab: "apps",
-            appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "failed" } }
+            appProviderChecks: {
+              [app.id]: {
+                fingerprint: "fixture",
+                status: "failed",
+                checkedAt: "2026-10-18T10:00:00.000Z"
+              }
+            }
           })}
         />
       );
       expect(screen.getByText("Source temporarily unavailable")).toBeInTheDocument();
-      expect(screen.getByText(/Could not check updates for 1 app/)).toBeInTheDocument();
+      expect(screen.getByText("Update checks: 1 check failed.")).toBeInTheDocument();
       expect(screen.getByText("Some app updates could not be checked.")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Update check details" }));
+      const details = screen.getByRole("dialog");
+      expect(within(details).getByText(/Previous results may still appear/)).toBeVisible();
+      expect(within(details).getByText(/Last successful check:/)).toBeVisible();
     }
   );
 
-  it("keeps partial results incomplete and prevents a second source search during refresh", () => {
-    render(
-      <Dashboard
-        compact
-        onOpenSettings={() => undefined}
-        snapshot={snapshot({
-          updates: [],
-          homebrewItems: [],
-          isRefreshing: true,
-          appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "pending" } }
-        })}
-      />
-    );
-    expect(screen.getByText("Checking app updates. Results are incomplete.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Search sources again" })).toBeDisabled();
-    expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
-  });
+  it.each(["refreshing", "cleanup"])(
+    "keeps partial results incomplete and disables secondary checks during %s",
+    (lock) => {
+      render(
+        <Dashboard
+          compact
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            updates: [],
+            homebrewItems: [],
+            isRefreshing: lock === "refreshing",
+            isHomebrewCleanupLocked: lock === "cleanup",
+            appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "pending" } }
+          })}
+        />
+      );
+      expect(screen.getByText("Checking app updates. Results are incomplete.")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Update check details" }));
+      expect(screen.getByRole("button", { name: "Retry checks" })).toBeDisabled();
+      fireEvent.keyDown(window, { key: "Escape" });
+      fireEvent.click(screen.getByRole("button", { name: "Refresh options" }));
+      expect(screen.getByRole("menuitem", { name: "Search sources again" })).toBeDisabled();
+      expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
+    }
+  );
+
+  it.each([false, true])(
+    "supports detail focus, Escape, outside dismissal and recovery (compact=%s)",
+    (compact) => {
+      const state = snapshot({
+        appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "failed" } }
+      });
+      const { rerender } = render(
+        <Dashboard snapshot={state} compact={compact} onOpenSettings={() => undefined} />
+      );
+      const trigger = screen.getByRole("button", { name: "Update check details" });
+      trigger.focus();
+      expect(trigger).toHaveFocus();
+      fireEvent.click(trigger);
+      expect(screen.getByRole("dialog")).toHaveFocus();
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+      fireEvent.click(trigger);
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      fireEvent.click(trigger);
+      rerender(
+        <Dashboard
+          snapshot={{
+            ...state,
+            appProviderChecks: { [app.id]: { fingerprint: "fixture", status: "checked" } }
+          }}
+          compact={compact}
+          onOpenSettings={() => undefined}
+        />
+      );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Update check details" })
+      ).not.toBeInTheDocument();
+    }
+  );
 
   it("does not call legacy snapshots checked before the first refresh", () => {
     render(

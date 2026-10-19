@@ -455,15 +455,26 @@ export function ProfileSection({ snapshot }: { snapshot: BaselineSnapshot }) {
             </div>
           </div>
         </section>
-        <section className="panel settings-panel">
-          <PanelTitle title="Stats" />
+        <section className="panel settings-panel profile-stats-section">
+          <PanelTitle
+            title="Stats"
+            action={
+              profile.incompleteHistory ? (
+                <span
+                  className="toolbar-button profile-topbar-indicator icon-only profile-stats-info"
+                  tabIndex={0}
+                  aria-label="Recorded history may omit earlier activity. Totals and rankings may be incomplete."
+                >
+                  <Info size={14} strokeWidth={toolbarIconStrokeWidth} />
+                  <span className="profile-topbar-tooltip" role="tooltip">
+                    Recorded history may omit earlier activity. Totals and rankings may be
+                    incomplete.
+                  </span>
+                </span>
+              ) : undefined
+            }
+          />
           <div className="settings-panel-box profile-panel-box">
-            {profile.incompleteHistory && (
-              <p className="profile-empty-state">
-                These totals and rankings include retained history and new activity. Earlier
-                activity may be missing, so counts are a known minimum.
-              </p>
-            )}
             {snapshot.profileStats.integrityStatus === "unavailable" && (
               <p className="profile-empty-state">
                 Stats verification is unavailable. New activity cannot be recorded until
