@@ -50,7 +50,7 @@ const version = process.env.VERSION;
 const outputPath = process.env.CHANGELOG_SECTION_PATH;
 const changelog = fs.readFileSync("CHANGELOG.md", "utf8");
 const lines = changelog.split(/\r?\n/);
-const releaseNoteHeadings = new Set(["### Added", "### Fixed"]);
+const releaseNoteHeadings = new Set(["### Highlights", "### Added", "### Fixed"]);
 const headingPattern = new RegExp(
   `^## ${version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} — \\d{4}-\\d{2}-\\d{2}$`,
 );
@@ -110,7 +110,7 @@ while (
 
 if (releaseNoteLines.length === 0) {
   console.error(
-    `CHANGELOG.md section for ${version} must contain an Added or Fixed section for release notes.`,
+    `CHANGELOG.md section for ${version} must contain a Highlights, Added, or Fixed section for release notes.`,
   );
   process.exit(1);
 }
