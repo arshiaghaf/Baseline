@@ -45,7 +45,9 @@ export function ToolbarPopover({
 
   useEffect(() => {
     if (!open) return;
-    const firstItem = panel.current?.querySelector<HTMLButtonElement>("[role='menuitem']");
+    const firstItem = panel.current?.querySelector<HTMLButtonElement>(
+      "[role='menuitem']:not(:disabled)"
+    );
     (firstItem ?? panel.current)?.focus();
     const outside = (event: MouseEvent) => {
       if (!root.current?.contains(event.target as Node)) setOpen(false);

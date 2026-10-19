@@ -3890,12 +3890,17 @@ describe("app refresh source visibility", () => {
     }
   );
 
-  it.each(["refreshing", "cleanup"])(
-    "keeps partial results incomplete and disables secondary checks during %s",
-    (lock) => {
+  it.each([
+    [false, "refreshing"],
+    [true, "refreshing"],
+    [false, "cleanup"],
+    [true, "cleanup"]
+  ] as const)(
+    "keeps disabled secondary checks dismissible by keyboard (compact=%s, lock=%s)",
+    (compact, lock) => {
       render(
         <Dashboard
-          compact
+          compact={compact}
           onOpenSettings={() => undefined}
           snapshot={snapshot({
             updates: [],
@@ -3906,12 +3911,24 @@ describe("app refresh source visibility", () => {
           })}
         />
       );
-      expect(screen.getByText("Checking app updates. Results are incomplete.")).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          compact
+            ? "Checking app updates. Results are incomplete."
+            : "Checking for updates. Results are incomplete."
+        )
+      ).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Update check details" }));
       expect(screen.getByRole("button", { name: "Retry checks" })).toBeDisabled();
       fireEvent.keyDown(window, { key: "Escape" });
-      fireEvent.click(screen.getByRole("button", { name: "Refresh options" }));
+      const trigger = screen.getByRole("button", { name: "Refresh options" });
+      trigger.focus();
+      fireEvent.click(trigger);
       expect(screen.getByRole("menuitem", { name: "Search sources again" })).toBeDisabled();
+      expect(screen.getByRole("menu")).toHaveFocus();
+      act(() => screen.getByRole("button", { name: "Update check details" }).focus());
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
       expect(screen.queryByText(/All your apps.*up to date/)).not.toBeInTheDocument();
     }
   );
