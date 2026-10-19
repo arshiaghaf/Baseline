@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import path from "node:path";
+import { isMacOSManagedApp } from "./macOSManagedApps";
 import { reconcileScannedApps } from "./scanReconciliation";
 import type {
   AppRecord,
@@ -239,7 +240,9 @@ export class RefreshComputationService {
       );
       const observedComparisons = new Map(comparisonBaseline.map((item) => [item.appID, item]));
       const previousChecks = this.ports.readState().appProviderChecks;
-      const retainedIDs = new Set(retainedApps.map((app) => app.id));
+      const retainedIDs = new Set(
+        retainedApps.filter((app) => !isMacOSManagedApp(app)).map((app) => app.id)
+      );
       // Preserve discovery/comparison evidence, but stale bundle evidence must not
       // authorize an update or claim a fresh successful check.
       const retainedChecks = Object.fromEntries(
@@ -247,7 +250,14 @@ export class RefreshComputationService {
           .filter(([id]) => retainedIDs.has(id))
           .map(([id, check]) => [id, { ...check, status: "failed" as const }])
       );
-      this.ports.patch({ apps });
+      const managedIDs = new Set(apps.filter(isMacOSManagedApp).map((app) => app.id));
+      this.ports.patch({
+        apps,
+        updates: this.ports.readState().updates.filter((update) => !managedIDs.has(update.appID)),
+        appProviderChecks: Object.fromEntries(
+          Object.entries(previousChecks ?? {}).filter(([id]) => !managedIDs.has(id))
+        )
+      });
       const updates = await lookupAppUpdates(
         {
           appStore: this.clients.appStore,

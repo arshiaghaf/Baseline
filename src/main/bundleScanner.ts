@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { macOSManagedPath } from "./macOSManagedApps";
 import { runCommand } from "./commandRunner";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
@@ -17,7 +18,7 @@ import { IconCache, type IconLoadResult } from "./iconCache";
 import { cancellableRead, readSignal, rethrowCancelledRead } from "./readCancellation";
 
 const execFileAsync = promisify(execFile);
-const directoryRuntime = { readdir, access, lstat };
+const directoryRuntime = { readdir, access, lstat, realpath };
 
 type InfoPlist = Record<string, unknown>;
 type AppBundleInfo = {
@@ -88,12 +89,17 @@ class BundleScan {
         const apps = await this.findApps(directory);
         for (const appPath of apps) {
           this.options.signal?.throwIfAborted();
-          const canonicalPath = await this.read(canonicalAppPath(appPath, this.options.signal));
+          const resolvedPath = await this.read(resolveAppPath(appPath, this.options.signal));
+          if (!resolvedPath) {
+            this.rootComplete = false;
+            continue;
+          }
+          const canonicalPath = resolvedPath;
           if (seen.has(canonicalPath)) {
             this.options.onAppRead?.(appPath, canonicalPath);
             continue;
           }
-          const record = await this.makeRecord(appPath);
+          const record = await this.makeRecord(appPath, resolvedPath);
           if (record) {
             seen.add(canonicalPath);
             this.options.onAppRead?.(appPath, canonicalPath);
@@ -120,12 +126,11 @@ class BundleScan {
       for (const entry of entries) {
         const entryPath = path.join(directory, entry.name);
         if (entry.name.endsWith(".app")) {
-          if (
-            entry.isDirectory() ||
-            (entry.isSymbolicLink() &&
-              (await this.read(isDirectory(entryPath, this.options.signal))))
-          ) {
-            apps.push(entryPath);
+          if (entry.isDirectory()) apps.push(entryPath);
+          else if (entry.isSymbolicLink()) {
+            const directory = await this.read(isDirectory(entryPath, this.options.signal));
+            if (directory === undefined) this.rootComplete = false;
+            else if (directory) apps.push(entryPath);
           }
           continue;
         }
@@ -167,7 +172,7 @@ class BundleScan {
     }
   }
 
-  private async makeRecord(appPath: string): Promise<AppRecord | undefined> {
+  private async makeRecord(appPath: string, resolvedPath?: string): Promise<AppRecord | undefined> {
     const bundleInfo = await this.readAppBundleInfo(appPath);
     if (!bundleInfo) return undefined;
     const { info, isIOSAppOnMac, hasAppStoreEvidence, hasSafariWebExtension, iconResourcesPath } =
@@ -215,6 +220,7 @@ class BundleScan {
       localVersion: version(rawVersion),
       bundleVersion: rawBundleVersion ? version(rawBundleVersion) : undefined,
       sourceHint,
+      macOSManagedPath: macOSManagedPath(resolvedPath),
       isIOSAppOnMac,
       hasAppStoreEvidence: hasMasReceipt || hasAppStoreEvidence,
       hasSafariWebExtension,
@@ -387,22 +393,28 @@ class BundleScan {
   }
 }
 
-async function canonicalAppPath(appPath: string, signal?: AbortSignal): Promise<string> {
+async function resolveAppPath(appPath: string, signal?: AbortSignal): Promise<string | undefined> {
   try {
-    return await cancellableRead(realpath(appPath), readSignal(signal));
+    return await cancellableRead(directoryRuntime.realpath(appPath), readSignal(signal));
   } catch (error) {
     rethrowCancelledRead(error, signal);
-    return appPath;
+    return undefined;
   }
 }
 
-async function isDirectory(candidatePath: string, signal?: AbortSignal): Promise<boolean> {
+async function canonicalAppPath(appPath: string, signal?: AbortSignal): Promise<string> {
+  return (await resolveAppPath(appPath, signal)) ?? appPath;
+}
+
+async function isDirectory(
+  candidatePath: string,
+  signal?: AbortSignal
+): Promise<boolean | undefined> {
   try {
     return (await cancellableRead(stat(candidatePath), readSignal(signal))).isDirectory();
   } catch (error) {
     rethrowCancelledRead(error, signal);
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    return false;
+    return undefined;
   }
 }
 

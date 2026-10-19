@@ -190,6 +190,34 @@ beforeEach(() => {
 });
 
 describe("renderer button parity", () => {
+  it.each(["row", "card"] as const)(
+    "shows the macOS management route on an installed %s without inventing an update",
+    (surface) => {
+      const managed = {
+        ...app,
+        sourceHint: "unknown" as const,
+        macOSManagedPath: "/System/Applications/System Utility.app"
+      };
+      const state = snapshot({
+        apps: [managed],
+        updates: [],
+        homebrewItems: [],
+        selectedTab: "installed"
+      });
+      if (surface === "row")
+        render(<AppRow app={managed} snapshot={state} recentlyUpdated={false} />);
+      else render(<Dashboard snapshot={state} compact={false} onOpenSettings={() => undefined} />);
+      expect(screen.getByText("Managed by macOS")).toHaveAttribute(
+        "title",
+        "Updates are managed through Software Update in System Settings. Baseline does not check these updates."
+      );
+      expect(screen.queryByRole("button", { name: /^Update$/ })).not.toBeInTheDocument();
+      expect(screen.queryByText("No verified update source")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Open app" }));
+      expect(window.baseline.openApp).toHaveBeenCalledWith(managed.id);
+    }
+  );
+
   it("recovers waiting status from the snapshot on app and cask rows without affecting a same-token formula", () => {
     const formula = { ...cask, id: "formula:example", kind: "formula" as const, appID: undefined };
     const waiting = snapshot({

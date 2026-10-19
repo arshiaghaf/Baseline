@@ -169,6 +169,7 @@ export function appSourceLabel(
   snapshot: BaselineSnapshot,
   recentRecord?: RecentlyUpdatedRecord
 ): string | undefined {
+  if (app.macOSManagedPath) return "Managed by macOS";
   const update = snapshot.updates.find((candidate) => candidate.appID === app.id);
   if (update) {
     if (

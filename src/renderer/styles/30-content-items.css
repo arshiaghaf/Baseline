@@ -223,6 +223,10 @@
   font-size: 11px;
 }
 
+.row-title span.app-management-label {
+  text-transform: none;
+}
+
 .item-card .row-main p {
   overflow: hidden;
   margin-top: 0;

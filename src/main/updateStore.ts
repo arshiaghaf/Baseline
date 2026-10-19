@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { isMacOSManagedApp } from "./macOSManagedApps";
 import { operationDetailsText } from "../shared/operationReport";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -923,6 +924,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!appRecord) {
       return;
     }
+    if (isMacOSManagedApp(appRecord)) return;
     const update = this.state.updates.find((candidate) => candidate.appID === appID);
     if (!update) {
       await this.openAppBundle(appRecord.bundlePath);
@@ -1546,11 +1548,18 @@ function sanitizePersistedSnapshotForRuntime(snapshot: PersistedSnapshot): Persi
           }
         : item
   );
+  const managedIDs = new Set(snapshot.apps.filter(isMacOSManagedApp).map((app) => app.id));
   const migrated = { ...snapshot, homebrewItems };
   return {
     ...migrated,
-    updates: snapshot.updates.filter((update) =>
-      persistedUpdateHasValidRuntimeRoute(update, migrated)
+    appProviderChecks:
+      snapshot.appProviderChecks &&
+      Object.fromEntries(
+        Object.entries(snapshot.appProviderChecks).filter(([id]) => !managedIDs.has(id))
+      ),
+    updates: snapshot.updates.filter(
+      (update) =>
+        !managedIDs.has(update.appID) && persistedUpdateHasValidRuntimeRoute(update, migrated)
     )
   };
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { isMacOSManagedApp } from "./macOSManagedApps";
 import path from "node:path";
 import type {
   AppRecord,
@@ -324,6 +325,7 @@ export function canUseHomebrewAppUpdate(
   homebrewItems: HomebrewManagedItem[],
   caskIndex: HomebrewCaskIndex
 ): boolean {
+  if (isMacOSManagedApp(appRecord)) return false;
   const token = homebrewToken.toLowerCase();
   return homebrewItems.some(
     (item) =>
