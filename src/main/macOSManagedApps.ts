@@ -8,7 +8,7 @@ import type { AppRecord } from "../shared/domain";
 // Classify resolved locations rather than names, bundle IDs, or /Applications aliases.
 const managedRoots = [
   "/System/Applications",
-  "/System/Library/CoreServices/Applications",
+  "/System/Library/CoreServices",
   "/System/Cryptexes/App/System/Applications",
   "/System/Volumes/Preboot/Cryptexes/App/System/Applications"
 ];

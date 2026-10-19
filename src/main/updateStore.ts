@@ -84,7 +84,8 @@ import {
   homebrewItemCanRunAppUpdate,
   installedCaskIdentifiesSelf,
   preserveFormulaIdentityContinuity,
-  preservePreviousHomebrewInventoryMembership
+  preservePreviousHomebrewInventoryMembership,
+  withoutMacOSManagedAppLinks
 } from "./homebrewReconciliation";
 import { RefreshLifecycle } from "./refreshLifecycle";
 import {
@@ -1527,26 +1528,27 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
 }
 
 function sanitizePersistedSnapshotForRuntime(snapshot: PersistedSnapshot): PersistedSnapshot {
-  const homebrewItems = snapshot.homebrewItems.map((item) =>
-    item.kind === "formula"
-      ? {
-          ...item,
-          formulaIdentityVerified: false,
-          isOutdated: false,
-          latestVersion: undefined,
-          releaseDate: undefined
-        }
-      : !homebrewCommandToken(item)
+  const homebrewItems = withoutMacOSManagedAppLinks(snapshot.homebrewItems, snapshot.apps).map(
+    (item) =>
+      item.kind === "formula"
         ? {
             ...item,
-            appID: undefined,
-            presentation: item.kind === "cask" ? ("cask" as const) : ("formula" as const),
-            iconDataURL: undefined,
+            formulaIdentityVerified: false,
             isOutdated: false,
             latestVersion: undefined,
             releaseDate: undefined
           }
-        : item
+        : !homebrewCommandToken(item)
+          ? {
+              ...item,
+              appID: undefined,
+              presentation: item.kind === "cask" ? ("cask" as const) : ("formula" as const),
+              iconDataURL: undefined,
+              isOutdated: false,
+              latestVersion: undefined,
+              releaseDate: undefined
+            }
+          : item
   );
   const managedIDs = new Set(snapshot.apps.filter(isMacOSManagedApp).map((app) => app.id));
   const migrated = { ...snapshot, homebrewItems };

@@ -31,7 +31,8 @@ import {
   preserveFormulaIdentityContinuity,
   preservePreviousHomebrewInventoryMembership,
   preservePreviousHomebrewOutdatedState,
-  reconcileHomebrewInventory
+  reconcileHomebrewInventory,
+  withoutMacOSManagedAppLinks
 } from "./homebrewReconciliation";
 
 export type RefreshOptions = {
@@ -279,6 +280,7 @@ export class RefreshComputationService {
       const scannedIDs = new Set(scannedApps.map((app) => app.id));
       this.ports.patch({
         apps,
+        homebrewItems: withoutMacOSManagedAppLinks(this.ports.readState().homebrewItems, apps),
         updates: this.ports
           .readState()
           .updates.filter(
@@ -345,10 +347,13 @@ export class RefreshComputationService {
       this.latestFormulaIndex = formulaResult.value;
       const previousHomebrewItems = this.ports.readState().homebrewItems;
       const reconciledHomebrewItems = reconcileHomebrewInventory(
-        preservePreviousHomebrewOutdatedState(
-          homebrewItems,
-          homebrewIdentityReconciliationItems(this.ports.readState()),
-          homebrewInventory.outdatedDetectionSucceededByKind
+        withoutMacOSManagedAppLinks(
+          preservePreviousHomebrewOutdatedState(
+            homebrewItems,
+            homebrewIdentityReconciliationItems(this.ports.readState()),
+            homebrewInventory.outdatedDetectionSucceededByKind
+          ),
+          apps
         ),
         updates,
         scannedApps,

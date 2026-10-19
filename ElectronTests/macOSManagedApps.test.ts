@@ -9,12 +9,19 @@ import { macOSManagedPath } from "../src/main/macOSManagedApps";
 import { UpdateStore } from "../src/main/updateStore";
 import { SnapshotPersistence } from "../src/main/persistence";
 import { testingExports as reconciliationTestingExports } from "../src/main/scanReconciliation";
+import {
+  homebrewCaskItemProvesAppOwnership,
+  reconcileHomebrewInventory
+} from "../src/main/homebrewReconciliation";
+import { deriveSections, uninstallableHomebrewItemForApp } from "../src/renderer/helpers/sections";
 import { trayUpdateTitle } from "../src/main/trayStatus";
 import {
   defaultPersistedSnapshot,
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
   type AppRecord,
+  type HomebrewCaskEntry,
+  type HomebrewManagedItem,
   type PersistedSnapshot
 } from "../src/shared/domain";
 
@@ -35,7 +42,8 @@ const systemPaths = [
   "/System/Applications/Utility.app",
   "/System/Library/CoreServices/Applications/Utility.app",
   "/System/Cryptexes/App/System/Applications/Utility.app",
-  "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Utility.app"
+  "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Utility.app",
+  "/System/Library/CoreServices/Utility.app"
 ];
 describe("macOS-serviced locations", () => {
   it.each(systemPaths)("recognizes the canonical system location %s", (value) =>
@@ -47,6 +55,7 @@ describe("macOS-serviced locations", () => {
     "/Applications/Utility.app",
     "/tmp/System/Applications/Utility.app",
     "/System/ApplicationsExtra/Utility.app",
+    "/System/Library/CoreServicesExtra/Utility.app",
     "/System/Applications/../../Applications/Utility.app",
     "/System/Applications/Utility.app/Contents",
     "/System/Applications/Utility.app\0",
@@ -74,6 +83,7 @@ async function fixture() {
   const apps = `${root}/Apps`;
   await mkdir(apps);
   const canonical = new Map<string, string>();
+  const brewState = { index: emptyHomebrewCaskIndex, items: [] as HomebrewManagedItem[] };
   // The real scanner traverses actual bundles and aliases. Only the canonical
   // namespace is virtualized because tests cannot write the protected OS volume.
   const resolve = async (value: Parameters<typeof realpath>[0]) => {
@@ -114,7 +124,7 @@ async function fixture() {
         appStore: { lookupOutcome: lookup },
         sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
         homebrew: {
-          fetchIndex: async () => emptyHomebrewCaskIndex,
+          fetchIndex: async () => brewState.index,
           lookupUpdate: () => undefined,
           searchCasks: () => []
         },
@@ -124,7 +134,7 @@ async function fixture() {
         },
         homebrewInventory: {
           fetchInventory: async () => ({
-            items: [],
+            items: brewState.items,
             outdatedDetectionSucceeded: true,
             outdatedDetectionSucceededByKind: { formula: true, cask: true },
             inventoryReadSucceededByKind: { formula: true, cask: true }
@@ -143,7 +153,7 @@ async function fixture() {
     entry.stores.push(store);
     return store;
   };
-  return { root, apps, canonical, lookup, brew, mas, open, persistence, create };
+  return { root, apps, canonical, brewState, lookup, brew, mas, open, persistence, create };
 }
 function oldApp(path: string): AppRecord {
   return {
@@ -156,7 +166,7 @@ function oldApp(path: string): AppRecord {
   };
 }
 
-it.each([systemPaths[0]!, systemPaths[1]!, systemPaths[3]!])(
+it.each([systemPaths[0]!, systemPaths[1]!, systemPaths[3]!, systemPaths[4]!])(
   "migrates real scanner results at %s without losing saved identity or history",
   async (systemPath) => {
     const f = await fixture();
@@ -790,4 +800,157 @@ it("keeps a cold unreadable alias warning when only a different path can be read
   expect(state.lastRefreshNoticeMessage).toContain("could not");
   expect(state.lastRefreshNoticeMessage).not.toContain("have been kept");
   expect(trayUpdateTitle({ ...state, updates: [] })).toBe("");
+});
+
+function matchingCask(appID: string): HomebrewManagedItem {
+  return {
+    id: "cask:utility",
+    token: "utility",
+    fullToken: "utility",
+    tap: "homebrew/cask",
+    name: "Utility",
+    kind: "cask",
+    presentation: "app",
+    appID,
+    installedVersion: { raw: "1" },
+    latestVersion: { raw: "2" },
+    isOutdated: true,
+    iconDataURL: "data:image/png;base64,AA=="
+  };
+}
+
+it.each(
+  [false, true].flatMap((managed) =>
+    ["identifier", "name", "unavailable"].map((metadata) => ({ managed, metadata }))
+  )
+)(
+  "keeps managed apps separate from Homebrew inventory (managed=$managed, metadata=$metadata)",
+  async ({ managed, metadata }) => {
+    const f = await fixture();
+    const alias = `${f.apps}/Utility.app`,
+      target = `${f.root}/Bundle.app`;
+    await app(target, "com.apple.example.editor", true);
+    await symlink(target, alias);
+    if (managed) f.canonical.set(await realpath(alias), systemPaths[4]!);
+    const previous = oldApp(alias),
+      item = matchingCask(previous.id);
+    const entry: HomebrewCaskEntry = {
+      token: item.token,
+      version: { raw: "2" },
+      presentation: "app",
+      bundleIdentifiers: metadata === "identifier" ? ["com.apple.example.editor"] : [],
+      appBundleNames: ["utility.app"]
+    };
+    if (metadata !== "unavailable")
+      f.brewState.index = {
+        ...emptyHomebrewCaskIndex,
+        byToken: { utility: entry }
+      };
+    f.brewState.items = [item];
+    const store = f.create({
+      ...defaultPersistedSnapshot(),
+      apps: [previous],
+      homebrewItems: [item],
+      ignoredHomebrewItemIDs: [item.id]
+    });
+    const observations: ReturnType<UpdateStore["getSnapshot"]>[] = [];
+    store.on("snapshot", (s) => {
+      if (s.apps.some((a) => a.macOSManagedPath)) observations.push(s);
+    });
+    await store.refresh(false);
+    const state = store.getSnapshot(),
+      record = state.apps[0]!;
+    expect(record.id).toBe(previous.id);
+    expect(
+      homebrewCaskItemProvesAppOwnership(
+        item,
+        record,
+        metadata === "unavailable" ? undefined : entry
+      )
+    ).toBe(!managed);
+    expect(state.homebrewItems[0]?.appID).toBe(managed ? undefined : record.id);
+    expect(Boolean(uninstallableHomebrewItemForApp(record, state))).toBe(!managed);
+    expect(deriveSections(state).installedApps.some((a) => a.id === record.id)).toBe(managed);
+    expect(state.homebrewItems[0]).toMatchObject({
+      id: item.id,
+      token: item.token,
+      installedVersion: { raw: "1" },
+      latestVersion: { raw: "2" },
+      isOutdated: true
+    });
+    expect(state.ignoredHomebrewItemIDs).toEqual([item.id]);
+    expect(item.appID).toBe(previous.id);
+    if (managed) {
+      expect(state.homebrewItems[0]?.iconDataURL).toBeUndefined();
+      for (const s of observations) expect(s.homebrewItems[0]?.appID).toBeUndefined();
+      expect(observations.length).toBeGreaterThan(0);
+      expect(f.lookup).not.toHaveBeenCalled();
+    }
+    const restarted = f.create(await f.persistence.load());
+    expect(restarted.getSnapshot().homebrewItems[0]?.appID).toBe(managed ? undefined : record.id);
+    if (managed) {
+      await rm(target, { recursive: true });
+      await restarted.refresh(false);
+      const retained = restarted.getSnapshot();
+      expect(retained.apps[0]?.macOSManagedPath).toBe(systemPaths[4]);
+      expect(retained.homebrewItems[0]?.appID).toBeUndefined();
+      expect(retained.homebrewItems[0]?.iconDataURL).toBeUndefined();
+      expect(retained.lastRefreshNoticeMessage).toContain("could not");
+    }
+  }
+);
+
+it("clears a cached managed app's Homebrew link before its first refresh", async () => {
+  const f = await fixture();
+  const managed = { ...oldApp(`${f.apps}/Utility.app`), macOSManagedPath: systemPaths[4] },
+    item = matchingCask(managed.id);
+  await f.persistence.save({
+    ...defaultPersistedSnapshot(),
+    apps: [managed],
+    homebrewItems: [item],
+    ignoredHomebrewItemIDs: [item.id]
+  });
+  const store = f.create(await f.persistence.load()),
+    state = store.getSnapshot();
+  expect(state.homebrewItems[0]?.appID).toBeUndefined();
+  expect(state.homebrewItems[0]?.iconDataURL).toBeUndefined();
+  expect(state.homebrewItems[0]?.isOutdated).toBe(true);
+  expect(state.ignoredHomebrewItemIDs).toEqual([item.id]);
+  expect(deriveSections(state).installedApps.map((a) => a.id)).toEqual([managed.id]);
+  expect(uninstallableHomebrewItemForApp(managed, state)).toBeUndefined();
+});
+
+it("does not borrow managed-app versions or icons from stale Homebrew update routes", () => {
+  const managed = {
+    ...oldApp("/Applications/Utility.app"),
+    macOSManagedPath: systemPaths[4],
+    localVersion: { raw: "90" },
+    iconDataURL: "data:image/png;base64,AA=="
+  };
+  const item = matchingCask(managed.id);
+  const state = reconcileHomebrewInventory(
+    [item],
+    [
+      {
+        id: managed.id,
+        appID: managed.id,
+        source: "homebrew",
+        supportLevel: "supported",
+        homebrewToken: item.token,
+        localVersion: { raw: "90" },
+        remoteVersion: { raw: "99" },
+        checkedAt: "2026-10-19T00:00:00Z"
+      }
+    ],
+    [managed],
+    emptyHomebrewCaskIndex,
+    [item]
+  );
+  expect(state[0]).toMatchObject({
+    installedVersion: { raw: "1" },
+    latestVersion: { raw: "2" },
+    isOutdated: true
+  });
+  expect(state[0]?.appID).toBeUndefined();
+  expect(state[0]?.iconDataURL).toBeUndefined();
 });
