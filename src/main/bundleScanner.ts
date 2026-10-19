@@ -18,7 +18,7 @@ import { IconCache, type IconLoadResult } from "./iconCache";
 import { cancellableRead, readSignal, rethrowCancelledRead } from "./readCancellation";
 
 const execFileAsync = promisify(execFile);
-const directoryRuntime = { readdir, access, lstat, realpath };
+const directoryRuntime = { readdir, access, lstat, realpath, stat };
 
 type InfoPlist = Record<string, unknown>;
 type AppBundleInfo = {
@@ -51,7 +51,12 @@ const iconRuntime: {
   execFileAsync: IconExecFileAsync;
 } = { ...defaultIconRuntime };
 
-export type ScanRootHealth = { directory: string; complete: boolean };
+export type ScanRootHealth = {
+  directory: string;
+  complete: boolean;
+  /** Individual entries whose targets could not be read, separate from directory traversal. */
+  unavailableApps?: { bundlePath: string; notFound: boolean }[];
+};
 export type ScanOptions = {
   signal?: AbortSignal;
   onRootRead?: (health: ScanRootHealth) => void;
@@ -69,6 +74,7 @@ export class BundleScannerClient {
 class BundleScan {
   private rootComplete = true;
   private rootDirectory = "";
+  private unavailableApps = new Map<string, boolean>();
   constructor(
     private readonly icons: IconCache,
     private readonly options: ScanOptions
@@ -85,15 +91,17 @@ class BundleScan {
       this.options.signal?.throwIfAborted();
       this.rootComplete = true;
       this.rootDirectory = directory;
+      this.unavailableApps = new Map();
       try {
         const apps = await this.findApps(directory);
         for (const appPath of apps) {
           this.options.signal?.throwIfAborted();
-          const resolvedPath = await this.read(resolveAppPath(appPath, this.options.signal));
-          if (!resolvedPath) {
-            this.rootComplete = false;
+          const resolved = await resolveAppPath(appPath, this.options.signal);
+          if (resolved.value === undefined) {
+            this.unavailableApps.set(appPath, resolved.notFound);
             continue;
           }
+          const resolvedPath = resolved.value;
           const canonicalPath = resolvedPath;
           if (seen.has(canonicalPath)) {
             this.options.onAppRead?.(appPath, canonicalPath);
@@ -111,7 +119,19 @@ class BundleScan {
         // A read deadline is incomplete evidence, never an empty directory.
         this.rootComplete = false;
       }
-      this.options.onRootRead?.({ directory, complete: this.rootComplete });
+      this.options.signal?.throwIfAborted();
+      this.options.onRootRead?.({
+        directory,
+        complete: this.rootComplete,
+        ...(this.unavailableApps.size
+          ? {
+              unavailableApps: [...this.unavailableApps].map(([bundlePath, notFound]) => ({
+                bundlePath,
+                notFound
+              }))
+            }
+          : {})
+      });
     }
     this.options.signal?.throwIfAborted();
     return records.sort((lhs, rhs) =>
@@ -128,9 +148,10 @@ class BundleScan {
         if (entry.name.endsWith(".app")) {
           if (entry.isDirectory()) apps.push(entryPath);
           else if (entry.isSymbolicLink()) {
-            const directory = await this.read(isDirectory(entryPath, this.options.signal));
-            if (directory === undefined) this.rootComplete = false;
-            else if (directory) apps.push(entryPath);
+            const directory = await isDirectory(entryPath, this.options.signal);
+            if (directory.value === undefined)
+              this.unavailableApps.set(entryPath, directory.notFound);
+            else if (directory.value) apps.push(entryPath);
           }
           continue;
         }
@@ -393,29 +414,30 @@ class BundleScan {
   }
 }
 
-async function resolveAppPath(appPath: string, signal?: AbortSignal): Promise<string | undefined> {
+type AppPathRead<T> = { value: T } | { value?: undefined; notFound: boolean };
+
+async function readAppPath<T>(task: Promise<T>, signal?: AbortSignal): Promise<AppPathRead<T>> {
   try {
-    return await cancellableRead(directoryRuntime.realpath(appPath), readSignal(signal));
+    return { value: await cancellableRead(task, readSignal(signal)) };
   } catch (error) {
-    rethrowCancelledRead(error, signal);
-    return undefined;
+    signal?.throwIfAborted();
+    return { notFound: (error as NodeJS.ErrnoException).code === "ENOENT" };
   }
+}
+
+function resolveAppPath(appPath: string, signal?: AbortSignal): Promise<AppPathRead<string>> {
+  return readAppPath(directoryRuntime.realpath(appPath), signal);
 }
 
 async function canonicalAppPath(appPath: string, signal?: AbortSignal): Promise<string> {
-  return (await resolveAppPath(appPath, signal)) ?? appPath;
+  return (await resolveAppPath(appPath, signal)).value ?? appPath;
 }
 
-async function isDirectory(
-  candidatePath: string,
-  signal?: AbortSignal
-): Promise<boolean | undefined> {
-  try {
-    return (await cancellableRead(stat(candidatePath), readSignal(signal))).isDirectory();
-  } catch (error) {
-    rethrowCancelledRead(error, signal);
-    return undefined;
-  }
+function isDirectory(candidatePath: string, signal?: AbortSignal): Promise<AppPathRead<boolean>> {
+  return readAppPath(
+    directoryRuntime.stat(candidatePath).then((info) => info.isDirectory()),
+    signal
+  );
 }
 
 async function readPlistRawValue(

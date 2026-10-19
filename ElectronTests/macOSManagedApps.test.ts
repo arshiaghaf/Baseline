@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 // @vitest-environment node
-import { mkdir, mkdtemp, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BundleScannerClient, testingExports } from "../src/main/bundleScanner";
 import { macOSManagedPath } from "../src/main/macOSManagedApps";
 import { UpdateStore } from "../src/main/updateStore";
 import { SnapshotPersistence } from "../src/main/persistence";
+import { testingExports as reconciliationTestingExports } from "../src/main/scanReconciliation";
 import { trayUpdateTitle } from "../src/main/trayStatus";
 import {
   defaultPersistedSnapshot,
@@ -75,10 +76,12 @@ async function fixture() {
   const canonical = new Map<string, string>();
   // The real scanner traverses actual bundles and aliases. Only the canonical
   // namespace is virtualized because tests cannot write the protected OS volume.
-  vi.spyOn(testingExports.directoryRuntime, "realpath").mockImplementation(async (value) => {
+  const resolve = async (value: Parameters<typeof realpath>[0]) => {
     const resolved = await realpath(value);
     return canonical.get(resolved) ?? resolved;
-  });
+  };
+  vi.spyOn(testingExports.directoryRuntime, "realpath").mockImplementation(resolve);
+  vi.spyOn(reconciliationTestingExports.identityRuntime, "realpath").mockImplementation(resolve);
   const lookup = vi.fn(async (id: string) =>
     id === "com.apple.example.editor"
       ? {
@@ -403,3 +406,309 @@ it("excludes only the managed app while unresolved ordinary coverage still block
   expect(s.appProviderChecks?.[ordinary]?.status).toBe("unresolved");
   expect(trayUpdateTitle(s)).toBe("");
 });
+
+it("skips an orphan uninstall alias without retaining a deleted sibling or hiding readable additions", async () => {
+  const f = await fixture();
+  await mkdir(`${f.apps}/Vendor/Tools`, { recursive: true });
+  await symlink(`${f.root}/Missing/Uninstall.app`, `${f.apps}/Vendor/Tools/Uninstall.app`);
+  const store = f.create({
+    ...defaultPersistedSnapshot(),
+    apps: [oldApp(`${f.apps}/Deleted.app`)]
+  });
+  await store.refresh(false);
+  expect(store.getSnapshot().apps).toEqual([]);
+  expect(store.getSnapshot().lastRefreshNoticeMessage).toBeUndefined();
+  expect(trayUpdateTitle(store.getSnapshot())).toBe("✓");
+  expect(f.lookup).not.toHaveBeenCalled();
+  await app(`${f.apps}/Added.app`, "com.apple.example.editor", true);
+  await store.refresh(false);
+  const state = store.getSnapshot();
+  expect(state.apps.map((a) => a.bundlePath)).toEqual([`${f.apps}/Added.app`]);
+  expect(state.updates).toHaveLength(1);
+  expect(state.lastRefreshNoticeMessage).toBeUndefined();
+  expect(Object.values(state.appProviderChecks ?? {}).map((c) => c.status)).toEqual(["checked"]);
+});
+
+it.each([false, true])(
+  "retains only a known unavailable alias across sibling changes, relaunch and recovery (managed=%s)",
+  async (managed) => {
+    const f = await fixture();
+    const target = `${f.root}/Bundle.app`,
+      alias = `${f.apps}/Known.app`,
+      deleted = `${f.apps}/Deleted.app`,
+      added = `${f.apps}/Added.app`;
+    await app(target, "com.apple.example.editor", true);
+    await app(deleted, "com.apple.example.editor", true);
+    await symlink(target, alias);
+    const resolved = await realpath(target);
+    if (managed) f.canonical.set(resolved, systemPaths[1]!);
+    const previous = oldApp(alias);
+    const store = f.create({
+      ...defaultPersistedSnapshot(),
+      apps: [previous],
+      ignoredIDs: [previous.id]
+    });
+    await store.refresh(false);
+    const known = store.getSnapshot().apps.find((a) => a.bundlePath === alias)!;
+    await rm(target, { recursive: true });
+    await rm(deleted, { recursive: true });
+    await app(added, "com.apple.example.editor", true);
+    f.lookup.mockClear();
+    const observations: ReturnType<UpdateStore["getSnapshot"]>[] = [];
+    store.on("snapshot", (s) => {
+      if (s.apps.some((a) => a.bundlePath === added)) observations.push(s);
+    });
+    await store.refresh(false);
+    const unavailable = store.getSnapshot();
+    expect(unavailable.apps.map((a) => a.bundlePath).sort()).toEqual([added, alias].sort());
+    expect(unavailable.apps.find((a) => a.id === known.id)).toEqual(known);
+    expect(unavailable.ignoredIDs).toContain(previous.id);
+    expect(unavailable.lastRefreshNoticeMessage).toContain("Previously found apps have been kept");
+    expect(trayUpdateTitle({ ...unavailable, updates: [] })).toBe("");
+    expect(f.lookup).toHaveBeenCalledTimes(1);
+    for (const s of observations) {
+      expect(s.updates.some((u) => u.appID === known.id)).toBe(false);
+      expect(s.appProviderChecks?.[known.id]?.status).toBe(managed ? undefined : "failed");
+    }
+    expect(observations.length).toBeGreaterThan(0);
+    const restarted = f.create(await f.persistence.load());
+    await restarted.refresh(false);
+    expect(restarted.getSnapshot().apps.find((a) => a.id === known.id)).toEqual(known);
+    expect(restarted.getSnapshot().ignoredIDs).toContain(previous.id);
+    expect(restarted.getSnapshot().lastRefreshNoticeMessage).toContain("could not");
+    await app(target, "com.apple.example.editor", true);
+    // The same advertised version must follow current readable location evidence.
+    f.canonical.set(await realpath(target), systemPaths[1]!);
+    await restarted.refresh(false);
+    expect(restarted.getSnapshot().apps.find((a) => a.id === known.id)?.macOSManagedPath).toBe(
+      systemPaths[1]
+    );
+    expect(restarted.getSnapshot().lastRefreshNoticeMessage).toBeUndefined();
+    f.canonical.delete(await realpath(target));
+    await restarted.refresh(false);
+    const recovered = restarted.getSnapshot();
+    expect(recovered.apps.find((a) => a.id === known.id)?.macOSManagedPath).toBeUndefined();
+    expect(recovered.appProviderChecks?.[known.id]?.status).toBe("checked");
+    expect(recovered.updates.some((u) => u.appID === known.id)).toBe(true);
+    expect(recovered.ignoredIDs).toContain(previous.id);
+    const reloaded = f.create(await f.persistence.load());
+    expect(
+      reloaded.getSnapshot().apps.find((a) => a.id === known.id)?.macOSManagedPath
+    ).toBeUndefined();
+    expect(reloaded.getSnapshot().ignoredIDs).toContain(previous.id);
+  }
+);
+
+it("warns for a never-read app entry with denied access without claiming records were retained", async () => {
+  const f = await fixture();
+  const target = `${f.root}/Bundle.app`,
+    alias = `${f.apps}/Uninstall.app`;
+  await app(target);
+  await symlink(target, alias);
+  vi.spyOn(testingExports.directoryRuntime, "stat").mockImplementation(async (value) => {
+    if (value === alias) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    return stat(value);
+  });
+  const store = f.create();
+  await store.refresh(false);
+  expect(store.getSnapshot().apps).toEqual([]);
+  expect(store.getSnapshot().lastRefreshNoticeMessage).toContain("could not");
+  expect(store.getSnapshot().lastRefreshNoticeMessage).not.toContain("have been kept");
+  expect(trayUpdateTitle(store.getSnapshot())).toBe("");
+  expect(f.lookup).not.toHaveBeenCalled();
+});
+
+it("does not retain a saved app when its alias is proven to target a non-directory replacement", async () => {
+  const f = await fixture();
+  const target = `${f.root}/Unsupported`,
+    alias = `${f.apps}/Utility.app`;
+  await writeFile(target, "not an application bundle");
+  await symlink(target, alias);
+  const store = f.create({ ...defaultPersistedSnapshot(), apps: [oldApp(alias)] });
+  await store.refresh(false);
+  expect(store.getSnapshot().apps).toEqual([]);
+  expect(store.getSnapshot().lastRefreshNoticeMessage).toBeUndefined();
+  expect(f.lookup).not.toHaveBeenCalled();
+});
+
+it.each(["stat", "realpath"] as const)(
+  "keeps %s deadlines local to an app entry and propagates caller cancellation",
+  async (operation) => {
+    const f = await fixture();
+    const target = `${f.root}/Bundle.app`,
+      alias = `${f.apps}/A.app`;
+    await app(target);
+    await symlink(target, alias);
+    await app(`${f.apps}/Z.app`);
+    for (const cause of ["deadline", "caller"] as const) {
+      const caller = new AbortController(),
+        deadline = new AbortController();
+      let rejectRead!: (error: Error) => void;
+      const blocked = new Promise<never>((_, reject) => {
+        rejectRead = reject;
+      });
+      let entered = false,
+        deadlineActive = false;
+      const block = () => {
+        entered = true;
+        deadlineActive = true;
+        queueMicrotask(() => {
+          deadlineActive = false;
+        });
+        return blocked;
+      };
+      const runtime = testingExports.directoryRuntime;
+      const reader =
+        operation === "stat"
+          ? vi
+              .spyOn(runtime, "stat")
+              .mockImplementation((value) => (value === alias && !entered ? block() : stat(value)))
+          : vi
+              .spyOn(runtime, "realpath")
+              .mockImplementation((value) =>
+                value === alias && !entered ? block() : realpath(value)
+              );
+      const timeout = AbortSignal.timeout.bind(AbortSignal);
+      const timeoutSpy = vi
+        .spyOn(AbortSignal, "timeout")
+        .mockImplementation((ms) => (deadlineActive ? deadline.signal : timeout(ms)));
+      const health = vi.fn();
+      const task = new BundleScannerClient().scanApplications([f.apps], {
+        signal: caller.signal,
+        onRootRead: health
+      });
+      let records: Awaited<typeof task> | undefined, failure: unknown;
+      const observed = task.then(
+        (value) => {
+          records = value;
+        },
+        (error: unknown) => {
+          failure = error;
+        }
+      );
+      try {
+        await vi.waitFor(() => expect(entered).toBe(true));
+        const reason = Object.assign(new Error(cause), {
+          name: cause === "deadline" ? "TimeoutError" : "AbortError"
+        });
+        (cause === "deadline" ? deadline : caller).abort(reason);
+        await vi.waitFor(() => expect(records !== undefined || failure !== undefined).toBe(true));
+        if (cause === "caller") {
+          expect(failure).toBe(reason);
+          expect(health).not.toHaveBeenCalled();
+        } else {
+          expect(failure).toBeUndefined();
+          expect(records?.map((a) => a.bundlePath)).toEqual([`${f.apps}/Z.app`]);
+          expect(health).toHaveBeenCalledWith({
+            directory: f.apps,
+            complete: true,
+            unavailableApps: [{ bundlePath: alias, notFound: false }]
+          });
+        }
+      } finally {
+        rejectRead(new Error("late app-path read failure"));
+        await Promise.allSettled([blocked, task, observed]);
+        timeoutSpy.mockRestore();
+        reader.mockRestore();
+      }
+      const recoveredHealth = vi.fn();
+      expect(
+        await new BundleScannerClient().scanApplications([f.apps], { onRootRead: recoveredHealth })
+      ).toHaveLength(2);
+      expect(recoveredHealth).toHaveBeenCalledWith({ directory: f.apps, complete: true });
+    }
+  }
+);
+
+it("does not let a cancelled entry read overwrite a successful replacement refresh", async () => {
+  const f = await fixture();
+  const oldTarget = `${f.root}/Old.app`,
+    newTarget = `${f.root}/New.app`,
+    alias = `${f.apps}/Utility.app`;
+  await app(oldTarget);
+  await app(newTarget, "com.apple.example.editor", true);
+  await symlink(oldTarget, alias);
+  const previous = { ...oldApp(alias), macOSManagedPath: systemPaths[1] };
+  const store = f.create({
+    ...defaultPersistedSnapshot(),
+    apps: [previous],
+    ignoredIDs: [previous.id]
+  });
+  let rejectRead!: (error: Error) => void;
+  const blocked = new Promise<never>((_, reject) => {
+    rejectRead = reject;
+  });
+  let entered = false;
+  vi.spyOn(testingExports.directoryRuntime, "realpath").mockImplementation((value) => {
+    if (value === alias && !entered) {
+      entered = true;
+      return blocked;
+    }
+    return realpath(value);
+  });
+  const first = store.refresh(false);
+  const work = [first];
+  try {
+    await vi.waitFor(() => expect(entered).toBe(true));
+    await unlink(alias);
+    await symlink(newTarget, alias);
+    const second = store.refresh(false);
+    work.push(second);
+    let completed = false;
+    const observation = second.then(() => {
+      completed = true;
+    });
+    work.push(observation);
+    await vi.waitFor(() => expect(completed).toBe(true));
+    const winning = store.getSnapshot();
+    expect(winning.apps[0]).toMatchObject({ id: previous.id, sourceHint: "appStore" });
+    expect(winning.apps[0]?.macOSManagedPath).toBeUndefined();
+    expect(winning.appProviderChecks?.[previous.id]?.status).toBe("checked");
+    expect(winning.ignoredIDs).toContain(previous.id);
+    expect(winning.lastRefreshNoticeMessage).toBeUndefined();
+    rejectRead(new Error("obsolete read failure"));
+    await Promise.allSettled(work);
+    expect(store.getSnapshot()).toEqual(winning);
+  } finally {
+    rejectRead(new Error("released during teardown"));
+    await Promise.allSettled([blocked, ...work]);
+  }
+});
+
+it.each([false, true])(
+  "reconciles a known unreadable alias through a healthy overlapping root (managed=%s)",
+  async (managed) => {
+    const f = await fixture();
+    const target = `${f.root}/Bundle.app`,
+      alias = `${f.apps}/Nested/Known.app`,
+      peer = `${f.apps}/Peer.app`,
+      removed = `${f.apps}/Nested/Deleted.app`;
+    await app(target, "com.apple.example.editor", true);
+    await mkdir(`${f.apps}/Nested`);
+    await symlink(target, alias);
+    await symlink(target, peer);
+    if (managed) f.canonical.set(await realpath(target), systemPaths[1]!);
+    const previous = oldApp(alias);
+    const store = f.create({
+      ...defaultPersistedSnapshot(),
+      apps: [previous, { ...oldApp(removed), id: "saved:removed" }],
+      ignoredIDs: [previous.id]
+    });
+    (store as unknown as { scanDirectories(): string[] }).scanDirectories = () => [
+      f.apps,
+      `${f.apps}/Nested`
+    ];
+    vi.spyOn(testingExports.directoryRuntime, "stat").mockImplementation(async (value) => {
+      if (value === alias) throw Object.assign(new Error("denied"), { code: "EACCES" });
+      return stat(value);
+    });
+    await store.refresh(false);
+    const state = store.getSnapshot();
+    expect(state.apps).toHaveLength(1);
+    expect(state.apps[0]).toMatchObject({ id: previous.id, bundlePath: peer });
+    expect(Boolean(state.apps[0]?.macOSManagedPath)).toBe(managed);
+    expect(state.ignoredIDs).toContain(previous.id);
+    expect(state.lastRefreshNoticeMessage).toBeUndefined();
+    expect(f.lookup).toHaveBeenCalledTimes(managed ? 0 : 1);
+  }
+);
