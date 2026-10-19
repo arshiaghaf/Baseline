@@ -2,6 +2,14 @@
 
 ## 0.8.0 — 2026-10-18
 
+### Highlights
+
+- **Enter administrator passwords when needed.** Homebrew app changes can open a masked password dialog provided by Baseline. ([#309](https://github.com/arshiaghaf/Baseline/pull/309))
+- **See available updates sooner.** App results can appear while other refresh checks are still running. ([#328](https://github.com/arshiaghaf/Baseline/pull/328))
+- **Review support details before sharing.** A preview shows the failure details before you open a GitHub issue. ([#287](https://github.com/arshiaghaf/Baseline/pull/287))
+- **Keep longer-term activity totals.** `Profile` totals and rankings remain available beyond the latest 1,000 detailed events. ([#320](https://github.com/arshiaghaf/Baseline/pull/320))
+- **Understand incomplete update checks.** The menu bar and update panels distinguish failed or unfinished checks from a completed healthy refresh. ([#329](https://github.com/arshiaghaf/Baseline/pull/329)), ([#330](https://github.com/arshiaghaf/Baseline/pull/330))
+
 ### Added
 
 - Read-only, on-demand Homebrew diagnostics report safe configuration, Doctor categories, and service counts without exposing raw transcripts. ([#281](https://github.com/arshiaghaf/Baseline/pull/281)), ([#285](https://github.com/arshiaghaf/Baseline/pull/285))
@@ -38,35 +46,42 @@
 - Unowned Homebrew siblings no longer hide eligible installed-cask updates. ([#317](https://github.com/arshiaghaf/Baseline/pull/317))
 - Sparkle releases lacking a safe download or release-notes route no longer hide eligible releases. ([#317](https://github.com/arshiaghaf/Baseline/pull/317))
 - Profile totals and rankings survive the latest 1,000 detailed events; older retained history is honestly labeled as a known minimum. ([#320](https://github.com/arshiaghaf/Baseline/pull/320))
-- Unavailable or damaged history cannot regain authentication through new activity, normalization, or legacy fallback. ([#320](https://github.com/arshiaghaf/Baseline/pull/320)), ([#325](https://github.com/arshiaghaf/Baseline/pull/325))
-- Recently Updated comparison evidence survives streamed results, supersession, failed refreshes, preference saves, and relaunches. ([#322](https://github.com/arshiaghaf/Baseline/pull/322)), ([#328](https://github.com/arshiaghaf/Baseline/pull/328))
 - Clock changes no longer distort request pacing, metadata expiry, or Retry-After delays. ([#322](https://github.com/arshiaghaf/Baseline/pull/322))
 - Completed updates reconcile inventory even when saving local history fails, without retrying package mutations. ([#319](https://github.com/arshiaghaf/Baseline/pull/319))
 - A confirmed missing mas helper uses the safe fallback while inconclusive probes and genuine command failures remain visible. ([#319](https://github.com/arshiaghaf/Baseline/pull/319))
 - Quit drains accepted state changes and saves durably; failed saves restore normal admission and required refresh strength. ([#321](https://github.com/arshiaghaf/Baseline/pull/321))
 - Unchanged snapshots no longer trigger redundant cloning and broadcasts while preserving progress and persistence ordering. ([#323](https://github.com/arshiaghaf/Baseline/pull/323))
 - All backend IPC requests authenticate trusted sender frames and validate arguments before actions or preference writes. ([#324](https://github.com/arshiaghaf/Baseline/pull/324))
-- Unavailable scan entries retain known apps without preserving unrelated deleted siblings. ([#326](https://github.com/arshiaghaf/Baseline/pull/326)), ([#331](https://github.com/arshiaghaf/Baseline/pull/331))
 - Proven app aliases preserve saved identity and Ignore state across overlapping folders and recovery. ([#326](https://github.com/arshiaghaf/Baseline/pull/326))
 - Slow scan and metadata reads have time limits, and obsolete read work cancels promptly. ([#326](https://github.com/arshiaghaf/Baseline/pull/326))
 - Timed-out icons no longer discard readable app records or stop later apps from scanning. ([#326](https://github.com/arshiaghaf/Baseline/pull/326))
 - Slow Keychain reads stop waiting without authorizing a replacement history-signing secret. ([#326](https://github.com/arshiaghaf/Baseline/pull/326))
+- Unavailable or damaged history cannot regain authentication through new activity, normalization, or legacy fallback. ([#320](https://github.com/arshiaghaf/Baseline/pull/320)), ([#325](https://github.com/arshiaghaf/Baseline/pull/325))
 - Damaged snapshot fields no longer discard healthy settings, ignored items, scan directories, or package continuity. ([#325](https://github.com/arshiaghaf/Baseline/pull/325))
 - Malformed cached remote versions cannot expose update actions. ([#325](https://github.com/arshiaghaf/Baseline/pull/325))
 - Apps sharing a Sparkle feed reuse its download and XML decode within a refresh while retaining per-app eligibility and freshness. ([#327](https://github.com/arshiaghaf/Baseline/pull/327))
+- Recently Updated comparison evidence survives streamed results, supersession, failed refreshes, preference saves, and relaunches. ([#322](https://github.com/arshiaghaf/Baseline/pull/322)), ([#328](https://github.com/arshiaghaf/Baseline/pull/328))
 - Ready app update results appear while unrelated formula metadata and self-update checks continue. ([#328](https://github.com/arshiaghaf/Baseline/pull/328))
 - The tray checkmark requires a completed healthy refresh and remains withheld after failed or unresolved checks. ([#329](https://github.com/arshiaghaf/Baseline/pull/329))
 - Homebrew empty states distinguish incomplete checks, hidden app updates, ignored items, and pinned packages instead of falsely claiming everything is current. ([#329](https://github.com/arshiaghaf/Baseline/pull/329))
 - The recorded-history caveat uses the accessible Stats information control and no longer disrupts Profile metric spacing. ([#330](https://github.com/arshiaghaf/Baseline/pull/330))
+- Unavailable scan entries retain known apps without preserving unrelated deleted siblings. ([#326](https://github.com/arshiaghaf/Baseline/pull/326)), ([#331](https://github.com/arshiaghaf/Baseline/pull/331))
 
 ## 0.7.1 — 2026-10-16
 
+### Highlights
+
+- **Retry failed tool checks.** Homebrew and App Store helper checks finish after failures, preserve successful results, and allow another attempt. ([#275](https://github.com/arshiaghaf/Baseline/pull/275))
+- **Avoid duplicate Homebrew checks.** Overlapping refreshes share package reads instead of starting the same work twice. ([#274](https://github.com/arshiaghaf/Baseline/pull/274))
+- **Keep queued Homebrew work moving.** A failed lock notification no longer leaves pending operations stuck. ([#274](https://github.com/arshiaghaf/Baseline/pull/274))
+- **Quit without delayed status changes.** Accepted shutdown cancels pending failure and progress updates. ([#276](https://github.com/arshiaghaf/Baseline/pull/276))
+
 ### Added
 
-- Contributor regression tests now cover superseded refreshes and recovery from failed update lookups. ([#268](https://github.com/arshiaghaf/Baseline/pull/268)), ([#273](https://github.com/arshiaghaf/Baseline/pull/273))
 - Contributor regression tests now cover profile-history integrity, duplicate events, and recovery from failed saves. ([#269](https://github.com/arshiaghaf/Baseline/pull/269))
 - Contributor regression tests now protect Homebrew reservation ownership and release ordering. ([#270](https://github.com/arshiaghaf/Baseline/pull/270))
 - Contributor regression tests now cover queued Homebrew identity checks and update progress ordering. ([#271](https://github.com/arshiaghaf/Baseline/pull/271))
+- Contributor regression tests now cover superseded refreshes and recovery from failed update lookups. ([#268](https://github.com/arshiaghaf/Baseline/pull/268)), ([#273](https://github.com/arshiaghaf/Baseline/pull/273))
 
 ### Fixed
 
@@ -79,6 +94,13 @@
 
 ## 0.7.0 — 2026-10-10
 
+### Highlights
+
+- **Clean up Homebrew from `Settings`.** `Clean up Homebrew` explains its installation-wide effects and asks for confirmation. ([#256](https://github.com/arshiaghaf/Baseline/pull/256))
+- **Choose whether Baseline appears in the Dock.** `Show Dock icon` includes safeguards that keep an app entry point available. ([#259](https://github.com/arshiaghaf/Baseline/pull/259))
+- **Use shortcuts from the menu bar.** Right-click the icon to refresh, open `Settings`, check for Baseline updates, or quit. ([#259](https://github.com/arshiaghaf/Baseline/pull/259))
+- **Keep pinned packages out of updates.** Pinned Homebrew packages are labeled and excluded from updates and queues. ([#255](https://github.com/arshiaghaf/Baseline/pull/255))
+
 ### Added
 
 - General > Update Tools now offers a confirmed `Clean up Homebrew` action with an explanation of its installation-wide effects. ([#256](https://github.com/arshiaghaf/Baseline/pull/256))
@@ -89,16 +111,24 @@
 ### Fixed
 
 - Removed a vulnerable formatter from Electron download tooling while preserving proxy connections, TLS trust, and credentials. ([#253](https://github.com/arshiaghaf/Baseline/pull/253))
+- Baseline's own updates now stay on its dedicated update route instead of appearing among ordinary app or Homebrew updates. ([#254](https://github.com/arshiaghaf/Baseline/pull/254))
 - Homebrew actions now use verified installed package identities and avoid collisions between taps. ([#254](https://github.com/arshiaghaf/Baseline/pull/254)), ([#255](https://github.com/arshiaghaf/Baseline/pull/255))
 - Saved package state now survives proven Homebrew package renames. ([#254](https://github.com/arshiaghaf/Baseline/pull/254)), ([#255](https://github.com/arshiaghaf/Baseline/pull/255))
 - Pinned Homebrew packages are now labeled and excluded from updates and queues. ([#255](https://github.com/arshiaghaf/Baseline/pull/255))
-- Baseline's own updates now stay on its dedicated update route instead of appearing among ordinary app or Homebrew updates. ([#254](https://github.com/arshiaghaf/Baseline/pull/254))
 - Ordinary Homebrew updates and installs now follow Homebrew's native cleanup policy without extra global cleanup or dependency-removal commands. ([#256](https://github.com/arshiaghaf/Baseline/pull/256))
 - Explicit Homebrew cleanup now safely reconciles inventory and pending refreshes before allowing queued updates to continue. ([#256](https://github.com/arshiaghaf/Baseline/pull/256))
 - Contributor regression tests now better cover package ownership, pins, and lifecycle behavior. ([#257](https://github.com/arshiaghaf/Baseline/pull/257))
 - Asynchronous cleanup tests now finish their work before removing fixtures. ([#260](https://github.com/arshiaghaf/Baseline/pull/260))
 
 ## 0.6.3 — 2026-10-09
+
+### Highlights
+
+- **Keep settings and history through save failures.** Concurrent changes save safely, and a valid backup can recover a corrupt primary file. ([#245](https://github.com/arshiaghaf/Baseline/pull/245))
+- **Keep failure details until they are resolved.** Update and install errors remain available after refresh or relaunch until retried or dismissed. ([#248](https://github.com/arshiaghaf/Baseline/pull/248))
+- **Get more accurate version checks.** Sparkle checks avoid false updates while retaining valid build-only updates. ([#245](https://github.com/arshiaghaf/Baseline/pull/245)), ([#252](https://github.com/arshiaghaf/Baseline/pull/252))
+- **Follow refresh progress more easily.** Refreshes reuse cached information and keep progress feedback responsive. ([#248](https://github.com/arshiaghaf/Baseline/pull/248))
+- **Avoid a macOS launch crash.** The bundled Electron update fixes a startup crash on macOS. ([#246](https://github.com/arshiaghaf/Baseline/pull/246))
 
 ### Added
 
@@ -108,13 +138,20 @@
 ### Fixed
 
 - Settings and history now save safely during concurrent changes and recover from a valid backup when the primary file is corrupt. ([#245](https://github.com/arshiaghaf/Baseline/pull/245))
-- Sparkle updates now compare marketing versions and builds consistently, avoid false updates from matching build annotations, and retain valid build-only updates after relaunch or temporary lookup failures. ([#245](https://github.com/arshiaghaf/Baseline/pull/245)), ([#252](https://github.com/arshiaghaf/Baseline/pull/252))
-- Failed Homebrew inventory reads no longer remove installed items or their update routes, and install queues recover when saving history fails. ([#245](https://github.com/arshiaghaf/Baseline/pull/245))
-- Updated Electron to fix a macOS launch crash, and isolated contributor smoke tests from the host Keychain. ([#246](https://github.com/arshiaghaf/Baseline/pull/246))
+- Failed Homebrew inventory reads no longer remove installed items or their update routes. ([#245](https://github.com/arshiaghaf/Baseline/pull/245))
+- Install queues recover when saving history fails. ([#245](https://github.com/arshiaghaf/Baseline/pull/245))
+- Updated Electron to fix a macOS launch crash. ([#246](https://github.com/arshiaghaf/Baseline/pull/246))
+- Contributor Electron smoke tests use isolated history-integrity providers instead of the host Keychain. ([#246](https://github.com/arshiaghaf/Baseline/pull/246))
 - Refreshes reuse unchanged icons and cached metadata, cancel obsolete lookups, and keep progress updates responsive. ([#248](https://github.com/arshiaghaf/Baseline/pull/248))
 - Packaged apps now have ad-hoc resource seals and must pass strict recursive signature verification. ([#251](https://github.com/arshiaghaf/Baseline/pull/251))
+- Sparkle updates now compare marketing versions and builds consistently, avoid false updates from matching build annotations, and retain valid build-only updates after relaunch or temporary lookup failures. ([#245](https://github.com/arshiaghaf/Baseline/pull/245)), ([#252](https://github.com/arshiaghaf/Baseline/pull/252))
 
 ## 0.6.2 — 2026-10-04
+
+### Highlights
+
+- **macOS 15 or later is now required.** The supported minimum is reflected in the app and installation documentation. ([#236](https://github.com/arshiaghaf/Baseline/pull/236))
+- **Patched tools prepare release downloads.** Archive-extraction tooling addresses known security advisories. ([#242](https://github.com/arshiaghaf/Baseline/pull/242)), ([#243](https://github.com/arshiaghaf/Baseline/pull/243))
 
 ### Added
 
@@ -126,19 +163,31 @@
 
 ## 0.6.1 — 2026-09-27
 
+### Highlights
+
+- **Contributor checks use fewer resources.** Large update-list tests reduce memory and search work without dropping size-limit coverage. ([#233](https://github.com/arshiaghaf/Baseline/pull/233))
+
 ### Fixed
 
 - Formula index boundary tests now reduce fixture allocation and search work while preserving coverage above the cask byte limit. ([#233](https://github.com/arshiaghaf/Baseline/pull/233))
-- Updated runtime and development dependencies to keep Baseline’s app and tooling current. ([#220](https://github.com/arshiaghaf/Baseline/pull/220)), ([#207](https://github.com/arshiaghaf/Baseline/pull/207)), ([#216](https://github.com/arshiaghaf/Baseline/pull/216)), ([#218](https://github.com/arshiaghaf/Baseline/pull/218)), ([#214](https://github.com/arshiaghaf/Baseline/pull/214)), ([#217](https://github.com/arshiaghaf/Baseline/pull/217)), ([#222](https://github.com/arshiaghaf/Baseline/pull/222)), ([#219](https://github.com/arshiaghaf/Baseline/pull/219)), ([#204](https://github.com/arshiaghaf/Baseline/pull/204)), ([#221](https://github.com/arshiaghaf/Baseline/pull/221)), ([#224](https://github.com/arshiaghaf/Baseline/pull/224)), ([#227](https://github.com/arshiaghaf/Baseline/pull/227)), ([#223](https://github.com/arshiaghaf/Baseline/pull/223)), ([#226](https://github.com/arshiaghaf/Baseline/pull/226)), ([#229](https://github.com/arshiaghaf/Baseline/pull/229)), ([#230](https://github.com/arshiaghaf/Baseline/pull/230)), ([#231](https://github.com/arshiaghaf/Baseline/pull/231)), ([#232](https://github.com/arshiaghaf/Baseline/pull/232))
 
 ## 0.6.0 — 2026-07-23
 
+### Highlights
+
+- **See updates that change only a build number.** Homebrew app updates with unchanged marketing versions remain available and appear in `Recently Updated` after installation. ([#186](https://github.com/arshiaghaf/Baseline/pull/186))
+- **Read long version changes without broken cards.** Update cards contain long version text and show the complete value on hover. ([#187](https://github.com/arshiaghaf/Baseline/pull/187))
+
 ### Fixed
 
-- Homebrew cask updates that change only build metadata now remain visible, can be installed, and appear in Recently Updated after completion. ([#186](https://github.com/arshiaghaf/Baseline/pull/186))
 - Long app and Homebrew version changes now stay within update cards while preserving the full old-to-new value on hover. ([#187](https://github.com/arshiaghaf/Baseline/pull/187))
+- Homebrew cask updates that change only build metadata now remain visible, can be installed, and appear in Recently Updated after completion. ([#186](https://github.com/arshiaghaf/Baseline/pull/186))
 
 ## 0.5.2 — 2026-06-28
+
+### Highlights
+
+- **Keep apps on the right update route.** Apps installed outside Homebrew no longer get sent through unrelated Homebrew updates. ([#181](https://github.com/arshiaghaf/Baseline/pull/181))
 
 ### Fixed
 
@@ -146,11 +195,22 @@
 
 ## 0.5.1 — 2026-06-26
 
+### Highlights
+
+- **Check the right versions for Mac apps.** Native Mac App Store apps with iPad compatibility information no longer pick up iOS versions. ([#180](https://github.com/arshiaghaf/Baseline/pull/180))
+
 ### Fixed
 
 - Native Mac App Store apps with UIKit compatibility metadata now stay on the Mac update path instead of accepting iOS catalog versions. ([#180](https://github.com/arshiaghaf/Baseline/pull/180))
 
 ## 0.5.0 — 2026-06-26
+
+### Highlights
+
+- **Follow Homebrew progress more smoothly.** Progress rings advance through each stage using reported command progress. ([#179](https://github.com/arshiaghaf/Baseline/pull/179))
+- **Understand your `Profile` totals.** Toolbar guidance explains privacy, counting, and the source mix. ([#177](https://github.com/arshiaghaf/Baseline/pull/177))
+- **Find updates for Safari web extensions.** Compatible extension apps can use App Store fallback results without changing ordinary Mac app checks. ([#176](https://github.com/arshiaghaf/Baseline/pull/176))
+- **Clear cached downloads after successful work.** Homebrew updates and Discover installs treat cleanup failures as notices rather than failed installations. ([#178](https://github.com/arshiaghaf/Baseline/pull/178))
 
 ### Added
 
@@ -163,6 +223,13 @@
 - Homebrew updates and Discover installs now clean up cached downloads after successful runs while treating cleanup failures as non-blocking notices. ([#178](https://github.com/arshiaghaf/Baseline/pull/178))
 
 ## 0.4.0 — 2026-06-22
+
+### Highlights
+
+- **Search from a focused overlay.** The main window offers keyboard shortcuts and compact action results in a command palette. ([#147](https://github.com/arshiaghaf/Baseline/pull/147))
+- **Keep available updates during temporary failures.** A brief lookup failure no longer removes an App Store or Sparkle update for an unchanged app. ([#152](https://github.com/arshiaghaf/Baseline/pull/152))
+- **Queue updates while Homebrew is busy.** `Update Brews` can queue eligible visible updates behind current work. ([#157](https://github.com/arshiaghaf/Baseline/pull/157))
+- **Keep the app list in sync with scan folders.** Adding or removing a scan folder refreshes the visible app list immediately. ([#159](https://github.com/arshiaghaf/Baseline/pull/159))
 
 ### Added
 
@@ -180,11 +247,22 @@
 
 ## 0.3.1 — 2026-06-14
 
+### Highlights
+
+- **Release downloads have consistent build numbers.** Stable downloads carry a build number derived from their release version. ([#143](https://github.com/arshiaghaf/Baseline/pull/143))
+
 ### Fixed
 
 - Release artifacts now use version-derived build numbers for stable releases while preserving explicit rebuild overrides and development fallbacks. ([#143](https://github.com/arshiaghaf/Baseline/pull/143))
 
 ## 0.3.0 — 2026-06-13
+
+### Highlights
+
+- **See your local update and install activity.** The `Profile` tab shows totals, source mix, and top apps and tools using signed local history. ([#138](https://github.com/arshiaghaf/Baseline/pull/138))
+- **Find apps reached through aliases.** Valid app links are scanned without showing duplicate copies of the same installation. ([#128](https://github.com/arshiaghaf/Baseline/pull/128))
+- **Queue app updates while Homebrew is busy.** App update clicks can wait behind current work instead of starting overlapping commands. ([#126](https://github.com/arshiaghaf/Baseline/pull/126))
+- **See more consistent app and activity icons.** App, Homebrew, and `Profile` icons have more consistent depth and alignment. ([#141](https://github.com/arshiaghaf/Baseline/pull/141))
 
 ### Added
 
@@ -194,78 +272,108 @@
 ### Fixed
 
 - Symlinked `.app` entries are now scanned when they resolve to directories, with canonical-path deduplication to avoid duplicate app rows. ([#128](https://github.com/arshiaghaf/Baseline/pull/128))
-- Baseline now trims unused tool-status channels, stale setup state, and duplicated renderer action-state wiring while preserving existing row and card behavior. ([#142](https://github.com/arshiaghaf/Baseline/pull/142))
 - Homebrew commands now run through a shared lock so installs, refreshes, updates, uninstalls, and tool checks do not overlap; app update clicks can queue while Homebrew is busy. ([#126](https://github.com/arshiaghaf/Baseline/pull/126))
 
 ## 0.2.0 — 2026-06-07
 
+### Highlights
+
+- **Check iPhone and iPad apps installed on Mac.** Supported App Store apps use the lookup path appropriate to their installed platform. ([#121](https://github.com/arshiaghaf/Baseline/pull/121)), ([#122](https://github.com/arshiaghaf/Baseline/pull/122))
+- **Keep newer refresh results.** Older checks that finish late no longer replace the results of a newer refresh. ([#111](https://github.com/arshiaghaf/Baseline/pull/111))
+- **See genuine updates in your recent history.** `Recently Updated` requires an installed version or supported build number to advance. ([#109](https://github.com/arshiaghaf/Baseline/pull/109)), ([#114](https://github.com/arshiaghaf/Baseline/pull/114))
+- **Retry failed Discover installs.** Failed Homebrew installs return to an actionable state for another attempt. ([#110](https://github.com/arshiaghaf/Baseline/pull/110))
+- **Avoid actions for unavailable tools.** Discover and App Store helper controls reflect whether their supporting tools are available. ([#124](https://github.com/arshiaghaf/Baseline/pull/124)), ([#132](https://github.com/arshiaghaf/Baseline/pull/132))
+
 ### Added
 
-- Baseline now supports iOS and iPad App Store apps that run on Mac, using local App Store evidence and UIKit idiom metadata to choose the correct App Store lookup path. ([#121](https://github.com/arshiaghaf/Baseline/pull/121)), ([#122](https://github.com/arshiaghaf/Baseline/pull/122))
 - Release automation now publishes changelog-derived release notes and can dispatch the Homebrew cask update workflow after the GitHub Release is available. ([#119](https://github.com/arshiaghaf/Baseline/pull/119)), ([#120](https://github.com/arshiaghaf/Baseline/pull/120))
+- Baseline now supports iOS and iPad App Store apps that run on Mac, using local App Store evidence and UIKit idiom metadata to choose the correct App Store lookup path. ([#121](https://github.com/arshiaghaf/Baseline/pull/121)), ([#122](https://github.com/arshiaghaf/Baseline/pull/122))
 
 ### Fixed
 
-- Overlapping refreshes no longer allow stale scan or lookup results to overwrite newer snapshot state. ([#111](https://github.com/arshiaghaf/Baseline/pull/111))
+- `Update Brews` excludes hidden app-backed casks, including ignored app-backed casks in search scopes. ([#113](https://github.com/arshiaghaf/Baseline/pull/113))
+- Reused Electron windows no longer accumulate duplicate setup listeners. ([#112](https://github.com/arshiaghaf/Baseline/pull/112))
+- Main-window and Settings navigation stay synchronized through the preload bridge. ([#112](https://github.com/arshiaghaf/Baseline/pull/112))
+- Failed Discover installs clear stale failure state when retried and return to a retryable state after the transient failure delay. ([#110](https://github.com/arshiaghaf/Baseline/pull/110))
 - Recently Updated entries now require real installed-version progress, including Sparkle build-version advances when the marketing version is unchanged. ([#109](https://github.com/arshiaghaf/Baseline/pull/109)), ([#114](https://github.com/arshiaghaf/Baseline/pull/114))
-- Homebrew and `mas` controls now disable cleanly when their tools are unavailable, including inventory fetches, Discover installs, and the App Store update preference. ([#123](https://github.com/arshiaghaf/Baseline/pull/123)), ([#124](https://github.com/arshiaghaf/Baseline/pull/124)), ([#132](https://github.com/arshiaghaf/Baseline/pull/132))
-- Homebrew-backed app actions now avoid unsafe fallback upgrades, keep hidden app-backed casks out of batch updates, and return failed Discover installs to a retryable state. ([#110](https://github.com/arshiaghaf/Baseline/pull/110)), ([#113](https://github.com/arshiaghaf/Baseline/pull/113)), ([#125](https://github.com/arshiaghaf/Baseline/pull/125))
+- Overlapping refreshes no longer allow stale scan or lookup results to overwrite newer snapshot state. ([#111](https://github.com/arshiaghaf/Baseline/pull/111))
+- Homebrew inventory reads are skipped after the executable is confirmed unavailable, without presenting a failed inventory notice. ([#123](https://github.com/arshiaghaf/Baseline/pull/123))
+- Discover install controls disable when Homebrew is unavailable, including a main-process guard against stale install requests. ([#124](https://github.com/arshiaghaf/Baseline/pull/124))
+- Homebrew-backed app rows use validated external fallback pages unless installed inventory proves ownership; unmanaged `brew upgrade --cask` fallback is removed, and saved rows can derive a canonical fallback URL. ([#125](https://github.com/arshiaghaf/Baseline/pull/125))
 - Sparkle-origin apps now require installed Homebrew cask ownership before using Homebrew fallback updates, while unowned cask rows remain visible. ([#131](https://github.com/arshiaghaf/Baseline/pull/131))
-- Reused Electron windows no longer accumulate duplicate setup listeners, and main/settings navigation stays synced through the preload bridge. ([#112](https://github.com/arshiaghaf/Baseline/pull/112))
+- The App Store `mas` preference retains its saved value but stays disabled until the helper becomes available. ([#132](https://github.com/arshiaghaf/Baseline/pull/132))
 - Refresh interval edits now commit reliably after typing. ([#127](https://github.com/arshiaghaf/Baseline/pull/127))
 
 ## 0.1.0 — 2026-05-31
 
+### Highlights
+
+- **Use Baseline in a window or from the menu bar.** The rebuilt Mac app keeps both views and checks public App Store, Sparkle, and Homebrew update sources. ([#19](https://github.com/arshiaghaf/Baseline/pull/19))
+- **Search consistently across the app.** Search works across the main sections, and choosing a section dismisses it without losing your query. ([#70](https://github.com/arshiaghaf/Baseline/pull/70))
+- **Keep ignored items together.** Ignored Mac apps and Homebrew items appear in one sidebar view. ([#45](https://github.com/arshiaghaf/Baseline/pull/45))
+- **Choose your appearance.** `Settings` can follow the system or use light or dark mode. ([#65](https://github.com/arshiaghaf/Baseline/pull/65))
+- **Find new Baseline releases from the toolbar.** A shortcut appears in the main window when a newer release is available. ([#115](https://github.com/arshiaghaf/Baseline/pull/115))
+
 ### Added
 
-- Baseline now checks GitHub Releases for app updates and shows a main-window toolbar shortcut when a newer release is available. ([#115](https://github.com/arshiaghaf/Baseline/pull/115))
-- Renderer card typography, action menu sizing, and Settings dividers were refined for a cleaner full-window interface. ([#95](https://github.com/arshiaghaf/Baseline/pull/95))
-- Settings now use a dedicated in-app sidebar with General, Appearance, and Diagnostics sections, including grouped Update Tools, refresh, scan-directory, and version details. ([#87](https://github.com/arshiaghaf/Baseline/pull/87))
-- Version and build metadata now flow through shared app metadata, macOS `CFBundleVersion`, Settings, About, diagnostics, release preparation, and Electron smoke coverage. ([#86](https://github.com/arshiaghaf/Baseline/pull/86))
-- Release validation now runs broader macOS CI coverage, production audit checks, deterministic Electron smoke coverage, unsigned preview validation, and stricter changelog heading guards for release preparation. ([#78](https://github.com/arshiaghaf/Baseline/pull/78)), ([#81](https://github.com/arshiaghaf/Baseline/pull/81)), ([#74](https://github.com/arshiaghaf/Baseline/pull/74)), ([#76](https://github.com/arshiaghaf/Baseline/pull/76))
-- README polish, static GPL badge handling, refreshed badge cache behavior, and regenerated app icon packaging assets keep the public project presentation and packaged macOS icon current. ([#85](https://github.com/arshiaghaf/Baseline/pull/85)), ([#80](https://github.com/arshiaghaf/Baseline/pull/80)), ([#77](https://github.com/arshiaghaf/Baseline/pull/77)), ([#79](https://github.com/arshiaghaf/Baseline/pull/79))
-- Installed app and installed Homebrew search matches now render as cards while Discover results keep the existing row layout. ([#69](https://github.com/arshiaghaf/Baseline/pull/69))
-- Packaged macOS identity and icon assets were updated, including the Baseline Icon Composer source project, generated `.icns` packaging, refreshed app icon artwork, and the `com.arshiaghaf.baseline` bundle identifier. ([#68](https://github.com/arshiaghaf/Baseline/pull/68)), ([#67](https://github.com/arshiaghaf/Baseline/pull/67)), ([#66](https://github.com/arshiaghaf/Baseline/pull/66))
-- Appearance settings now support System Default, Light Mode, and Dark Mode through Electron `nativeTheme`. ([#65](https://github.com/arshiaghaf/Baseline/pull/65))
-- README positioning, screenshots, status, install guidance, release-tooling notes, and first-release documentation now reflect the current OSS app state. ([#64](https://github.com/arshiaghaf/Baseline/pull/64)), ([#61](https://github.com/arshiaghaf/Baseline/pull/61)), ([#57](https://github.com/arshiaghaf/Baseline/pull/57))
-- Settings now include a persisted toggle for showing or hiding the menu bar icon, with tray lifecycle behavior that destroys the compact popover while hidden. ([#58](https://github.com/arshiaghaf/Baseline/pull/58))
-- Ignored macOS apps and ignored Homebrew items now appear together in an Ignored sidebar tab, and installed app/Homebrew sections use card layouts in the full window. ([#45](https://github.com/arshiaghaf/Baseline/pull/45))
-- GPL-3.0-only licensing and copyright ownership are clearer across source, docs, SPDX headers, and the native macOS About panel. ([#56](https://github.com/arshiaghaf/Baseline/pull/56))
-- Homebrew presentation metadata now distinguishes formulae, app casks, CLI casks, package casks, and generic casks without changing command semantics. ([#44](https://github.com/arshiaghaf/Baseline/pull/44))
-- Minimal renderer scrollbar styling was added for light and dark themes. ([#41](https://github.com/arshiaghaf/Baseline/pull/41))
-- Full-window update, Recently Updated, and Ignored surfaces were redesigned as responsive card grids while the compact menu bar view stays list-based. ([#39](https://github.com/arshiaghaf/Baseline/pull/39))
-- The All sidebar tab now uses the `Server` icon. ([#38](https://github.com/arshiaghaf/Baseline/pull/38))
-- GitHub issue auto-labeling now classifies core labels, UI/theme reports, and explicit existing label matches. ([#37](https://github.com/arshiaghaf/Baseline/pull/37))
-- `fast-xml-parser` and the lockfile were updated to clear the production dependency audit finding for the transitive XML builder package. ([#36](https://github.com/arshiaghaf/Baseline/pull/36))
-- Sidebar iconography, spacing, installed-section grouping, toolbar icon styling, and count badges were polished. ([#31](https://github.com/arshiaghaf/Baseline/pull/31))
+- README screenshots and feature placement were updated for Search, Apps, Homebrew, ignored items, optional `mas`/`brew` behavior, and fallback behavior when CLI tooling is unavailable. ([#8](https://github.com/arshiaghaf/Baseline/pull/8)), ([#9](https://github.com/arshiaghaf/Baseline/pull/9)), ([#13](https://github.com/arshiaghaf/Baseline/pull/13))
+- Settings now include a local diagnostics report for support and troubleshooting, including report counts, source summaries, and optional tool status. ([#10](https://github.com/arshiaghaf/Baseline/pull/10))
+- Preview validation tooling now builds, tests, packages, installs, smoke-launches Baseline, and prepares unsigned release notes with checksums. ([#12](https://github.com/arshiaghaf/Baseline/pull/12))
+- GitHub Actions CI validates pull requests and pushes to main. ([#18](https://github.com/arshiaghaf/Baseline/pull/18))
+- Tag-driven unsigned DMG release infrastructure generates checksum sidecars, with public CI and release documentation. ([#18](https://github.com/arshiaghaf/Baseline/pull/18))
 - Baseline migrated from the legacy Swift/Tuist app to Electron, Vite, React, TypeScript, and Tailwind while preserving the macOS full window, compact menu bar tray window, and public update detection through App Store lookup, Sparkle/DevMate appcasts, and Homebrew metadata. ([#19](https://github.com/arshiaghaf/Baseline/pull/19))
 - Public contributor/support documentation now reflects the Electron stack, and stale Xcode/Tuist generated artifact ignore rules were removed. ([#21](https://github.com/arshiaghaf/Baseline/pull/21))
-- GitHub Actions CI, unsigned DMG release publishing infrastructure, CI/release documentation, and release preparation tooling were added. ([#18](https://github.com/arshiaghaf/Baseline/pull/18))
-- Preview validation tooling now builds, tests, packages, installs, smoke-launches Baseline, and prepares unsigned release notes with checksums. ([#12](https://github.com/arshiaghaf/Baseline/pull/12))
-- Settings now include a local diagnostics report for support and troubleshooting, including report counts, source summaries, and optional tool status. ([#10](https://github.com/arshiaghaf/Baseline/pull/10))
-- README screenshots and feature placement were updated for Search, Apps, Homebrew, ignored items, optional `mas`/`brew` behavior, and fallback behavior when CLI tooling is unavailable. ([#8](https://github.com/arshiaghaf/Baseline/pull/8)), ([#9](https://github.com/arshiaghaf/Baseline/pull/9)), ([#13](https://github.com/arshiaghaf/Baseline/pull/13))
 - The legacy Swift/Tuist source was removed from `main`; the previous implementation is archived at branch `legacy/swift` and tag `swift-final`. ([#19](https://github.com/arshiaghaf/Baseline/pull/19)), ([#21](https://github.com/arshiaghaf/Baseline/pull/21))
+- Sidebar iconography, spacing, installed-section grouping, toolbar icon styling, and count badges were polished. ([#31](https://github.com/arshiaghaf/Baseline/pull/31))
+- GitHub issue auto-labeling now classifies core labels, UI/theme reports, and explicit existing label matches. ([#37](https://github.com/arshiaghaf/Baseline/pull/37))
+- The All sidebar tab now uses the `Server` icon. ([#38](https://github.com/arshiaghaf/Baseline/pull/38))
+- Full-window update, Recently Updated, and Ignored surfaces were redesigned as responsive card grids while the compact menu bar view stays list-based. ([#39](https://github.com/arshiaghaf/Baseline/pull/39))
+- Minimal renderer scrollbar styling was added for light and dark themes. ([#41](https://github.com/arshiaghaf/Baseline/pull/41))
+- Homebrew presentation metadata now distinguishes formulae, app casks, CLI casks, package casks, and generic casks without changing command semantics. ([#44](https://github.com/arshiaghaf/Baseline/pull/44))
+- GPL-3.0-only licensing and copyright ownership are clearer across source, docs, SPDX headers, and the native macOS About panel. ([#56](https://github.com/arshiaghaf/Baseline/pull/56))
+- Ignored macOS apps and ignored Homebrew items appear together in an Ignored sidebar tab. ([#45](https://github.com/arshiaghaf/Baseline/pull/45))
+- Installed app and Homebrew sections use card layouts while search results remain row-based. ([#45](https://github.com/arshiaghaf/Baseline/pull/45))
+- Settings now include a persisted toggle for showing or hiding the menu bar icon, with tray lifecycle behavior that destroys the compact popover while hidden. ([#58](https://github.com/arshiaghaf/Baseline/pull/58))
+- README positioning and screenshots describe the current full-window and menu bar app, with installation guidance, limitations, and first-release infrastructure documentation. ([#57](https://github.com/arshiaghaf/Baseline/pull/57)), ([#61](https://github.com/arshiaghaf/Baseline/pull/61)), ([#64](https://github.com/arshiaghaf/Baseline/pull/64))
+- Appearance settings now support System Default, Light Mode, and Dark Mode through Electron `nativeTheme`. ([#65](https://github.com/arshiaghaf/Baseline/pull/65))
+- The Baseline Icon Composer source, generated `.icns`, and refreshed app icon artwork are included in packaged apps. ([#66](https://github.com/arshiaghaf/Baseline/pull/66)), ([#67](https://github.com/arshiaghaf/Baseline/pull/67))
+- The packaged macOS bundle identifier is `com.arshiaghaf.baseline`. ([#68](https://github.com/arshiaghaf/Baseline/pull/68))
+- Installed app and installed Homebrew search matches now render as cards while Discover results keep the existing row layout. ([#69](https://github.com/arshiaghaf/Baseline/pull/69))
+- Release preparation accepts exact unversioned or semver-versioned Unreleased headings and rejects malformed matches. ([#74](https://github.com/arshiaghaf/Baseline/pull/74)), ([#76](https://github.com/arshiaghaf/Baseline/pull/76))
+- Scheduled and manual unsigned preview validation builds, mounts, installs, and smoke-launches the DMG. ([#78](https://github.com/arshiaghaf/Baseline/pull/78))
+- The GPL-3.0-only badge uses a static value to avoid invalid dynamic license metadata, following the earlier badge-cache refresh. ([#77](https://github.com/arshiaghaf/Baseline/pull/77)), ([#80](https://github.com/arshiaghaf/Baseline/pull/80))
+- The app icon source and packaged `.icns` artwork were refreshed, with contributor smoke-test shutdown stabilized. ([#79](https://github.com/arshiaghaf/Baseline/pull/79))
+- Release validation runs broader macOS CI coverage, production dependency audits, and deterministic Electron smoke tests with graceful app shutdown. ([#78](https://github.com/arshiaghaf/Baseline/pull/78)), ([#81](https://github.com/arshiaghaf/Baseline/pull/81))
+- README copy, structure, badges, screenshots, installation notes, and project status explain the app and its supported sources more clearly. ([#85](https://github.com/arshiaghaf/Baseline/pull/85))
+- Version and build metadata now flow through shared app metadata, macOS `CFBundleVersion`, Settings, About, diagnostics, release preparation, and Electron smoke coverage. ([#86](https://github.com/arshiaghaf/Baseline/pull/86))
+- Settings now use a dedicated in-app sidebar with General, Appearance, and Diagnostics sections, including grouped Update Tools, refresh, scan-directory, and version details. ([#87](https://github.com/arshiaghaf/Baseline/pull/87))
+- App card typography now matches Settings row scale, including title, source, version, and detail spacing. ([#95](https://github.com/arshiaghaf/Baseline/pull/95))
+- Action menus and update buttons use consistent text sizing, and action popovers are fully opaque. ([#95](https://github.com/arshiaghaf/Baseline/pull/95))
+- Settings panel borders and row separators are softer. ([#95](https://github.com/arshiaghaf/Baseline/pull/95))
+- Baseline now checks GitHub Releases for app updates and shows a main-window toolbar shortcut when a newer release is available. ([#115](https://github.com/arshiaghaf/Baseline/pull/115))
 
 ### Fixed
 
-- Homebrew outdated and inventory JSON parsing now reads valid JSON from stdout even when Homebrew emits warnings on stderr after wake or concurrent package-manager activity. ([#88](https://github.com/arshiaghaf/Baseline/pull/88))
-- Failed Homebrew update indicators now clear for retries and fall back to a retryable Update state after a short delay. ([#83](https://github.com/arshiaghaf/Baseline/pull/83))
-- Batch Homebrew updates now target only non-ignored, valid outdated tokens instead of letting a broad `brew upgrade` affect ignored items. ([#92](https://github.com/arshiaghaf/Baseline/pull/92))
-- App rows/cards that update through matched Homebrew casks now show cask progress, completion, and failure states, including a brief successful state before refresh moves the item to Recently Updated. ([#91](https://github.com/arshiaghaf/Baseline/pull/91))
-- Sidebar update badges are hidden when their count is zero. ([#93](https://github.com/arshiaghaf/Baseline/pull/93))
-- Bundle icon extraction now preserves app icons when `sips` produces grayscale-only PNG output from ICNS conversion. ([#82](https://github.com/arshiaghaf/Baseline/pull/82))
-- Toolbar search now works consistently across Apps, Homebrew, Installed, Ignored, and Discovery; selecting a sidebar tab or Settings exits active search while preserving the query for next use. ([#70](https://github.com/arshiaghaf/Baseline/pull/70))
-- Sidebar update badges keep the All, Apps, and Homebrew counts stable while search filtering is active. ([#60](https://github.com/arshiaghaf/Baseline/pull/60))
-- Ignored item action menus stay fully saturated while ignored card and row content remains visually muted. ([#59](https://github.com/arshiaghaf/Baseline/pull/59))
-- Homebrew cask/app linking now persists explicit app links, avoids CLI/binary target false matches, suppresses duplicate app-backed cask rows, and prunes stale recently updated records. ([#43](https://github.com/arshiaghaf/Baseline/pull/43))
-- Homebrew recently updated retention tests now use an injected cutoff clock for deterministic results. ([#42](https://github.com/arshiaghaf/Baseline/pull/42))
-- Sparkle appcast URL policy now rejects IPv4-mapped loopback/private hosts and unspecified hosts such as `0.0.0.0` and `::`. ([#35](https://github.com/arshiaghaf/Baseline/pull/35))
-- Self-updated Homebrew cask state now reconciles installed casks with scanned app bundle versions only when cask metadata proves the app match. ([#32](https://github.com/arshiaghaf/Baseline/pull/32))
-- Recently Updated now de-duplicates cask-backed app rows while preserving standalone Homebrew recent rows. ([#30](https://github.com/arshiaghaf/Baseline/pull/30))
-- The compact menu bar dashboard no longer preselects Search on first tray open. ([#29](https://github.com/arshiaghaf/Baseline/pull/29))
-- Toolbar search collapse now handles outside clicks, ignores inside-control clicks, preserves active search text until cleared, and lets adjacent toolbar actions fire. ([#27](https://github.com/arshiaghaf/Baseline/pull/27)), ([#28](https://github.com/arshiaghaf/Baseline/pull/28))
-- Compact menu bar window positioning now aligns to the tray item, clamps to the display work area, and shows as a focused popover. ([#25](https://github.com/arshiaghaf/Baseline/pull/25))
-- Successful Homebrew single-item retries and maintenance cycles now clear affected failure markers. ([#24](https://github.com/arshiaghaf/Baseline/pull/24))
-- Electron migration review fixes now recursively scan configured app directories without descending into discovered `.app` bundles and add a typed tool status refresh IPC/preload API for Settings. ([#20](https://github.com/arshiaghaf/Baseline/pull/20))
-- Homebrew placeholder icons now use explicit light/dark appearance, appearance-aware cache keys, and compact menu icon rendering that follows the SwiftUI color scheme. ([#17](https://github.com/arshiaghaf/Baseline/pull/17))
 - Cached update results are preserved when lightweight refresh lookups fail transiently. ([#16](https://github.com/arshiaghaf/Baseline/pull/16))
+- Homebrew placeholder icons now use explicit light/dark appearance, appearance-aware cache keys, and compact menu icon rendering that follows the SwiftUI color scheme. ([#17](https://github.com/arshiaghaf/Baseline/pull/17))
+- Configured app directories are scanned recursively without descending into discovered `.app` bundles. ([#20](https://github.com/arshiaghaf/Baseline/pull/20))
+- Settings can refresh tool readiness through a typed IPC/preload API. ([#20](https://github.com/arshiaghaf/Baseline/pull/20))
+- Successful Homebrew single-item retries and maintenance cycles now clear affected failure markers. ([#24](https://github.com/arshiaghaf/Baseline/pull/24))
+- Compact menu bar window positioning now aligns to the tray item, clamps to the display work area, and shows as a focused popover. ([#25](https://github.com/arshiaghaf/Baseline/pull/25))
+- Toolbar search collapse now handles outside clicks, ignores inside-control clicks, preserves active search text until cleared, and lets adjacent toolbar actions fire. ([#27](https://github.com/arshiaghaf/Baseline/pull/27)), ([#28](https://github.com/arshiaghaf/Baseline/pull/28))
+- The compact menu bar dashboard no longer preselects Search on first tray open. ([#29](https://github.com/arshiaghaf/Baseline/pull/29))
+- Recently Updated now de-duplicates cask-backed app rows while preserving standalone Homebrew recent rows. ([#30](https://github.com/arshiaghaf/Baseline/pull/30))
+- Self-updated Homebrew cask state now reconciles installed casks with scanned app bundle versions only when cask metadata proves the app match. ([#32](https://github.com/arshiaghaf/Baseline/pull/32))
+- Sparkle appcast URL policy now rejects IPv4-mapped loopback/private hosts and unspecified hosts such as `0.0.0.0` and `::`. ([#35](https://github.com/arshiaghaf/Baseline/pull/35))
+- `fast-xml-parser` and the lockfile were updated to clear the production dependency audit finding for the transitive XML builder package. ([#36](https://github.com/arshiaghaf/Baseline/pull/36))
+- Homebrew recently updated retention tests now use an injected cutoff clock for deterministic results. ([#42](https://github.com/arshiaghaf/Baseline/pull/42))
+- Homebrew cask/app linking now persists explicit app links, avoids CLI/binary target false matches, suppresses duplicate app-backed cask rows, and prunes stale recently updated records. ([#43](https://github.com/arshiaghaf/Baseline/pull/43))
+- Ignored item action menus stay fully saturated while ignored card and row content remains visually muted. ([#59](https://github.com/arshiaghaf/Baseline/pull/59))
+- Sidebar update badges keep the All, Apps, and Homebrew counts stable while search filtering is active. ([#60](https://github.com/arshiaghaf/Baseline/pull/60))
+- Toolbar search now works consistently across Apps, Homebrew, Installed, Ignored, and Discovery; selecting a sidebar tab or Settings exits active search while preserving the query for next use. ([#70](https://github.com/arshiaghaf/Baseline/pull/70))
+- Bundle icon extraction now preserves app icons when `sips` produces grayscale-only PNG output from ICNS conversion. ([#82](https://github.com/arshiaghaf/Baseline/pull/82))
+- App rows/cards that update through matched Homebrew casks now show cask progress, completion, and failure states, including a brief successful state before refresh moves the item to Recently Updated. ([#91](https://github.com/arshiaghaf/Baseline/pull/91))
+- Batch Homebrew updates now target only non-ignored, valid outdated tokens instead of letting a broad `brew upgrade` affect ignored items. ([#92](https://github.com/arshiaghaf/Baseline/pull/92))
+- Sidebar update badges are hidden when their count is zero. ([#93](https://github.com/arshiaghaf/Baseline/pull/93))
+- Failed Homebrew update indicators now clear for retries and fall back to a retryable Update state after a short delay. ([#83](https://github.com/arshiaghaf/Baseline/pull/83))
+- Homebrew outdated and inventory JSON parsing now reads valid JSON from stdout even when Homebrew emits warnings on stderr after wake or concurrent package-manager activity. ([#88](https://github.com/arshiaghaf/Baseline/pull/88))
