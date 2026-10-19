@@ -231,12 +231,14 @@ export class RefreshComputationService {
       // prior evidence at that path, but an orphan alias has no app to retain.
       // Other entry failures still leave discovery incomplete, even on a first scan.
       // A known alias reconciled to a readable canonical peer no longer needs retention.
+      // Current successful reads also cover cold discoveries and scanner-deduplicated aliases.
       const previousPaths = new Set(previousApps.map((app) => app.bundlePath));
       const retainedPaths = new Set(retainedApps.map((app) => app.bundlePath));
       const unreadableApps = rootHealth.some((health) =>
         health.unavailableApps?.some(
           (entry) =>
             !entry.notFound &&
+            !canonicalPaths.has(entry.bundlePath) &&
             (!previousPaths.has(entry.bundlePath) || retainedPaths.has(entry.bundlePath))
         )
       );

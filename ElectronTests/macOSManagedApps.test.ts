@@ -712,3 +712,82 @@ it.each([false, true])(
     expect(f.lookup).toHaveBeenCalledTimes(managed ? 0 : 1);
   }
 );
+
+it.each(
+  ["denied", "deadline"].flatMap((failure) =>
+    [false, true].flatMap((peer) => ["1", "2"].map((remote) => ({ failure, peer, remote })))
+  )
+)(
+  "clears an initial $failure after cold overlapping-root recovery (peer=$peer, remote=$remote)",
+  async ({ failure, peer, remote }) => {
+    const f = await fixture();
+    const target = `${f.root}/Bundle.app`,
+      nested = `${f.apps}/Nested`,
+      alias = `${nested}/Utility.app`,
+      other = `${f.apps}/Peer.app`;
+    await app(target, "com.apple.example.editor", true);
+    await mkdir(nested);
+    await symlink(target, alias);
+    if (peer) await symlink(target, other);
+    f.lookup.mockResolvedValue({
+      type: "completed",
+      providerFound: true,
+      checkedAt: "2026-10-19T00:00:00Z",
+      value:
+        remote === "2"
+          ? {
+              remoteVersion: { raw: remote },
+              updateURL: "https://example.org/update",
+              appStoreItemID: 123
+            }
+          : undefined
+    });
+    let attempted = false;
+    vi.spyOn(testingExports.directoryRuntime, "stat").mockImplementation(async (value) => {
+      if (value === alias && !attempted) {
+        attempted = true;
+        throw Object.assign(
+          new Error("transient app-path read failure"),
+          failure === "denied" ? { code: "EACCES" } : { name: "TimeoutError" }
+        );
+      }
+      return stat(value);
+    });
+    const store = f.create();
+    (store as unknown as { scanDirectories(): string[] }).scanDirectories = () => [f.apps, nested];
+    await store.refresh(false);
+    const state = store.getSnapshot();
+    expect(attempted).toBe(true);
+    expect(state.apps.map((a) => a.bundlePath)).toEqual([peer ? other : alias]);
+    expect(Object.values(state.appProviderChecks ?? {}).map((c) => c.status)).toEqual(["checked"]);
+    expect(state.updates).toHaveLength(remote === "2" ? 1 : 0);
+    expect(f.lookup).toHaveBeenCalledTimes(1);
+    expect(state.lastRefreshNoticeMessage).toBeUndefined();
+    expect(trayUpdateTitle(state)).toBe(remote === "2" ? "1\u2009↓" : "✓");
+  }
+);
+
+it("keeps a cold unreadable alias warning when only a different path can be read", async () => {
+  const f = await fixture();
+  const target = `${f.root}/Bundle.app`,
+    nested = `${f.apps}/Nested`,
+    alias = `${nested}/Utility.app`,
+    peer = `${f.apps}/Peer.app`;
+  await app(target, "com.apple.example.editor", true);
+  await mkdir(nested);
+  await symlink(target, alias);
+  await symlink(target, peer);
+  vi.spyOn(testingExports.directoryRuntime, "stat").mockImplementation(async (value) => {
+    if (value === alias) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    return stat(value);
+  });
+  const store = f.create();
+  (store as unknown as { scanDirectories(): string[] }).scanDirectories = () => [f.apps, nested];
+  await store.refresh(false);
+  const state = store.getSnapshot();
+  expect(state.apps.map((a) => a.bundlePath)).toEqual([peer]);
+  expect(state.updates).toHaveLength(1);
+  expect(state.lastRefreshNoticeMessage).toContain("could not");
+  expect(state.lastRefreshNoticeMessage).not.toContain("have been kept");
+  expect(trayUpdateTitle({ ...state, updates: [] })).toBe("");
+});
