@@ -15,6 +15,8 @@ export type AppRecord = {
   bundlePath: string;
   /** Scanner evidence for invalidating saved provider mappings after replacement. */
   providerFingerprint?: string;
+  /** Last positively resolved macOS-serviced location; not evidence of version freshness. */
+  macOSManagedPath?: string;
   displayName: string;
   bundleIdentifier?: string;
   localVersion: VersionValue;

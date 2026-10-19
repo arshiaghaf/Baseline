@@ -98,7 +98,18 @@ export function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {label && <span>{label}</span>}
+          {label && (
+            <span
+              className={app.macOSManagedPath ? "app-management-label" : undefined}
+              title={
+                app.macOSManagedPath
+                  ? "Updates are managed through Software Update in System Settings. Baseline does not check these updates."
+                  : undefined
+              }
+            >
+              {label}
+            </span>
+          )}
           {isHomebrewUpdatePinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
@@ -167,7 +178,18 @@ export function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {label && <span>{label}</span>}
+          {label && (
+            <span
+              className={app.macOSManagedPath ? "app-management-label" : undefined}
+              title={
+                app.macOSManagedPath
+                  ? "Updates are managed through Software Update in System Settings. Baseline does not check these updates."
+                  : undefined
+              }
+            >
+              {label}
+            </span>
+          )}
           {isHomebrewUpdatePinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
@@ -231,7 +253,18 @@ export function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: Ba
       <div className="item-card-main row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {label && <span>{label}</span>}
+          {label && (
+            <span
+              className={app.macOSManagedPath ? "app-management-label" : undefined}
+              title={
+                app.macOSManagedPath
+                  ? "Updates are managed through Software Update in System Settings. Baseline does not check these updates."
+                  : undefined
+              }
+            >
+              {label}
+            </span>
+          )}
           {isHomebrewUpdatePinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
@@ -286,7 +319,18 @@ export function AppRow({
       <div className="row-main">
         <div className="row-title">
           <strong>{app.displayName}</strong>
-          {label && <span>{label}</span>}
+          {label && (
+            <span
+              className={app.macOSManagedPath ? "app-management-label" : undefined}
+              title={
+                app.macOSManagedPath
+                  ? "Updates are managed through Software Update in System Settings. Baseline does not check these updates."
+                  : undefined
+              }
+            >
+              {label}
+            </span>
+          )}
           {isHomebrewUpdatePinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}

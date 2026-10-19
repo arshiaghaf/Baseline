@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import path from "node:path";
+import { isMacOSManagedApp } from "./macOSManagedApps";
 import { reconcileScannedApps } from "./scanReconciliation";
 import type {
   AppRecord,
@@ -30,7 +31,8 @@ import {
   preserveFormulaIdentityContinuity,
   preservePreviousHomebrewInventoryMembership,
   preservePreviousHomebrewOutdatedState,
-  reconcileHomebrewInventory
+  reconcileHomebrewInventory,
+  withoutMacOSManagedAppLinks
 } from "./homebrewReconciliation";
 
 export type RefreshOptions = {
@@ -190,9 +192,9 @@ export class RefreshComputationService {
         return;
       }
       const healthByRoot = new Map(
-        rootHealth.map((health) => [path.resolve(health.directory), health.complete])
+        rootHealth.map((health) => [path.resolve(health.directory), health])
       );
-      const failedRoots = [...healthByRoot].filter(([, complete]) => !complete);
+      const failedRoots = [...healthByRoot].filter(([, health]) => !health.complete);
       const scannedPaths = new Set(scanResult.map((app) => app.bundlePath));
       const previousApps = this.ports.readState().apps;
       const retentionCandidates = previousApps.filter((app) => {
@@ -208,7 +210,11 @@ export class RefreshComputationService {
             );
           })
           .sort(([a], [b]) => b.length - a.length);
-        return applicable[0]?.[1] === false;
+        const health = applicable[0]?.[1];
+        return (
+          health?.complete === false ||
+          health?.unavailableApps?.some((entry) => entry.bundlePath === app.bundlePath)
+        );
       });
       const { scannedApps, retainedApps } = await reconcileScannedApps(
         scanResult,
@@ -222,9 +228,30 @@ export class RefreshComputationService {
       const apps = [...scannedApps, ...retainedApps].sort((a, b) =>
         a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
       );
+      // ENOENT at a single entry does not invalidate readable siblings. Preserve
+      // prior evidence at that path, but an orphan alias has no app to retain.
+      // Other entry failures still leave discovery incomplete, even on a first scan.
+      // A known alias reconciled to a readable canonical peer no longer needs retention.
+      // Current successful reads also cover cold discoveries and scanner-deduplicated aliases.
+      const previousPaths = new Set(previousApps.map((app) => app.bundlePath));
+      const retainedPaths = new Set(retainedApps.map((app) => app.bundlePath));
+      const unreadableApps = rootHealth.some((health) =>
+        health.unavailableApps?.some(
+          (entry) =>
+            !entry.notFound &&
+            !canonicalPaths.has(entry.bundlePath) &&
+            (!previousPaths.has(entry.bundlePath) || retainedPaths.has(entry.bundlePath))
+        )
+      );
       const scanNotice =
-        failedRoots.length > 0
-          ? "Some app folders could not be fully read. Previously found apps have been kept. Refresh to retry."
+        failedRoots.length > 0 || unreadableApps || retainedApps.length > 0
+          ? [
+              failedRoots.length > 0
+                ? "Some app folders could not be fully read."
+                : "Some apps could not be fully read.",
+              ...(retainedApps.length > 0 ? ["Previously found apps have been kept."] : []),
+              "Refresh to retry."
+            ].join(" ")
           : undefined;
       const homebrewItems = preservePreviousHomebrewInventoryMembership(
         homebrewInventory.items,
@@ -239,7 +266,9 @@ export class RefreshComputationService {
       );
       const observedComparisons = new Map(comparisonBaseline.map((item) => [item.appID, item]));
       const previousChecks = this.ports.readState().appProviderChecks;
-      const retainedIDs = new Set(retainedApps.map((app) => app.id));
+      const retainedIDs = new Set(
+        retainedApps.filter((app) => !isMacOSManagedApp(app)).map((app) => app.id)
+      );
       // Preserve discovery/comparison evidence, but stale bundle evidence must not
       // authorize an update or claim a fresh successful check.
       const retainedChecks = Object.fromEntries(
@@ -247,7 +276,23 @@ export class RefreshComputationService {
           .filter(([id]) => retainedIDs.has(id))
           .map(([id, check]) => [id, { ...check, status: "failed" as const }])
       );
-      this.ports.patch({ apps });
+      const managedIDs = new Set(apps.filter(isMacOSManagedApp).map((app) => app.id));
+      const scannedIDs = new Set(scannedApps.map((app) => app.id));
+      this.ports.patch({
+        apps,
+        homebrewItems: withoutMacOSManagedAppLinks(this.ports.readState().homebrewItems, apps),
+        updates: this.ports
+          .readState()
+          .updates.filter(
+            (update) => scannedIDs.has(update.appID) && !managedIDs.has(update.appID)
+          ),
+        appProviderChecks: {
+          ...Object.fromEntries(
+            Object.entries(previousChecks ?? {}).filter(([id]) => !managedIDs.has(id))
+          ),
+          ...retainedChecks
+        }
+      });
       const updates = await lookupAppUpdates(
         {
           appStore: this.clients.appStore,
@@ -302,10 +347,13 @@ export class RefreshComputationService {
       this.latestFormulaIndex = formulaResult.value;
       const previousHomebrewItems = this.ports.readState().homebrewItems;
       const reconciledHomebrewItems = reconcileHomebrewInventory(
-        preservePreviousHomebrewOutdatedState(
-          homebrewItems,
-          homebrewIdentityReconciliationItems(this.ports.readState()),
-          homebrewInventory.outdatedDetectionSucceededByKind
+        withoutMacOSManagedAppLinks(
+          preservePreviousHomebrewOutdatedState(
+            homebrewItems,
+            homebrewIdentityReconciliationItems(this.ports.readState()),
+            homebrewInventory.outdatedDetectionSucceededByKind
+          ),
+          apps
         ),
         updates,
         scannedApps,

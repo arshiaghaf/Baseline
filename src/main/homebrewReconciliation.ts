@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { isMacOSManagedApp } from "./macOSManagedApps";
 import path from "node:path";
 import type {
   AppRecord,
@@ -324,6 +325,7 @@ export function canUseHomebrewAppUpdate(
   homebrewItems: HomebrewManagedItem[],
   caskIndex: HomebrewCaskIndex
 ): boolean {
+  if (isMacOSManagedApp(appRecord)) return false;
   const token = homebrewToken.toLowerCase();
   return homebrewItems.some(
     (item) =>
@@ -348,6 +350,7 @@ export function homebrewCaskItemProvesAppOwnership(
   appRecord: AppRecord,
   caskEntry: HomebrewCaskEntry | undefined
 ): boolean {
+  if (isMacOSManagedApp(appRecord)) return false;
   if (!homebrewCommandToken(item)) return false;
   if (item.appID === appRecord.id) {
     return true;
@@ -358,6 +361,18 @@ export function homebrewCaskItemProvesAppOwnership(
   return appMatchesCaskEntry(appRecord, caskEntry);
 }
 
+export function withoutMacOSManagedAppLinks(
+  items: HomebrewManagedItem[],
+  apps: AppRecord[]
+): HomebrewManagedItem[] {
+  const managedIDs = new Set(apps.filter(isMacOSManagedApp).map((app) => app.id));
+  return items.map((item) =>
+    item.kind === "cask" && item.appID && managedIDs.has(item.appID)
+      ? { ...item, appID: undefined, iconDataURL: undefined }
+      : item
+  );
+}
+
 export function reconcileHomebrewInventory(
   items: HomebrewManagedItem[],
   updates: UpdateRecord[],
@@ -366,9 +381,13 @@ export function reconcileHomebrewInventory(
   previousItems: HomebrewManagedItem[] = [],
   isSelfApp?: (app: AppRecord) => boolean
 ): HomebrewManagedItem[] {
+  const managedIDs = new Set(apps.filter(isMacOSManagedApp).map((app) => app.id));
+  items = withoutMacOSManagedAppLinks(items, apps);
+  previousItems = withoutMacOSManagedAppLinks(previousItems, apps);
+  apps = apps.filter((app) => !isMacOSManagedApp(app));
   const updatesByToken = new Map<string, UpdateRecord>();
   for (const update of updates) {
-    if (update.source === "homebrew" && update.homebrewToken) {
+    if (update.source === "homebrew" && update.homebrewToken && !managedIDs.has(update.appID)) {
       const key = update.homebrewToken.toLowerCase();
       const existing = updatesByToken.get(key);
       if (!existing || compareVersions(update.remoteVersion, existing.remoteVersion) > 0) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { profileStatsCountsAreSafe } from "../shared/profileStats";
+import { macOSManagedPath } from "./macOSManagedApps";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
@@ -222,6 +223,7 @@ function normalizeApp(value: SavedRecord): AppRecord | undefined {
     bundlePath: value.bundlePath,
     displayName: value.displayName,
     providerFingerprint: text(value.providerFingerprint),
+    macOSManagedPath: macOSManagedPath(value.macOSManagedPath),
     bundleIdentifier: text(value.bundleIdentifier),
     localVersion: savedVersion(value.localVersion),
     bundleVersion: optionalVersion(value.bundleVersion),

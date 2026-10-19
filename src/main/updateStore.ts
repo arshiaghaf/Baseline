@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { isMacOSManagedApp } from "./macOSManagedApps";
 import { operationDetailsText } from "../shared/operationReport";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -83,7 +84,8 @@ import {
   homebrewItemCanRunAppUpdate,
   installedCaskIdentifiesSelf,
   preserveFormulaIdentityContinuity,
-  preservePreviousHomebrewInventoryMembership
+  preservePreviousHomebrewInventoryMembership,
+  withoutMacOSManagedAppLinks
 } from "./homebrewReconciliation";
 import { RefreshLifecycle } from "./refreshLifecycle";
 import {
@@ -923,6 +925,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (!appRecord) {
       return;
     }
+    if (isMacOSManagedApp(appRecord)) return;
     const update = this.state.updates.find((candidate) => candidate.appID === appID);
     if (!update) {
       await this.openAppBundle(appRecord.bundlePath);
@@ -1525,32 +1528,40 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
 }
 
 function sanitizePersistedSnapshotForRuntime(snapshot: PersistedSnapshot): PersistedSnapshot {
-  const homebrewItems = snapshot.homebrewItems.map((item) =>
-    item.kind === "formula"
-      ? {
-          ...item,
-          formulaIdentityVerified: false,
-          isOutdated: false,
-          latestVersion: undefined,
-          releaseDate: undefined
-        }
-      : !homebrewCommandToken(item)
+  const homebrewItems = withoutMacOSManagedAppLinks(snapshot.homebrewItems, snapshot.apps).map(
+    (item) =>
+      item.kind === "formula"
         ? {
             ...item,
-            appID: undefined,
-            presentation: item.kind === "cask" ? ("cask" as const) : ("formula" as const),
-            iconDataURL: undefined,
+            formulaIdentityVerified: false,
             isOutdated: false,
             latestVersion: undefined,
             releaseDate: undefined
           }
-        : item
+        : !homebrewCommandToken(item)
+          ? {
+              ...item,
+              appID: undefined,
+              presentation: item.kind === "cask" ? ("cask" as const) : ("formula" as const),
+              iconDataURL: undefined,
+              isOutdated: false,
+              latestVersion: undefined,
+              releaseDate: undefined
+            }
+          : item
   );
+  const managedIDs = new Set(snapshot.apps.filter(isMacOSManagedApp).map((app) => app.id));
   const migrated = { ...snapshot, homebrewItems };
   return {
     ...migrated,
-    updates: snapshot.updates.filter((update) =>
-      persistedUpdateHasValidRuntimeRoute(update, migrated)
+    appProviderChecks:
+      snapshot.appProviderChecks &&
+      Object.fromEntries(
+        Object.entries(snapshot.appProviderChecks).filter(([id]) => !managedIDs.has(id))
+      ),
+    updates: snapshot.updates.filter(
+      (update) =>
+        !managedIDs.has(update.appID) && persistedUpdateHasValidRuntimeRoute(update, migrated)
     )
   };
 }

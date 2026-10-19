@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import path from "node:path";
+import { isMacOSManagedApp } from "./macOSManagedApps";
 import type {
   AppRecord,
   AppProviderCheck,
@@ -54,7 +55,7 @@ export async function lookupAppUpdates(
 ): Promise<UpdateRecord[] | undefined> {
   const updates = new Map<string, UpdateRecord>();
   const checks: Record<string, AppProviderCheck> = {};
-  const apps = input.apps.filter((app) => !input.isSelfApp(app));
+  const apps = input.apps.filter((app) => !input.isSelfApp(app) && !isMacOSManagedApp(app));
   const active = () => !input.signal.aborted && input.isCurrent();
   const publish = () => {
     if (active()) input.onProgress?.({ ...checks }, [...updates.values()]);
