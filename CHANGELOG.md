@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.8.0 — 2026-10-18
+
+### Added
+
+- Read-only, on-demand Homebrew diagnostics report safe configuration, Doctor categories, and service counts without exposing raw transcripts. ([#281](https://github.com/arshiaghaf/Baseline/pull/281)), ([#285](https://github.com/arshiaghaf/Baseline/pull/285))
+- Verified installed-package context exposes observed install intent and dependency counts without granting removal authority. ([#282](https://github.com/arshiaghaf/Baseline/pull/282)), ([#285](https://github.com/arshiaghaf/Baseline/pull/285))
+- Failed operations offer a selectable, copyable, bounded and redacted output tail. ([#287](https://github.com/arshiaghaf/Baseline/pull/287))
+- An explicit issue preview shows exactly which support details will be opened on GitHub. ([#287](https://github.com/arshiaghaf/Baseline/pull/287))
+- Contributor visual comparisons cover full-window and tray layouts against retained original screenshots. ([#288](https://github.com/arshiaghaf/Baseline/pull/288))
+- Contributor bridge tests protect call-time forwarding, arguments, subscriptions, and errors. ([#301](https://github.com/arshiaghaf/Baseline/pull/301))
+- Validated cask installs, updates, and removals can request the Mac administrator password through Baseline's app-provided masked native dialog, with answers sent directly to sudo. ([#304](https://github.com/arshiaghaf/Baseline/pull/304)), ([#308](https://github.com/arshiaghaf/Baseline/pull/308)), ([#309](https://github.com/arshiaghaf/Baseline/pull/309))
+- Affected rows show `Waiting for admin password`, pause progress, and can return focus to the correlated prompt. ([#309](https://github.com/arshiaghaf/Baseline/pull/309))
+- `Search sources again` in `Refresh options` explicitly refreshes alternative update-source discovery. ([#313](https://github.com/arshiaghaf/Baseline/pull/313)), ([#330](https://github.com/arshiaghaf/Baseline/pull/330))
+- A compact toolbar control opens source-check coverage, affected-app details, last successful checks, and retry guidance. ([#330](https://github.com/arshiaghaf/Baseline/pull/330))
+- Apps serviced by the operating system show `Managed by macOS` and stay outside ordinary update checks and Homebrew app associations. ([#331](https://github.com/arshiaghaf/Baseline/pull/331))
+
+### Fixed
+
+- Command output handles split UTF-8, carriage-return progress, and final unterminated lines correctly. ([#284](https://github.com/arshiaghaf/Baseline/pull/284))
+- Bounded command capture and read deadlines prevent oversized or stuck responses from becoming accepted partial metadata. ([#284](https://github.com/arshiaghaf/Baseline/pull/284))
+- Unconfirmed command-process cleanup blocks further Homebrew work and revokes stale targets instead of risking overlapping operations. ([#284](https://github.com/arshiaghaf/Baseline/pull/284))
+- Validated Homebrew catalogue caches persist across launches while honoring expiry, explicit refreshes, and upstream caching rules. ([#283](https://github.com/arshiaghaf/Baseline/pull/283))
+- Discovery ranks formula and cask relevance together so exact matches are not hidden by weaker results. ([#283](https://github.com/arshiaghaf/Baseline/pull/283))
+- Oversized or malformed Homebrew catalogue entries are bounded without discarding healthy entries. ([#283](https://github.com/arshiaghaf/Baseline/pull/283))
+- Installed Homebrew inventory avoids a redundant metadata subprocess while retaining independent per-kind recovery. ([#282](https://github.com/arshiaghaf/Baseline/pull/282))
+- Failed and interrupted installations reconcile actual inventory while retaining original failure and save-error information. ([#285](https://github.com/arshiaghaf/Baseline/pull/285))
+- Installation documentation explains macOS first launch and accurately distinguishes ad-hoc signing from Developer ID signing and notarization. ([#286](https://github.com/arshiaghaf/Baseline/pull/286))
+- CI and release builds initialize Electron before parallel tests to prevent competing binary extractions. ([#304](https://github.com/arshiaghaf/Baseline/pull/304))
+- Cancelled cask operations reconcile inventory quietly and preserve confirmed partial completions. ([#305](https://github.com/arshiaghaf/Baseline/pull/305)), ([#309](https://github.com/arshiaghaf/Baseline/pull/309))
+- Conflicting Homebrew configuration is distinguished from a missing installation, blocks unsafe commands, and requires reconciled inventory before recovery. ([#306](https://github.com/arshiaghaf/Baseline/pull/306)), ([#309](https://github.com/arshiaghaf/Baseline/pull/309))
+- Valid linked brew.env files and launcher-ignored records no longer block supported Homebrew configuration. ([#310](https://github.com/arshiaghaf/Baseline/pull/310))
+- Blocked configuration offers a redacted reason and a working `Check for updates` recovery action. ([#310](https://github.com/arshiaghaf/Baseline/pull/310))
+- Platform-aware App Store lookups confirm omitted grouped results and preserve valid identities without product IDs. ([#313](https://github.com/arshiaghaf/Baseline/pull/313))
+- Known update sources retain independent discovery evidence, avoiding repeated broad searches without suppressing fresh unresolved-app checks. ([#313](https://github.com/arshiaghaf/Baseline/pull/313))
+- Raw Homebrew command output no longer crosses into the renderer or fallback uninstall notices. ([#318](https://github.com/arshiaghaf/Baseline/pull/318))
+- Unowned Homebrew siblings no longer hide eligible installed-cask updates. ([#317](https://github.com/arshiaghaf/Baseline/pull/317))
+- Sparkle releases lacking a safe download or release-notes route no longer hide eligible releases. ([#317](https://github.com/arshiaghaf/Baseline/pull/317))
+- Profile totals and rankings survive the latest 1,000 detailed events; older retained history is honestly labeled as a known minimum. ([#320](https://github.com/arshiaghaf/Baseline/pull/320))
+- Unavailable or damaged history cannot regain authentication through new activity, normalization, or legacy fallback. ([#320](https://github.com/arshiaghaf/Baseline/pull/320)), ([#325](https://github.com/arshiaghaf/Baseline/pull/325))
+- Recently Updated comparison evidence survives streamed results, supersession, failed refreshes, preference saves, and relaunches. ([#322](https://github.com/arshiaghaf/Baseline/pull/322)), ([#328](https://github.com/arshiaghaf/Baseline/pull/328))
+- Clock changes no longer distort request pacing, metadata expiry, or Retry-After delays. ([#322](https://github.com/arshiaghaf/Baseline/pull/322))
+- Completed updates reconcile inventory even when saving local history fails, without retrying package mutations. ([#319](https://github.com/arshiaghaf/Baseline/pull/319))
+- A confirmed missing mas helper uses the safe fallback while inconclusive probes and genuine command failures remain visible. ([#319](https://github.com/arshiaghaf/Baseline/pull/319))
+- Quit drains accepted state changes and saves durably; failed saves restore normal admission and required refresh strength. ([#321](https://github.com/arshiaghaf/Baseline/pull/321))
+- Unchanged snapshots no longer trigger redundant cloning and broadcasts while preserving progress and persistence ordering. ([#323](https://github.com/arshiaghaf/Baseline/pull/323))
+- All backend IPC requests authenticate trusted sender frames and validate arguments before actions or preference writes. ([#324](https://github.com/arshiaghaf/Baseline/pull/324))
+- Unavailable scan entries retain known apps without preserving unrelated deleted siblings. ([#326](https://github.com/arshiaghaf/Baseline/pull/326)), ([#331](https://github.com/arshiaghaf/Baseline/pull/331))
+- Proven app aliases preserve saved identity and Ignore state across overlapping folders and recovery. ([#326](https://github.com/arshiaghaf/Baseline/pull/326))
+- Slow scan and metadata reads have time limits, and obsolete read work cancels promptly. ([#326](https://github.com/arshiaghaf/Baseline/pull/326))
+- Timed-out icons no longer discard readable app records or stop later apps from scanning. ([#326](https://github.com/arshiaghaf/Baseline/pull/326))
+- Slow Keychain reads stop waiting without authorizing a replacement history-signing secret. ([#326](https://github.com/arshiaghaf/Baseline/pull/326))
+- Damaged snapshot fields no longer discard healthy settings, ignored items, scan directories, or package continuity. ([#325](https://github.com/arshiaghaf/Baseline/pull/325))
+- Malformed cached remote versions cannot expose update actions. ([#325](https://github.com/arshiaghaf/Baseline/pull/325))
+- Apps sharing a Sparkle feed reuse its download and XML decode within a refresh while retaining per-app eligibility and freshness. ([#327](https://github.com/arshiaghaf/Baseline/pull/327))
+- Ready app update results appear while unrelated formula metadata and self-update checks continue. ([#328](https://github.com/arshiaghaf/Baseline/pull/328))
+- The tray checkmark requires a completed healthy refresh and remains withheld after failed or unresolved checks. ([#329](https://github.com/arshiaghaf/Baseline/pull/329))
+- Homebrew empty states distinguish incomplete checks, hidden app updates, ignored items, and pinned packages instead of falsely claiming everything is current. ([#329](https://github.com/arshiaghaf/Baseline/pull/329))
+- The recorded-history caveat uses the accessible Stats information control and no longer disrupts Profile metric spacing. ([#330](https://github.com/arshiaghaf/Baseline/pull/330))
+
 ## 0.7.1 — 2026-10-16
 
 ### Added
