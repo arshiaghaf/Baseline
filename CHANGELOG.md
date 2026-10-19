@@ -4,7 +4,7 @@
 
 ### Highlights
 
-- **Enter administrator passwords when needed.** Homebrew app changes can open a masked password dialog provided by Baseline. ([#309](https://github.com/arshiaghaf/Baseline/pull/309))
+- **Update password-protected apps without Terminal.** Apps updated through Homebrew that need your Mac password can now update directly in Baseline. ([#309](https://github.com/arshiaghaf/Baseline/pull/309))
 - **See available updates sooner.** App results can appear while other refresh checks are still running. ([#328](https://github.com/arshiaghaf/Baseline/pull/328))
 - **Review support details before sharing.** A preview shows the failure details before you open a GitHub issue. ([#287](https://github.com/arshiaghaf/Baseline/pull/287))
 - **Keep longer-term activity totals.** `Profile` totals and rankings remain available beyond the latest 1,000 detailed events. ([#320](https://github.com/arshiaghaf/Baseline/pull/320))
