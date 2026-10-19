@@ -31,6 +31,9 @@ export function compactPopoverControlFocusTarget(
   if (!(target instanceof Element)) {
     return undefined;
   }
+  if (target.closest("[data-compact-focus]")) {
+    return undefined;
+  }
   const focusTarget = target.closest("button, input, textarea, [contenteditable='true']");
   if (!(focusTarget instanceof HTMLElement)) {
     return undefined;

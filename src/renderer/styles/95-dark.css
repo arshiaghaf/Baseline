@@ -683,8 +683,23 @@
     color: #ffb4ae;
   }
 
-  .app-source-actions {
+  .update-check-status.has-failures > .toolbar-button {
+    color: #ffd28a;
+  }
+
+  .update-check-status .toolbar-popover-panel {
+    color: #f5f5f7;
+  }
+
+  .update-check-list span,
+  .update-check-footer p {
     color: #a1a1a6;
+  }
+
+  .update-check-status .update-check-footer button {
+    border-color: rgba(235, 235, 245, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: #f5f5f7;
   }
 
   .good {

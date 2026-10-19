@@ -153,23 +153,97 @@
   color: #9f1f18;
 }
 
-.app-source-actions {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin: 6px 16px 0;
-  color: #6e6e73;
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.refresh-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.toolbar-popover > .toolbar-button {
+  padding: 0;
+}
+
+.refresh-control > .toolbar-popover > .toolbar-button {
+  width: 18px;
+}
+
+.toolbar-popover-panel {
+  position: fixed;
+  right: auto;
+  max-width: calc(100vw - 32px);
+  max-height: min(70vh, 420px);
+  overflow-y: auto;
+}
+
+.toolbar-popover-panel[role="menu"] {
+  width: max-content;
+}
+
+.toolbar-popover-panel:focus {
+  outline: none;
+}
+
+.update-check-status.has-failures > .toolbar-button {
+  color: #7a4b00;
+}
+
+.update-check-status .toolbar-popover-panel {
+  width: 300px;
+  padding: 12px;
+  gap: 12px;
+  color: #1c1c1e;
   font-size: 12px;
+  line-height: 1.35;
 }
 
-.app-source-actions details {
-  flex: 1;
-  min-width: 130px;
+.update-check-heading,
+.update-check-footer {
+  display: grid;
+  gap: 6px;
 }
 
-.app-source-actions summary {
-  cursor: pointer;
+.update-check-status p {
+  margin: 0;
+}
+
+.update-check-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.update-check-list li {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.update-check-list span,
+.update-check-footer p {
+  color: #6e6e73;
+}
+
+.update-check-status .update-check-footer button {
+  display: inline-flex;
+  justify-self: start;
+  width: auto;
+  padding: 0 10px;
+  border: 1px solid rgba(60, 60, 67, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #0d0d0d;
 }
 
 .operation-failures {

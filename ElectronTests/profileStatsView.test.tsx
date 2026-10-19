@@ -9,13 +9,25 @@ import { defaultPersistedSnapshot, type BaselineSnapshot } from "../src/shared/d
 afterEach(cleanup);
 
 describe("profile history coverage", () => {
-  it("explains that migrated counts are a known minimum beside the metrics", () => {
+  it("keeps the history caveat beside Stats and outside the metric grid", () => {
     const snapshot = defaultPersistedSnapshot() as BaselineSnapshot;
     snapshot.profileStats.lifetime = { coverage: "lowerBound", entries: [] };
     render(<ProfileSection snapshot={snapshot} />);
-    expect(
-      screen.getByText(/Earlier activity may be missing, so counts are a known minimum/)
-    ).toBeInTheDocument();
+    const info = screen.getByLabelText(
+      "Recorded history may omit earlier activity. Totals and rankings may be incomplete."
+    );
+    expect(info.closest(".panel-title")).toContainElement(
+      screen.getByRole("heading", { name: "Stats" })
+    );
+    expect(info.closest(".profile-panel-box")).toBeNull();
+    info.focus();
+    expect(info).toHaveFocus();
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Recorded history may omit earlier activity."
+    );
+    expect(document.querySelector(".profile-panel-box")?.firstElementChild).toHaveClass(
+      "profile-stat-grid"
+    );
     expect(screen.getByText("Total updates")).toBeInTheDocument();
   });
 
@@ -27,6 +39,6 @@ describe("profile history coverage", () => {
     expect(
       screen.getByText(/New activity cannot be recorded until verification recovers/)
     ).toBeInTheDocument();
-    expect(screen.queryByText(/known minimum/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Recorded history may omit/)).not.toBeInTheDocument();
   });
 });

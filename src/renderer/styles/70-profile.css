@@ -1,3 +1,23 @@
+.profile-stats-section .panel-title {
+  justify-content: flex-start;
+  gap: 6px;
+}
+
+.profile-topbar-indicator.profile-stats-info {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.profile-stats-info .profile-topbar-tooltip {
+  left: 0;
+  right: auto;
+  max-width: min(260px, calc(100vw - var(--sidebar-width) - 80px));
+}
+
 .profile-panel-box {
   gap: 0;
 }
