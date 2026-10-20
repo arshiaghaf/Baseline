@@ -71,6 +71,28 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
     await page.reload();
     await expect(page.getByText("Atlas", { exact: true }).first()).toBeVisible();
 
+    const typography = await page.evaluate(() => {
+      const style = (selector: string) => {
+        const computed = getComputedStyle(document.querySelector(selector)!);
+        return {
+          family: computed.fontFamily,
+          size: computed.fontSize,
+          weight: computed.fontWeight
+        };
+      };
+      return {
+        cardName: style(".item-card .row-title strong"),
+        cardSource: style(".item-card .row-title span"),
+        cardSubtitle: style(".item-card .row-main p"),
+        pageHeading: style(".dashboard-topbar h1"),
+        sectionLabel: style(".panel-title h2"),
+        sidebar: style(".source-list button"),
+        warning: style(".workspace > .notice"),
+        devicePixelRatio,
+        visualViewportScale: visualViewport?.scale ?? 1
+      };
+    });
+
     const display = await application.evaluate(({ screen }) => screen.getPrimaryDisplay());
     const rows: unknown[] = [];
     for (const width of widths) {
@@ -145,39 +167,6 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
       }
     }
 
-    const errorSnapshot = {
-      ...visualSnapshot(),
-      refreshErrorMessage: "This refresh failed. Please try again."
-    };
-    await application.evaluate(
-      ({ BrowserWindow }, { channels, state }) => {
-        for (const window of BrowserWindow.getAllWindows())
-          window.webContents.send(channels.snapshotChanged, state);
-      },
-      { channels: ipcChannels, state: errorSnapshot }
-    );
-    await expect(page.locator(".workspace > .notice.danger")).toBeVisible();
-    for (const width of [660, 1728]) {
-      await application.evaluate(({ BrowserWindow }, width) => {
-        BrowserWindow.getAllWindows()[0]!.setContentSize(width, 900);
-      }, width);
-      await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
-      const bounds = await page.evaluate(() => {
-        const notice = document
-          .querySelector(".workspace > .notice.danger")!
-          .getBoundingClientRect();
-        const stack = document.querySelector(".content > .stack")!.getBoundingClientRect();
-        return {
-          noticeLeft: notice.left,
-          noticeWidth: notice.width,
-          stackLeft: stack.left,
-          stackWidth: stack.width
-        };
-      });
-      expect(Math.abs(bounds.noticeLeft - bounds.stackLeft)).toBeLessThan(1);
-      expect(bounds.noticeWidth).toBeCloseTo(bounds.stackWidth, 0);
-    }
-
     for (const tab of ["apps", "homebrew", "installed", "ignored"] as const) {
       await page.evaluate((tab) => window.baseline.setSelectedTab(tab), tab);
       await expect
@@ -210,6 +199,44 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
     await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1728);
     await page.screenshot({ path: test.info().outputPath("settings-wide.png") });
 
+    await page.evaluate(() => {
+      window.location.hash = "/main";
+    });
+    await expect(page.locator(".workspace > .notice")).toBeVisible();
+    const errorSnapshot = {
+      ...visualSnapshot(),
+      snapshotRevision: 10_000,
+      refreshErrorMessage: "This refresh failed. Please try again."
+    };
+    await application.evaluate(
+      ({ BrowserWindow }, { channels, state }) => {
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send(channels.snapshotChanged, state);
+      },
+      { channels: ipcChannels, state: errorSnapshot }
+    );
+    await expect(page.locator(".workspace > .notice.danger")).toBeVisible();
+    for (const width of [660, 1728]) {
+      await application.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(width, 900);
+      }, width);
+      await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+      const bounds = await page.evaluate(() => {
+        const notice = document
+          .querySelector(".workspace > .notice.danger")!
+          .getBoundingClientRect();
+        const stack = document.querySelector(".content > .stack")!.getBoundingClientRect();
+        return {
+          noticeLeft: notice.left,
+          noticeWidth: notice.width,
+          stackLeft: stack.left,
+          stackWidth: stack.width
+        };
+      });
+      expect(Math.abs(bounds.noticeLeft - bounds.stackLeft)).toBeLessThan(1);
+      expect(bounds.noticeWidth).toBeCloseTo(bounds.stackWidth, 0);
+    }
+
     expect(errors).toEqual([]);
     await writeFile(
       test.info().outputPath("layout-matrix.json"),
@@ -221,6 +248,7 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
             workArea: display.workArea,
             scaleFactor: display.scaleFactor
           },
+          typography,
           rows
         },
         null,
