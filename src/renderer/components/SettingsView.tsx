@@ -51,11 +51,13 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
     <main className="app-shell settings-shell">
       <SettingsSidebar selectedSection={selectedSection} onSelectSection={setSelectedSection} />
       <section className="workspace">
-        <header className="topbar">
-          <div className="topbar-title">
-            <h1>{selectedItem?.label ?? "Settings"}</h1>
+        <header className="topbar settings-topbar">
+          <div className="settings-topbar-inner">
+            <div className="topbar-title">
+              <h1>{selectedItem?.label ?? "Settings"}</h1>
+            </div>
+            {selectedSection === "profile" && <ProfileTopbarIndicators />}
           </div>
-          {selectedSection === "profile" && <ProfileTopbarIndicators />}
         </header>
 
         <section className="content settings-content">

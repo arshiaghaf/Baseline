@@ -144,7 +144,7 @@
   border-radius: 8px;
   background: rgba(255, 204, 0, 0.14);
   color: #7a4b00;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .notice.danger {
@@ -257,7 +257,7 @@
   max-height: min(50vh, 28rem);
   overflow-y: auto;
   margin: 8px 14px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .app-shell:not(.compact):not(.settings-shell) .content > .operation-failures {
