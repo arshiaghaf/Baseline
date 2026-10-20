@@ -263,16 +263,18 @@ export function Dashboard({
           onNavigate={() => setSearchActive(false)}
         />
         <section className="workspace">
-          <header className="topbar">
-            <div>
-              <h1>{title}</h1>
-            </div>
-            <div className="topbar-actions">
-              {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
-                <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
-              ) : null}
-              <UpdateCheckStatus snapshot={snapshot} />
-              <RefreshControl snapshot={snapshot} compact={compact} />
+          <header className="topbar dashboard-topbar">
+            <div className="dashboard-topbar-inner">
+              <div>
+                <h1>{title}</h1>
+              </div>
+              <div className="topbar-actions">
+                {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
+                  <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
+                ) : null}
+                <UpdateCheckStatus snapshot={snapshot} />
+                <RefreshControl snapshot={snapshot} compact={compact} />
+              </div>
             </div>
           </header>
 

@@ -12,6 +12,17 @@
   overflow: auto;
 }
 
+/* Keep the dashboard readable across window sizes without widening the sidebar. */
+.app-shell:not(.compact):not(.settings-shell) .content {
+  padding-inline: clamp(24px, 4vw, 60px);
+}
+
+.app-shell:not(.compact):not(.settings-shell) .content > .stack {
+  max-width: 1020px;
+  margin-inline: auto;
+  container: dashboard / inline-size;
+}
+
 .compact .content.single {
   padding: 0 10px 10px;
 }

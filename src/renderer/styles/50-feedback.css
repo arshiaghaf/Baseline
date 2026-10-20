@@ -254,6 +254,11 @@
   font-size: 12px;
 }
 
+.app-shell:not(.compact):not(.settings-shell) .content > .operation-failures {
+  width: min(calc(100% - 28px), 992px);
+  margin-inline: auto;
+}
+
 .operation-failure {
   padding: 8px;
   border: 1px solid rgba(255, 59, 48, 0.28);
