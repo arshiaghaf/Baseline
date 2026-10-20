@@ -390,7 +390,7 @@ export function SettingsPane({
               />
               <Toggle
                 label="Show menu bar icon"
-                description="Click for the compact update popover. Right-click to refresh your apps, open Settings, check for Baseline updates, or quit. Turning this off shows the Dock icon."
+                description="Click for the compact update popover. Right-click for Refresh, Open Baseline, Settings, Check for Updates (Baseline itself), or Quit. Turning this off shows the Dock icon."
                 value={snapshot.showMenuBarIcon}
                 patch="showMenuBarIcon"
               />
