@@ -92,17 +92,17 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
         pageHeading: style(".dashboard-topbar h1"),
         sectionLabel: style(".panel-title h2"),
         sidebar: style(".source-list button"),
-        warning: style(".workspace > .notice"),
+        warning: style(".content > .notice"),
         devicePixelRatio,
         visualViewportScale: visualViewport?.scale ?? 1
       };
     });
-    expect(typography.cardName.size).toBe("16px");
-    expect(typography.cardSource.size).toBe("14px");
-    expect(typography.cardSubtitle.size).toBe("16px");
+    expect(typography.cardName.size).toBe("14px");
+    expect(typography.cardSource.size).toBe("12px");
+    expect(typography.cardSubtitle.size).toBe("14px");
     expect(typography.pageHeading.size).toBe("18px");
-    expect(typography.sectionLabel.size).toBe("16px");
-    expect(typography.sidebar.size).toBe("16px");
+    expect(typography.sectionLabel.size).toBe("14px");
+    expect(typography.sidebar.size).toBe("14px");
     expect(typography.warning.size).toBe("14px");
     await expect(
       page.locator(".item-card .row-title strong").filter({ hasText: "A long application name" })
@@ -132,7 +132,7 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
         const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").length;
         const stackBounds = stack.getBoundingClientRect();
         const noticeBounds = document
-          .querySelector<HTMLElement>(".workspace > .notice")!
+          .querySelector<HTMLElement>(".content > .notice")!
           .getBoundingClientRect();
         const gridBounds = grid.getBoundingClientRect();
         const cardBounds = card.getBoundingClientRect();
@@ -200,6 +200,34 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
         await page.screenshot({ path: test.info().outputPath(`dashboard-${width}.png`) });
       }
     }
+
+    const gutterStyle = await page.addStyleTag({
+      content:
+        ".content { overflow-y: scroll; scrollbar-gutter: stable; } .content::-webkit-scrollbar { width: 12px; }"
+    });
+    for (const width of [660, 1512]) {
+      await application.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(width, 900);
+      }, width);
+      await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+      const bounds = await page.evaluate(() => {
+        const notice = document.querySelector(".content > .notice")!.getBoundingClientRect();
+        const stack = document.querySelector(".content > .stack")!.getBoundingClientRect();
+        return {
+          gutter:
+            (document.querySelector(".content") as HTMLElement).offsetWidth -
+            (document.querySelector(".content") as HTMLElement).clientWidth,
+          noticeLeft: notice.left,
+          noticeWidth: notice.width,
+          stackLeft: stack.left,
+          stackWidth: stack.width
+        };
+      });
+      expect(bounds.gutter).toBeGreaterThan(0);
+      expect(Math.abs(bounds.noticeLeft - bounds.stackLeft)).toBeLessThan(1);
+      expect(bounds.noticeWidth).toBeCloseTo(bounds.stackWidth, 0);
+    }
+    await gutterStyle.evaluate((element) => element.parentNode?.removeChild(element));
 
     for (const tab of ["apps", "homebrew", "installed", "ignored"] as const) {
       await page.evaluate((tab) => window.baseline.setSelectedTab(tab), tab);
@@ -288,7 +316,7 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
     await page.evaluate(() => {
       window.location.hash = "/main";
     });
-    await expect(page.locator(".workspace > .notice")).toBeVisible();
+    await expect(page.locator(".content > .notice")).toBeVisible();
     const errorSnapshot = {
       ...visualSnapshot(),
       snapshotRevision: 10_000,
@@ -302,16 +330,14 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
       },
       { channels: ipcChannels, state: errorSnapshot }
     );
-    await expect(page.locator(".workspace > .notice.danger")).toBeVisible();
+    await expect(page.locator(".content > .notice.danger")).toBeVisible();
     for (const width of [660, 1728]) {
       await application.evaluate(({ BrowserWindow }, width) => {
         BrowserWindow.getAllWindows()[0]!.setContentSize(width, 900);
       }, width);
       await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
       const bounds = await page.evaluate(() => {
-        const notice = document
-          .querySelector(".workspace > .notice.danger")!
-          .getBoundingClientRect();
+        const notice = document.querySelector(".content > .notice.danger")!.getBoundingClientRect();
         const stack = document.querySelector(".content > .stack")!.getBoundingClientRect();
         return {
           noticeLeft: notice.left,
@@ -348,9 +374,9 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
       });
       expect(search.left).toBeGreaterThanOrEqual(0);
       expect(search.right).toBeLessThanOrEqual(width);
-      expect(search.titleSize).toBe("16px");
-      expect(search.sourceSize).toBe("14px");
-      expect(search.subtitleSize).toBe("16px");
+      expect(search.titleSize).toBe("14px");
+      expect(search.sourceSize).toBe("12px");
+      expect(search.subtitleSize).toBe("14px");
       expect(search.horizontalOverflow).toBe(false);
     }
 
@@ -471,8 +497,8 @@ test("narrow operation notice wraps and compact confirmation keeps keyboard focu
       };
     });
     expect(compactLayout).toEqual({
-      nameSize: "16px",
-      subtitleSize: "16px",
+      nameSize: "14px",
+      subtitleSize: "14px",
       cardOverflow: false,
       contentOverflow: false
     });

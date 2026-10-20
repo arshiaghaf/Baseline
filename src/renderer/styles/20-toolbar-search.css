@@ -402,7 +402,7 @@
   margin: 0;
   padding: 0 2px;
   color: rgba(60, 60, 67, 0.58);
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
 }
 
@@ -449,17 +449,17 @@
 }
 
 .search-palette .row-title strong {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 500;
 }
 
 .search-palette .row-title span {
-  font-size: 14px;
+  font-size: 12px;
 }
 
 .search-palette .row-main p {
   margin-top: 0;
-  font-size: 16px;
+  font-size: 14px;
 }
 
 .search-palette .row-actions {
