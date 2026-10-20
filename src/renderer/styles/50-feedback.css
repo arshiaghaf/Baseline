@@ -153,6 +153,12 @@
   color: #9f1f18;
 }
 
+.app-shell:not(.compact) .workspace > .notice {
+  width: calc(100% - 2 * clamp(24px, 4vw, 60px));
+  max-width: 860px;
+  margin-inline: auto;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -255,7 +261,7 @@
 }
 
 .app-shell:not(.compact):not(.settings-shell) .content > .operation-failures {
-  width: min(calc(100% - 28px), 900px);
+  width: min(calc(100% - 28px), 860px);
   margin-inline: auto;
 }
 

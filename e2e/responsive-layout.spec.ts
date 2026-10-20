@@ -60,7 +60,13 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
         );
         publish({});
       },
-      { channels: ipcChannels, state: visualSnapshot() }
+      {
+        channels: ipcChannels,
+        state: {
+          ...visualSnapshot(),
+          lastRefreshNoticeMessage: "Some update information may be incomplete."
+        }
+      }
     );
     await page.reload();
     await expect(page.getByText("Atlas", { exact: true }).first()).toBeVisible();
@@ -84,6 +90,9 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
           .getBoundingClientRect();
         const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").length;
         const stackBounds = stack.getBoundingClientRect();
+        const noticeBounds = document
+          .querySelector<HTMLElement>(".workspace > .notice")!
+          .getBoundingClientRect();
         const gridBounds = grid.getBoundingClientRect();
         const cardBounds = card.getBoundingClientRect();
         return {
@@ -97,6 +106,8 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
           failureWidth: failureBounds.width,
           failureCenter: (failureBounds.left + failureBounds.right) / 2,
           stackCenter: (stackBounds.left + stackBounds.right) / 2,
+          noticeWidth: noticeBounds.width,
+          noticeLeft: noticeBounds.left,
           headingLeft: document.querySelector(".dashboard-topbar h1")!.getBoundingClientRect().left,
           columns,
           card: cardBounds.width,
@@ -112,10 +123,12 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
       const expectedColumns = width < 756 ? 1 : width < 1028 ? 2 : 3;
       expect(geometry.columns, `grid columns at ${width}px`).toBe(expectedColumns);
       expect(geometry.sidebar).toBe(196);
-      expect(geometry.stack).toBeLessThanOrEqual(900);
+      expect(geometry.stack).toBeLessThanOrEqual(860);
       expect(geometry.failureWidth).toBeLessThanOrEqual(geometry.stack);
       expect(Math.abs(geometry.failureCenter - geometry.stackCenter)).toBeLessThan(1);
       expect(Math.abs(geometry.stackLeft - geometry.headingLeft)).toBeLessThan(1);
+      expect(Math.abs(geometry.noticeLeft - geometry.stackLeft)).toBeLessThan(1);
+      expect(geometry.noticeWidth).toBeCloseTo(geometry.stack, 0);
       expect(geometry.icon).toBe(50);
       expect(geometry.card).toBeGreaterThanOrEqual(240);
       expect(geometry.card).toBeCloseTo(
@@ -130,6 +143,39 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
       if (screenshotWidths.has(width)) {
         await page.screenshot({ path: test.info().outputPath(`dashboard-${width}.png`) });
       }
+    }
+
+    const errorSnapshot = {
+      ...visualSnapshot(),
+      refreshErrorMessage: "This refresh failed. Please try again."
+    };
+    await application.evaluate(
+      ({ BrowserWindow }, { channels, state }) => {
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send(channels.snapshotChanged, state);
+      },
+      { channels: ipcChannels, state: errorSnapshot }
+    );
+    await expect(page.locator(".workspace > .notice.danger")).toBeVisible();
+    for (const width of [660, 1728]) {
+      await application.evaluate(({ BrowserWindow }, width) => {
+        BrowserWindow.getAllWindows()[0]!.setContentSize(width, 900);
+      }, width);
+      await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+      const bounds = await page.evaluate(() => {
+        const notice = document
+          .querySelector(".workspace > .notice.danger")!
+          .getBoundingClientRect();
+        const stack = document.querySelector(".content > .stack")!.getBoundingClientRect();
+        return {
+          noticeLeft: notice.left,
+          noticeWidth: notice.width,
+          stackLeft: stack.left,
+          stackWidth: stack.width
+        };
+      });
+      expect(Math.abs(bounds.noticeLeft - bounds.stackLeft)).toBeLessThan(1);
+      expect(bounds.noticeWidth).toBeCloseTo(bounds.stackWidth, 0);
     }
 
     for (const tab of ["apps", "homebrew", "installed", "ignored"] as const) {
