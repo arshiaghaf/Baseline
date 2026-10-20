@@ -1052,7 +1052,7 @@ describe("update store helpers", () => {
     }
   });
 
-  it("keeps tray Settings usable during refresh and routes each update command to its own check", async () => {
+  it("keeps tray window actions usable during refresh and routes each update command to its own check", async () => {
     let finishScan!: (apps: AppRecord[]) => void;
     const scan = new Promise<AppRecord[]>((resolve) => {
       finishScan = resolve;
@@ -1068,11 +1068,13 @@ describe("update store helpers", () => {
       currentAppVersion: "1.0.0",
       clients: { scanner: { scanApplications }, selfUpdate: { lookup } }
     });
+    const showMainWindow = vi.fn();
     const showSettings = vi.fn();
     const refresh = vi.spyOn(store, "refresh");
     const selfChecks: Promise<SelfUpdateRecord | undefined>[] = [];
     const options = {
       store,
+      showMainWindow,
       showSettings,
       quit: () => undefined,
       checkForUpdates: async () => {
@@ -1082,6 +1084,16 @@ describe("update store helpers", () => {
       },
       isCheckingForUpdates: false
     };
+    expect(trayMenuTemplate(options).map((item) => item.label ?? item.type)).toEqual([
+      "Refresh",
+      "separator",
+      "Open Baseline",
+      "Settings",
+      "separator",
+      "Check for Updates",
+      "separator",
+      "Quit"
+    ]);
     function click(label: string) {
       const item = trayMenuTemplate(options).find((item) => item.label === label);
       if (!item?.click) throw new Error(`Expected an action for ${label}.`);
@@ -1102,6 +1114,8 @@ describe("update store helpers", () => {
       );
       click("Refresh");
       expect(scanApplications).toHaveBeenCalledTimes(1);
+      click("Open Baseline");
+      expect(showMainWindow).toHaveBeenCalledTimes(1);
       click("Settings");
       expect(showSettings).toHaveBeenCalledTimes(1);
       expect(store.getSnapshot().isRefreshing).toBe(true);
