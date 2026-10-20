@@ -102,6 +102,10 @@
   padding-top: 4px;
 }
 
+.compact .card-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .item-card {
   --card-inner-highlight-strong: rgba(255, 255, 255, 0.92);
   --card-inner-highlight-medium: rgba(255, 255, 255, 0.64);

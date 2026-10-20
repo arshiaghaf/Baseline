@@ -253,6 +253,14 @@ test("narrow operation notice wraps and compact confirmation keeps keyboard focu
     }
     await page.getByRole("button", { name: "Search", exact: true }).click();
     const search = page.locator(".toolbar-search input");
+    await search.fill("Beacon");
+    const searchGrid = page.locator(".compact .card-grid").first();
+    await expect(searchGrid).toBeVisible();
+    expect(
+      await searchGrid.evaluate(
+        (element) => getComputedStyle(element).gridTemplateColumns.split(" ").length
+      )
+    ).toBe(1);
     await search.fill("grove");
     await page.getByRole("button", { name: "Install", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Install Grove?" });
