@@ -175,7 +175,7 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
             content.scrollWidth > content.clientWidth
         };
       });
-      const expectedColumns = width < 756 ? 1 : width < 1028 ? 2 : 3;
+      const expectedColumns = geometry.stack < 500 ? 1 : geometry.stack < 750 ? 2 : 3;
       expect(geometry.columns, `grid columns at ${width}px`).toBe(expectedColumns);
       expect(geometry.sidebar).toBe(196);
       expect(geometry.stack).toBeLessThanOrEqual(860);
