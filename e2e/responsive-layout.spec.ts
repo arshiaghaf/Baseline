@@ -79,6 +79,9 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
         const grid = content.querySelector<HTMLElement>(".update-grid")!;
         const card = grid.querySelector<HTMLElement>(".item-card")!;
         const icon = card.querySelector<HTMLElement>(".app-icon")!;
+        const failureBounds = content
+          .querySelector<HTMLElement>(".operation-failures")!
+          .getBoundingClientRect();
         const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").length;
         const stackBounds = stack.getBoundingClientRect();
         const gridBounds = grid.getBoundingClientRect();
@@ -91,6 +94,9 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
           stack: stackBounds.width,
           stackLeft: stackBounds.left,
           stackRight: stackBounds.right,
+          failureWidth: failureBounds.width,
+          failureCenter: (failureBounds.left + failureBounds.right) / 2,
+          stackCenter: (stackBounds.left + stackBounds.right) / 2,
           headingLeft: document.querySelector(".dashboard-topbar h1")!.getBoundingClientRect().left,
           columns,
           card: cardBounds.width,
@@ -107,6 +113,8 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
       expect(geometry.columns, `grid columns at ${width}px`).toBe(expectedColumns);
       expect(geometry.sidebar).toBe(196);
       expect(geometry.stack).toBeLessThanOrEqual(900);
+      expect(geometry.failureWidth).toBeLessThanOrEqual(geometry.stack);
+      expect(Math.abs(geometry.failureCenter - geometry.stackCenter)).toBeLessThan(1);
       expect(Math.abs(geometry.stackLeft - geometry.headingLeft)).toBeLessThan(1);
       expect(geometry.icon).toBe(50);
       expect(geometry.card).toBeGreaterThanOrEqual(240);

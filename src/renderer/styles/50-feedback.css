@@ -255,7 +255,7 @@
 }
 
 .app-shell:not(.compact):not(.settings-shell) .content > .operation-failures {
-  width: min(calc(100% - 28px), 992px);
+  width: min(calc(100% - 28px), 900px);
   margin-inline: auto;
 }
 
