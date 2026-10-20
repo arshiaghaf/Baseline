@@ -286,16 +286,3 @@
     transform: none;
   }
 }
-
-@media (max-width: 920px) {
-  .card-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 680px) {
-  .card-grid,
-  .update-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}

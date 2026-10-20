@@ -81,3 +81,16 @@
     padding: 0;
   }
 }
+
+/* Card counts follow the space inside the dashboard, including its sidebar and gutters. */
+@container dashboard (max-width: 749px) {
+  .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container dashboard (max-width: 499px) {
+  .card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -92,6 +92,8 @@ export function Dashboard({
   const appContentRef = useRef<HTMLDivElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const searchPaletteReturnFocusRef = useRef<HTMLElement | null>(null);
+  const confirmationReturnFocusRef = useRef<HTMLElement | null>(null);
+  const confirmationOpenRef = useRef(false);
   const shouldRestoreSearchPaletteFocusRef = useRef(false);
 
   const openSearchPalette = () => {
@@ -185,7 +187,9 @@ export function Dashboard({
       return;
     }
     const confirmation = actionConfirmation;
+    confirmationOpenRef.current = false;
     setActionConfirmation(undefined);
+    setSearchActive(false);
     if (confirmation.type === "install") {
       void baseline.installHomebrewItem(confirmation.item);
       return;
@@ -193,7 +197,12 @@ export function Dashboard({
     void baseline.uninstallHomebrewItem(confirmation.item.id);
   };
   const requestActionConfirmation = (confirmation: ActionConfirmation) => {
-    setSearchActive(false);
+    confirmationOpenRef.current = true;
+    const activeElement = document.activeElement;
+    confirmationReturnFocusRef.current =
+      activeElement instanceof HTMLElement && activeElement !== document.body
+        ? activeElement
+        : null;
     setActionConfirmation(confirmation);
   };
 
@@ -219,7 +228,9 @@ export function Dashboard({
               open={searchActive}
               snapshot={snapshot}
               onToggle={() => setSearchActive(!searchActive)}
-              onClose={() => setSearchActive(false)}
+              onClose={() => {
+                if (!confirmationOpenRef.current) setSearchActive(false);
+              }}
               toolbarButtonTabIndex={-1}
             />
             <UpdateCheckStatus snapshot={snapshot} />
@@ -263,16 +274,18 @@ export function Dashboard({
           onNavigate={() => setSearchActive(false)}
         />
         <section className="workspace">
-          <header className="topbar">
-            <div>
-              <h1>{title}</h1>
-            </div>
-            <div className="topbar-actions">
-              {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
-                <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
-              ) : null}
-              <UpdateCheckStatus snapshot={snapshot} />
-              <RefreshControl snapshot={snapshot} compact={compact} />
+          <header className="topbar dashboard-topbar">
+            <div className="dashboard-topbar-inner">
+              <div>
+                <h1>{title}</h1>
+              </div>
+              <div className="topbar-actions">
+                {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
+                  <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
+                ) : null}
+                <UpdateCheckStatus snapshot={snapshot} />
+                <RefreshControl snapshot={snapshot} compact={compact} />
+              </div>
             </div>
           </header>
 
@@ -297,6 +310,7 @@ export function Dashboard({
       <div
         className={actionConfirmation ? "action-surface action-surface-disabled" : "action-surface"}
         aria-hidden={actionConfirmation ? true : undefined}
+        inert={Boolean(actionConfirmation)}
       >
         <div
           ref={appContentRef}
@@ -312,8 +326,12 @@ export function Dashboard({
       {actionConfirmation && (
         <ActionConfirmationOverlay
           confirmation={actionConfirmation}
-          onCancel={() => setActionConfirmation(undefined)}
+          onCancel={() => {
+            confirmationOpenRef.current = false;
+            setActionConfirmation(undefined);
+          }}
           onConfirm={confirmAction}
+          returnFocusElement={confirmationReturnFocusRef.current}
         />
       )}
     </ActionConfirmationContext.Provider>

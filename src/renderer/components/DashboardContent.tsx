@@ -646,26 +646,28 @@ export function IgnoredTab({
   ];
 
   return (
-    <section className="panel">
-      <PanelTitle title={`Ignored Apps and Homebrew (${items.length})`} />
-      {items.length === 0 ? (
-        <Empty text="No ignored apps or Homebrew items." />
-      ) : (
-        <CardGrid sectionClassName="ignored-grid">
-          {items.map((item) =>
-            item.type === "app" ? (
-              <IgnoredAppCard key={`app:${item.id}`} app={item.item} snapshot={snapshot} />
-            ) : (
-              <IgnoredHomebrewCard
-                key={`homebrew:${item.id}`}
-                item={item.item}
-                snapshot={snapshot}
-              />
-            )
-          )}
-        </CardGrid>
-      )}
-    </section>
+    <div className="stack">
+      <section className="panel">
+        <PanelTitle title={`Ignored Apps and Homebrew (${items.length})`} />
+        {items.length === 0 ? (
+          <Empty text="No ignored apps or Homebrew items." />
+        ) : (
+          <CardGrid sectionClassName="ignored-grid">
+            {items.map((item) =>
+              item.type === "app" ? (
+                <IgnoredAppCard key={`app:${item.id}`} app={item.item} snapshot={snapshot} />
+              ) : (
+                <IgnoredHomebrewCard
+                  key={`homebrew:${item.id}`}
+                  item={item.item}
+                  snapshot={snapshot}
+                />
+              )
+            )}
+          </CardGrid>
+        )}
+      </section>
+    </div>
   );
 }
 
