@@ -222,14 +222,7 @@ test("narrow operation notice wraps and compact confirmation keeps keyboard focu
       ["main", 660, 620],
       ["menubar", 440, 560]
     ] as const) {
-      await application.evaluate(
-        ({ BrowserWindow }, size) => {
-          const window = BrowserWindow.getAllWindows()[0]!;
-          if (size.width < 660) window.setMinimumSize(size.width, size.height);
-          window.setContentSize(size.width, size.height);
-        },
-        { width, height }
-      );
+      await page.setViewportSize({ width, height });
       await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
       await page.evaluate((next) => {
         window.location.hash = `#/${next}`;
