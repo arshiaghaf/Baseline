@@ -12,9 +12,12 @@ import { cleanupApplications } from "./applicationCleanup";
 import { visualSnapshot } from "./visualSnapshot";
 
 const widths = [
-  660, 740, 760, 920, 1020, 1030, 1280, 1352, 1512, 1536, 1728, 1800, 2048, 2056, 2304, 2560, 2880
+  660, 740, 756, 757, 760, 920, 1020, 1028, 1029, 1030, 1280, 1352, 1512, 1536, 1728, 1800, 2048,
+  2056, 2304, 2560, 2880
 ];
-const screenshotWidths = new Set([660, 760, 1020, 1030, 1512, 1728, 2304, 2560]);
+const screenshotWidths = new Set([
+  660, 756, 757, 760, 1020, 1028, 1029, 1030, 1512, 1728, 2304, 2560
+]);
 
 test("dashboard cards fit narrow windows and scaled-display viewports", async () => {
   test.setTimeout(120_000);
@@ -78,6 +81,7 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
         const icon = card.querySelector<HTMLElement>(".app-icon")!;
         const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").length;
         const stackBounds = stack.getBoundingClientRect();
+        const gridBounds = grid.getBoundingClientRect();
         const cardBounds = card.getBoundingClientRect();
         return {
           viewport: innerWidth,
@@ -90,19 +94,29 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
           headingLeft: document.querySelector(".dashboard-topbar h1")!.getBoundingClientRect().left,
           columns,
           card: cardBounds.width,
+          cardRight: cardBounds.right,
+          gridRight: gridBounds.right,
+          cardContentOverflow: card.scrollWidth > card.clientWidth + 1,
           icon: icon.getBoundingClientRect().width,
           horizontalOverflow:
             document.documentElement.scrollWidth > innerWidth ||
             content.scrollWidth > content.clientWidth
         };
       });
-      const expectedColumns = width < 754 ? 1 : width < 1029 ? 2 : 3;
+      const expectedColumns = width < 757 ? 1 : width < 1029 ? 2 : 3;
       expect(geometry.columns, `grid columns at ${width}px`).toBe(expectedColumns);
       expect(geometry.sidebar).toBe(196);
-      expect(geometry.stack).toBeLessThanOrEqual(1020);
+      expect(geometry.stack).toBeLessThanOrEqual(900);
       expect(Math.abs(geometry.stackLeft - geometry.headingLeft)).toBeLessThan(1);
       expect(geometry.icon).toBe(50);
       expect(geometry.card).toBeGreaterThanOrEqual(240);
+      expect(geometry.card).toBeCloseTo(
+        (geometry.stack - (geometry.columns - 1) * 12) / geometry.columns,
+        0
+      );
+      if (geometry.columns === 3) expect(geometry.card).toBeLessThanOrEqual(292);
+      expect(geometry.cardRight).toBeLessThanOrEqual(geometry.gridRight + 1);
+      expect(geometry.cardContentOverflow, `card content overflow at ${width}px`).toBe(false);
       expect(geometry.horizontalOverflow, `horizontal overflow at ${width}px`).toBe(false);
       rows.push(geometry);
       if (screenshotWidths.has(width)) {
