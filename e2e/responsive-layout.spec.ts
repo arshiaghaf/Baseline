@@ -12,11 +12,11 @@ import { cleanupApplications } from "./applicationCleanup";
 import { visualSnapshot } from "./visualSnapshot";
 
 const widths = [
-  660, 740, 756, 757, 760, 920, 1020, 1028, 1029, 1030, 1280, 1352, 1512, 1536, 1728, 1800, 2048,
+  660, 740, 755, 756, 760, 920, 1020, 1027, 1028, 1030, 1280, 1352, 1512, 1536, 1728, 1800, 2048,
   2056, 2304, 2560, 2880
 ];
 const screenshotWidths = new Set([
-  660, 756, 757, 760, 1020, 1028, 1029, 1030, 1512, 1728, 2304, 2560
+  660, 755, 756, 760, 1020, 1027, 1028, 1030, 1512, 1728, 2304, 2560
 ]);
 
 test("dashboard cards fit narrow windows and scaled-display viewports", async () => {
@@ -103,7 +103,7 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
             content.scrollWidth > content.clientWidth
         };
       });
-      const expectedColumns = width < 757 ? 1 : width < 1029 ? 2 : 3;
+      const expectedColumns = width < 756 ? 1 : width < 1028 ? 2 : 3;
       expect(geometry.columns, `grid columns at ${width}px`).toBe(expectedColumns);
       expect(geometry.sidebar).toBe(196);
       expect(geometry.stack).toBeLessThanOrEqual(900);
