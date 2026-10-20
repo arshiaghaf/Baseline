@@ -178,3 +178,103 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
     await rm(userData, { recursive: true, force: true });
   }
 });
+
+test("narrow operation notice wraps and compact confirmation keeps keyboard focus", async () => {
+  const executablePath = process.env.BASELINE_E2E_EXECUTABLE;
+  if (!executablePath) throw new Error("Use the isolated E2E global setup.");
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-failure-layout-"));
+  let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
+  try {
+    application = await electron.launch({
+      executablePath,
+      env: {
+        ...process.env,
+        BASELINE_SKIP_INITIAL_REFRESH: "1",
+        BASELINE_USER_DATA_DIR: userData,
+        BASELINE_E2E_PROFILE_SECRET: randomBytes(32).toString("base64url")
+      }
+    });
+    const page = await application.firstWindow();
+    const snapshot = visualSnapshot();
+    snapshot.apps[0]!.displayName = `A long app name ${"W".repeat(90)}`;
+    await application.evaluate(
+      ({ ipcMain, BrowserWindow }, { channels, state }) => {
+        let snapshot: BaselineSnapshot = state;
+        ipcMain.removeHandler(channels.getSnapshot);
+        ipcMain.handle(channels.getSnapshot, () => snapshot);
+        ipcMain.removeHandler(channels.setSearchText);
+        ipcMain.handle(channels.setSearchText, (_event, searchText: string) => {
+          snapshot = {
+            ...snapshot,
+            searchText,
+            snapshotRevision: (snapshot.snapshotRevision ?? 0) + 1
+          };
+          for (const window of BrowserWindow.getAllWindows())
+            window.webContents.send(channels.snapshotChanged, snapshot);
+        });
+        for (const window of BrowserWindow.getAllWindows())
+          window.webContents.send(channels.snapshotChanged, state);
+      },
+      { channels: ipcChannels, state: snapshot }
+    );
+    await page.reload();
+    for (const [route, width, height] of [
+      ["main", 660, 620],
+      ["menubar", 440, 560]
+    ] as const) {
+      await application.evaluate(
+        ({ BrowserWindow }, size) => {
+          const window = BrowserWindow.getAllWindows()[0]!;
+          if (size.width < 660) window.setMinimumSize(size.width, size.height);
+          window.setContentSize(size.width, size.height);
+        },
+        { width, height }
+      );
+      await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+      await page.evaluate((next) => {
+        window.location.hash = `#/${next}`;
+      }, route);
+      const summary = page.locator(".operation-failure summary").first();
+      await expect(summary).toBeVisible();
+      await expect(summary).toContainText("W".repeat(90));
+      const geometry = await summary.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const label = element
+          .querySelector<HTMLElement>(".failure-disclosure-label")!
+          .getBoundingClientRect();
+        return {
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          overflowWrap: getComputedStyle(element).overflowWrap,
+          labelRight: label.right,
+          right: bounds.right,
+          documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: innerWidth
+        };
+      });
+      expect(geometry.overflowWrap).toBe("anywhere");
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth + 1);
+      expect(geometry.labelRight).toBeLessThanOrEqual(geometry.right + 1);
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+      await page.screenshot({ path: test.info().outputPath(`failure-${route}-${width}.png`) });
+    }
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    const search = page.locator(".toolbar-search input");
+    await search.fill("grove");
+    await page.getByRole("button", { name: "Install", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Install Grove?" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+    await expect(page.locator(".action-surface")).toHaveAttribute("inert", "");
+    await page.keyboard.type("z");
+    await expect(search).toHaveValue("grove");
+    await page.keyboard.press("Tab");
+    await expect(dialog.getByRole("button", { name: "Install Grove" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(search).toBeFocused();
+  } finally {
+    if (application) await cleanupApplications([application]);
+    await rm(userData, { recursive: true, force: true });
+  }
+});

@@ -3,6 +3,7 @@
 
 import React from "react";
 import { homebrewPresentationLabel } from "../../shared/domain";
+import { trapFocusWithin } from "../helpers/focus";
 import type { RequestActionConfirmation, ActionConfirmation } from "../types";
 
 export const ActionConfirmationContext = React.createContext<RequestActionConfirmation>(() => {});
@@ -10,12 +11,42 @@ export const ActionConfirmationContext = React.createContext<RequestActionConfir
 export function ActionConfirmationOverlay({
   confirmation,
   onCancel,
-  onConfirm
+  onConfirm,
+  returnFocusElement
 }: {
   confirmation: ActionConfirmation;
   onCancel: () => void;
   onConfirm: () => void;
+  returnFocusElement: HTMLElement | null;
 }) {
+  const dialogRef = React.useRef<HTMLElement>(null);
+  const cancelRef = React.useRef<HTMLButtonElement>(null);
+  const closeRef = React.useRef(onCancel);
+  closeRef.current = onCancel;
+  React.useEffect(() => {
+    cancelRef.current?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        closeRef.current();
+      } else if (event.key === "Tab") {
+        trapFocusWithin(event, dialogRef.current);
+      }
+    };
+    window.addEventListener("keydown", handleKey, true);
+    return () => {
+      window.removeEventListener("keydown", handleKey, true);
+      if (
+        returnFocusElement?.isConnected &&
+        returnFocusElement.tabIndex >= 0 &&
+        !returnFocusElement.closest("[inert], [aria-hidden='true']")
+      ) {
+        returnFocusElement.focus();
+      }
+    };
+  }, [returnFocusElement]);
+
   const isDestructive = confirmation.type === "uninstall";
   const title =
     confirmation.type === "install"
@@ -36,6 +67,7 @@ export function ActionConfirmationOverlay({
   return (
     <div className="confirmation-backdrop" role="presentation" onClick={onCancel}>
       <section
+        ref={dialogRef}
         className="confirmation-card"
         role="dialog"
         aria-modal="true"
@@ -53,7 +85,7 @@ export function ActionConfirmationOverlay({
           >
             {actionTitle}
           </button>
-          <button className="ghost-button wide" onClick={onCancel}>
+          <button className="ghost-button wide" ref={cancelRef} onClick={onCancel}>
             Cancel
           </button>
         </div>

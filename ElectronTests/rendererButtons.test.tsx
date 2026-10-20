@@ -1756,6 +1756,51 @@ describe("renderer button parity", () => {
     expect(window.baseline.setSearchText).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])(
+    "keeps install confirmation keyboard focus inside the dialog and restores search (compact=%s)",
+    (compact) => {
+      const item: HomebrewCaskDiscoveryItem = {
+        id: "cask:grove",
+        token: "grove",
+        displayName: "Grove",
+        kind: "cask",
+        version: version("1.0")
+      };
+      const { container } = render(
+        <Dashboard
+          compact={compact}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            apps: [],
+            updates: [],
+            homebrewItems: [],
+            homebrewDiscoverItems: [item],
+            searchText: "grove"
+          })}
+        />
+      );
+      if (!compact) fireEvent.click(screen.getByRole("button", { name: "Search" }));
+      const searchInput = screen.getByPlaceholderText("Search");
+      searchInput.focus();
+      fireEvent.click(screen.getByRole("button", { name: /^Install$/u }));
+
+      const dialog = screen.getByRole("dialog", { name: "Install Grove?" });
+      const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+      const install = within(dialog).getByRole("button", { name: "Install Grove" });
+      expect(cancel).toHaveFocus();
+      expect(container.querySelector(".action-surface")).toHaveAttribute("inert");
+      fireEvent.keyDown(window, { key: "Tab" });
+      expect(install).toHaveFocus();
+      fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
+      expect(cancel).toHaveFocus();
+      fireEvent.keyDown(window, { key: "Escape" });
+
+      expect(screen.queryByRole("dialog", { name: "Install Grove?" })).not.toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search")).toHaveFocus();
+      expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
+    }
+  );
+
   it("keeps toolbar search open for clicks inside the search controls", () => {
     render(
       <Dashboard
