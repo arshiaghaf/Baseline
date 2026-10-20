@@ -322,6 +322,7 @@ function createTrayContextMenu(): Menu {
   return Menu.buildFromTemplate(
     trayMenuTemplate({
       store,
+      showMainWindow: () => showMainWindow("main"),
       showSettings: () => showMainWindow("settings"),
       checkForUpdates: checkForBaselineUpdates,
       isCheckingForUpdates: selfUpdateCheckOpen,

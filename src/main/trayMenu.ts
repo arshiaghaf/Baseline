@@ -6,6 +6,7 @@ import type { UpdateStore } from "./updateStore";
 
 export function trayMenuTemplate(options: {
   store: Pick<UpdateStore, "getSnapshot" | "refresh">;
+  showMainWindow: () => void;
   showSettings: () => void;
   checkForUpdates: () => Promise<void>;
   isCheckingForUpdates: boolean;
@@ -20,7 +21,10 @@ export function trayMenuTemplate(options: {
         if (!options.store.getSnapshot().isRefreshing) void options.store.refresh(false);
       }
     },
+    { type: "separator" },
+    { label: "Open Baseline", click: options.showMainWindow },
     { label: "Settings", click: options.showSettings },
+    { type: "separator" },
     {
       label: "Check for Updates",
       toolTip: "Check for a new version of Baseline itself.",
