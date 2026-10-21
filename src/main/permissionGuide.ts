@@ -110,7 +110,7 @@ export async function performPermissionGuideAction(
     return { appPath };
   }
   if (action === "copy") {
-    clipboard.writeText(appPath);
+    await clipboard.writeText(appPath);
     return { appPath, message: "App path copied." };
   }
   const icon = await permissionGuideIcon(appPath);

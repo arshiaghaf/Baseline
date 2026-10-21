@@ -333,7 +333,7 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Waiting for admin password");
   });
 
-  it("freezes only the affected synthetic progress and resumes without counting time spent waiting", () => {
+  it("freezes only the affected synthetic progress and resumes without counting time spent waiting", async () => {
     vi.useFakeTimers();
     try {
       const formula = {
@@ -354,7 +354,7 @@ describe("renderer button parity", () => {
         </>
       );
       const { container, rerender } = render(rows(state));
-      act(() => vi.advanceTimersByTime(1000));
+      await act(() => vi.advanceTimersByTime(1000));
       const articles = () => Array.from(container.querySelectorAll("article"));
       const before = articles().map(progressRingValue);
       rerender(
@@ -369,12 +369,12 @@ describe("renderer button parity", () => {
           }
         })
       );
-      act(() => vi.advanceTimersByTime(20000));
+      await act(() => vi.advanceTimersByTime(20000));
       expect(progressRingValue(articles()[0]!)).toBe(before[0]);
       expect(progressRingValue(articles()[1]!)).toBeGreaterThan(before[1]!);
       rerender(rows(state));
       expect(progressRingValue(articles()[0]!)).toBe(before[0]);
-      act(() => vi.advanceTimersByTime(120));
+      await act(() => vi.advanceTimersByTime(120));
       expect(progressRingValue(articles()[0]!)).toBeGreaterThan(before[0]!);
       expect(progressRingValue(articles()[0]!)).toBeLessThan(before[0]! + 0.01);
     } finally {
@@ -699,7 +699,7 @@ describe("renderer button parity", () => {
     expect(screen.getByRole("button", { name: "Updated" })).toBeInTheDocument();
   });
 
-  it("eases Homebrew progress monotonically across stages without jumping or claiming completion", () => {
+  it("eases Homebrew progress monotonically across stages without jumping or claiming completion", async () => {
     vi.useFakeTimers();
     try {
       const { container, rerender } = render(
@@ -722,11 +722,11 @@ describe("renderer button parity", () => {
           />
         );
         expect(progressRingValue(container)).toBeCloseTo(previous);
-        act(() => vi.advanceTimersByTime(4500));
+        await act(() => vi.advanceTimersByTime(4500));
         const eased = progressRingValue(container);
         expect(eased).toBeGreaterThan(previous);
         expect(eased).toBeLessThan(nextStage);
-        act(() => vi.advanceTimersByTime(60_000));
+        await act(() => vi.advanceTimersByTime(60_000));
         expect(progressRingValue(container)).toBeGreaterThan(eased);
         expect(progressRingValue(container)).toBeLessThan(nextStage);
       }

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CommandResult } from "../src/main/commandRunner";
 
 const mocks = vi.hoisted(() => ({
-  access: vi.fn(),
+  access: vi.fn<() => Promise<void>>(),
   check: vi.fn(),
   spawn: vi.fn(),
   terminate: vi.fn()
@@ -27,7 +27,7 @@ import { runBrewCommand } from "../src/main/commandRunner";
 
 const pending: Promise<unknown>[] = [];
 const releases: (() => void)[] = [];
-let revalidate: ReturnType<typeof vi.fn>;
+let revalidate: ReturnType<typeof vi.fn<() => Promise<boolean>>>;
 let autoExit: boolean;
 function gate() {
   let resolve!: () => void, reject!: (error: Error) => void;

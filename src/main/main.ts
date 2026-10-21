@@ -715,14 +715,14 @@ function wireIpc(): void {
     return directory;
   });
   handle("removeDirectory", (_event, directory: string) => store.removeDirectory(directory));
-  handle("copyOperationFailure", (_event, id: string, attemptID: string) => {
+  handle("copyOperationFailure", async (_event, id: string, attemptID: string) => {
     const text = store.operationFailureText(id, attemptID);
     if (!text) return false;
-    clipboard.writeText(text);
+    await clipboard.writeText(text);
     return true;
   });
-  handle("copyDiagnostics", () => {
-    clipboard.writeText(
+  handle("copyDiagnostics", async () => {
+    await clipboard.writeText(
       renderDiagnostics(store.getSnapshot(), metadata, process.platform) +
         store.getCatalogueDiagnostics()
     );

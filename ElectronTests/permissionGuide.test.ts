@@ -181,3 +181,26 @@ it("prepares the separately named running preview without targeting the installe
   });
   expect(mocks.getFileIcon).not.toHaveBeenCalled();
 });
+
+it("waits for clipboard completion and propagates failure before reporting a copied path", async () => {
+  let rejectWrite!: (error: Error) => void;
+  const write = new Promise<void>((_resolve, reject) => {
+    rejectWrite = reject;
+  });
+  mocks.writeText.mockReturnValueOnce(write);
+  let completed = false;
+  const copy = performPermissionGuideAction("copy", {} as WebContents, {
+    show: vi.fn(),
+    close: vi.fn()
+  }).finally(() => {
+    completed = true;
+  });
+  const rejected = expect(copy).rejects.toThrow("Clipboard unavailable");
+  try {
+    await vi.waitFor(() => expect(mocks.writeText).toHaveBeenCalled());
+    expect(completed).toBe(false);
+  } finally {
+    rejectWrite(new Error("Clipboard unavailable"));
+    await rejected;
+  }
+});
