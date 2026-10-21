@@ -52,21 +52,26 @@ export class LifecycleLog {
 }
 
 // Playwright's internal close handler swallows app.quit() evaluation errors.
-// Request quit explicitly so unexpected invocation failures remain test failures.
-// The caller must include this in cleanupApplications' existing deadline and
-// still verify process exit after an expected shutdown disconnection.
+// Dispatch quit outside the inspector evaluation stack, then wait for the
+// owned app to close before Playwright starts its own close handler. The caller
+// includes both phases in cleanupApplications' existing deadline.
 export async function requestElectronQuit(
-  application: Pick<ElectronApplication, "evaluate">
+  application: Pick<ElectronApplication, "evaluate"> & {
+    waitForEvent(event: "close"): Promise<unknown>;
+  }
 ): Promise<void> {
   const log = lifecycleLogs.get(application);
   log?.event("quit-request-start");
+  const closed = application.waitForEvent("close");
   try {
-    await application.evaluate(async ({ app }) => {
-      process.stderr.write(`E2E quit callback entered ${Date.now()}\n`);
-      app.quit();
-      process.stderr.write(`E2E quit call returned ${Date.now()}\n`);
+    await application.evaluate(({ app }) => {
+      setImmediate(() => {
+        process.stderr.write(`E2E quit callback entered ${Date.now()}\n`);
+        app.quit();
+        process.stderr.write(`E2E quit call returned ${Date.now()}\n`);
+      });
     });
-    log?.event("quit-request-complete");
+    log?.event("quit-request-dispatched");
   } catch (error) {
     if (
       error instanceof Error &&
@@ -75,11 +80,13 @@ export async function requestElectronQuit(
       )
     ) {
       log?.event("quit-request-disconnected", error.message.slice(-2000));
-      return;
+    } else {
+      log?.event("quit-request-failed", String(error).slice(-2000));
+      throw error;
     }
-    log?.event("quit-request-failed", String(error).slice(-2000));
-    throw error;
   }
+  await closed;
+  log?.event("quit-request-complete");
 }
 
 export function recordElectronLaunch(testInfo: TestInfo, executable: string): void {

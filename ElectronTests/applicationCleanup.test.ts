@@ -190,7 +190,8 @@ test.each([
       close: () => new Promise<void>(() => undefined),
       evaluate: async () => {
         throw quitError;
-      }
+      },
+      waitForEvent: () => new Promise<void>((resolve) => child.once("close", resolve))
     };
     const cleanup = cleanupApplications([application], requestElectronQuit, 100);
     if (expectedDisconnect) {
