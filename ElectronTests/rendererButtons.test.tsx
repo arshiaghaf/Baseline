@@ -2237,6 +2237,92 @@ describe("renderer button parity", () => {
     expect(window.baseline.installHomebrewItem).toHaveBeenCalledWith(item);
   });
 
+  it.each(["menubar", "main"] as const)(
+    "preserves %s search through install confirmation, progress, outcomes, and another search",
+    async (route) => {
+      const first: HomebrewCaskDiscoveryItem = {
+        id: "formula:example-tool",
+        token: "example-tool",
+        displayName: "Example Tool",
+        kind: "formula",
+        version: version("1.0")
+      };
+      const second = {
+        ...first,
+        id: "cask:example-app",
+        token: "example-app",
+        displayName: "Example App",
+        kind: "cask" as const
+      };
+      let current = snapshot({ searchText: "example-tool", homebrewDiscoverItems: [first] });
+      vi.mocked(window.baseline.getSnapshot).mockResolvedValue(current);
+      let receive: (next: BaselineSnapshot) => void = () => undefined;
+      vi.mocked(window.baseline.onSnapshotChanged).mockImplementation((callback) => {
+        receive = callback;
+        return () => undefined;
+      });
+      const publish = async (patch: Partial<BaselineSnapshot>) => {
+        current = { ...current, ...patch };
+        await act(async () => receive(current));
+      };
+      // Flush the toolbar's deferred outside-click dismissal after each interaction.
+      const click = async (button: HTMLElement) => {
+        fireEvent.click(button);
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        });
+      };
+      window.location.hash = `/${route}`;
+      render(<App />);
+      if (route === "main") await click(screen.getByRole("button", { name: "Search" }));
+      await waitFor(() =>
+        expect(screen.getByPlaceholderText("Search")).toHaveValue("example-tool")
+      );
+      await click(screen.getByRole("button", { name: "Install" }));
+      await click(screen.getByRole("button", { name: "Cancel" }));
+      expect(window.baseline.installHomebrewItem).not.toHaveBeenCalled();
+      await click(screen.getByRole("button", { name: "Install" }));
+      await click(screen.getByRole("button", { name: "Install Example Tool" }));
+      expect(window.baseline.installHomebrewItem).toHaveBeenCalledExactlyOnceWith(first);
+      await publish({
+        homebrewDiscoverInstallingItemIDs: [first.id],
+        homebrewDiscoverProgressByItemID: { [first.id]: 0.45 }
+      });
+      expect(screen.getByRole("button", { name: "Updating" })).toBeInTheDocument();
+      expect(screen.getByText("Example Tool")).toBeInTheDocument();
+      await click(screen.getByText("Example Tool"));
+      expect(screen.getByPlaceholderText("Search")).toHaveValue("example-tool");
+      await publish({
+        homebrewDiscoverInstallingItemIDs: [],
+        homebrewDiscoverInstalledPendingRefreshItemIDs: [first.id]
+      });
+      expect(screen.getByRole("button", { name: "Updated" })).toBeInTheDocument();
+      fireEvent.change(screen.getByPlaceholderText("Search"), { target: { value: "example-app" } });
+      expect(window.baseline.setSearchText).toHaveBeenCalledWith("example-app");
+      await publish({ searchText: "example-app", homebrewDiscoverItems: [second] });
+      await click(screen.getByRole("button", { name: "Install" }));
+      await click(screen.getByRole("button", { name: "Install Example App" }));
+      expect(window.baseline.installHomebrewItem).toHaveBeenNthCalledWith(2, second);
+      await publish({
+        homebrewDiscoverInstallingItemIDs: [second.id],
+        homebrewDiscoverProgressByItemID: { [second.id]: 0.25 }
+      });
+      expect(screen.getByRole("button", { name: "Updating" })).toBeInTheDocument();
+      await publish({
+        homebrewDiscoverInstallingItemIDs: [],
+        homebrewDiscoverFailedItemIDs: [second.id]
+      });
+      expect(screen.getByRole("button", { name: "Update failed" })).toBeInTheDocument();
+      expect(screen.getByText("Example App")).toBeInTheDocument();
+      if (route === "menubar") {
+        await click(screen.getByRole("button", { name: "Close Search" }));
+        expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
+        await click(screen.getByRole("button", { name: "Search" }));
+        expect(screen.getByRole("button", { name: "Update failed" })).toBeInTheDocument();
+      }
+    }
+  );
+
   it("shows Update Brews only for sections with more than one outdated item", () => {
     const second: HomebrewManagedItem = {
       ...cask,

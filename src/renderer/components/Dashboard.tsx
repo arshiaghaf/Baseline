@@ -189,11 +189,11 @@ export function Dashboard({
     const confirmation = actionConfirmation;
     confirmationOpenRef.current = false;
     setActionConfirmation(undefined);
-    setSearchActive(false);
     if (confirmation.type === "install") {
       void baseline.installHomebrewItem(confirmation.item);
       return;
     }
+    setSearchActive(false);
     void baseline.uninstallHomebrewItem(confirmation.item.id);
   };
   const requestActionConfirmation = (confirmation: ActionConfirmation) => {
@@ -247,7 +247,13 @@ export function Dashboard({
         </header>
         <RefreshFeedback snapshot={snapshot} />
         <OperationFailures snapshot={snapshot} />
-        <section className="content single">
+        <section
+          className="content single"
+          onClick={(event) => {
+            // Search results belong to the open tray search, alongside its toolbar field.
+            if (searchActive) event.stopPropagation();
+          }}
+        >
           <SelectedTabContent
             snapshot={snapshot}
             derived={derived}
