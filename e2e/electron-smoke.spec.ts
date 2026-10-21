@@ -13,6 +13,12 @@ import { defaultPersistedSnapshot } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 import type { E2ECommandControl } from "./commandRunner";
 import { cleanupApplications } from "./applicationCleanup";
+import {
+  attachElectronDiagnostics,
+  recordElectronLaunch,
+  requestElectronQuit,
+  trackElectronLifecycle
+} from "./electronLifecycleDiagnostics";
 
 const profileTestSecret = randomBytes(32).toString("base64url");
 const launchedApps = new Set<Awaited<ReturnType<typeof electron.launch>>>();
@@ -44,6 +50,7 @@ test.afterEach(async () => {
             ).nativeTrayProbe?.command.finish?.()
           )
           .catch(() => undefined);
+        await requestElectronQuit(electronApp);
       });
     } catch (error) {
       failures.push(error);
@@ -57,6 +64,8 @@ test.afterEach(async () => {
   );
   userDataDirectories.clear();
 });
+
+test.afterEach(async () => attachElectronDiagnostics(test.info()));
 
 const expectedBaselineAPI = [
   "acknowledgeProfileStatsReset",
@@ -132,12 +141,17 @@ async function launchBaseline(
   };
 
   let app;
+  recordElectronLaunch(
+    test.info(),
+    options.packaged ? executablePath : "Electron development runtime"
+  );
   if (options.packaged) {
     await access(executablePath);
     app = await electron.launch({ ...common, executablePath });
   } else {
     app = await electron.launch({ ...common, args: [appDirectory] });
   }
+  trackElectronLifecycle(app, test.info(), profileTestSecret);
   launchedApps.add(app);
   return app;
 }
