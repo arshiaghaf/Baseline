@@ -6,7 +6,11 @@ import { randomBytes } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BaselineSnapshot, MenuTab } from "../src/shared/domain";
+import {
+  defaultPersistedSnapshot,
+  type BaselineSnapshot,
+  type MenuTab
+} from "../src/shared/domain";
 import { ipcChannels } from "../src/shared/ipc";
 import { version } from "../src/shared/version";
 import { cleanupApplications } from "./applicationCleanup";
@@ -25,6 +29,10 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
   const executablePath = process.env.BASELINE_E2E_EXECUTABLE;
   if (!executablePath) throw new Error("Use the isolated E2E global setup.");
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-layout-"));
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({ ...defaultPersistedSnapshot(), updateIntroductionDismissed: true })
+  );
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
     application = await electron.launch({
@@ -453,6 +461,10 @@ test("narrow operation notice wraps and compact confirmation keeps keyboard focu
   const executablePath = process.env.BASELINE_E2E_EXECUTABLE;
   if (!executablePath) throw new Error("Use the isolated E2E global setup.");
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-failure-layout-"));
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({ ...defaultPersistedSnapshot(), updateIntroductionDismissed: true })
+  );
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
     application = await electron.launch({

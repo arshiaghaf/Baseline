@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -93,7 +93,9 @@ const expectedBaselineAPI = [
   "updatePreferences"
 ];
 
-async function launchBaseline(options: { packaged?: boolean; userData?: string } = {}) {
+async function launchBaseline(
+  options: { packaged?: boolean; userData?: string; firstUse?: boolean } = {}
+) {
   const appDirectory = process.env.BASELINE_E2E_APP_DIR;
   const executablePath = process.env.BASELINE_E2E_EXECUTABLE;
   if (!appDirectory || !executablePath) {
@@ -107,6 +109,19 @@ async function launchBaseline(options: { packaged?: boolean; userData?: string }
     throw new Error("Electron smoke tests require a disposable temporary user-data directory.");
   }
   userDataDirectories.add(userData);
+  if (!options.firstUse) {
+    // Ordinary smoke fixtures exercise an existing user's dashboard. First-use
+    // onboarding has its own test and must not add windows to those scenarios.
+    const snapshotPath = path.join(userData, "baseline-snapshot.json");
+    const snapshot = await readFile(snapshotPath, "utf8").then(JSON.parse, (error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return defaultPersistedSnapshot();
+    });
+    await writeFile(
+      snapshotPath,
+      JSON.stringify({ ...snapshot, updateIntroductionDismissed: true })
+    );
+  }
   const common = {
     env: {
       ...process.env,
@@ -1341,7 +1356,7 @@ test("explains conditional app permissions without gating checks and remembers d
       ]
     })
   );
-  const application = await launchBaseline({ userData });
+  const application = await launchBaseline({ userData, firstUse: true });
   const page = await application.firstWindow();
   await expect(page.getByRole("region", { name: "Welcome to Baseline" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
@@ -1398,7 +1413,7 @@ test("explains conditional app permissions without gating checks and remembers d
   await expect.poll(() => settingsGuide.isClosed()).toBe(true);
   await expect(page).toHaveURL(/#\/settings$/);
   await closeApp(application);
-  const relaunched = await launchBaseline({ userData });
+  const relaunched = await launchBaseline({ userData, firstUse: true });
   const secondPage = await relaunched.firstWindow();
   await expect
     .poll(() =>
@@ -1408,5 +1423,6 @@ test("explains conditional app permissions without gating checks and remembers d
     )
     .toBe(true);
   await expect(secondPage.getByRole("region", { name: "Welcome to Baseline" })).toHaveCount(0);
+  await expect.poll(() => relaunched.windows().length).toBe(1);
   await closeApp(relaunched);
 });
