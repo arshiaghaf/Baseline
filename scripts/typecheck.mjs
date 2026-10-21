@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import process from "node:process";
 import console from "node:console";
 import { fileURLToPath, URL } from "node:url";
 
-const require = createRequire(import.meta.url);
 // tsrs 0.18 ships macOS arm64 and Linux x64/arm64 binaries only.
 const supported =
   (process.platform === "darwin" && process.arch === "arm64") ||
@@ -15,13 +13,12 @@ const supported =
 
 if (!supported) {
   console.error(
-    `tsrs does not support ${process.platform}/${process.arch}; using TypeScript 6 for type checking.`
+    `Type checking requires tsrs on macOS arm64 or Linux x64/arm64; ${process.platform}/${process.arch} is unsupported.`
   );
+  process.exit(1);
 }
 
-const checker = supported
-  ? fileURLToPath(new URL("../node_modules/tsrs/bin/tsrs", import.meta.url))
-  : require.resolve("typescript/bin/tsc");
+const checker = fileURLToPath(new URL("../node_modules/tsrs/bin/tsrs", import.meta.url));
 const result = spawnSync(process.execPath, [checker, "--noEmit", ...process.argv.slice(2)], {
   stdio: "inherit"
 });

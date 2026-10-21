@@ -12,8 +12,9 @@ Requirements:
 - npm
 
 Packages target only macOS arm64, including when built from another host. Native
-packaging needs the macOS SDK. Source-level checks may still run on other hosts;
-`typecheck` uses TypeScript 6 where the native tsrs checker is unavailable.
+packaging needs the macOS SDK. Type checking uses tsrs on macOS arm64
+and Linux x64/arm64; other hosts fail with an unsupported-platform message.
+TypeScript remains installed for typed ESLint rules.
 
 Install dependencies:
 
