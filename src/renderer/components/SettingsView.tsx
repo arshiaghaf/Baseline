@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { baseline } from "../ipc";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   FolderPlus,
@@ -41,7 +41,27 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
   const [selectedSection, setSelectedSection] = useState<SettingsSectionID>("general");
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [appMetadata, setAppMetadata] = useState<AppMetadata>();
+  const contentRef = useRef<HTMLElement>(null);
+  const topbarRef = useRef<HTMLElement>(null);
   const selectedItem = settingsSidebarItems.find((item) => item.id === selectedSection);
+
+  useLayoutEffect(() => {
+    const content = contentRef.current;
+    const topbar = topbarRef.current;
+    if (!content || !topbar) return;
+    const alignTopbar = () => {
+      const gutter = Math.max(0, content.offsetWidth - content.clientWidth);
+      topbar.style.setProperty("--settings-scrollbar-width", `${gutter}px`);
+    };
+    alignTopbar();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(alignTopbar);
+    observer?.observe(content);
+    window.addEventListener("resize", alignTopbar);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", alignTopbar);
+    };
+  }, []);
 
   useEffect(() => {
     void baseline.getAppMetadata().then(setAppMetadata);
@@ -51,14 +71,16 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
     <main className="app-shell settings-shell">
       <SettingsSidebar selectedSection={selectedSection} onSelectSection={setSelectedSection} />
       <section className="workspace">
-        <header className="topbar">
-          <div className="topbar-title">
-            <h1>{selectedItem?.label ?? "Settings"}</h1>
+        <header className="topbar settings-topbar" ref={topbarRef}>
+          <div className="settings-topbar-inner">
+            <div className="topbar-title">
+              <h1>{selectedItem?.label ?? "Settings"}</h1>
+            </div>
+            {selectedSection === "profile" && <ProfileTopbarIndicators />}
           </div>
-          {selectedSection === "profile" && <ProfileTopbarIndicators />}
         </header>
 
-        <section className="content settings-content">
+        <section className="content settings-content" ref={contentRef}>
           <section className="stack">
             <SettingsPane
               appMetadata={appMetadata}

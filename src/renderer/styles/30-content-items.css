@@ -18,7 +18,7 @@
 }
 
 .app-shell:not(.compact):not(.settings-shell) .content > .stack {
-  max-width: 900px;
+  max-width: 860px;
   margin-inline: auto;
   container: dashboard / inline-size;
 }
@@ -57,7 +57,7 @@
 .panel-title h2 {
   margin: 0;
   color: rgba(60, 60, 67, 0.78);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 400;
   letter-spacing: 0;
 }
@@ -70,7 +70,7 @@
   border: 0;
   background: transparent;
   color: rgba(60, 60, 67, 0.78);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 400;
   letter-spacing: 0;
 }
@@ -230,12 +230,12 @@
 }
 
 .item-card .row-title strong {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
 }
 
 .item-card .row-title span {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .row-title span.app-management-label {
@@ -247,7 +247,7 @@
   margin-top: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .row {
@@ -447,19 +447,26 @@
   color: #0d0d0d;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
 }
 
 .row-title span {
   flex: 0 0 auto;
   color: rgba(60, 60, 67, 0.36);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 300;
   text-transform: capitalize;
 }
 
-.row-main p,
+.row-main p {
+  margin: 2px 0 0;
+  color: rgba(60, 60, 67, 0.5);
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.3;
+}
+
 .muted,
 .empty {
   margin: 2px 0 0;

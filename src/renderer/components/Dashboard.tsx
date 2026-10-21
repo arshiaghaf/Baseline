@@ -289,9 +289,8 @@ export function Dashboard({
             </div>
           </header>
 
-          <RefreshFeedback snapshot={snapshot} />
-
           <section className="content">
+            <RefreshFeedback snapshot={snapshot} />
             <OperationFailures snapshot={snapshot} />
             <SelectedTabContent
               snapshot={snapshot}

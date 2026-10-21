@@ -144,13 +144,19 @@
   border-radius: 8px;
   background: rgba(255, 204, 0, 0.14);
   color: #7a4b00;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .notice.danger {
   border-color: rgba(255, 59, 48, 0.28);
   background: rgba(255, 59, 48, 0.1);
   color: #9f1f18;
+}
+
+.app-shell:not(.compact):not(.settings-shell) .content > .notice {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto 10px;
 }
 
 .visually-hidden {
@@ -251,11 +257,11 @@
   max-height: min(50vh, 28rem);
   overflow-y: auto;
   margin: 8px 14px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .app-shell:not(.compact):not(.settings-shell) .content > .operation-failures {
-  width: min(calc(100% - 28px), 900px);
+  width: min(calc(100% - 28px), 860px);
   margin-inline: auto;
 }
 

@@ -10,6 +10,13 @@
 .settings-content {
   display: block;
   flex: 1 1 auto;
+  padding-inline: clamp(24px, 4vw, 60px);
+  scrollbar-gutter: stable;
+}
+
+.settings-content > .stack {
+  max-width: 860px;
+  margin-inline: auto;
 }
 
 .settings-content .stack {
@@ -20,7 +27,7 @@
 .settings-panel {
   display: grid;
   gap: 10px;
-  width: min(100%, 720px);
+  width: 100%;
 }
 
 .settings-panel .panel-title {

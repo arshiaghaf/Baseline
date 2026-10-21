@@ -97,7 +97,7 @@ export function AppUpdateCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
       </div>
       <div className="item-card-main row-main">
         <div className="row-title">
-          <strong>{app.displayName}</strong>
+          <strong title={app.displayName}>{app.displayName}</strong>
           {label && (
             <span
               className={app.macOSManagedPath ? "app-management-label" : undefined}
@@ -177,7 +177,7 @@ export function RecentAppCard({ app, snapshot }: { app: AppRecord; snapshot: Bas
       </div>
       <div className="item-card-main row-main">
         <div className="row-title">
-          <strong>{app.displayName}</strong>
+          <strong title={app.displayName}>{app.displayName}</strong>
           {label && (
             <span
               className={app.macOSManagedPath ? "app-management-label" : undefined}
@@ -252,7 +252,7 @@ export function IgnoredAppCard({ app, snapshot }: { app: AppRecord; snapshot: Ba
       </div>
       <div className="item-card-main row-main">
         <div className="row-title">
-          <strong>{app.displayName}</strong>
+          <strong title={app.displayName}>{app.displayName}</strong>
           {label && (
             <span
               className={app.macOSManagedPath ? "app-management-label" : undefined}
@@ -318,7 +318,7 @@ export function AppRow({
       <AppIconButton app={app} />
       <div className="row-main">
         <div className="row-title">
-          <strong>{app.displayName}</strong>
+          <strong title={app.displayName}>{app.displayName}</strong>
           {label && (
             <span
               className={app.macOSManagedPath ? "app-management-label" : undefined}
@@ -397,7 +397,7 @@ export function DiscoverRow({
       <HomebrewItemIcon item={item} snapshot={snapshot} />
       <div className="row-main">
         <div className="row-title">
-          <strong>{item.displayName}</strong>
+          <strong title={item.displayName}>{item.displayName}</strong>
           <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
         <p>
@@ -486,7 +486,7 @@ export function HomebrewUpdateCard({
       </div>
       <div className="item-card-main row-main">
         <div className="row-title">
-          <strong>{item.name}</strong>
+          <strong title={item.name}>{item.name}</strong>
           {item.pinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
@@ -551,7 +551,7 @@ export function RecentHomebrewCard({
       </div>
       <div className="item-card-main row-main">
         <div className="row-title">
-          <strong>{item.name}</strong>
+          <strong title={item.name}>{item.name}</strong>
           {item.pinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
@@ -607,7 +607,7 @@ export function IgnoredHomebrewCard({
       </div>
       <div className="item-card-main row-main">
         <div className="row-title">
-          <strong>{item.name}</strong>
+          <strong title={item.name}>{item.name}</strong>
           {item.pinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}
@@ -651,7 +651,7 @@ export function HomebrewRow({
       <HomebrewItemIcon item={item} snapshot={snapshot} />
       <div className="row-main">
         <div className="row-title">
-          <strong>{item.name}</strong>
+          <strong title={item.name}>{item.name}</strong>
           {item.pinned && (
             <span title="Pinned in Homebrew; unpin in Homebrew to update.">Pinned in Homebrew</span>
           )}

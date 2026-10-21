@@ -23,17 +23,23 @@
   -webkit-app-region: drag;
 }
 
-.dashboard-topbar {
+.dashboard-topbar,
+.settings-topbar {
   padding-inline: clamp(24px, 4vw, 60px);
 }
 
-.dashboard-topbar-inner {
+.settings-topbar {
+  padding-right: calc(clamp(24px, 4vw, 60px) + var(--settings-scrollbar-width, 0px));
+}
+
+.dashboard-topbar-inner,
+.settings-topbar-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
   width: 100%;
-  max-width: 900px;
+  max-width: 860px;
   margin-inline: auto;
 }
 
@@ -52,14 +58,14 @@
 .topbar h1,
 .popover-titlebar h1 {
   margin: 0;
-  font-size: 17px;
+  font-size: 18px;
   line-height: 1.15;
   font-weight: 700;
   letter-spacing: 0;
 }
 
 .popover-titlebar h1 {
-  font-size: 15px;
+  font-size: 18px;
 }
 
 .topbar-title {
@@ -400,7 +406,7 @@
   margin: 0;
   padding: 0 2px;
   color: rgba(60, 60, 67, 0.58);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
 }
 
@@ -447,17 +453,17 @@
 }
 
 .search-palette .row-title strong {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
 }
 
 .search-palette .row-title span {
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .search-palette .row-main p {
   margin-top: 0;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .search-palette .row-actions {
