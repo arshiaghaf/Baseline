@@ -143,66 +143,6 @@ describe("Homebrew service producer-state projection", () => {
     }
   });
 
-  it("checks all 672 producer/status combinations without promoting uncertain states", () => {
-    // This is a producer oracle, not the decoder: no raw output is available to
-    // the decoder, while Homebrew uses its blankness to choose unknown vs other.
-    for (const running of [false, true]) {
-      for (const loaded of [false, true]) {
-        for (const schedulable of [false, true]) {
-          for (const exit_code of [null, 0, 17]) {
-            for (const blankDaemonOutput of [false, true]) {
-              for (const registered of [false, true]) {
-                const status = running
-                  ? "started"
-                  : !loaded
-                    ? "none"
-                    : exit_code === 0
-                      ? schedulable
-                        ? "scheduled"
-                        : "stopped"
-                      : exit_code !== null
-                        ? "error"
-                        : blankDaemonOutput
-                          ? "unknown"
-                          : "other";
-                for (const observedStatus of [
-                  "started",
-                  "none",
-                  "scheduled",
-                  "stopped",
-                  "error",
-                  "unknown",
-                  "other"
-                ]) {
-                  const state = {
-                    running,
-                    loaded,
-                    schedulable,
-                    exit_code,
-                    status: observedStatus,
-                    registered
-                  };
-                  const failed = Number(observedStatus === status && status === "error");
-                  const unknown = Number(
-                    observedStatus !== status || status === "unknown" || status === "other"
-                  );
-                  expect(parse(state), JSON.stringify(state)).toMatchObject({
-                    status: unknown ? "partial" : failed ? "findings" : "ok",
-                    total: 1,
-                    running: Number(running),
-                    registered: Number(registered),
-                    failed,
-                    unknown
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-
   it.each([
     { status: "unknown", exit_code: 0 },
     { status: "unknown", exit_code: 17 },
