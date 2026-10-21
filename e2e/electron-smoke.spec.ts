@@ -1320,3 +1320,70 @@ test("keeps failure support collapsed and previews exact bounded report text wit
   expect(errors).toEqual([]);
   await closeApp(application);
 });
+
+test("explains conditional app permissions without gating checks and remembers dismissal", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({
+      ...defaultPersistedSnapshot(),
+      autoRefreshEnabled: false,
+      operationFailures: [
+        {
+          id: "update:permission-fixture",
+          entityID: "permission-fixture",
+          operation: "update",
+          reason: "permission",
+          status: 1,
+          occurredAt: "2026-10-21T12:00:00.000Z"
+        }
+      ]
+    })
+  );
+  const application = await launchBaseline({ userData });
+  const page = await application.firstWindow();
+  const introduction = page.getByRole("region", { name: "Welcome to Baseline" });
+  await expect(introduction).toBeVisible();
+  await expect(introduction).toContainText("If macOS says Baseline was prevented");
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  const help = introduction.locator(".permission-help");
+  await help.locator("summary").click();
+  await expect(help).toContainText("opening Settings does not grant access");
+  for (const width of [800, 1280]) {
+    await application.evaluate(({ BrowserWindow }, width) => {
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/main"))!
+        .setContentSize(width, 900);
+    }, width);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
+    expect(
+      await introduction.evaluate((element) => element.scrollWidth <= element.clientWidth)
+    ).toBe(true);
+    await page.screenshot({ path: test.info().outputPath(`permission-introduction-${width}.png`) });
+  }
+  const failure = page.locator(".operation-failure");
+  await failure.locator(":scope > summary").click();
+  const recovery = failure.locator(".permission-help");
+  await expect(recovery).not.toHaveAttribute("open");
+  await recovery.locator("summary").click();
+  await expect(recovery).toContainText("does not confirm that App Management access was denied");
+  await introduction.getByRole("button", { name: "Got it", exact: true }).click();
+  await expect(introduction).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(async () => (await window.baseline.getSnapshot()).updateIntroductionDismissed)
+    )
+    .toBe(true);
+  await closeApp(application);
+  const relaunched = await launchBaseline({ userData });
+  const secondPage = await relaunched.firstWindow();
+  await expect
+    .poll(() =>
+      secondPage.evaluate(
+        async () => (await window.baseline.getSnapshot()).updateIntroductionDismissed
+      )
+    )
+    .toBe(true);
+  await expect(secondPage.getByRole("region", { name: "Welcome to Baseline" })).toHaveCount(0);
+  await closeApp(relaunched);
+});
