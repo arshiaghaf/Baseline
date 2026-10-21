@@ -271,6 +271,8 @@ function normalizeUpdate(value: SavedRecord): UpdateRecord | undefined {
         ? value.supportLevel
         : "unsupported",
     updateURL: text(value.updateURL),
+    updateURLKind:
+      value.source === "sparkle" && value.updateURLKind === "download" ? "download" : undefined,
     appStoreItemID:
       typeof value.appStoreItemID === "number" &&
       Number.isSafeInteger(value.appStoreItemID) &&

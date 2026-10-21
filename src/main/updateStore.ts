@@ -8,6 +8,7 @@ import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
+import { externalAppUpdateAction } from "../shared/appUpdateAction";
 import type {
   AppRecord,
   BaselineSnapshot,
@@ -1282,7 +1283,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private async routeExternalUpdate(appRecord: AppRecord, update: UpdateRecord): Promise<void> {
-    if (update.updateURL && (await this.openExternal(update.updateURL))) {
+    const action = externalAppUpdateAction(update);
+    if (action.kind !== "app" && (await this.openExternal(action.url))) {
       return;
     }
     await this.openAppBundle(appRecord.bundlePath);

@@ -2211,6 +2211,7 @@ describe("update store helpers", () => {
     expect(fresh.getSnapshot().updates).toHaveLength(1);
     const persisted = await new SnapshotPersistence(userData).load();
     expect(persisted.updates[0]?.sparkleVersionComparison).toBe("build");
+    expect(persisted.updates[0]?.updateURLKind).toBe("download");
     const restored = await makeStore({
       persisted,
       clients: {
@@ -2219,6 +2220,9 @@ describe("update store helpers", () => {
       }
     });
     expect(restored.getSnapshot().updates).toEqual(fresh.getSnapshot().updates);
+    const openExternal = vi.spyOn(restored, "openExternal").mockResolvedValue(true);
+    await restored.performAppUpdate(installedApp.id);
+    expect(openExternal).toHaveBeenCalledWith("https://example.com/update.zip");
     await restored.refresh(false);
     expect(restored.getSnapshot().updates).toEqual(fresh.getSnapshot().updates);
     const advanced = await makeStore({
