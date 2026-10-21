@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     }
   },
   createFromPath: vi.fn(),
+  loadIcon: vi.fn(),
   getFileIcon: vi.fn(),
   openExternal: vi.fn(),
   openPath: vi.fn(),
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   packaged: true,
   exe: "/Applications/Baseline.app/Contents/MacOS/Baseline"
 }));
+vi.mock("../src/main/permissionGuideIcon", () => ({ permissionGuideIcon: mocks.loadIcon }));
 vi.mock("node:fs", () => ({
   realpathSync: (value: string) => value,
   statSync: () => ({ isDirectory: () => true })
@@ -57,7 +59,7 @@ beforeEach(async () => {
   mocks.packaged = true;
   mocks.exe = "/Applications/Baseline.app/Contents/MacOS/Baseline";
   mocks.realpath.mockImplementation(async (value) => value);
-  mocks.createFromPath.mockReset().mockReturnValue(mocks.icon);
+  mocks.loadIcon.mockReset().mockResolvedValue(mocks.icon);
   mocks.openExternal.mockResolvedValue(undefined);
   mocks.openPath.mockResolvedValue("");
   await performPermissionGuideAction("close", {} as WebContents, { show: vi.fn(), close: vi.fn() });
@@ -109,7 +111,7 @@ it("rejects a symlinked executable resolving to a nested bundle and refuses drag
       executable: mocks.exe
     })
   ).resolves.toBeUndefined();
-  mocks.createFromPath.mockReturnValueOnce({
+  mocks.loadIcon.mockResolvedValueOnce({
     isEmpty: () => true,
     resize() {
       return this;

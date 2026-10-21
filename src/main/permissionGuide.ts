@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { app, clipboard, nativeImage, shell, type WebContents, type NativeImage } from "electron";
+import { app, clipboard, shell, type WebContents, type NativeImage } from "electron";
 import { realpathSync, statSync } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import { permissionGuideIcon } from "./permissionGuideIcon";
 import type { PermissionGuideAction, PermissionGuideInfo } from "../shared/permissionGuide";
 
 const settingsURL =
@@ -108,14 +109,16 @@ export async function performPermissionGuideAction(
     clipboard.writeText(appPath);
     return { appPath, message: "App path copied." };
   }
-  const icon = nativeImage
-    .createFromPath(path.join(appPath, "Contents", "Resources", "Image 2.png"))
-    .resize({ width: 64, height: 64 });
+  const icon = await permissionGuideIcon(appPath);
   if (icon.isEmpty())
     return {
       appPath,
       message: "The app icon could not be loaded. Use + in Settings to select Baseline."
     };
   preparedDrag = { appPath, icon };
-  return { appPath, appName: path.basename(appPath, ".app"), iconDataURL: icon.toDataURL() };
+  return {
+    appPath,
+    appName: path.basename(appPath, ".app"),
+    iconDataURL: icon.toDataURL({ scaleFactor: 2 })
+  };
 }

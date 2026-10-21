@@ -4422,15 +4422,16 @@ it("offers guide controls without treating navigation or native drag as a grant"
   expect(window.baseline.permissionGuide).toHaveBeenCalledWith("close");
 });
 
-it("keeps fallback artwork non-draggable when native drag preparation fails", async () => {
+it("keeps the app card static when the official icon cannot be prepared", async () => {
   vi.mocked(window.baseline.permissionGuide).mockResolvedValue({
     appPath: "/Applications/Baseline.app"
   });
   render(<PermissionGuide />);
   await act(async () => {});
-  const image = screen.getByAltText("Baseline app");
-  expect(image).toHaveAttribute("draggable", "false");
-  fireEvent.dragStart(image);
+  expect(screen.queryByAltText("Baseline app")).not.toBeInTheDocument();
+  const card = screen.getByText("Baseline").closest(".permission-app-card")!;
+  expect(card).toHaveAttribute("draggable", "false");
+  fireEvent.dragStart(card);
   expect(window.baseline.permissionGuide).not.toHaveBeenCalledWith("drag");
 });
 

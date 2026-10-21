@@ -250,13 +250,13 @@ function showPermissionGuide(): void {
     return;
   }
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const width = Math.min(320, area.width);
+  const width = Math.min(400, area.width);
   const height = Math.min(252, area.height);
   const window = new BrowserWindow({
     width,
     height,
     x: Math.round(area.x + (area.width - width) / 2),
-    y: Math.round(area.y + (area.height - height) / 2),
+    y: Math.max(area.y, area.y + area.height - height - 24),
     minWidth: Math.min(320, width),
     minHeight: Math.min(240, height),
     title: "App Management help",

@@ -34,6 +34,10 @@
   margin: 10px 0 0;
 }
 
+body:has(.permission-guide) {
+  min-width: 0;
+}
+
 .app-shell.permission-guide {
   display: flex;
   flex-direction: column;
@@ -101,18 +105,18 @@
 .permission-app-icon {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  background: #fafafa;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
 }
 .permission-app-icon img {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
 }
 .permission-app-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: grid;
   gap: 2px;
   font-size: 14px;

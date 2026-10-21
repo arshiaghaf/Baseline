@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, GripVertical, X } from "lucide-react";
 import { baseline } from "../ipc";
-import baselineIcon from "../../../assets/app-icon.icon/Assets/Image 2.png";
 import type { PermissionGuideInfo, PermissionGuideAction } from "../../shared/permissionGuide";
 
 export function PermissionGuide() {
@@ -30,6 +29,7 @@ export function PermissionGuide() {
       (result) => {
         if (!disposed) {
           setInfo(result);
+          if (result.appPath && result.message) setMessage(result.message);
         }
       },
       () => {
@@ -77,7 +77,7 @@ export function PermissionGuide() {
         }}
       >
         <span className="permission-app-icon">
-          <img src={info.iconDataURL ?? baselineIcon} alt="Baseline app" draggable={false} />
+          {info.iconDataURL && <img src={info.iconDataURL} alt="Baseline app" draggable={false} />}
         </span>
         <span className="permission-app-name">
           {info.appName ?? "Baseline"}

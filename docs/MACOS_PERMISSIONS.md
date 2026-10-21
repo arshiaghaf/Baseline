@@ -20,7 +20,7 @@ sources. Additional scan folders can need access to the selected location.
   update route. You can disable **Use mas for App Store updates** to use App Store
   links instead.
 
-A compact floating guide appears once on first use, without changing the dashboard
+A floating guide appears once on first use at the bottom centre of the active display, without changing the dashboard
 or opening Settings automatically. Reopen it from **General > Update Tools > Open
 guided setup**. Its **Open Settings** button requests the App Management pane using
 a best-effort macOS deep link. If a different page opens, use the manual path above.
@@ -33,7 +33,8 @@ Enable Baseline's existing switch first. If it is absent and the pane accepts
 app drops, drag the app icon into its list; otherwise use the + button, if
 available, to select the app. Adding an app is not proof that access is enabled.
 Use Settings’ app picker as a keyboard alternative. Dragging uses the verified currently running packaged app bundle, including a
-separately named preview. The entire app card is the drag source. Development
+separately named preview. The entire app card is the drag source. Its image is derived from the running
+app’s shipped icon, with a Retina representation for the native drag. Development
 builds retain manual guidance. Do not assume granting a preview verifies access for another installed copy;
 retry the intended copy. Keep a regular installation
 in Applications so its path remains stable. The guide requests no Accessibility

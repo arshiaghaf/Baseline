@@ -42,7 +42,6 @@ const config: ForgeConfig = {
     appBundleId: "com.arshiaghaf.baseline",
     appCategoryType: "public.app-category.utilities",
     asar: true,
-    extraResource: ["assets/app-icon.icon/Assets/Image 2.png"],
     osxSign: localAdHocSigningOptions(),
     extendInfo: {
       LSMinimumSystemVersion: "15.0"
