@@ -6,6 +6,7 @@ import { writeFile } from "node:fs/promises";
 import { observeApplicationCleanup } from "./applicationCleanup";
 
 const recordings = new WeakMap<TestInfo, Array<() => Promise<void>>>();
+const lifecycleLogs = new WeakMap<object, LifecycleLog>();
 const maximumEvents = 96;
 const maximumTailCharacters = 16_384;
 
@@ -50,6 +51,35 @@ export class LifecycleLog {
   }
 }
 
+// Playwright's internal close handler swallows app.quit() evaluation errors.
+// Request quit explicitly so unexpected invocation failures remain test failures.
+// The caller must include this in cleanupApplications' existing deadline and
+// still verify process exit after an expected shutdown disconnection.
+export async function requestElectronQuit(
+  application: Pick<ElectronApplication, "evaluate">
+): Promise<void> {
+  const log = lifecycleLogs.get(application);
+  log?.event("quit-request-start");
+  try {
+    await application.evaluate(async ({ app }) => {
+      app.quit();
+    });
+    log?.event("quit-request-complete");
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /Execution context was destroyed|Target page, context or browser has been closed/u.test(
+        error.message
+      )
+    ) {
+      log?.event("quit-request-disconnected", error.message.slice(-2000));
+      return;
+    }
+    log?.event("quit-request-failed", String(error).slice(-2000));
+    throw error;
+  }
+}
+
 export function recordElectronLaunch(testInfo: TestInfo, executable: string): void {
   // This line also survives failures before electron.launch() returns a child.
   console.log(`Electron launch requested: ${executable}`);
@@ -63,6 +93,7 @@ export function trackElectronLifecycle(
 ): void {
   const child = application.process();
   const log = new LifecycleLog(secret);
+  lifecycleLogs.set(application, log);
   log.event("launch-resolved", { pid: child.pid, executable: child.spawnfile });
   const onStdout = (chunk: Buffer | string) => log.output("stdout", chunk.toString());
   const onStderr = (chunk: Buffer | string) => log.output("stderr", chunk.toString());
@@ -124,6 +155,7 @@ export function trackElectronLifecycle(
       windows: application.windows().length
     });
     stopObservingCleanup();
+    lifecycleLogs.delete(application);
     child.stdout?.off("data", onStdout);
     child.stderr?.off("data", onStderr);
     child.off("exit", onExit);

@@ -17,6 +17,7 @@ import { cleanupApplications, runWithCleanup } from "./applicationCleanup";
 import {
   attachElectronDiagnostics,
   recordElectronLaunch,
+  requestElectronQuit,
   trackElectronLifecycle
 } from "./electronLifecycleDiagnostics";
 import { visualSnapshot } from "./visualSnapshot";
@@ -474,7 +475,7 @@ async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") 
     );
   };
   await runWithCleanup(body, async () => {
-    if (application) await cleanupApplications([application]);
+    if (application) await cleanupApplications([application], requestElectronQuit);
     await rm(userData, { recursive: true, force: true });
   });
 }
@@ -605,7 +606,7 @@ test("narrow operation notice wraps and compact confirmation keeps keyboard focu
     await expect(search).toBeFocused();
   };
   await runWithCleanup(body, async () => {
-    if (application) await cleanupApplications([application]);
+    if (application) await cleanupApplications([application], requestElectronQuit);
     await rm(userData, { recursive: true, force: true });
   });
 });

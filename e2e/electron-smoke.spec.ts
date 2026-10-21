@@ -16,6 +16,7 @@ import { cleanupApplications } from "./applicationCleanup";
 import {
   attachElectronDiagnostics,
   recordElectronLaunch,
+  requestElectronQuit,
   trackElectronLifecycle
 } from "./electronLifecycleDiagnostics";
 
@@ -49,6 +50,7 @@ test.afterEach(async () => {
             ).nativeTrayProbe?.command.finish?.()
           )
           .catch(() => undefined);
+        await requestElectronQuit(electronApp);
       });
     } catch (error) {
       failures.push(error);

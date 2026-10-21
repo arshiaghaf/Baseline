@@ -12,6 +12,8 @@ import {
   runWithCleanup
 } from "../e2e/applicationCleanup";
 
+import { requestElectronQuit } from "../e2e/electronLifecycleDiagnostics";
+
 const children = new Set<ChildProcess>();
 
 function killDetachedGroup(child: ChildProcess) {
@@ -174,3 +176,31 @@ test("retains the original body failure alongside cleanup failure, including thr
     )
   ).rejects.toBe(cleanupError);
 });
+
+test.each([
+  { message: "Protocol quit invocation failed", expectedDisconnect: false },
+  { message: "Execution context was destroyed", expectedDisconnect: true }
+])(
+  "explicit quit preserves failure and drains the owned process: $message",
+  async ({ message, expectedDisconnect }) => {
+    const { child } = await startChild();
+    const quitError = new Error(message);
+    const application = {
+      process: () => child,
+      close: () => new Promise<void>(() => undefined),
+      evaluate: async () => {
+        throw quitError;
+      }
+    };
+    const cleanup = cleanupApplications([application], requestElectronQuit, 100);
+    if (expectedDisconnect) {
+      // A disconnection alone must not turn a still-running child into success.
+      await expect(cleanup).rejects.toMatchObject({
+        message: expect.stringContaining("graceful close exceeded")
+      });
+    } else {
+      await expect(cleanup).rejects.toMatchObject({ errors: [quitError] });
+    }
+    expect(child.signalCode).toBe("SIGKILL");
+  }
+);
