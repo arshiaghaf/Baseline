@@ -350,17 +350,14 @@ it("retains real refresh-failure evidence through an operation error until healt
 });
 
 it("keeps tray success withheld when a Discover success clears an earlier scan error with no provider rows", async () => {
-  const emptyProviderMap = true;
   const runBrewCommand = vi.fn<
     NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
   >(async () => available);
   const { store, scan } = await fixture(runBrewCommand);
-  if (emptyProviderMap) scan.mockResolvedValueOnce([]);
+  scan.mockResolvedValueOnce([]);
   await store.refreshToolStatus();
   await store.refresh(false);
-  expect(Object.keys(store.getSnapshot().appProviderChecks ?? {})).toHaveLength(
-    emptyProviderMap ? 0 : 1
-  );
+  expect(Object.keys(store.getSnapshot().appProviderChecks ?? {})).toHaveLength(0);
   expect(trayUpdateTitle(store.getSnapshot())).toBe("✓");
   // Both the earlier scan and the install's automatic follow-up fail. Command
   // success alone cannot repair the missing check in between those scans.
@@ -421,7 +418,7 @@ it("keeps tray success withheld when a Discover success clears an earlier scan e
   }
   expect(store.getSnapshot().refreshCheckFailed).toBe(true);
   expect(trayUpdateTitle(store.getSnapshot())).toBe("");
-  if (emptyProviderMap) scan.mockResolvedValueOnce([]);
+  scan.mockResolvedValueOnce([]);
   await store.refresh(false);
   expect(store.getSnapshot().refreshCheckFailed).toBe(false);
   expect(trayUpdateTitle(store.getSnapshot())).toBe("✓");

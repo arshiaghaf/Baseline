@@ -53,8 +53,7 @@ describe("release note extraction", () => {
   });
 
   it("keeps an older release with only Added unchanged", () => {
-    const heading = "Added";
-    const notes = `### ${heading}\n\n- Existing release entry.\n`;
+    const notes = "### Added\n\n- Existing release entry.\n";
     expect(prepareNotes(`## 0.8.0 — 2026-10-18\n\n${notes}`)).toBe(notes);
   });
 
