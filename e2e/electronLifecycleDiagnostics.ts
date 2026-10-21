@@ -62,7 +62,7 @@ export async function requestElectronQuit(
   log?.event("quit-request-start");
   try {
     await application.evaluate(async ({ app }) => {
-      console.error("E2E quit callback entered", Date.now());
+      process.stderr.write(`E2E quit callback entered ${Date.now()}\n`);
       app.quit();
     });
     log?.event("quit-request-complete");
@@ -136,15 +136,14 @@ export function trackElectronLifecycle(
   void application
     .evaluate(({ app, BrowserWindow }) => {
       const record = (event: string) => {
-        console.error(
-          "E2E lifecycle",
-          JSON.stringify({ event, windows: BrowserWindow.getAllWindows().length })
+        process.stderr.write(
+          `E2E lifecycle ${JSON.stringify({ event, windows: BrowserWindow.getAllWindows().length })}\n`
         );
       };
       // This independent main-loop signal distinguishes a stuck inspector call
       // from a blocked Node/AppKit main thread. It never keeps the app alive.
       const heartbeat = setInterval(() => {
-        console.error("E2E main heartbeat", Date.now());
+        process.stderr.write(`E2E main heartbeat ${Date.now()}\n`);
       }, 500);
       heartbeat.unref();
       app.on("before-quit", () => record("before-quit"));
