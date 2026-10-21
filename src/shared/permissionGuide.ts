@@ -13,6 +13,7 @@ export const permissionGuideActions = [
 export type PermissionGuideAction = (typeof permissionGuideActions)[number];
 export type PermissionGuideInfo = {
   appPath?: string;
+  appName?: string;
   iconDataURL?: string;
   message?: string;
 };

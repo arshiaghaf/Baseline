@@ -4451,3 +4451,27 @@ it("shows native drag failure in the guide without claiming access or requiring 
     "System Settings → Privacy & Security → App Management"
   );
 });
+
+it.each(["icon", "text", "padding"])(
+  "routes the whole app card's %s drag through the native bridge",
+  async (start) => {
+    vi.mocked(window.baseline.permissionGuide).mockResolvedValue({
+      appPath: "/tmp/Baseline Permissions Preview.app",
+      appName: "Baseline Permissions Preview",
+      iconDataURL: "data:image/png;base64,fixture"
+    });
+    render(<PermissionGuide />);
+    await act(async () => {});
+    const image = screen.getByAltText("Baseline app");
+    const card = image.closest(".permission-app-card")!;
+    const target =
+      start === "icon"
+        ? image
+        : start === "text"
+          ? screen.getByText("Baseline Permissions Preview")
+          : card;
+    fireEvent.dragStart(target);
+    expect(card).toHaveAttribute("draggable", "true");
+    expect(window.baseline.permissionGuide).toHaveBeenCalledWith("drag");
+  }
+);

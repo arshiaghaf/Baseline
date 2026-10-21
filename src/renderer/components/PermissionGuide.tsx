@@ -24,6 +24,7 @@ export function PermissionGuide() {
     );
   };
   useEffect(() => {
+    document.title = "App Management";
     let disposed = false;
     void baseline.permissionGuide("info").then(
       (result) => {
@@ -79,7 +80,8 @@ export function PermissionGuide() {
           <img src={info.iconDataURL ?? baselineIcon} alt="Baseline app" draggable={false} />
         </span>
         <span className="permission-app-name">
-          Baseline<span>{canDrag ? "Drag to Settings" : "App update access"}</span>
+          {info.appName ?? "Baseline"}
+          <span>{canDrag ? "Drag to Settings" : "App update access"}</span>
         </span>
         {canDrag ? (
           <GripVertical size={17} aria-label="Drag app" />

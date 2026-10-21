@@ -11,39 +11,34 @@ const settingsURL =
   "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AppBundles";
 const settingsPath = "/System/Applications/System Settings.app";
 
-// The payload is always the currently running installed bundle. Renderer input
-// cannot select a file, executable, URL, or permission to grant.
-function installedBundlePath(executable: string, home: string): string | undefined {
+// Renderer input never chooses the file. Only the running packaged outer app
+// bundle can be dragged, including a separately named preview. macOS decides
+// whether its permission pane accepts the drop; no location implies a grant.
+function runningBundlePath(executable: string): string | undefined {
   const bundle = path.resolve(executable, "../../..");
   if (
-    path.basename(bundle) !== "Baseline.app" ||
+    !path.isAbsolute(executable) ||
+    !path.basename(bundle).toLowerCase().endsWith(".app") ||
     executable !== path.join(bundle, "Contents", "MacOS", "Baseline")
   )
     return;
-  const installed = ["/Applications", path.join(home, "Applications")].some((root) => {
-    const relative = path.relative(root, bundle);
-    return (
-      relative !== "" &&
-      relative !== ".." &&
-      !relative.startsWith(`..${path.sep}`) &&
-      !path.isAbsolute(relative) &&
-      !relative
-        .split(path.sep)
-        .slice(0, -1)
-        .some((part) => part.toLowerCase().endsWith(".app"))
-    );
-  });
-  return installed ? bundle : undefined;
+  if (
+    path
+      .dirname(bundle)
+      .split(path.sep)
+      .some((part) => part.toLowerCase().endsWith(".app"))
+  )
+    return;
+  return bundle;
 }
 
-export async function installedPermissionGuideBundle(options: {
+export async function runningPermissionGuideBundle(options: {
   packaged: boolean;
   executable: string;
-  home: string;
 }): Promise<string | undefined> {
   if (!options.packaged) return;
   try {
-    const bundle = installedBundlePath(await realpath(options.executable), options.home);
+    const bundle = runningBundlePath(await realpath(options.executable));
     return bundle && (await stat(bundle)).isDirectory() ? bundle : undefined;
   } catch {
     return;
@@ -87,7 +82,7 @@ export async function performPermissionGuideAction(
     // identity so async icon/filesystem work cannot outlive that gesture.
     try {
       const current = app.isPackaged
-        ? installedBundlePath(realpathSync(app.getPath("exe")), app.getPath("home"))
+        ? runningBundlePath(realpathSync(app.getPath("exe")))
         : undefined;
       if (current && preparedDrag?.appPath === current && statSync(current).isDirectory()) {
         sender.startDrag({ file: current, icon: preparedDrag.icon });
@@ -97,15 +92,14 @@ export async function performPermissionGuideAction(
       /* Keep manual alternatives usable when the app moved. */
     }
     return {
-      message: "The installed app is not ready to drag. Reopen the guide or select it in Settings."
+      message: "The running app is not ready to drag. Reopen the guide or select it in Settings."
     };
   }
-  const appPath = await installedPermissionGuideBundle({
+  const appPath = await runningPermissionGuideBundle({
     packaged: app.isPackaged,
-    executable: app.getPath("exe"),
-    home: app.getPath("home")
+    executable: app.getPath("exe")
   });
-  if (!appPath) return { message: "Install Baseline in Applications to drag its icon." };
+  if (!appPath) return { message: "Run a packaged copy of Baseline to drag its app bundle." };
   if (action === "finder") {
     shell.showItemInFolder(appPath);
     return { appPath };
@@ -114,14 +108,14 @@ export async function performPermissionGuideAction(
     clipboard.writeText(appPath);
     return { appPath, message: "App path copied." };
   }
-  const icon = await app
-    .getFileIcon(appPath, { size: "large" })
-    .catch(() => nativeImage.createEmpty());
+  const icon = nativeImage
+    .createFromPath(path.join(appPath, "Contents", "Resources", "Image 2.png"))
+    .resize({ width: 64, height: 64 });
   if (icon.isEmpty())
     return {
       appPath,
       message: "The app icon could not be loaded. Use + in Settings to select Baseline."
     };
   preparedDrag = { appPath, icon };
-  return { appPath, iconDataURL: icon.toDataURL() };
+  return { appPath, appName: path.basename(appPath, ".app"), iconDataURL: icon.toDataURL() };
 }

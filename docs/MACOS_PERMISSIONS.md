@@ -32,10 +32,11 @@ its explicit button.
 Enable Baseline's existing switch first. If it is absent and the pane accepts
 app drops, drag the app icon into its list; otherwise use the + button, if
 available, to select the app. Adding an app is not proof that access is enabled.
-Use Settings’ app picker as a keyboard alternative. Dragging is available only
-when the running Baseline bundle is verified
-inside a standard system or user Applications folder; previews, DMG copies and
-development builds retain manual guidance. The guide requests no Accessibility
+Use Settings’ app picker as a keyboard alternative. Dragging uses the verified currently running packaged app bundle, including a
+separately named preview. The entire app card is the drag source. Development
+builds retain manual guidance. Do not assume granting a preview verifies access for another installed copy;
+retry the intended copy. Keep a regular installation
+in Applications so its path remains stable. The guide requests no Accessibility
 or Screen Recording access and does not inspect Settings controls.
 
 Baseline cannot read an App Management grant status. Opening System Settings

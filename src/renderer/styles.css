@@ -83,8 +83,16 @@
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.58);
 }
-.permission-app-card.can-drag {
+.permission-app-card {
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+.permission-app-card.can-drag,
+.permission-app-card.can-drag * {
   cursor: grab;
+}
+.permission-app-card > * {
+  pointer-events: none;
 }
 .permission-app-card > svg {
   margin-left: auto;

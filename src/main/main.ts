@@ -255,8 +255,8 @@ function showPermissionGuide(): void {
   const window = new BrowserWindow({
     width,
     height,
-    x: area.x + area.width - width,
-    y: area.y + area.height - height,
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
     minWidth: Math.min(320, width),
     minHeight: Math.min(240, height),
     title: "App Management help",

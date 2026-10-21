@@ -6,7 +6,14 @@ import { beforeEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   realpath: vi.fn(async (value: string) => value),
   stat: vi.fn(async () => ({ isDirectory: () => true })),
-  icon: { isEmpty: () => false, toDataURL: () => "data:image/png;base64,fixture" },
+  icon: {
+    isEmpty: () => false,
+    toDataURL: () => "data:image/png;base64,fixture",
+    resize() {
+      return this;
+    }
+  },
+  createFromPath: vi.fn(),
   getFileIcon: vi.fn(),
   openExternal: vi.fn(),
   openPath: vi.fn(),
@@ -34,10 +41,13 @@ vi.mock("electron", () => ({
     showItemInFolder: mocks.showItemInFolder
   },
   clipboard: { writeText: mocks.writeText },
-  nativeImage: { createEmpty: () => ({ isEmpty: () => true }) }
+  nativeImage: {
+    createEmpty: () => ({ isEmpty: () => true }),
+    createFromPath: mocks.createFromPath
+  }
 }));
 import {
-  installedPermissionGuideBundle,
+  runningPermissionGuideBundle,
   performPermissionGuideAction
 } from "../src/main/permissionGuide";
 import type { WebContents } from "electron";
@@ -47,7 +57,7 @@ beforeEach(async () => {
   mocks.packaged = true;
   mocks.exe = "/Applications/Baseline.app/Contents/MacOS/Baseline";
   mocks.realpath.mockImplementation(async (value) => value);
-  mocks.getFileIcon.mockReset().mockResolvedValue(mocks.icon);
+  mocks.createFromPath.mockReset().mockReturnValue(mocks.icon);
   mocks.openExternal.mockResolvedValue(undefined);
   mocks.openPath.mockResolvedValue("");
   await performPermissionGuideAction("close", {} as WebContents, { show: vi.fn(), close: vi.fn() });
@@ -61,38 +71,50 @@ it.each([
     "/Users/fixture/Applications/Baseline.app"
   ],
   [false, "/Applications/Baseline.app/Contents/MacOS/Baseline", undefined],
-  [true, "/tmp/out/Baseline.app/Contents/MacOS/Baseline", undefined],
-  [true, "/Volumes/Baseline/Baseline.app/Contents/MacOS/Baseline", undefined],
+  [true, "/tmp/out/Baseline.app/Contents/MacOS/Baseline", "/tmp/out/Baseline.app"],
+  [
+    true,
+    "/Volumes/Baseline/Baseline.app/Contents/MacOS/Baseline",
+    "/Volumes/Baseline/Baseline.app"
+  ],
   [
     true,
     "/Applications/Baseline.app/Contents/Frameworks/Helper.app/Contents/MacOS/Helper",
     undefined
   ],
-  [true, "/Applications/Other.app/Contents/MacOS/Baseline", undefined],
+  [
+    true,
+    "/tmp/Baseline Permissions Preview.app/Contents/MacOS/Baseline",
+    "/tmp/Baseline Permissions Preview.app"
+  ],
   [
     true,
     "/Applications/Container.APP/Contents/Resources/Baseline.app/Contents/MacOS/Baseline",
     undefined
   ]
 ])(
-  "restricts drag identity to the running installed bundle: %s %s",
+  "restricts drag identity to the running packaged bundle: %s %s",
   async (packaged, executable, expected) => {
-    await expect(
-      installedPermissionGuideBundle({ packaged, executable, home: "/Users/fixture" })
-    ).resolves.toBe(expected);
+    await expect(runningPermissionGuideBundle({ packaged, executable })).resolves.toBe(expected);
   }
 );
 
-it("rejects a symlinked installed path resolving to a preview and refuses drag without an icon", async () => {
-  mocks.realpath.mockResolvedValueOnce("/tmp/out/Baseline.app/Contents/MacOS/Baseline");
+it("rejects a symlinked executable resolving to a nested bundle and refuses drag without an icon", async () => {
+  mocks.realpath.mockResolvedValueOnce(
+    "/tmp/out/Container.app/Baseline.app/Contents/MacOS/Baseline"
+  );
   await expect(
-    installedPermissionGuideBundle({
+    runningPermissionGuideBundle({
       packaged: true,
-      executable: mocks.exe,
-      home: "/Users/fixture"
+      executable: mocks.exe
     })
   ).resolves.toBeUndefined();
-  mocks.getFileIcon.mockRejectedValueOnce(new Error("icon unavailable"));
+  mocks.createFromPath.mockReturnValueOnce({
+    isEmpty: () => true,
+    resize() {
+      return this;
+    }
+  });
   const sender = { startDrag: vi.fn() };
   const info = await performPermissionGuideAction("info", sender as unknown as WebContents, {
     show: vi.fn(),
@@ -138,4 +160,22 @@ it("opens only the fixed Settings destination with a manual fallback, without gr
   expect(mocks.openPath).toHaveBeenCalledWith("/System/Applications/System Settings.app");
   expect(result.message).toContain("Open Privacy & Security");
   expect(result).not.toHaveProperty("granted");
+});
+
+it("prepares the separately named running preview without targeting the installed app", async () => {
+  mocks.exe = "/tmp/Baseline Permissions Preview.app/Contents/MacOS/Baseline";
+  const sender = { startDrag: vi.fn() };
+  const windows = { show: vi.fn(), close: vi.fn() };
+  const info = await performPermissionGuideAction(
+    "info",
+    sender as unknown as WebContents,
+    windows
+  );
+  expect(info.appName).toBe("Baseline Permissions Preview");
+  await performPermissionGuideAction("drag", sender as unknown as WebContents, windows);
+  expect(sender.startDrag).toHaveBeenCalledWith({
+    file: "/tmp/Baseline Permissions Preview.app",
+    icon: mocks.icon
+  });
+  expect(mocks.getFileIcon).not.toHaveBeenCalled();
 });
