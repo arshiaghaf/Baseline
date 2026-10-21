@@ -250,8 +250,8 @@ function showPermissionGuide(): void {
     return;
   }
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const width = Math.min(380, area.width);
-  const height = Math.min(380, area.height);
+  const width = Math.min(320, area.width);
+  const height = Math.min(224, area.height);
   const window = new BrowserWindow({
     width,
     height,
@@ -260,6 +260,14 @@ function showPermissionGuide(): void {
     minWidth: Math.min(320, width),
     minHeight: Math.min(240, height),
     title: "App Management help",
+    frame: false,
+    type: process.platform === "darwin" ? "panel" : undefined,
+    vibrancy: "popover",
+    visualEffectState: "active",
+    transparent: true,
+    backgroundColor: "#00000000",
+    resizable: false,
+    skipTaskbar: true,
     show: false,
     alwaysOnTop: true,
     minimizable: false,

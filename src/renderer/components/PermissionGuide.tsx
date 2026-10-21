@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { useEffect, useState } from "react";
+import { ArrowUpRight, GripVertical, X } from "lucide-react";
 import { baseline } from "../ipc";
 import baselineIcon from "../../../assets/app-icon.icon/Assets/Image 2.png";
 import type { PermissionGuideInfo, PermissionGuideAction } from "../../shared/permissionGuide";
@@ -9,14 +10,17 @@ import type { PermissionGuideInfo, PermissionGuideAction } from "../../shared/pe
 export function PermissionGuide() {
   const [info, setInfo] = useState<PermissionGuideInfo>({});
   const [message, setMessage] = useState("");
+  const [settingsOpened, setSettingsOpened] = useState(false);
   const canDrag = Boolean(info.appPath && info.iconDataURL);
   const action = (value: PermissionGuideAction) => {
     void baseline.permissionGuide(value).then(
       (result) => {
         if (value === "info") setInfo(result);
-        if (result.message) setMessage(result.message);
+        if (value === "settings") setSettingsOpened(true);
+        if (result.message)
+          setMessage(result.message.startsWith("Settings requested") ? "" : result.message);
       },
-      () => setMessage("Could not complete this step. Use the manual instructions below.")
+      () => setMessage("Open System Settings → Privacy & Security → App Management.")
     );
   };
   useEffect(() => {
@@ -25,11 +29,10 @@ export function PermissionGuide() {
       (result) => {
         if (!disposed) {
           setInfo(result);
-          setMessage(result.message ?? "");
         }
       },
       () => {
-        if (!disposed) setMessage("Use the manual instructions below.");
+        if (!disposed) setMessage("Open System Settings → Privacy & Security → App Management.");
       }
     );
     const key = (event: KeyboardEvent) => {
@@ -41,48 +44,59 @@ export function PermissionGuide() {
       window.removeEventListener("keydown", key);
     };
   }, []);
+  const instruction =
+    message ||
+    (!settingsOpened
+      ? "Allow Baseline to update protected apps."
+      : canDrag
+        ? "Drag Baseline into App Management, or use +. Then turn it on."
+        : "Turn on Baseline in App Management. Use + to add it if needed.");
   return (
-    <main className="permission-guide" aria-labelledby="permission-guide-title">
-      <h1 id="permission-guide-title">Allow app changes</h1>
-      <p>Let Baseline update and remove protected apps.</p>
-      {
-        <div className="permission-drag-example">
-          <img
-            src={info.iconDataURL ?? baselineIcon}
-            alt="Baseline app — drag to the App Management list in Settings"
-            draggable={canDrag}
-            onDragStart={(event) => {
-              event.preventDefault();
-              if (canDrag) action("drag");
-            }}
-          />
-          <span aria-hidden="true">→</span>
-          <span>
-            App Management
-            <br />
-            <small>{canDrag ? "Drag here in Settings" : "Enable in Settings"}</small>
-          </span>
-        </div>
-      }
-      <p>
-        {canDrag
-          ? "Drag the icon into Settings, or use + to select Baseline. Then turn it on."
-          : "Turn on Baseline in App Management. If absent, use + to select it."}
+    <main className="app-shell permission-guide" aria-labelledby="permission-guide-title">
+      <header className="permission-guide-header">
+        <h1 id="permission-guide-title">App Management</h1>
+        <button
+          type="button"
+          className="permission-guide-close"
+          aria-label="Later"
+          onClick={() => action("close")}
+        >
+          <X size={14} aria-hidden="true" />
+        </button>
+      </header>
+      <p className="permission-guide-instruction" role="status">
+        {instruction}
       </p>
-      <div className="permission-guide-actions">
-        <button type="button" className="primary-button" onClick={() => action("settings")}>
-          Open Settings
-        </button>
-        <button type="button" className="ghost-button" onClick={() => action("close")}>
-          Later
-        </button>
+      <div
+        className={`permission-app-card${canDrag ? " can-drag" : ""}`}
+        draggable={canDrag}
+        onDragStart={(event) => {
+          event.preventDefault();
+          if (canDrag) action("drag");
+        }}
+      >
+        <span className="permission-app-icon">
+          <img src={info.iconDataURL ?? baselineIcon} alt="Baseline app" draggable={false} />
+        </span>
+        <span className="permission-app-name">
+          Baseline<span>{canDrag ? "Drag to Settings" : "App update access"}</span>
+        </span>
+        {canDrag ? (
+          <GripVertical size={17} aria-label="Drag app" />
+        ) : (
+          <ArrowUpRight size={16} aria-hidden="true" />
+        )}
       </div>
-      <p className="permission-guide-note">Privacy &amp; Security → App Management</p>
-      {message && (
-        <p role="status" className="permission-guide-note">
-          {message}
-        </p>
-      )}
+      <button
+        type="button"
+        className="primary-button permission-settings-button"
+        title="System Settings → Privacy & Security → App Management"
+        aria-description="If a different pane opens, choose Privacy & Security, then App Management."
+        onClick={() => action("settings")}
+      >
+        {settingsOpened ? "Open Settings again" : "Open Settings"}
+        <ArrowUpRight size={12} aria-hidden="true" />
+      </button>
     </main>
   );
 }

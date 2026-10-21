@@ -4412,9 +4412,7 @@ it("offers guide controls without treating navigation or native drag as a grant"
     iconDataURL: "data:image/png;base64,fixture"
   });
   render(<PermissionGuide />);
-  const image = await screen.findByAltText(
-    "Baseline app — drag to the App Management list in Settings"
-  );
+  const image = await screen.findByAltText("Baseline app");
   fireEvent.dragStart(image);
   expect(window.baseline.permissionGuide).toHaveBeenCalledWith("drag");
   fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
@@ -4430,8 +4428,26 @@ it("keeps fallback artwork non-draggable when native drag preparation fails", as
   });
   render(<PermissionGuide />);
   await act(async () => {});
-  const image = screen.getByAltText("Baseline app — drag to the App Management list in Settings");
+  const image = screen.getByAltText("Baseline app");
   expect(image).toHaveAttribute("draggable", "false");
   fireEvent.dragStart(image);
   expect(window.baseline.permissionGuide).not.toHaveBeenCalledWith("drag");
+});
+
+it("shows native drag failure in the guide without claiming access or requiring Settings first", async () => {
+  vi.mocked(window.baseline.permissionGuide).mockImplementation(async (action) =>
+    action === "info"
+      ? { appPath: "/Applications/Baseline.app", iconDataURL: "data:image/png;base64,fixture" }
+      : { message: "Select Baseline with + in Settings." }
+  );
+  render(<PermissionGuide />);
+  await act(async () => {});
+  fireEvent.dragStart(screen.getByAltText("Baseline app"));
+  await waitFor(() =>
+    expect(screen.getByRole("status")).toHaveTextContent("Select Baseline with + in Settings.")
+  );
+  expect(screen.getByRole("button", { name: "Open Settings" })).toHaveAttribute(
+    "title",
+    "System Settings → Privacy & Security → App Management"
+  );
 });

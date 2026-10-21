@@ -16,22 +16,6 @@
 @import "./styles/95-dark.css";
 @import "./styles/99-operation-report.css";
 
-.update-introduction {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 18px;
-}
-
-.update-introduction h2,
-.update-introduction p {
-  margin: 0;
-}
-
-.update-introduction > button {
-  justify-self: start;
-}
-
 .permission-help {
   font-size: 12px;
   line-height: 1.5;
@@ -50,44 +34,108 @@
   margin: 10px 0 0;
 }
 
-.permission-guide {
-  height: 100vh;
-  overflow: auto;
-  padding: 18px;
-  box-sizing: border-box;
+.app-shell.permission-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 0.5px solid rgba(60, 60, 67, 0.16);
+  border-radius: 18px;
+  background: var(--sidebar-background);
   font-size: 12px;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
+  line-height: 1.4;
+  overflow: auto;
 }
-.permission-guide h1 {
-  font-size: 20px;
-  margin: 0;
-}
-.permission-guide p {
-  margin: 8px 0;
-}
-.permission-guide-actions,
-.permission-drag-example {
+.permission-guide-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  -webkit-app-region: drag;
 }
-.permission-drag-example {
-  padding: 6px 0;
+.permission-guide h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
 }
-.permission-drag-example img {
-  width: 64px;
-  height: 64px;
+.permission-guide-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: rgba(120, 120, 128, 0.12);
+  -webkit-app-region: no-drag;
+}
+.permission-guide-instruction {
+  margin: 0;
+  color: rgba(60, 60, 67, 0.7);
+  min-height: 34px;
+}
+.permission-app-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 0.5px solid rgba(60, 60, 67, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.58);
+}
+.permission-app-card.can-drag {
   cursor: grab;
 }
-.permission-drag-example > span[aria-hidden] {
-  font-size: 28px;
+.permission-app-card > svg {
+  margin-left: auto;
+  opacity: 0.45;
 }
-
-.permission-guide-note {
-  color: var(--text-secondary);
+.permission-app-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: #fafafa;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.permission-app-icon img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+.permission-app-name {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.permission-app-name > span {
   font-size: 11px;
+  font-weight: 400;
+  opacity: 0.55;
+}
+.permission-settings-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  font-size: 12px;
+  border-radius: 7px;
+}
+@media (prefers-color-scheme: dark) {
+  .app-shell.permission-guide {
+    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(25, 25, 25, 0.75);
+  }
+  .permission-guide-instruction {
+    color: rgba(252, 252, 252, 0.65);
+  }
+  .permission-app-card {
+    border-color: rgba(255, 255, 255, 0.09);
+    background: rgba(255, 255, 255, 0.055);
+  }
 }
 
 .dashboard-topbar {

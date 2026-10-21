@@ -1347,7 +1347,7 @@ test("explains conditional app permissions without gating checks and remembers d
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
   await expect.poll(() => application.windows().length).toBeGreaterThan(1);
   const guide = application.windows().find((window) => window !== page)!;
-  await expect(guide.getByRole("heading", { name: "Allow app changes" })).toBeVisible();
+  await expect(guide.getByRole("heading", { name: "App Management" })).toBeVisible();
   await expect(guide.getByRole("button", { name: "Open Settings" })).toBeInViewport();
   await expect(guide.getByRole("button", { name: "Later" })).toBeInViewport();
   expect(await guide.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

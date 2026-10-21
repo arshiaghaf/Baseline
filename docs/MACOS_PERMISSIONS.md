@@ -24,8 +24,10 @@ A compact floating guide appears once on first use, without changing the dashboa
 or opening Settings automatically. Reopen it from **General > Update Tools > Open
 guided setup**. Its **Open Settings** button requests the App Management pane using
 a best-effort macOS deep link. If a different page opens, use the manual path above.
-Move the guide by its title bar if it covers Settings; its arrow is an example
-inside the guide, not a pointer to a detected system control.
+Move the floating guide by its header if it covers Settings. Its app card is a
+drag source when available; it does not point at a detected system control.
+The guide follows Baseline’s light/dark appearance and opens Settings only from
+its explicit button.
 
 Enable Baseline's existing switch first. If it is absent and the pane accepts
 app drops, drag the app icon into its list; otherwise use the + button, if
