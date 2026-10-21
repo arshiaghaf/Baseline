@@ -948,7 +948,7 @@ describe("ported clients", () => {
 
       try {
         await expect(
-          new SelfUpdateClient().lookup(version(currentVersion), "2026-05-31T12:00:00.000Z")
+          new SelfUpdateClient("arm64").lookup(version(currentVersion), "2026-05-31T12:00:00.000Z")
         ).resolves.toMatchObject({
           available,
           currentVersion: version(currentVersion),
@@ -978,7 +978,7 @@ describe("self-update read cancellation", () => {
           });
         })
     );
-    const task = new SelfUpdateClient().lookup(
+    const task = new SelfUpdateClient("arm64").lookup(
       version("1"),
       "2026-10-18T00:00:00Z",
       controller.signal
@@ -998,5 +998,32 @@ describe("self-update read cancellation", () => {
       await Promise.allSettled([task, observed]);
       fetchMock.mockRestore();
     }
+  });
+});
+
+describe("self-update architecture compatibility", () => {
+  it.each(["x64", "ia32", "unknown"])("never offers an ARM release to %s clients", async (arch) => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    try {
+      await expect(
+        new SelfUpdateClient(arch).lookup(version("0.1.0"), "2026-10-21")
+      ).resolves.toEqual({
+        available: false,
+        currentVersion: version("0.1.0"),
+        checkedAt: "2026-10-21",
+        releaseURL: "https://github.com/arshiaghaf/Baseline#install"
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+    }
+  });
+
+  it("preserves caller cancellation on unsupported architectures", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled"));
+    await expect(
+      new SelfUpdateClient("x64").lookup(version("1"), "2026-10-21", controller.signal)
+    ).rejects.toThrow("cancelled");
   });
 });

@@ -11,7 +11,7 @@ export async function buildAdminAskpass(
   arch: string,
   sourceRoot = __dirname
 ): Promise<void> {
-  if (arch !== "arm64" && arch !== "x64") throw new Error("Unsupported admin helper architecture.");
+  if (arch !== "arm64") throw new Error("Unsupported admin helper architecture.");
   if (!path.isAbsolute(destination)) throw new Error("Admin helper output must be absolute.");
   await mkdir(path.dirname(destination), { recursive: true });
   execFileSync(
@@ -21,7 +21,7 @@ export async function buildAdminAskpass(
       "macosx",
       "clang",
       "-arch",
-      arch === "x64" ? "x86_64" : "arm64",
+      "arm64",
       "-mmacosx-version-min=15.0",
       "-fobjc-arc",
       "-O2",

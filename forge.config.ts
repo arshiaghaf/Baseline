@@ -49,6 +49,11 @@ const config: ForgeConfig = {
     }
   },
   hooks: {
+    prePackage: async (_config, platform, arch) => {
+      if (platform !== "darwin" || arch !== "arm64") {
+        throw new Error("Baseline packages require macOS on Apple Silicon (darwin/arm64).");
+      }
+    },
     packageAfterCopy: packageAdminAskpass,
     postPackage: verifyPackagedMacSignatures
   },

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Highlights
+
+- **Apple Silicon required.** Future Baseline releases require an Apple Silicon Mac (M1 or later) running macOS 15 or later. Intel builds and Intel CI coverage are discontinued. Existing installations and historical release assets are preserved.
+
 ## 0.9.0 — 2026-10-21
 
 ### Highlights

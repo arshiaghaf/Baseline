@@ -25,8 +25,11 @@ scripts/prepare-unsigned-release.sh <version>
 
 Confirm:
 
+- The app executable, Electron Framework, and native admin helper contain only arm64 slices (`lipo -archs`).
+- Release notes state that Apple Silicon and macOS 15 or later are required.
+
 - `dist/Baseline-<version>-unsigned.dmg` exists.
-- `dist/Baseline-<version>-unsigned-release-notes.md` contains only the `Added` and/or `Fixed` subsections from the finalized changelog section.
+- `dist/Baseline-<version>-unsigned-release-notes.md` contains the Apple Silicon requirement followed by the `Highlights`, `Added`, and/or `Fixed` subsections from the finalized changelog section.
 - The DMG opens and `Baseline.app` can be copied to `/Applications`.
 
 After the GitHub Release is created, verify its published assets and notes:

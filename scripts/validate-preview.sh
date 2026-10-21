@@ -7,7 +7,11 @@ APP_NAME="Baseline"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_PATH="/Applications/${APP_NAME}.app"
 VERSION="${1:-0.0.0-preview}"
-ARCH="$(uname -m)"
+ARCH="arm64"
+if [[ "$(uname -m)" != "$ARCH" ]]; then
+  echo "Installed previews require an Apple Silicon Mac."
+  exit 1
+fi
 PACKAGE_APP_PATH="$ROOT_DIR/out/${APP_NAME}-darwin-${ARCH}/${APP_NAME}.app"
 DMG_PATH="$ROOT_DIR/dist/${APP_NAME}-${VERSION}-unsigned.dmg"
 MOUNT_DIR=""

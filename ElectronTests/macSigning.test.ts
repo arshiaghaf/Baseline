@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import type { ResolvedForgeConfig } from "@electron-forge/shared-types";
+import type { ForgeHookFn, ResolvedForgeConfig } from "@electron-forge/shared-types";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -80,6 +80,32 @@ describe("macOS package signing policy", () => {
         outputPaths: []
       })
     ).rejects.toThrow("No packaged macOS app");
+  });
+
+  it.each([
+    ["darwin", "x64"],
+    ["darwin", "universal"],
+    ["linux", "arm64"]
+  ] as const)(
+    "rejects unsupported package target %s/%s before packaging",
+    async (platform, arch) => {
+      const hook = config.hooks!.prePackage!;
+      expect(typeof hook).toBe("function");
+      await expect(
+        (hook as ForgeHookFn<"prePackage">)(config as ResolvedForgeConfig, platform, arch)
+      ).rejects.toThrow("Apple Silicon");
+      expect(execFileSync).not.toHaveBeenCalled();
+    }
+  );
+
+  it("accepts the Apple Silicon package target", async () => {
+    await expect(
+      (config.hooks!.prePackage as ForgeHookFn<"prePackage">)(
+        config as ResolvedForgeConfig,
+        "darwin",
+        "arm64"
+      )
+    ).resolves.toBeUndefined();
   });
 
   it("leaves non-macOS packages alone", async () => {

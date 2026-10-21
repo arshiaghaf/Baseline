@@ -10,6 +10,8 @@
 
 ## Install
 
+Requires Apple Silicon.
+
 ### Homebrew
 
 ```bash
