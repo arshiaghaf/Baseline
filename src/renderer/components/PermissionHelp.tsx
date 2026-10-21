@@ -4,48 +4,6 @@
 import { useState } from "react";
 import { baseline } from "../ipc";
 
-export function UpdateIntroduction() {
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) return null;
-  return (
-    <section className="panel update-introduction" aria-labelledby="update-introduction-title">
-      <h2 id="update-introduction-title">Welcome to Baseline</h2>
-      <p>
-        Check installed apps and public update sources without granting broad access to your Mac.
-        Updates may use Homebrew, open the App Store or a website, or open the installed app.
-      </p>
-      <p>
-        Installing, updating, or removing protected apps may need <strong>App Management</strong>.
-        If macOS says Baseline was prevented from modifying apps, enable Baseline in System Settings
-        → Privacy &amp; Security → App Management, then retry. Some installations separately need
-        your Mac administrator password. You can continue checking updates without granting this
-        access.
-      </p>
-      <button
-        type="button"
-        className="primary-button small-button"
-        onClick={() => {
-          void baseline.permissionGuide("show").catch(() => {});
-        }}
-      >
-        Open App Management guide
-      </button>
-      <PermissionHelp />
-      <button
-        type="button"
-        className="ghost-button small-button"
-        onClick={() => {
-          setDismissed(true);
-          // Dismiss for this window even if saving fails; never block update checks.
-          void baseline.updatePreferences({ updateIntroductionDismissed: true }).catch(() => {});
-        }}
-      >
-        Got it
-      </button>
-    </section>
-  );
-}
-
 export function PermissionHelp({ recovery = false }: { recovery?: boolean }) {
   const [message, setMessage] = useState("");
   return (

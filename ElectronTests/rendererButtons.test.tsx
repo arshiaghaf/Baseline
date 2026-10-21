@@ -4361,11 +4361,8 @@ describe("permission introduction", () => {
     const view = render(<App />);
     expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
     await act(async () => load(snapshot()));
-    expect(screen.getByText("Welcome to Baseline")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Got it" }));
-    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
-      updateIntroductionDismissed: true
-    });
+    await waitFor(() => expect(window.baseline.permissionGuide).toHaveBeenCalledWith("show"));
+    expect(window.baseline.updatePreferences).not.toHaveBeenCalled();
     expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
     expect(window.baseline.openExternal).not.toHaveBeenCalled();
     view.unmount();
@@ -4420,11 +4417,9 @@ it("offers guide controls without treating navigation or native drag as a grant"
   );
   fireEvent.dragStart(image);
   expect(window.baseline.permissionGuide).toHaveBeenCalledWith("drag");
-  fireEvent.click(screen.getByRole("button", { name: "Open App Management" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
   await waitFor(() => expect(window.baseline.permissionGuide).toHaveBeenCalledWith("settings"));
-  expect(screen.getByText(/dragging the app does not confirm access/)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Copy app path" }));
-  expect(window.baseline.permissionGuide).toHaveBeenCalledWith("copy");
+  expect(screen.queryByText(/permission granted/i)).not.toBeInTheDocument();
   fireEvent.keyDown(window, { key: "Escape" });
   expect(window.baseline.permissionGuide).toHaveBeenCalledWith("close");
 });

@@ -127,8 +127,10 @@ it("uses only the verified bundle for native dragging and reports no permission 
 
 it("opens only the fixed Settings destination with a manual fallback, without granting access", async () => {
   const windows = { show: vi.fn(), close: vi.fn() };
+  await performPermissionGuideAction("show", {} as WebContents, windows);
+  expect(mocks.openExternal).not.toHaveBeenCalled();
   mocks.openExternal.mockRejectedValueOnce(new Error("URL rejected"));
-  const result = await performPermissionGuideAction("show", {} as WebContents, windows);
+  const result = await performPermissionGuideAction("settings", {} as WebContents, windows);
   expect(windows.show).toHaveBeenCalledOnce();
   expect(mocks.openExternal).toHaveBeenCalledWith(
     "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AppBundles"

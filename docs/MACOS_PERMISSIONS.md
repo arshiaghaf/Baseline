@@ -20,17 +20,18 @@ sources. Additional scan folders can need access to the selected location.
   update route. You can disable **Use mas for App Store updates** to use App Store
   links instead.
 
-The first-use introduction and **General > Update Tools** offer **Open guided
-setup**. The movable guide requests the App Management Settings pane using a
-best-effort macOS deep link. If a different page opens, use the manual path above.
+A compact floating guide appears once on first use, without changing the dashboard
+or opening Settings automatically. Reopen it from **General > Update Tools > Open
+guided setup**. Its **Open Settings** button requests the App Management pane using
+a best-effort macOS deep link. If a different page opens, use the manual path above.
 Move the guide by its title bar if it covers Settings; its arrow is an example
 inside the guide, not a pointer to a detected system control.
 
 Enable Baseline's existing switch first. If it is absent and the pane accepts
 app drops, drag the app icon into its list; otherwise use the + button, if
 available, to select the app. Adding an app is not proof that access is enabled.
-**Show in Finder** and **Copy app path** provide keyboard alternatives. Drag and
-path controls are available only when the running Baseline bundle is verified
+Use Settings’ app picker as a keyboard alternative. Dragging is available only
+when the running Baseline bundle is verified
 inside a standard system or user Applications folder; previews, DMG copies and
 development builds retain manual guidance. The guide requests no Accessibility
 or Screen Recording access and does not inspect Settings controls.

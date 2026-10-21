@@ -42,64 +42,45 @@ export function PermissionGuide() {
   return (
     <main className="permission-guide" aria-labelledby="permission-guide-title">
       <h1 id="permission-guide-title">Allow app changes</h1>
-      <p>Move this guide by its title bar if it covers Settings.</p>
-      <button type="button" className="primary-button" onClick={() => action("settings")}>
-        Open App Management
-      </button>
-      <p>
-        In System Settings → Privacy &amp; Security → App Management, turn on Baseline if it is
-        listed.
-      </p>
+      <p>Let Baseline update and remove protected apps.</p>
       {info.iconDataURL && (
         <div className="permission-drag-example">
           <img
             src={info.iconDataURL}
             alt="Baseline app — drag to the App Management list in Settings"
-            draggable
+            draggable={Boolean(info.appPath)}
             onDragStart={(event) => {
               event.preventDefault();
-              action("drag");
+              if (info.appPath) action("drag");
             }}
           />
           <span aria-hidden="true">→</span>
           <span>
-            App Management list
+            App Management
             <br />
-            <small>Example destination</small>
+            <small>{info.appPath ? "Drag here in Settings" : "Enable in Settings"}</small>
           </span>
         </div>
       )}
       <p>
-        If Baseline is absent and Settings accepts app drops, drag the icon into its list. Otherwise
-        use the + button, if available, to select your installed Baseline.app. Then enable its
-        switch.
+        {info.appPath
+          ? "Drag the icon into Settings, or use + to select Baseline. Then turn it on."
+          : "Turn on Baseline in App Management. If absent, use + to select it."}
       </p>
       <div className="permission-guide-actions">
-        <button
-          type="button"
-          className="ghost-button"
-          disabled={!info.appPath}
-          onClick={() => action("finder")}
-        >
-          Show in Finder
+        <button type="button" className="primary-button" onClick={() => action("settings")}>
+          Open Settings
         </button>
-        <button
-          type="button"
-          className="ghost-button"
-          disabled={!info.appPath}
-          onClick={() => action("copy")}
-        >
-          Copy app path
+        <button type="button" className="ghost-button" onClick={() => action("close")}>
+          Later
         </button>
       </div>
-      <p role="status">{message}</p>
-      <p>
-        Baseline cannot verify this permission. Opening Settings or dragging the app does not
-        confirm access. Close this guide, then retry your original action in Baseline.
-      </p>
-      <button type="button" className="primary-button" onClick={() => action("close")}>
-        Done — return to Baseline to retry
-      </button>
+      <p className="permission-guide-note">Privacy &amp; Security → App Management</p>
+      {message && (
+        <p role="status" className="permission-guide-note">
+          {message}
+        </p>
+      )}
     </main>
   );
 }

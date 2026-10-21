@@ -34,7 +34,7 @@
 
 .permission-help {
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
@@ -56,7 +56,7 @@
   padding: 18px;
   box-sizing: border-box;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 .permission-guide h1 {
@@ -64,7 +64,7 @@
   margin: 0;
 }
 .permission-guide p {
-  margin: 12px 0;
+  margin: 8px 0;
 }
 .permission-guide-actions,
 .permission-drag-example {
@@ -74,7 +74,7 @@
   flex-wrap: wrap;
 }
 .permission-drag-example {
-  padding: 14px 0;
+  padding: 6px 0;
 }
 .permission-drag-example img {
   width: 64px;
@@ -85,9 +85,9 @@
   font-size: 28px;
 }
 
-.update-introduction {
-  max-width: 860px;
-  margin-inline: auto;
+.permission-guide-note {
+  color: var(--text-secondary);
+  font-size: 11px;
 }
 
 .dashboard-topbar {

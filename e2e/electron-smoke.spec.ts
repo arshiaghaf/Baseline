@@ -1343,40 +1343,16 @@ test("explains conditional app permissions without gating checks and remembers d
   );
   const application = await launchBaseline({ userData });
   const page = await application.firstWindow();
-  const introduction = page.getByRole("region", { name: "Welcome to Baseline" });
-  await expect(introduction).toBeVisible();
-  await expect(introduction).toContainText("If macOS says Baseline was prevented");
+  await expect(page.getByRole("region", { name: "Welcome to Baseline" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
-  const help = introduction.locator(".permission-help");
-  await help.locator("summary").click();
-  await expect(help).toContainText("opening Settings does not grant access");
-  for (const width of [800, 1280]) {
-    await application.evaluate(({ BrowserWindow }, width) => {
-      BrowserWindow.getAllWindows()
-        .find((window) => window.webContents.getURL().endsWith("#/main"))!
-        .setContentSize(width, 900);
-    }, width);
-    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width);
-    expect(
-      await introduction.evaluate((element) => element.scrollWidth <= element.clientWidth)
-    ).toBe(true);
-    await page.screenshot({ path: test.info().outputPath(`permission-introduction-${width}.png`) });
-  }
-  // Fixed Settings navigation is captured, never opened, on the CI desktop.
-  await application.evaluate(({ shell }) => {
-    shell.openExternal = async () => {};
-  });
-  const newGuide = application.waitForEvent("window");
-  await introduction
-    .getByRole("button", { name: "Open App Management guide", exact: true })
-    .click();
-  const guide = await newGuide;
+  await expect.poll(() => application.windows().length).toBeGreaterThan(1);
+  const guide = application.windows().find((window) => window !== page)!;
   await expect(guide.getByRole("heading", { name: "Allow app changes" })).toBeVisible();
-  await expect(guide.getByRole("button", { name: "Show in Finder" })).toBeDisabled();
-  await expect(guide.getByText(/Baseline cannot verify this permission/)).toBeVisible();
+  await expect(guide.getByRole("button", { name: "Open Settings" })).toBeInViewport();
+  await expect(guide.getByRole("button", { name: "Later" })).toBeInViewport();
   expect(await guide.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await guide.screenshot({ path: test.info().outputPath("permission-guide-preview.png") });
-  await guide.getByRole("button", { name: "Done — return to Baseline to retry" }).click();
+  await guide.getByRole("button", { name: "Later" }).click();
   await expect.poll(() => guide.isClosed()).toBe(true);
   const failure = page.locator(".operation-failure");
   await failure.locator(":scope > summary").click();
@@ -1384,8 +1360,6 @@ test("explains conditional app permissions without gating checks and remembers d
   await expect(recovery).not.toHaveAttribute("open");
   await recovery.locator("summary").click();
   await expect(recovery).toContainText("does not confirm that App Management access was denied");
-  await introduction.getByRole("button", { name: "Got it", exact: true }).click();
-  await expect(introduction).toHaveCount(0);
   await expect
     .poll(() =>
       page.evaluate(async () => (await window.baseline.getSnapshot()).updateIntroductionDismissed)

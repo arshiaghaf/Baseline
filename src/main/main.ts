@@ -251,7 +251,7 @@ function showPermissionGuide(): void {
   }
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const width = Math.min(380, area.width);
-  const height = Math.min(560, area.height);
+  const height = Math.min(380, area.height);
   const window = new BrowserWindow({
     width,
     height,
@@ -273,7 +273,10 @@ function showPermissionGuide(): void {
     }
   });
   permissionGuideWindow = window;
+  let displayed = false;
   window.on("closed", () => {
+    if (displayed)
+      void store.updatePreferences({ updateIntroductionDismissed: true }).catch(() => {});
     if (permissionGuideWindow === window) permissionGuideWindow = undefined;
   });
   const clamp = () => {
@@ -296,7 +299,10 @@ function showPermissionGuide(): void {
   });
   void loadRenderer(window, "permission-guide")
     .then(() => {
-      if (!window.isDestroyed()) window.showInactive();
+      if (!window.isDestroyed()) {
+        window.showInactive();
+        displayed = true;
+      }
     })
     .catch(() => {
       if (!window.isDestroyed()) window.close();

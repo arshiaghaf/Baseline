@@ -62,8 +62,11 @@ export async function performPermissionGuideAction(
     windows.close();
     return {};
   }
-  if (action === "show") windows.show();
-  if (action === "show" || action === "settings") {
+  if (action === "show") {
+    windows.show();
+    return {};
+  }
+  if (action === "settings") {
     try {
       // This pane URL is a best-effort macOS convention, not a grant or proof
       // of navigation. The guide always retains the manual Settings path.
@@ -102,11 +105,15 @@ export async function performPermissionGuideAction(
     executable: app.getPath("exe"),
     home: app.getPath("home")
   });
-  if (!appPath)
+  if (!appPath) {
+    const icon = await app
+      .getFileIcon(path.resolve(app.getPath("exe"), "../../.."), { size: "large" })
+      .catch(() => nativeImage.createEmpty());
     return {
-      message:
-        "Drag is available only from an installed copy in Applications. Select your installed Baseline.app in Settings instead."
+      iconDataURL: icon.isEmpty() ? undefined : icon.toDataURL(),
+      message: "Install Baseline in Applications to drag its icon."
     };
+  }
   if (action === "finder") {
     shell.showItemInFolder(appPath);
     return { appPath };
