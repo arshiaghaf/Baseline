@@ -74,6 +74,13 @@ jobs:
       - name: Package Electron app
         run: npm run build
 
+      - name: Verify Apple Silicon package architecture
+        run: |
+          app="out/Baseline-darwin-arm64/Baseline.app"
+          for binary in "$app/Contents/MacOS/Baseline" "$app/Contents/Frameworks/Electron Framework.framework/Electron Framework" "$app/Contents/Resources/admin-askpass"; do
+            [[ "$(lipo -archs "$binary")" == "arm64" ]]
+          done
+
       - name: Electron smoke test
         run: npm run test:electron
 
