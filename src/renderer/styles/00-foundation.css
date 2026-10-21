@@ -58,6 +58,10 @@ button:disabled {
   background: var(--sidebar-background);
 }
 
+.app-shell:not(.compact) {
+  padding: 8px 8px 8px 0;
+}
+
 .app-content-surface {
   width: 100vw;
   height: 100vh;
