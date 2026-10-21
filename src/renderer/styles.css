@@ -140,7 +140,6 @@ body:has(.permission-guide) {
 @media (prefers-color-scheme: dark) {
   .app-shell.permission-guide {
     border-color: rgba(255, 255, 255, 0.15);
-    background: rgba(25, 25, 25, 0.25);
   }
   .permission-guide-instruction {
     color: rgba(252, 252, 252, 0.65);
