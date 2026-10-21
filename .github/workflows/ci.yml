@@ -93,9 +93,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: electron-lifecycle-${{ matrix.os }}-${{ github.run_attempt }}
-          path: |
-            test-results/lifecycle-focused/**/electron-lifecycle-*.json
-            test-results/lifecycle-focused/**/electron-main-thread-*.txt
+          path: test-results/lifecycle-focused/**/electron-lifecycle-*.json
           if-no-files-found: ignore
           retention-days: 7
 

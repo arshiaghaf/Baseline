@@ -4,11 +4,9 @@
 import type { ElectronApplication, Page, TestInfo } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import { observeApplicationCleanup } from "./applicationCleanup";
-import { captureProcessSample } from "./processSample";
 
 const recordings = new WeakMap<TestInfo, Array<() => Promise<void>>>();
 const lifecycleLogs = new WeakMap<object, LifecycleLog>();
-const quitMonitors = new WeakMap<object, { start(): void; stop(): void }>();
 const maximumEvents = 96;
 const maximumTailCharacters = 16_384;
 
@@ -62,7 +60,6 @@ export async function requestElectronQuit(
 ): Promise<void> {
   const log = lifecycleLogs.get(application);
   log?.event("quit-request-start");
-  quitMonitors.get(application)?.start();
   try {
     await application.evaluate(async ({ app }) => {
       console.error("E2E quit callback entered", Date.now());
@@ -81,8 +78,6 @@ export async function requestElectronQuit(
     }
     log?.event("quit-request-failed", String(error).slice(-2000));
     throw error;
-  } finally {
-    quitMonitors.get(application)?.stop();
   }
 }
 
@@ -101,31 +96,6 @@ export function trackElectronLifecycle(
   const log = new LifecycleLog(secret);
   lifecycleLogs.set(application, log);
   log.event("launch-resolved", { pid: child.pid, executable: child.spawnfile });
-  let sampleTimer: ReturnType<typeof setTimeout> | undefined;
-  let sampling: Promise<void> = Promise.resolve();
-  const stopSampleTimer = () => clearTimeout(sampleTimer);
-  quitMonitors.set(application, {
-    start: () => {
-      if (process.platform !== "darwin" || !process.env.CI) return;
-      sampleTimer = setTimeout(() => {
-        if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
-        log.event("native-sample-start");
-        const file = testInfo.outputPath(`electron-main-thread-${child.pid}.txt`);
-        sampling = captureProcessSample(child.pid, file)
-          .then(async () => {
-            log.event("native-sample-complete");
-            await testInfo.attach("Electron main-thread sample", {
-              path: file,
-              contentType: "text/plain"
-            });
-          })
-          .catch((error: unknown) =>
-            log.event("native-sample-unavailable", String(error).slice(-2000))
-          );
-      }, 1500);
-    },
-    stop: stopSampleTimer
-  });
   const onStdout = (chunk: Buffer | string) => log.output("stdout", chunk.toString());
   const onStderr = (chunk: Buffer | string) => log.output("stderr", chunk.toString());
   const onExit = (code: number | null, signal: NodeJS.Signals | null) =>
@@ -186,9 +156,6 @@ export function trackElectronLifecycle(
     );
 
   const flush = async () => {
-    stopSampleTimer();
-    await sampling;
-    quitMonitors.delete(application);
     log.event("diagnostics-finalized", {
       exitCode: child.exitCode,
       signalCode: child.signalCode,
