@@ -24,7 +24,7 @@ const screenshotWidths = new Set([
   660, 755, 756, 760, 1020, 1027, 1028, 1030, 1512, 1728, 2304, 2560
 ]);
 
-test("dashboard cards fit narrow windows and scaled-display viewports", async () => {
+async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") {
   test.setTimeout(120_000);
   const executablePath = process.env.BASELINE_E2E_EXECUTABLE;
   if (!executablePath) throw new Error("Use the isolated E2E global setup.");
@@ -37,6 +37,8 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
   try {
     application = await electron.launch({
       executablePath,
+      // Cocoa argument-domain preference affects this app process only.
+      args: ["-AppleShowScrollBars", scrollbarMode],
       env: {
         ...process.env,
         BASELINE_SKIP_INITIAL_REFRESH: "1",
@@ -215,6 +217,7 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
       }
     }
 
+    const scrollbarRows: unknown[] = [];
     const gutterStyle = await page.addStyleTag({
       content:
         ".content { overflow-y: scroll; scrollbar-gutter: stable; } .content::-webkit-scrollbar { width: 12px; }"
@@ -234,10 +237,16 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
           noticeLeft: notice.left,
           noticeWidth: notice.width,
           stackLeft: stack.left,
-          stackWidth: stack.width
+          stackWidth: stack.width,
+          overflow:
+            (document.querySelector(".content") as HTMLElement).scrollWidth >
+            (document.querySelector(".content") as HTMLElement).clientWidth
         };
       });
-      expect(bounds.gutter).toBeGreaterThan(0);
+      scrollbarRows.push({ width, ...bounds });
+      expect(bounds.overflow).toBe(false);
+      if (scrollbarMode === "Always") expect(bounds.gutter).toBeGreaterThan(0);
+      else expect(bounds.gutter).toBe(0);
       expect(Math.abs(bounds.noticeLeft - bounds.stackLeft)).toBeLessThan(1);
       expect(bounds.noticeWidth).toBeCloseTo(bounds.stackWidth, 0);
     }
@@ -444,6 +453,8 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
             workArea: display.workArea,
             scaleFactor: display.scaleFactor
           },
+          scrollbarMode,
+          scrollbarRows,
           typography,
           rows
         },
@@ -455,7 +466,13 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
     if (application) await cleanupApplications([application]);
     await rm(userData, { recursive: true, force: true });
   }
-});
+}
+
+for (const scrollbarMode of ["WhenScrolling", "Always"] as const) {
+  test(`dashboard cards fit narrow windows and scaled-display viewports (${scrollbarMode})`, async () => {
+    await checkResponsiveLayout(scrollbarMode);
+  });
+}
 
 test("narrow operation notice wraps and compact confirmation keeps keyboard focus", async () => {
   const executablePath = process.env.BASELINE_E2E_EXECUTABLE;
