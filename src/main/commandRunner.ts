@@ -171,7 +171,7 @@ async function executeCommand(
   ) {
     throw new RangeError("Invalid command capture limit or deadline.");
   }
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const supportTail = options.collectOutputTail ? new OperationOutputTail() : undefined;
     const output = new CommandCapture(maxBytes, tail);
     const stdout = new CommandCapture(maxBytes, tail);
@@ -342,9 +342,10 @@ async function executeCommand(
     child.on("exit", () => {
       void clean();
     });
-    child.on("close", async (status, signal) => {
-      await clean();
-      await finish(status, signal);
+    child.on("close", (status, signal) => {
+      clean()
+        .then(() => finish(status, signal))
+        .catch(reject);
     });
     options.signal?.addEventListener("abort", onAbort, { once: true });
     admin?.stop.addEventListener("abort", onAdminStop, { once: true });
