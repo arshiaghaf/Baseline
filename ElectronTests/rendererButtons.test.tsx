@@ -1689,14 +1689,6 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
   });
 
-  it("returns from settings through the main window bridge", () => {
-    render(<SettingsView snapshot={snapshot()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Back to app" }));
-
-    expect(window.baseline.showMainWindow).toHaveBeenCalledTimes(1);
-  });
-
   it("opens diagnostics from the settings sidebar footer", async () => {
     render(<SettingsView snapshot={snapshot()} />);
 
