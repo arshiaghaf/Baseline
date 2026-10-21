@@ -54,11 +54,11 @@ export function SettingsView({ snapshot }: { snapshot: BaselineSnapshot }) {
       topbar.style.setProperty("--settings-scrollbar-width", `${gutter}px`);
     };
     alignTopbar();
-    const observer = new ResizeObserver(alignTopbar);
-    observer.observe(content);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(alignTopbar);
+    observer?.observe(content);
     window.addEventListener("resize", alignTopbar);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       window.removeEventListener("resize", alignTopbar);
     };
   }, []);
