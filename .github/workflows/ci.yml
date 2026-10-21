@@ -81,8 +81,30 @@ jobs:
             [[ "$(lipo -archs "$binary")" == "arm64" ]]
           done
 
+      - name: Focused Electron lifecycle checks
+        if: matrix.os == 'macos-26'
+        run: npm run test:electron -- --grep "keeps hidden-Dock settings reachable|narrow operation notice wraps" --output=test-results/lifecycle-focused
+
       - name: Electron smoke test
-        run: npm run test:electron
+        run: npm run test:electron -- --output=test-results/full
+
+      - name: Retain focused lifecycle diagnostics
+        if: always() && matrix.os == 'macos-26'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-lifecycle-${{ matrix.os }}-${{ github.run_attempt }}
+          path: test-results/lifecycle-focused/**/electron-lifecycle-*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Retain Electron failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-failure-${{ matrix.os }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Verify drag-to-Applications DMG
         run: |

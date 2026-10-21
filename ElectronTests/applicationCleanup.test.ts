@@ -6,7 +6,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { afterEach, expect, test, vi } from "vitest";
-import { cleanupApplications } from "../e2e/applicationCleanup";
+import {
+  cleanupApplications,
+  observeApplicationCleanup,
+  runWithCleanup
+} from "../e2e/applicationCleanup";
 
 const children = new Set<ChildProcess>();
 
@@ -58,17 +62,28 @@ test("reports a hung shutdown after draining its tree and other owned apps witho
   const { child: stalled, descendantPID } = await startChild(true);
   const { child: healthy } = await startChild();
   const { child: unrelated } = await startChild();
+  const stalledApplication = {
+    process: () => stalled,
+    close: () => new Promise<void>(() => undefined)
+  };
+  const phases: string[] = [];
+  const stopObserving = observeApplicationCleanup(stalledApplication, (event) => {
+    phases.push(event.phase);
+    if (event.phase === "cleanup-start") throw new Error("Diagnostic failure");
+  });
   try {
     await expect(
-      cleanupApplications(
-        [
-          { process: () => stalled, close: () => new Promise<void>(() => undefined) },
-          gracefulApplication(healthy)
-        ],
-        undefined,
-        100
-      )
+      cleanupApplications([stalledApplication, gracefulApplication(healthy)], undefined, 100)
     ).rejects.toMatchObject({ message: expect.stringContaining("graceful close exceeded") });
+    expect(phases).toEqual(
+      expect.arrayContaining([
+        "playwright-close-start",
+        "close-timeout",
+        "force-kill-sent",
+        "process-exit-confirmed",
+        "cleanup-finished"
+      ])
+    );
     expect(stalled.signalCode).toBe("SIGKILL");
     expect(healthy.exitCode).toBe(0);
     expect(unrelated.exitCode).toBeNull();
@@ -85,6 +100,7 @@ test("reports a hung shutdown after draining its tree and other owned apps witho
       })
       .toBe(false);
   } finally {
+    stopObserving();
     // Retain cleanup even if a regression kills only the parent.
     killDetachedGroup(stalled);
   }
@@ -124,4 +140,37 @@ test("an exit race retains a close error after all owned applications have been 
   } finally {
     kill.mockRestore();
   }
+});
+
+test("retains the original body failure alongside cleanup failure, including thrown undefined", async () => {
+  const bodyError = new Error("Original assertion failed");
+  const cleanupError = new Error("Shutdown failed");
+  for (const original of [bodyError, undefined]) {
+    await expect(
+      runWithCleanup(
+        async () => {
+          throw original;
+        },
+        async () => {
+          throw cleanupError;
+        }
+      )
+    ).rejects.toMatchObject({ errors: [original, cleanupError] });
+  }
+  await expect(
+    runWithCleanup(
+      async () => {
+        throw bodyError;
+      },
+      async () => {}
+    )
+  ).rejects.toBe(bodyError);
+  await expect(
+    runWithCleanup(
+      async () => 42,
+      async () => {
+        throw cleanupError;
+      }
+    )
+  ).rejects.toBe(cleanupError);
 });

@@ -13,8 +13,15 @@ import {
 } from "../src/shared/domain";
 import { ipcChannels } from "../src/shared/ipc";
 import { version } from "../src/shared/version";
-import { cleanupApplications } from "./applicationCleanup";
+import { cleanupApplications, runWithCleanup } from "./applicationCleanup";
+import {
+  attachElectronDiagnostics,
+  recordElectronLaunch,
+  trackElectronLifecycle
+} from "./electronLifecycleDiagnostics";
 import { visualSnapshot } from "./visualSnapshot";
+
+test.afterEach(async () => attachElectronDiagnostics(test.info()));
 
 const widths = [
   660, 740, 755, 756, 760, 920, 1020, 1027, 1028, 1030, 1280, 1352, 1512, 1536, 1728, 1800, 2048,
@@ -34,7 +41,9 @@ async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") 
     JSON.stringify({ ...defaultPersistedSnapshot(), updateIntroductionDismissed: true })
   );
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
-  try {
+  const profileSecret = randomBytes(32).toString("base64url");
+  const body = async () => {
+    recordElectronLaunch(test.info(), executablePath);
     application = await electron.launch({
       executablePath,
       // Cocoa argument-domain preference affects this app process only.
@@ -43,10 +52,11 @@ async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") 
         ...process.env,
         BASELINE_SKIP_INITIAL_REFRESH: "1",
         BASELINE_USER_DATA_DIR: userData,
-        BASELINE_E2E_PROFILE_SECRET: randomBytes(32).toString("base64url")
+        BASELINE_E2E_PROFILE_SECRET: profileSecret
       }
     });
     console.log(`Layout-owned PID ${application.process().pid}: ${executablePath}`);
+    trackElectronLifecycle(application, test.info(), profileSecret);
     const page = await application.firstWindow();
     await expect(page.locator("h1")).toHaveText("All");
     const errors: string[] = [];
@@ -462,10 +472,11 @@ async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") 
         2
       )
     );
-  } finally {
+  };
+  await runWithCleanup(body, async () => {
     if (application) await cleanupApplications([application]);
     await rm(userData, { recursive: true, force: true });
-  }
+  });
 }
 
 for (const scrollbarMode of ["WhenScrolling", "Always"] as const) {
@@ -483,16 +494,19 @@ test("narrow operation notice wraps and compact confirmation keeps keyboard focu
     JSON.stringify({ ...defaultPersistedSnapshot(), updateIntroductionDismissed: true })
   );
   let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
-  try {
+  const profileSecret = randomBytes(32).toString("base64url");
+  const body = async () => {
+    recordElectronLaunch(test.info(), executablePath);
     application = await electron.launch({
       executablePath,
       env: {
         ...process.env,
         BASELINE_SKIP_INITIAL_REFRESH: "1",
         BASELINE_USER_DATA_DIR: userData,
-        BASELINE_E2E_PROFILE_SECRET: randomBytes(32).toString("base64url")
+        BASELINE_E2E_PROFILE_SECRET: profileSecret
       }
     });
+    trackElectronLifecycle(application, test.info(), profileSecret);
     const page = await application.firstWindow();
     const snapshot = visualSnapshot();
     snapshot.apps[0]!.displayName = `A long app name ${"W".repeat(90)}`;
@@ -589,8 +603,9 @@ test("narrow operation notice wraps and compact confirmation keeps keyboard focu
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(search).toBeFocused();
-  } finally {
+  };
+  await runWithCleanup(body, async () => {
     if (application) await cleanupApplications([application]);
     await rm(userData, { recursive: true, force: true });
-  }
+  });
 });
