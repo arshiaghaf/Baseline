@@ -12,10 +12,12 @@ VERSION="$1"
 APP_NAME="Baseline"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
-STAGING_DIR="$DIST_DIR/dmg-staging"
 DMG_PATH="$DIST_DIR/${APP_NAME}-${VERSION}-unsigned.dmg"
 VOLUME_NAME="${APP_NAME} ${VERSION}"
 ARCH="$(uname -m)"
+if [[ "$ARCH" == "x86_64" ]]; then
+  ARCH="x64"
+fi
 PACKAGE_APP_PATH="$ROOT_DIR/out/${APP_NAME}-darwin-${ARCH}/${APP_NAME}.app"
 
 if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)[.](0|[1-9][0-9]?)[.](0|[1-9][0-9]?)(-preview)?$ ]]; then
@@ -45,24 +47,7 @@ if [[ ! -d "$PACKAGE_APP_PATH" ]]; then
   exit 1
 fi
 
-echo "Preparing DMG staging directory"
-rm -rf "$STAGING_DIR"
-mkdir -p "$STAGING_DIR"
-ditto "$PACKAGE_APP_PATH" "$STAGING_DIR/${APP_NAME}.app"
-ln -s /Applications "$STAGING_DIR/Applications"
-
-mkdir -p "$DIST_DIR"
-rm -f "$DMG_PATH"
-
-echo "Creating $DMG_PATH"
-hdiutil create \
-  -volname "$VOLUME_NAME" \
-  -srcfolder "$STAGING_DIR" \
-  -ov \
-  -format UDZO \
-  "$DMG_PATH"
-
-rm -rf "$STAGING_DIR"
+node scripts/package-dmg.mjs "$PACKAGE_APP_PATH" "$DMG_PATH" "$VOLUME_NAME"
 
 echo "Created unsigned DMG:"
 echo "$DMG_PATH"
