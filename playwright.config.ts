@@ -9,5 +9,7 @@ export default defineConfig({
   testIgnore: "**/renderer-visual.spec.ts",
   timeout: 60_000,
   fullyParallel: false,
+  // Native Electron tests share desktop focus and must not overlap across files.
+  workers: 1,
   reporter: [["list"]]
 });
