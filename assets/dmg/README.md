@@ -17,8 +17,14 @@ swift scripts/render-dmg-background.swift
 The committed 1× and 2× PNGs avoid a Swift/Xcode requirement when making a DMG.
 The DMG builder combines them into a multi-resolution TIFF for Retina Finder.
 The fixed light canvas keeps artwork legible in both macOS appearances; Finder
-controls the native filename labels. Review those labels on both appearances
-before release. User settings that show hidden files can expose DMG metadata.
+controls the native filename labels. Native Finder appearance review is optional
+and does not block releases. User settings that show hidden files can expose DMG
+metadata.
+
+Keep the automated release checks: app build, `hdiutil` integrity verification and
+read-only mount, the `/Applications` symlink target, `.DS_Store` and background
+existence, and `codesign` verification of the mounted app. CI runs these structural
+and integrity checks without requiring native Finder appearance inspection.
 
 To package an already built app without launching or installing it:
 
