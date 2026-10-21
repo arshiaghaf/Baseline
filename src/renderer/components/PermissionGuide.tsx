@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { baseline } from "../ipc";
+import baselineIcon from "../../../assets/app-icon.icon/Assets/Image 2.png";
 import type { PermissionGuideInfo, PermissionGuideAction } from "../../shared/permissionGuide";
 
 export function PermissionGuide() {
@@ -43,10 +44,10 @@ export function PermissionGuide() {
     <main className="permission-guide" aria-labelledby="permission-guide-title">
       <h1 id="permission-guide-title">Allow app changes</h1>
       <p>Let Baseline update and remove protected apps.</p>
-      {info.iconDataURL && (
+      {
         <div className="permission-drag-example">
           <img
-            src={info.iconDataURL}
+            src={info.iconDataURL ?? baselineIcon}
             alt="Baseline app — drag to the App Management list in Settings"
             draggable={Boolean(info.appPath)}
             onDragStart={(event) => {
@@ -61,7 +62,7 @@ export function PermissionGuide() {
             <small>{info.appPath ? "Drag here in Settings" : "Enable in Settings"}</small>
           </span>
         </div>
-      )}
+      }
       <p>
         {info.appPath
           ? "Drag the icon into Settings, or use + to select Baseline. Then turn it on."

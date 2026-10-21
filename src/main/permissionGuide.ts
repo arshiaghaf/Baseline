@@ -105,15 +105,7 @@ export async function performPermissionGuideAction(
     executable: app.getPath("exe"),
     home: app.getPath("home")
   });
-  if (!appPath) {
-    const icon = await app
-      .getFileIcon(path.resolve(app.getPath("exe"), "../../.."), { size: "large" })
-      .catch(() => nativeImage.createEmpty());
-    return {
-      iconDataURL: icon.isEmpty() ? undefined : icon.toDataURL(),
-      message: "Install Baseline in Applications to drag its icon."
-    };
-  }
+  if (!appPath) return { message: "Install Baseline in Applications to drag its icon." };
   if (action === "finder") {
     shell.showItemInFolder(appPath);
     return { appPath };
