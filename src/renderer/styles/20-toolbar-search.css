@@ -28,6 +28,11 @@
   padding-inline: clamp(24px, 4vw, 60px);
 }
 
+.settings-topbar {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
 .dashboard-topbar-inner,
 .settings-topbar-inner {
   display: flex;

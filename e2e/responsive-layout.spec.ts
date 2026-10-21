@@ -279,6 +279,7 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
           const content = document.querySelector<HTMLElement>(".settings-content")!;
           const stack = content.querySelector<HTMLElement>(":scope > .stack")!;
           const heading = document.querySelector<HTMLElement>(".settings-topbar h1")!;
+          const topbar = document.querySelector<HTMLElement>(".settings-topbar")!;
           const panelWidths = [...content.querySelectorAll<HTMLElement>(".settings-panel")].map(
             (panel) => panel.getBoundingClientRect().width
           );
@@ -299,12 +300,15 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
             stackLeft: stack.getBoundingClientRect().left,
             stackWidth: stack.getBoundingClientRect().width,
             headingLeft: heading.getBoundingClientRect().left,
+            contentGutter: content.offsetWidth - content.clientWidth,
+            topbarGutter: topbar.offsetWidth - topbar.clientWidth,
             panelWidths,
             controlsOutside,
             overflow: content.scrollWidth > content.clientWidth
           };
         });
         expect(layout.stackWidth).toBeLessThanOrEqual(860);
+        expect(layout.topbarGutter).toBe(layout.contentGutter);
         expect(Math.abs(layout.stackLeft - layout.headingLeft)).toBeLessThan(1);
         expect(layout.panelWidths.every((panelWidth) => panelWidth <= layout.stackWidth + 1)).toBe(
           true
