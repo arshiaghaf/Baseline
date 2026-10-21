@@ -51,6 +51,7 @@ export const ipcChannels = {
 export type PreferencePatch = Partial<{
   collapsedAppSectionIDs: string[];
   collapsedHomebrewSectionIDs: string[];
+  updateIntroductionDismissed: boolean;
   autoRefreshEnabled: boolean;
   refreshIntervalMinutes: number;
   appearancePreference: AppearancePreference;

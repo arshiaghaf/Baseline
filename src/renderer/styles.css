@@ -15,3 +15,37 @@
 @import "./styles/90-animation-responsive.css";
 @import "./styles/95-dark.css";
 @import "./styles/99-operation-report.css";
+
+.update-introduction {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 18px;
+}
+
+.update-introduction h2,
+.update-introduction p {
+  margin: 0;
+}
+
+.update-introduction > button {
+  justify-self: start;
+}
+
+.permission-help {
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.settings-panel-box > .permission-help {
+  padding: 14px 16px;
+}
+
+.permission-help summary {
+  cursor: pointer;
+}
+
+.permission-help p {
+  margin: 10px 0 0;
+}

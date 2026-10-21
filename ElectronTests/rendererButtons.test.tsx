@@ -4344,3 +4344,65 @@ describe("Homebrew empty copy scope", () => {
     }
   );
 });
+
+describe("permission introduction", () => {
+  it("waits for saved preferences, dismisses without gating checks, and stays dismissed on relaunch", async () => {
+    let load!: (value: BaselineSnapshot) => void;
+    vi.mocked(window.baseline.getSnapshot).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          load = resolve;
+        })
+    );
+    vi.mocked(window.baseline.updatePreferences).mockResolvedValue(undefined);
+    window.location.hash = "/main";
+    const view = render(<App />);
+    expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
+    await act(async () => load(snapshot()));
+    expect(screen.getByText("Welcome to Baseline")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Got it" }));
+    expect(window.baseline.updatePreferences).toHaveBeenCalledWith({
+      updateIntroductionDismissed: true
+    });
+    expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
+    expect(window.baseline.openExternal).not.toHaveBeenCalled();
+    view.unmount();
+    vi.mocked(window.baseline.getSnapshot).mockResolvedValue(
+      snapshot({ updateIntroductionDismissed: true })
+    );
+    render(<App />);
+    await act(async () => {});
+    expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
+  });
+
+  it("keeps first-run copy out of the compact tray and permission guidance inside failure details", async () => {
+    vi.mocked(window.baseline.getSnapshot).mockResolvedValue(snapshot());
+    window.location.hash = "/menubar";
+    const view = render(<App />);
+    await act(async () => {});
+    expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
+    view.unmount();
+    render(
+      <OperationFailures
+        snapshot={snapshot({
+          operationFailures: [
+            {
+              id: "update:example",
+              entityID: app.id,
+              operation: "update",
+              reason: "permission",
+              status: 1,
+              occurredAt: "2026-10-21T12:00:00.000Z"
+            }
+          ]
+        })}
+      />
+    );
+    expect(screen.getByText("Help with permissions").closest("details")).not.toHaveAttribute(
+      "open"
+    );
+    expect(screen.getByText(/does not confirm that App Management/)).toBeInTheDocument();
+    expect(screen.getByText(/opening Settings does not grant access/)).toBeInTheDocument();
+    expect(window.baseline.openExternal).not.toHaveBeenCalled();
+  });
+});

@@ -45,6 +45,7 @@ export function App() {
   const [snapshot, setSnapshot] = useState<BaselineSnapshot>(initialSnapshot);
   const [route, setRoute] = useState<Route>(currentRoute());
   const [searchActive, setSearchActive] = useState(false);
+  const [snapshotLoaded, setSnapshotLoaded] = useState(false);
   const previousSearchTextRef = useRef(initialSnapshot.searchText);
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export function App() {
         return;
       current = next;
       setSnapshot(next);
+      setSnapshotLoaded(true);
     };
     const resync = () => {
       if (resyncing) {
@@ -119,6 +121,7 @@ export function App() {
   return (
     <Dashboard
       snapshot={snapshot}
+      showIntroduction={snapshotLoaded && !snapshot.updateIntroductionDismissed}
       compact={route === "menubar"}
       searchActive={searchActive}
       onSearchActiveChange={setSearchActive}

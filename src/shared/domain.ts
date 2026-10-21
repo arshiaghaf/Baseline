@@ -271,6 +271,7 @@ export type PersistedSnapshot = {
   selectedTab: MenuTab;
   collapsedAppSectionIDs: string[];
   collapsedHomebrewSectionIDs: string[];
+  updateIntroductionDismissed?: boolean;
   autoRefreshEnabled: boolean;
   refreshIntervalMinutes: number;
   appearancePreference: AppearancePreference;

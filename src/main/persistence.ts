@@ -147,6 +147,7 @@ function normalizeSnapshot(input: SavedRecord): PersistedSnapshot {
     additionalDirectories: strings(input.additionalDirectories),
     collapsedAppSectionIDs: strings(input.collapsedAppSectionIDs),
     collapsedHomebrewSectionIDs: strings(input.collapsedHomebrewSectionIDs),
+    updateIntroductionDismissed: boolean(input.updateIntroductionDismissed) ?? false,
     autoRefreshEnabled: boolean(input.autoRefreshEnabled) ?? defaults.autoRefreshEnabled,
     useMasForAppStoreUpdates:
       boolean(input.useMasForAppStoreUpdates) ?? defaults.useMasForAppStoreUpdates,

@@ -23,6 +23,7 @@ import {
 } from "../helpers/focus";
 import { ToolbarSearch, SearchPalette } from "./Search";
 import { sidebarIconStrokeWidth } from "../constants";
+import { UpdateIntroduction } from "./PermissionHelp";
 import { OperationFailures } from "./OperationFailures";
 import { SelectedTabContent } from "./DashboardContent";
 import { RefreshFeedback, RefreshControl, UpdateCheckStatus } from "./RefreshFeedback";
@@ -31,12 +32,14 @@ import { ActionConfirmationContext, ActionConfirmationOverlay } from "./ActionCo
 
 export function Dashboard({
   snapshot,
+  showIntroduction = false,
   compact,
   searchActive: controlledSearchActive,
   onSearchActiveChange,
   onOpenSettings
 }: {
   snapshot: BaselineSnapshot;
+  showIntroduction?: boolean;
   compact: boolean;
   searchActive?: boolean;
   onSearchActiveChange?: (active: boolean) => void;
@@ -290,6 +293,7 @@ export function Dashboard({
           </header>
 
           <section className="content">
+            {showIntroduction && <UpdateIntroduction />}
             <RefreshFeedback snapshot={snapshot} />
             <OperationFailures snapshot={snapshot} />
             <SelectedTabContent

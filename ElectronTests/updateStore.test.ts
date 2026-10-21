@@ -1010,6 +1010,26 @@ describe("update store helpers", () => {
     }
   });
 
+  it("saves introduction dismissal through preferences without granting command authority", async () => {
+    let userData = "";
+    const runBrewCommand = vi.fn(async () => ({ success: true, status: 0, output: "" }));
+    const store = await makeStore({
+      onUserData: (value) => {
+        userData = value;
+      },
+      runBrewCommand
+    });
+    await store.updatePreferences({ updateIntroductionDismissed: true });
+    await expect(new SnapshotPersistence(userData).load()).resolves.toMatchObject({
+      updateIntroductionDismissed: true
+    });
+    expect(runBrewCommand).not.toHaveBeenCalled();
+    await expect(
+      store.updatePreferences({ updateIntroductionDismissed: "granted" } as never)
+    ).rejects.toThrow("Invalid preference patch");
+    expect(store.getSnapshot().updateIntroductionDismissed).toBe(true);
+  });
+
   it("saves pending preferences and prevents a late refresh commit during graceful quit", async () => {
     let finishScan!: (apps: AppRecord[]) => void;
     const scan = new Promise<AppRecord[]>((resolve) => {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { PermissionHelp } from "./PermissionHelp";
 import { baseline } from "../ipc";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -56,6 +57,7 @@ export function OperationFailureRow({
       </summary>
       <div className="operation-failure-content">
         <p>{operationFailureDescription(failure)}</p>
+        {failure.reason === "permission" && <PermissionHelp recovery />}
         <time dateTime={failure.occurredAt}>{new Date(failure.occurredAt).toLocaleString()}</time>
         <pre className="operation-output" tabIndex={0} aria-label="Command output">
           {outputTail || "No command output is available for this attempt."}
