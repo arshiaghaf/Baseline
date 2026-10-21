@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.9.0 — 2026-10-21
+
+### Highlights
+
+- **Get help setting up app updates.** A dismissible `App Management` guide explains when macOS approval is needed and helps you add Baseline in System Settings. ([#341](https://github.com/arshiaghaf/Baseline/pull/341))
+- **Read and navigate more comfortably.** Dashboard cards adapt to available space, with larger text and centered content in the main window and `Settings`. ([#334](https://github.com/arshiaghaf/Baseline/pull/334)), ([#335](https://github.com/arshiaghaf/Baseline/pull/335))
+- **Keep search results visible while installing.** Homebrew searches stay open so you can follow progress and see whether an installation succeeded or failed. ([#343](https://github.com/arshiaghaf/Baseline/pull/343))
+- **Know what an update button will do.** Buttons distinguish downloading an installer, visiting a website, opening a link, and opening the installed app. ([#342](https://github.com/arshiaghaf/Baseline/pull/342))
+- **Install Baseline with clearer guidance.** The disk image has a redesigned drag-to-Applications layout with larger targets and Retina artwork. ([#340](https://github.com/arshiaghaf/Baseline/pull/340))
+
+### Added
+
+- The menu bar context menu offers `Open Baseline` to open or focus the main window, groups related commands, and keeps navigation available during refresh; Settings and README describe the action. ([#333](https://github.com/arshiaghaf/Baseline/pull/333))
+- Dashboard cards use available content width to switch between one, two, and three columns, including Ignored, while compact Search stays in one column. ([#334](https://github.com/arshiaghaf/Baseline/pull/334))
+- Dashboard and Settings content are centered within an 860 CSS px cap, with larger app names, versions, navigation, headings, source labels, and warning text; long truncated names remain available in tooltips. ([#335](https://github.com/arshiaghaf/Baseline/pull/335))
+- Dashboard and Settings workspaces sit in an inset floating panel with rounded corners beside the translucent sidebar. ([#336](https://github.com/arshiaghaf/Baseline/pull/336))
+- Forge and unsigned release disk images share a 660 × 440-point drag-to-Applications layout, 112-point targets, concise instructions, and 1×/2× artwork, with documented artwork regeneration. Existing filenames, volume titles, compression, and ad-hoc app signing are preserved. ([#340](https://github.com/arshiaghaf/Baseline/pull/340))
+- Packaging CI checks disk images through read-only mounts, verifies the Applications link and bundled signatures across the macOS matrix. ([#340](https://github.com/arshiaghaf/Baseline/pull/340))
+- A dismissible first-use `App Management` guide follows the app theme in a movable, content-fitted panel, opens System Settings only on request, and preserves the caller's view when dismissed. ([#341](https://github.com/arshiaghaf/Baseline/pull/341))
+- The guide's entire app card can drag the verified running packaged bundle into System Settings, including separately named previews, with manual navigation and app-picker alternatives. Navigation and dragging never imply permission was granted. ([#341](https://github.com/arshiaghaf/Baseline/pull/341))
+- Settings and public documentation explain conditional App Management approval separately from administrator authorization and App Store sign-in, including optional `mas` limitations and permissions unnecessary for ordinary checks. ([#341](https://github.com/arshiaghaf/Baseline/pull/341))
+
+### Fixed
+
+- Generated release notes preserve Highlights alongside Added and Fixed, including Markdown links and subsection order, while retaining support for older entries. ([#332](https://github.com/arshiaghaf/Baseline/pull/332))
+- Confirmation dialogs retain keyboard focus, support Escape, restore Search focus on cancellation, and keep compact Search open behind the dialog. ([#334](https://github.com/arshiaghaf/Baseline/pull/334))
+- Update-failure notices wrap long unbroken app names instead of overflowing narrow views. ([#334](https://github.com/arshiaghaf/Baseline/pull/334))
+- Refresh and failure notices and Settings headings align with scrollable content even when scrollbars reserve width; compact tray layout and Profile tooltips remain usable. ([#334](https://github.com/arshiaghaf/Baseline/pull/334)), ([#335](https://github.com/arshiaghaf/Baseline/pull/335))
+- Electron is updated from 44.7.2 to 44.9.2 to ship the updated security runtime on the existing major line. ([#337](https://github.com/arshiaghaf/Baseline/pull/337))
+- External update buttons reflect provider-declared download intent, including extensionless and redirect URLs, instead of claiming to open an app-specific updater. Legacy or unknown HTTPS targets use `Open link` until refreshed metadata proves download intent; explicit web actions use `Visit website`, and missing or unsafe routes use `Open app`. HTTPS validation, source precedence, persistence compatibility, and app fallback remain intact. ([#342](https://github.com/arshiaghaf/Baseline/pull/342))
+- Unsigned disk-image creation maps Intel's `x86_64` architecture to Forge's `x64` output directory. ([#340](https://github.com/arshiaghaf/Baseline/pull/340))
+- Homebrew search results remain visible through installation progress, completion, and failure in the main window and menu bar. Clicks inside nonempty menu-bar results keep Search open; empty queries, explicit closure, and uninstall dismissal retain their existing behavior. ([#343](https://github.com/arshiaghaf/Baseline/pull/343))
+
 ## 0.8.0 — 2026-10-18
 
 ### Highlights
