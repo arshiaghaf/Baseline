@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { baseline } from "../ipc";
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AppWindowMac,
   Beer,
@@ -88,8 +88,6 @@ export function Dashboard({
   );
   const derived = compact && searchActive ? searchDerived : sidebarDerived;
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
-  const dashboardContentRef = useRef<HTMLElement>(null);
-  const dashboardTopbarRef = useRef<HTMLElement>(null);
   const compactShellRef = useRef<HTMLElement>(null);
   const appContentRef = useRef<HTMLDivElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
@@ -184,25 +182,6 @@ export function Dashboard({
     }
   }, [compact, searchActive]);
 
-  useLayoutEffect(() => {
-    const content = dashboardContentRef.current;
-    const topbar = dashboardTopbarRef.current;
-    if (!content || !topbar) return;
-    const align = () =>
-      topbar.style.setProperty(
-        "--dashboard-scrollbar-width",
-        `${Math.max(0, content.offsetWidth - content.clientWidth)}px`
-      );
-    align();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(align);
-    observer?.observe(content);
-    window.addEventListener("resize", align);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", align);
-    };
-  }, [compact]);
-
   const confirmAction = () => {
     if (!actionConfirmation) {
       return;
@@ -295,7 +274,7 @@ export function Dashboard({
           onNavigate={() => setSearchActive(false)}
         />
         <section className="workspace">
-          <header className="topbar dashboard-topbar" ref={dashboardTopbarRef}>
+          <header className="topbar dashboard-topbar">
             <div className="dashboard-topbar-inner">
               <div>
                 <h1>{title}</h1>
@@ -310,7 +289,7 @@ export function Dashboard({
             </div>
           </header>
 
-          <section className="content" ref={dashboardContentRef}>
+          <section className="content">
             <RefreshFeedback snapshot={snapshot} />
             <OperationFailures snapshot={snapshot} />
             <SelectedTabContent

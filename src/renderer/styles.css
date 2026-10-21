@@ -150,7 +150,3 @@ body:has(.permission-guide) {
     background: rgba(255, 255, 255, 0.055);
   }
 }
-
-.dashboard-topbar {
-  padding-right: calc(clamp(24px, 4vw, 60px) + var(--dashboard-scrollbar-width, 0px));
-}
