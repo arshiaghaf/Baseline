@@ -64,6 +64,7 @@ export async function requestElectronQuit(
     await application.evaluate(async ({ app }) => {
       process.stderr.write(`E2E quit callback entered ${Date.now()}\n`);
       app.quit();
+      process.stderr.write(`E2E quit call returned ${Date.now()}\n`);
     });
     log?.event("quit-request-complete");
   } catch (error) {
