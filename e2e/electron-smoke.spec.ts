@@ -1388,6 +1388,15 @@ test("explains conditional app permissions without gating checks and remembers d
       page.evaluate(async () => (await window.baseline.getSnapshot()).updateIntroductionDismissed)
     )
     .toBe(true);
+  await page.evaluate(() => window.baseline.showSettings());
+  await expect(page).toHaveURL(/#\/settings$/);
+  await page.getByText("macOS permissions and updates", { exact: true }).click();
+  const reopenedGuide = application.waitForEvent("window");
+  await page.getByRole("button", { name: "Open guided setup", exact: true }).click();
+  const settingsGuide = await reopenedGuide;
+  await settingsGuide.getByRole("button", { name: "Later" }).click();
+  await expect.poll(() => settingsGuide.isClosed()).toBe(true);
+  await expect(page).toHaveURL(/#\/settings$/);
   await closeApp(application);
   const relaunched = await launchBaseline({ userData });
   const secondPage = await relaunched.firstWindow();

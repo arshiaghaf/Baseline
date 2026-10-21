@@ -652,7 +652,6 @@ function wireIpc(): void {
       fit: fitPermissionGuide,
       close: () => {
         permissionGuideWindow?.close();
-        showMainWindow("main");
       }
     })
   );
