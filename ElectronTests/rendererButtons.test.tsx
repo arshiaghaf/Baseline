@@ -2319,6 +2319,10 @@ describe("renderer button parity", () => {
         expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
         await click(screen.getByRole("button", { name: "Search" }));
         expect(screen.getByRole("button", { name: "Update failed" })).toBeInTheDocument();
+        await publish({ searchText: "   ", homebrewDiscoverItems: [] });
+        expect(screen.getByRole("button", { name: "Close Search" })).toBeInTheDocument();
+        await click(screen.getByText("Example"));
+        expect(screen.getByRole("button", { name: "Search" })).toBeInTheDocument();
       }
     }
   );

@@ -251,7 +251,7 @@ export function Dashboard({
           className="content single"
           onClick={(event) => {
             // Search results belong to the open tray search, alongside its toolbar field.
-            if (searchActive) event.stopPropagation();
+            if (searchActive && snapshot.searchText.trim()) event.stopPropagation();
           }}
         >
           <SelectedTabContent
