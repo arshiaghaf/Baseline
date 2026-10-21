@@ -326,10 +326,14 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
               tooltip.evaluate((element) => {
                 const bounds = element.getBoundingClientRect();
                 const header = document.querySelector(".settings-topbar")!.getBoundingClientRect();
+                const tooltip = element as HTMLElement;
+                const originalPointerEvents = tooltip.style.pointerEvents;
+                tooltip.style.pointerEvents = "auto";
                 const painted = document.elementFromPoint(
                   bounds.left + bounds.width / 2,
                   bounds.top + Math.min(bounds.height / 2, 12)
                 );
+                tooltip.style.pointerEvents = originalPointerEvents;
                 return (
                   bounds.top >= header.bottom &&
                   getComputedStyle(element).opacity === "1" &&
