@@ -9,6 +9,7 @@ import type { PermissionGuideInfo, PermissionGuideAction } from "../../shared/pe
 export function PermissionGuide() {
   const [info, setInfo] = useState<PermissionGuideInfo>({});
   const [message, setMessage] = useState("");
+  const canDrag = Boolean(info.appPath && info.iconDataURL);
   const action = (value: PermissionGuideAction) => {
     void baseline.permissionGuide(value).then(
       (result) => {
@@ -49,22 +50,22 @@ export function PermissionGuide() {
           <img
             src={info.iconDataURL ?? baselineIcon}
             alt="Baseline app — drag to the App Management list in Settings"
-            draggable={Boolean(info.appPath)}
+            draggable={canDrag}
             onDragStart={(event) => {
               event.preventDefault();
-              if (info.appPath) action("drag");
+              if (canDrag) action("drag");
             }}
           />
           <span aria-hidden="true">→</span>
           <span>
             App Management
             <br />
-            <small>{info.appPath ? "Drag here in Settings" : "Enable in Settings"}</small>
+            <small>{canDrag ? "Drag here in Settings" : "Enable in Settings"}</small>
           </span>
         </div>
       }
       <p>
-        {info.appPath
+        {canDrag
           ? "Drag the icon into Settings, or use + to select Baseline. Then turn it on."
           : "Turn on Baseline in App Management. If absent, use + to select it."}
       </p>

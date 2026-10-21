@@ -4423,3 +4423,15 @@ it("offers guide controls without treating navigation or native drag as a grant"
   fireEvent.keyDown(window, { key: "Escape" });
   expect(window.baseline.permissionGuide).toHaveBeenCalledWith("close");
 });
+
+it("keeps fallback artwork non-draggable when native drag preparation fails", async () => {
+  vi.mocked(window.baseline.permissionGuide).mockResolvedValue({
+    appPath: "/Applications/Baseline.app"
+  });
+  render(<PermissionGuide />);
+  await act(async () => {});
+  const image = screen.getByAltText("Baseline app — drag to the App Management list in Settings");
+  expect(image).toHaveAttribute("draggable", "false");
+  fireEvent.dragStart(image);
+  expect(window.baseline.permissionGuide).not.toHaveBeenCalledWith("drag");
+});

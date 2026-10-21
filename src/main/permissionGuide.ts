@@ -120,7 +120,7 @@ export async function performPermissionGuideAction(
   if (icon.isEmpty())
     return {
       appPath,
-      message: "The app icon could not be loaded. Use Show in Finder or select the app in Settings."
+      message: "The app icon could not be loaded. Use + in Settings to select Baseline."
     };
   preparedDrag = { appPath, icon };
   return { appPath, iconDataURL: icon.toDataURL() };
