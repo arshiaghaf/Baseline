@@ -250,7 +250,7 @@ function showPermissionGuide(): void {
     return;
   }
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const width = Math.min(400, area.width);
+  const width = Math.min(480, area.width);
   const height = Math.min(252, area.height);
   const window = new BrowserWindow({
     width,
