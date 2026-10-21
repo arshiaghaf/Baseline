@@ -1232,7 +1232,7 @@ test("shows the installed suite pin for every owned app", async () => {
   }
 });
 
-test("keeps failure support collapsed and previews exact bounded report text with reduced motion", async () => {
+test("keeps failure support collapsed and previews exact bounded report text with motion preferences", async () => {
   const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
   const failure = {
     id: "update:fixture-failure",
@@ -1261,7 +1261,7 @@ test("keeps failure support collapsed and previews exact bounded report text wit
       probe.failureReportURLs!.push(url);
     };
   });
-  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   const details = page.locator(".operation-failure");
   await expect(details).toBeVisible();
   await expect(details).not.toHaveAttribute("open");
@@ -1269,6 +1269,12 @@ test("keeps failure support collapsed and previews exact bounded report text wit
   await page.keyboard.press("Enter");
   await expect(details).toHaveAttribute("open");
   await expect(details.getByLabel("Command output")).toContainText("No command output");
+  expect(
+    await details
+      .locator(".operation-failure-content")
+      .evaluate((element) => getComputedStyle(element).animationName)
+  ).toBe("failure-details-in");
+  await page.emulateMedia({ reducedMotion: "reduce" });
   expect(
     await details
       .locator(".operation-failure-content")

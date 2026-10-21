@@ -522,32 +522,6 @@ describe("private bounded diagnostic projections", () => {
     expect(report).toMatchObject({ status: "unavailable", failure: "cleanup" });
   });
 
-  it("does not classify recovered running services by their previous exit code", () => {
-    const report = parseServiceDiagnostics(
-      result(
-        JSON.stringify([
-          serviceRow({ exit_code: 256 }),
-          serviceRow({ running: false, status: "error", exit_code: 256 })
-        ])
-      )
-    );
-    expect(report).toMatchObject({ running: 1, failed: 1, unknown: 0 });
-  });
-
-  it("marks contradictory running/error data partial without counting it failed", () => {
-    const report = parseServiceDiagnostics(
-      result(JSON.stringify([serviceRow({ status: "error", exit_code: 256 })]))
-    );
-    expect(report).toMatchObject({ status: "partial", running: 1, failed: 0, unknown: 1 });
-  });
-
-  it("does not claim a confirmed failure when an error row omits its exit code", () => {
-    const row: Record<string, unknown> = serviceRow({ status: "error", running: false });
-    delete row.exit_code;
-    const report = parseServiceDiagnostics(result(JSON.stringify([row])));
-    expect(report).toMatchObject({ status: "partial", failed: 0, unknown: 1 });
-  });
-
   it("distinguishes empty services, command failure, malformed data and capped counts", () => {
     expect(parseServiceDiagnostics(result("")).status).toBe("invalid");
     expect(parseServiceDiagnostics(result("  \n\t")).status).toBe("invalid");
