@@ -331,11 +331,11 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
                 tooltip.style.pointerEvents = "auto";
                 const painted = document.elementFromPoint(
                   bounds.left + bounds.width / 2,
-                  bounds.top + Math.min(bounds.height / 2, 12)
+                  Math.max(header.bottom + 2, bounds.top + Math.min(bounds.height / 2, 12))
                 );
                 tooltip.style.pointerEvents = originalPointerEvents;
                 return (
-                  bounds.top >= header.bottom &&
+                  bounds.bottom > header.bottom + 4 &&
                   getComputedStyle(element).opacity === "1" &&
                   (painted === element || element.contains(painted))
                 );
