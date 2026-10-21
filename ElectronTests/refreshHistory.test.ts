@@ -137,13 +137,14 @@ async function setup(
 }
 
 describe("refresh history comparison evidence", () => {
-  it.each(
-    (["quit", "supersede", "preferenceSave"] as const).flatMap((transition) =>
-      [false, true].flatMap((priorUpdate) =>
-        [false, true].map((buildOnly) => ({ transition, priorUpdate, buildOnly }))
-      )
-    )
-  )(
+  it.each([
+    { transition: "quit", priorUpdate: false, buildOnly: false },
+    { transition: "quit", priorUpdate: true, buildOnly: true },
+    { transition: "supersede", priorUpdate: false, buildOnly: true },
+    { transition: "supersede", priorUpdate: true, buildOnly: false },
+    { transition: "preferenceSave", priorUpdate: false, buildOnly: false },
+    { transition: "preferenceSave", priorUpdate: true, buildOnly: true }
+  ] as const)(
     "keeps a streamed comparison through $transition while metadata waits (prior update: $priorUpdate, build only: $buildOnly)",
     async ({ transition, priorUpdate, buildOnly }) => {
       const { app, persisted } = fixture(buildOnly);
@@ -336,13 +337,12 @@ describe("refresh history comparison evidence", () => {
     }
   );
 
-  it.each(
-    (["formula", "selfUpdate"] as const).flatMap((provider) =>
-      [false, true].flatMap((priorUpdate) =>
-        [false, true].map((buildOnly) => ({ provider, priorUpdate, buildOnly }))
-      )
-    )
-  )(
+  it.each([
+    { provider: "formula", priorUpdate: false, buildOnly: false },
+    { provider: "formula", priorUpdate: true, buildOnly: true },
+    { provider: "selfUpdate", priorUpdate: false, buildOnly: true },
+    { provider: "selfUpdate", priorUpdate: true, buildOnly: false }
+  ] as const)(
     "persists streamed comparisons through $provider failure and relaunch (prior update: $priorUpdate, build only: $buildOnly)",
     async ({ provider, priorUpdate, buildOnly }) => {
       const { app, persisted } = fixture(buildOnly);

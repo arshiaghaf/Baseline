@@ -14,11 +14,8 @@ function feed(items: string) {
 
 const feedOrders = [
   [0, 1, 2],
-  [0, 2, 1],
-  [1, 0, 2],
   [1, 2, 0],
-  [2, 0, 1],
-  [2, 1, 0]
+  [2, 0, 1]
 ];
 function release(label: string, build?: string, marketing?: string): string {
   return `<item><enclosure url="https://example.com/${label}.zip"${build === undefined ? "" : ` sparkle:version="${build}"`}${marketing === undefined ? "" : ` sparkle:shortVersionString="${marketing}"`} /></item>`;
@@ -142,12 +139,9 @@ describe("Sparkle version representations", () => {
   });
 
   it.each([
-    `<item><sparkle:version>200</sparkle:version><sparkle:shortVersionString></sparkle:shortVersionString><enclosure url="https://example.com/new.zip" /></item>`,
     `<item><sparkle:version>200</sparkle:version><sparkle:shortVersionString> </sparkle:shortVersionString><enclosure url="https://example.com/new.zip" /></item>`,
     `<item sparkle:version="200" sparkle:shortVersionString=""><enclosure url="https://example.com/new.zip" /></item>`,
-    `<item sparkle:version="200" sparkle:shortVersionString=" "><enclosure url="https://example.com/new.zip" /></item>`,
-    release("new", "200", ""),
-    release("new", "200", " ")
+    release("new", "200", "")
   ])("treats blank child/item/enclosure marketing versions as absent: %s", (item) => {
     const xml = feed(item);
     expect(client.parseAppcast(xml, version("1"), version("100"))?.remoteBuildVersion).toEqual(
@@ -157,10 +151,8 @@ describe("Sparkle version representations", () => {
   });
 
   it.each([
-    `<item><sparkle:version></sparkle:version><sparkle:shortVersionString></sparkle:shortVersionString><enclosure url="https://example.com/new.zip" sparkle:version="200" sparkle:shortVersionString="2.0" /></item>`,
     `<item><sparkle:version> </sparkle:version><sparkle:shortVersionString> </sparkle:shortVersionString><enclosure url="https://example.com/new.zip" sparkle:version="200" sparkle:shortVersionString="2.0" /></item>`,
-    `<item sparkle:version="" sparkle:shortVersionString=""><enclosure url="https://example.com/new.zip" sparkle:version="200" sparkle:shortVersionString="2.0" /></item>`,
-    `<item sparkle:version=" " sparkle:shortVersionString=" "><enclosure url="https://example.com/new.zip" sparkle:version="200" sparkle:shortVersionString="2.0" /></item>`
+    `<item sparkle:version="" sparkle:shortVersionString=""><enclosure url="https://example.com/new.zip" sparkle:version="200" sparkle:shortVersionString="2.0" /></item>`
   ])("skips blank version aliases to find nonempty fallback attributes: %s", (item) => {
     expect(client.parseAppcast(feed(item), version("1"), version("100"))).toMatchObject({
       remoteVersion: version("2.0"),

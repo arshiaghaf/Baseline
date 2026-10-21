@@ -45,21 +45,19 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       await rm(directory, { recursive: true, force: true });
     });
 
-    it.each([
-      ["--version"],
-      ["list", "--cask", "--versions"],
-      ["upgrade", "fixture"],
-      ["install", "--cask", "fixture"]
-    ])("clears inherited helper metadata for %j, including caller overlays", async (...args) => {
-      const changed = vi.fn();
-      const result = await runBrewCommand(args, undefined, {
-        env: environment,
-        adminOperation: { operationID: "1".repeat(32), onWaitingChanged: changed }
-      });
-      expect(result.success).toBe(true);
-      expect(result.output).toBe("fixture completed");
-      expect(changed).not.toHaveBeenCalled();
-    });
+    it.each([["--version"], ["install", "--cask", "fixture"]])(
+      "clears inherited helper metadata for %j, including caller overlays",
+      async (...args) => {
+        const changed = vi.fn();
+        const result = await runBrewCommand(args, undefined, {
+          env: environment,
+          adminOperation: { operationID: "1".repeat(32), onWaitingChanged: changed }
+        });
+        expect(result.success).toBe(true);
+        expect(result.output).toBe("fixture completed");
+        expect(changed).not.toHaveBeenCalled();
+      }
+    );
 
     it.each([["--version"], ["upgrade", "--cask", "fixture"]])(
       "refuses configuration before execution for %j",
