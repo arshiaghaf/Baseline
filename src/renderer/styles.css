@@ -47,7 +47,7 @@ body:has(.permission-guide) {
   padding: 16px;
   border: 0.5px solid rgba(60, 60, 67, 0.16);
   border-radius: 18px;
-  background: var(--sidebar-background);
+  background: rgba(255, 255, 255, 0.5);
   font-size: 14px;
   line-height: 1.4;
   overflow: auto;
