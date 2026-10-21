@@ -47,7 +47,7 @@ body:has(.permission-guide) {
   padding: 16px;
   border: 0.5px solid rgba(60, 60, 67, 0.16);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--sidebar-background);
   font-size: 14px;
   line-height: 1.4;
   overflow: auto;
@@ -140,7 +140,7 @@ body:has(.permission-guide) {
 @media (prefers-color-scheme: dark) {
   .app-shell.permission-guide {
     border-color: rgba(255, 255, 255, 0.15);
-    background: rgba(25, 25, 25, 0.75);
+    background: rgba(25, 25, 25, 0.25);
   }
   .permission-guide-instruction {
     color: rgba(252, 252, 252, 0.65);
