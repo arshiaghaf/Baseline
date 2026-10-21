@@ -1,0 +1,8 @@
+{
+  "background": "assets/dmg/background.png",
+  "icon": "assets/app-icon.icns",
+  "iconSize": 112,
+  "app": { "x": 184, "y": 260 },
+  "applications": { "x": 476, "y": 260 },
+  "window": { "size": { "width": 660, "height": 440 } }
+}

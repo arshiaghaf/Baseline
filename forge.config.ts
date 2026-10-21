@@ -7,6 +7,7 @@ import { MakerZIP } from "@electron-forge/maker-zip";
 import { VitePlugin } from "@electron-forge/plugin-vite";
 import { execFileSync } from "node:child_process";
 import packageJSON from "./package.json";
+import dmgLayout from "./assets/dmg/layout.json";
 import { buildNumberForAppVersion, validBuildNumber } from "./src/shared/buildNumber";
 import { localAdHocSigningOptions, verifyPackagedMacSignatures } from "./macSigning.config";
 import { packageAdminAskpass } from "./adminAskpass.config";
@@ -57,7 +58,15 @@ const config: ForgeConfig = {
     new MakerDMG(
       {
         name: "Baseline",
-        format: "ULFO"
+        format: "ULFO",
+        background: dmgLayout.background,
+        icon: dmgLayout.icon,
+        iconSize: dmgLayout.iconSize,
+        additionalDMGOptions: { window: dmgLayout.window },
+        contents: (options) => [
+          { ...dmgLayout.app, type: "file", path: options.appPath, name: "Baseline.app" },
+          { ...dmgLayout.applications, type: "link", path: "/Applications", name: "Applications" }
+        ]
       },
       ["darwin"]
     )
