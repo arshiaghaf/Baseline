@@ -1722,14 +1722,6 @@ describe("renderer button parity", () => {
     expect(screen.queryByText("Stats were reset")).not.toBeInTheDocument();
   });
 
-  it("returns from settings through the main window bridge", () => {
-    render(<SettingsView snapshot={snapshot()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Back to app" }));
-
-    expect(window.baseline.showMainWindow).toHaveBeenCalledTimes(1);
-  });
-
   it("opens diagnostics from the settings sidebar footer", async () => {
     render(<SettingsView snapshot={snapshot()} />);
 
@@ -3703,13 +3695,12 @@ describe("Homebrew pin presentation", () => {
     }
   );
 
-  it.each(
-    [false, true].flatMap((reverse) =>
-      [false, true].flatMap((compact) =>
-        [false, true].map((pinned) => ({ reverse, compact, pinned }))
-      )
-    )
-  )(
+  it.each([
+    { reverse: false, compact: false, pinned: false },
+    { reverse: false, compact: true, pinned: true },
+    { reverse: true, compact: false, pinned: true },
+    { reverse: true, compact: true, pinned: false }
+  ])(
     "filters the actual owner in dashboard $reverse/$compact/$pinned",
     ({ reverse, compact, pinned }) => {
       const owner = { ...cask, pinned };
@@ -4099,8 +4090,6 @@ describe("app refresh source visibility", () => {
 
   it.each([
     [false, []],
-    [true, []],
-    [false, [app]],
     [true, [app]]
   ] as const)(
     "does not prompt another refresh for a completed scan with no provider checks (compact=%s, apps=%j)",

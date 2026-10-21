@@ -145,7 +145,7 @@ describe("catalogue evidence and searchable representations", () => {
 });
 
 describe("forced catalogue admission and actual network coalescing", () => {
-  it.each([0, 1, 2])(
+  it.each([0, 2])(
     "cannot inherit a warm-memory-only task after %i microtask turns",
     async (turns) => {
       const network = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response("cached"));

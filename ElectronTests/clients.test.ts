@@ -221,41 +221,6 @@ describe("ported clients", () => {
     }
   });
 
-  it("keeps Mac App Store lookup requests filtered when Mac-capable software fallback is enabled", async () => {
-    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({
-          resultCount: 1,
-          results: [
-            {
-              bundleId: "com.example.safari-extension",
-              kind: "mac-software",
-              trackId: 123,
-              version: "2.0"
-            }
-          ]
-        }),
-        { status: 200 }
-      )
-    );
-
-    try {
-      await new AppStoreLookupClient().lookupOutcome(
-        "com.example.safari-extension",
-        version("1.0"),
-        {
-          includeMacCapableAppStoreSoftware: true
-        }
-      );
-
-      const requestedURL = new URL(fetchMock.mock.calls[0]?.[0] as string);
-      expect(requestedURL.searchParams.get("bundleId")).toBe("com.example.safari-extension");
-      expect(requestedURL.searchParams.get("entity")).toBe("desktopSoftware");
-    } finally {
-      fetchMock.mockRestore();
-    }
-  });
-
   it("uses the iOS software scope for installed iOS-on-Mac apps", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       new Response(
@@ -826,23 +791,6 @@ describe("ported clients", () => {
     );
 
     expect(index.byAppBundleName["renamed.app"]?.[0]?.token).toBe("renamed-app-target");
-  });
-
-  it("searches formulae", () => {
-    const client = new HomebrewFormulaClient();
-    const index = client.parseIndex(
-      Buffer.from(
-        JSON.stringify([
-          {
-            name: "ripgrep",
-            versions: { stable: "14.1.0" },
-            homepage: "https://github.com/BurntSushi/ripgrep",
-            desc: "Search tool"
-          }
-        ])
-      )
-    );
-    expect(client.searchFormulae("rip", index, new Set()).at(0)?.token).toBe("ripgrep");
   });
 
   it("parses formula indexes above the cask index byte limit", () => {

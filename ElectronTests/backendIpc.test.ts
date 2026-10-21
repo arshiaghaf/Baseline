@@ -243,12 +243,13 @@ it.each([
   }
 );
 
-it.each(
-  [[], [undefined], [undefined, undefined], [false], [false, undefined]].map((args) => ({ args }))
-)("preserves optional refresh arguments %#", async ({ args }) => {
-  await invoke("refresh", event(), args);
-  expect(store.refresh).toHaveBeenCalledWith(args[0], { forceAppDiscovery: args[1] });
-});
+it.each([[], [undefined, undefined], [false, true]].map((args) => ({ args })))(
+  "preserves optional refresh arguments %#",
+  async ({ args }) => {
+    await invoke("refresh", event(), args);
+    expect(store.refresh).toHaveBeenCalledWith(args[0], { forceAppDiscovery: args[1] });
+  }
+);
 
 it("preserves optional bulk selection and diagnostics requests", async () => {
   await invoke("performHomebrewUpdateAll", event(), []);

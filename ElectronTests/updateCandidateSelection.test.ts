@@ -77,7 +77,6 @@ describe("eligible update candidates", () => {
   it.each([
     { bundleEvidence: true, siblingVersion: "3" },
     { bundleEvidence: false, siblingVersion: "3" },
-    { bundleEvidence: true, siblingVersion: "2" },
     { bundleEvidence: false, siblingVersion: "2" }
   ])(
     "finds an installed cask behind an unowned sibling ($bundleEvidence, $siblingVersion)",

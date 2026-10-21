@@ -6867,53 +6867,6 @@ describe("verified formula identity and Homebrew pins", () => {
     });
   });
 
-  it("retains saved formula IDs across a proven same-tap rename on refresh", async () => {
-    const previous = homebrewItem({
-      id: "formula:old-tool",
-      token: "old-tool",
-      name: "Old Tool",
-      formulaIdentity: {
-        name: "old-tool",
-        fullName: "example/tools/old-tool",
-        tap: "example/tools",
-        oldNames: []
-      }
-    });
-    const current = homebrewItem({
-      id: "formula:new-tool",
-      token: "new-tool",
-      name: "New Tool",
-      formulaIdentity: {
-        name: "new-tool",
-        fullName: "example/tools/new-tool",
-        tap: "example/tools",
-        oldNames: ["old-tool"]
-      }
-    });
-    const store = await makeStore({
-      persisted: {
-        ...defaultPersistedSnapshot(),
-        homebrewItems: [previous],
-        ignoredHomebrewItemIDs: [previous.id]
-      },
-      clients: {
-        homebrewInventory: {
-          fetchInventory: async () => ({
-            items: [current],
-            outdatedDetectionSucceeded: true,
-            outdatedDetectionSucceededByKind: { formula: true, cask: true }
-          })
-        }
-      }
-    });
-    await store.refresh(true);
-    expect(store.getSnapshot().homebrewItems[0]).toMatchObject({
-      id: previous.id,
-      token: "new-tool"
-    });
-    expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([previous.id]);
-  });
-
   it.each([
     [false, false, false],
     [true, false, false],
@@ -6990,6 +6943,9 @@ describe("verified formula identity and Homebrew pins", () => {
       expect(store.getSnapshot().homebrewItems[0]?.id).toBe(
         firstRefreshFailure ? current.id : previous.id
       );
+      if (!firstRefreshFailure && !changedTap && !missingRenameEvidence)
+        expect(store.getSnapshot().homebrewItems[0]?.token).toBe("new-tool");
+      expect(store.getSnapshot().ignoredHomebrewItemIDs).toEqual([previous.id]);
       items = [missing];
       await store.refresh(true);
       expect(store.getSnapshot().homebrewItems[0]?.id).toBe(

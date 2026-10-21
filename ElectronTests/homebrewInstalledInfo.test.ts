@@ -225,6 +225,7 @@ describe("combined installed-info transport", () => {
       updateMetadata: true
     });
     expect(updated.calls[0]).toBe("update");
+    expect(updateResult.outdatedDetectionSucceeded).toBe(false);
     expect(updateResult.outdatedDetectionSucceededByKind).toEqual({ formula: false, cask: false });
     expect(updateResult.warning).toContain("brew update");
   });

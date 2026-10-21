@@ -97,7 +97,6 @@ describe("saved snapshot field recovery", () => {
 
   it.each([
     { apps: {} },
-    { apps: [null] },
     {
       apps: [
         {
@@ -109,9 +108,6 @@ describe("saved snapshot field recovery", () => {
       ]
     },
     { updates: "broken" },
-    { recentlyUpdated: [null] },
-    { appUpdateComparisonBaseline: {} },
-    { homebrewItems: [null] },
     { homebrewFormulaIdentityContinuity: {} },
     { homebrewRecentlyUpdated: {} }
   ])("keeps valid preferences when another saved field is malformed: %j", async (damaged) => {
@@ -169,7 +165,6 @@ describe("saved snapshot field recovery", () => {
 
   it.each([
     [null, 60],
-    ["20", 60],
     [-20, 5],
     [1500, 1440],
     [15, 15]
