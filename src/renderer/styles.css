@@ -42,7 +42,7 @@
   border: 0.5px solid rgba(60, 60, 67, 0.16);
   border-radius: 18px;
   background: var(--sidebar-background);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.4;
   overflow: auto;
 }
@@ -54,7 +54,7 @@
 }
 .permission-guide h1 {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
 }
 .permission-guide-close {
@@ -107,11 +107,11 @@
 .permission-app-name {
   display: grid;
   gap: 2px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
 }
 .permission-app-name > span {
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 400;
   opacity: 0.55;
 }
@@ -121,7 +121,7 @@
   justify-content: center;
   gap: 5px;
   min-height: 28px;
-  font-size: 12px;
+  font-size: 14px;
   border-radius: 7px;
 }
 @media (prefers-color-scheme: dark) {
