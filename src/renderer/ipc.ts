@@ -12,6 +12,7 @@ export const baseline: Pick<
   | "copyOperationFailure"
   | "dismissOperationFailure"
   | "getAppMetadata"
+  | "permissionGuide"
   | "getSnapshot"
   | "installHomebrewItem"
   | "onSnapshotChanged"
@@ -40,6 +41,7 @@ export const baseline: Pick<
   copyOperationFailure: (...args) => window.baseline.copyOperationFailure(...args),
   dismissOperationFailure: (...args) => window.baseline.dismissOperationFailure(...args),
   getAppMetadata: (...args) => window.baseline.getAppMetadata(...args),
+  permissionGuide: (...args) => window.baseline.permissionGuide(...args),
   getSnapshot: (...args) => window.baseline.getSnapshot(...args),
   installHomebrewItem: (...args) => window.baseline.installHomebrewItem(...args),
   onSnapshotChanged: (...args) => window.baseline.onSnapshotChanged(...args),

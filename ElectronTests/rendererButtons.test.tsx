@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { PermissionGuide } from "../src/renderer/components/PermissionGuide";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -103,6 +104,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
 
 function installBaselineMock() {
   window.baseline = {
+    permissionGuide: vi.fn(async () => ({})),
     getSnapshot: vi.fn(),
     getAppMetadata: vi.fn(() =>
       Promise.resolve({
@@ -4405,4 +4407,24 @@ describe("permission introduction", () => {
     expect(screen.getByText(/opening Settings does not grant access/)).toBeInTheDocument();
     expect(window.baseline.openExternal).not.toHaveBeenCalled();
   });
+});
+
+it("offers guide controls without treating navigation or native drag as a grant", async () => {
+  vi.mocked(window.baseline.permissionGuide).mockResolvedValue({
+    appPath: "/Applications/Baseline.app",
+    iconDataURL: "data:image/png;base64,fixture"
+  });
+  render(<PermissionGuide />);
+  const image = await screen.findByAltText(
+    "Baseline app — drag to the App Management list in Settings"
+  );
+  fireEvent.dragStart(image);
+  expect(window.baseline.permissionGuide).toHaveBeenCalledWith("drag");
+  fireEvent.click(screen.getByRole("button", { name: "Open App Management" }));
+  await waitFor(() => expect(window.baseline.permissionGuide).toHaveBeenCalledWith("settings"));
+  expect(screen.getByText(/dragging the app does not confirm access/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Copy app path" }));
+  expect(window.baseline.permissionGuide).toHaveBeenCalledWith("copy");
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(window.baseline.permissionGuide).toHaveBeenCalledWith("close");
 });

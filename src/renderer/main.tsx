@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { PermissionGuide } from "./components/PermissionGuide";
 import { baseline } from "./ipc";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -114,6 +115,8 @@ export function App() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  if (route === "permission-guide") return <PermissionGuide />;
+
   if (route === "settings") {
     return <SettingsView snapshot={snapshot} />;
   }
@@ -135,7 +138,7 @@ export function App() {
 
 function currentRoute(): Route {
   const raw = window.location.hash.replace(/^#\/?/u, "");
-  if (raw === "menubar" || raw === "settings") {
+  if (raw === "menubar" || raw === "settings" || raw === "permission-guide") {
     return raw;
   }
   return "main";

@@ -3,7 +3,7 @@
 
 import type { HomebrewCaskDiscoveryItem, HomebrewManagedItem } from "../shared/domain";
 
-export type Route = "main" | "menubar" | "settings";
+export type Route = "main" | "menubar" | "settings" | "permission-guide";
 
 export type ActionState =
   | { type: "ready" }

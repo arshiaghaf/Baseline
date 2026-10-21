@@ -59,6 +59,7 @@ test.afterEach(async () => {
 });
 
 const expectedBaselineAPI = [
+  "permissionGuide",
   "acknowledgeProfileStatsReset",
   "chooseDirectory",
   "cleanUpHomebrew",
@@ -1361,6 +1362,22 @@ test("explains conditional app permissions without gating checks and remembers d
     ).toBe(true);
     await page.screenshot({ path: test.info().outputPath(`permission-introduction-${width}.png`) });
   }
+  // Fixed Settings navigation is captured, never opened, on the CI desktop.
+  await application.evaluate(({ shell }) => {
+    shell.openExternal = async () => {};
+  });
+  const newGuide = application.waitForEvent("window");
+  await introduction
+    .getByRole("button", { name: "Open App Management guide", exact: true })
+    .click();
+  const guide = await newGuide;
+  await expect(guide.getByRole("heading", { name: "Allow app changes" })).toBeVisible();
+  await expect(guide.getByRole("button", { name: "Show in Finder" })).toBeDisabled();
+  await expect(guide.getByText(/Baseline cannot verify this permission/)).toBeVisible();
+  expect(await guide.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await guide.screenshot({ path: test.info().outputPath("permission-guide-preview.png") });
+  await guide.getByRole("button", { name: "Done — return to Baseline to retry" }).click();
+  await expect.poll(() => guide.isClosed()).toBe(true);
   const failure = page.locator(".operation-failure");
   await failure.locator(":scope > summary").click();
   const recovery = failure.locator(".permission-help");

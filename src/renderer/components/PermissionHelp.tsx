@@ -21,6 +21,15 @@ export function UpdateIntroduction() {
         your Mac administrator password. You can continue checking updates without granting this
         access.
       </p>
+      <button
+        type="button"
+        className="primary-button small-button"
+        onClick={() => {
+          void baseline.permissionGuide("show").catch(() => {});
+        }}
+      >
+        Open App Management guide
+      </button>
       <PermissionHelp />
       <button
         type="button"
@@ -38,6 +47,7 @@ export function UpdateIntroduction() {
 }
 
 export function PermissionHelp({ recovery = false }: { recovery?: boolean }) {
+  const [message, setMessage] = useState("");
   return (
     <details className="permission-help">
       <summary>{recovery ? "Help with permissions" : "macOS permissions and updates"}</summary>
@@ -47,6 +57,19 @@ export function PermissionHelp({ recovery = false }: { recovery?: boolean }) {
           restriction. It does not confirm that App Management access was denied.
         </p>
       )}
+      <button
+        type="button"
+        className="ghost-button small-button"
+        onClick={() => {
+          void baseline.permissionGuide("show").then(
+            (result) => setMessage(result.message ?? ""),
+            () => setMessage("Could not open the guide. Use the Settings path below.")
+          );
+        }}
+      >
+        Open guided setup
+      </button>
+      {message && <p role="status">{message}</p>}
       <p>
         <strong>App Management:</strong> macOS may ask for approval when an update tool changes or
         removes another app. If macOS reports this, follow its notification or go to System Settings

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import type { PermissionGuideAction, PermissionGuideInfo } from "./permissionGuide";
 import type {
   BaselineSnapshot,
   AppearancePreference,
@@ -15,6 +16,7 @@ import type { HomebrewDiagnosticsRequest, HomebrewDiagnosticsReport } from "./ho
 import type { HomebrewInstalledContext } from "./homebrewInstalledContext";
 
 export const ipcChannels = {
+  permissionGuide: "baseline:permissionGuide",
   getSnapshot: "baseline:getSnapshot",
   getAppMetadata: "baseline:getAppMetadata",
   getDiagnostics: "baseline:getDiagnostics",
@@ -61,6 +63,7 @@ export type PreferencePatch = Partial<{
 }>;
 
 export type BaselineAPI = {
+  permissionGuide(action: PermissionGuideAction): Promise<PermissionGuideInfo>;
   getSnapshot(): Promise<BaselineSnapshot>;
   getAppMetadata(): Promise<AppMetadata>;
   getDiagnostics(): Promise<string>;

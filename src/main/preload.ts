@@ -6,6 +6,7 @@ import { ipcChannels, type BaselineAPI, type PreferencePatch } from "../shared/i
 import type { HomebrewCaskDiscoveryItem } from "../shared/domain";
 
 const api: BaselineAPI = {
+  permissionGuide: (action) => ipcRenderer.invoke(ipcChannels.permissionGuide, action),
   dismissOperationFailure: (id) => ipcRenderer.invoke(ipcChannels.dismissOperationFailure, id),
   onSnapshotProgress: (callback) => {
     const listener = (

@@ -49,3 +49,47 @@
 .permission-help p {
   margin: 10px 0 0;
 }
+
+.permission-guide {
+  height: 100vh;
+  overflow: auto;
+  padding: 18px;
+  box-sizing: border-box;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.permission-guide h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.permission-guide p {
+  margin: 12px 0;
+}
+.permission-guide-actions,
+.permission-drag-example {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.permission-drag-example {
+  padding: 14px 0;
+}
+.permission-drag-example img {
+  width: 64px;
+  height: 64px;
+  cursor: grab;
+}
+.permission-drag-example > span[aria-hidden] {
+  font-size: 28px;
+}
+
+.update-introduction {
+  max-width: 860px;
+  margin-inline: auto;
+}
+
+.dashboard-topbar {
+  padding-right: calc(clamp(24px, 4vw, 60px) + var(--dashboard-scrollbar-width, 0px));
+}

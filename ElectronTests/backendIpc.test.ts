@@ -18,6 +18,7 @@ const item = {
   version: { raw: "1" }
 };
 const validArguments = {
+  permissionGuide: ["info"],
   getSnapshot: [],
   getAppMetadata: [],
   getDiagnostics: [],
@@ -93,6 +94,9 @@ beforeEach(async () => {
     "ipcChannels",
     "mainWindow",
     "menuWindow",
+    "permissionGuideWindow",
+    "performPermissionGuideAction",
+    "showPermissionGuide",
     "MAIN_WINDOW_VITE_DEV_SERVER_URL",
     "store",
     "metadata",
@@ -109,6 +113,9 @@ beforeEach(async () => {
     isTrustedBackendSender,
     ipcChannels,
     ...windows,
+    undefined,
+    effect(Promise.resolve({})),
+    effect(),
     "file:///fixture/index.html",
     store,
     { version: "1" },
@@ -196,6 +203,7 @@ it.each(Object.keys(validArguments) as Method[])(
     for (const window of windows) await invoke(method, event(window), validArguments[method]);
     if (
       ![
+        "permissionGuide",
         "getAppMetadata",
         "getDiagnostics",
         "getToolStatus",

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { permissionGuideActions } from "../shared/permissionGuide";
 import type { IpcMain, IpcMainInvokeEvent } from "electron";
 import { ipcChannels, type BaselineAPI } from "../shared/ipc";
 import {
@@ -40,6 +41,10 @@ const discoveryItem = record({
 
 // Exhaustive across the public invoke API; event subscriptions never register handlers.
 const argumentValidators: Record<InvokeMethod, ValueValidator[]> = {
+  permissionGuide: [
+    (value) =>
+      typeof value === "string" && (permissionGuideActions as readonly string[]).includes(value)
+  ],
   getSnapshot: [],
   getAppMetadata: [],
   getDiagnostics: [],
