@@ -1351,6 +1351,29 @@ test("explains conditional app permissions without gating checks and remembers d
   await expect(guide.getByRole("button", { name: "Open Settings" })).toBeInViewport();
   await expect(guide.getByRole("button", { name: "Later" })).toBeInViewport();
   expect(await guide.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const bottomPadding = () =>
+    guide.evaluate(
+      () =>
+        innerHeight -
+        document.querySelector(".permission-settings-button")!.getBoundingClientRect().bottom
+    );
+  await expect.poll(bottomPadding).toBeLessThanOrEqual(24);
+  await expect.poll(bottomPadding).toBeGreaterThanOrEqual(12);
+  expect(
+    await guide
+      .locator("h1,p,.permission-app-name,.permission-app-name>span,.permission-settings-button")
+      .evaluateAll((elements) =>
+        elements.every((element) => getComputedStyle(element).fontSize === "14px")
+      )
+  ).toBe(true);
+  // Exercise the post-Settings layout without opening Settings on the CI desktop.
+  await application.evaluate(({ shell }) => {
+    shell.openExternal = async () => {};
+  });
+  await guide.getByRole("button", { name: "Open Settings", exact: true }).click();
+  await expect(guide.getByRole("button", { name: "Open Settings again" })).toBeInViewport();
+  await expect.poll(bottomPadding).toBeLessThanOrEqual(24);
+  await expect.poll(bottomPadding).toBeGreaterThanOrEqual(12);
   await guide.screenshot({ path: test.info().outputPath("permission-guide-preview.png") });
   await guide.getByRole("button", { name: "Later" }).click();
   await expect.poll(() => guide.isClosed()).toBe(true);

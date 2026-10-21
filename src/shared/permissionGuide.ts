@@ -4,6 +4,7 @@
 export const permissionGuideActions = [
   "show",
   "info",
+  "fit",
   "settings",
   "finder",
   "copy",

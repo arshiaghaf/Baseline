@@ -258,7 +258,7 @@ function showPermissionGuide(): void {
     x: Math.round(area.x + (area.width - width) / 2),
     y: Math.max(area.y, area.y + area.height - height - 24),
     minWidth: Math.min(320, width),
-    minHeight: Math.min(240, height),
+    minHeight: Math.min(144, height),
     title: "App Management help",
     frame: false,
     type: process.platform === "darwin" ? "panel" : undefined,
@@ -291,7 +291,7 @@ function showPermissionGuide(): void {
     if (window.isDestroyed()) return;
     const bounds = window.getBounds();
     const area = screen.getDisplayMatching(bounds).workArea;
-    window.setMinimumSize(Math.min(320, area.width), Math.min(240, area.height));
+    window.setMinimumSize(Math.min(320, area.width), Math.min(144, area.height));
     window.setBounds({
       x: Math.max(area.x, Math.min(bounds.x, area.x + area.width - bounds.width)),
       y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - bounds.height)),
@@ -315,6 +315,34 @@ function showPermissionGuide(): void {
     .catch(() => {
       if (!window.isDestroyed()) window.close();
     });
+}
+
+let permissionGuideFitRevision = 0;
+async function fitPermissionGuide(): Promise<void> {
+  const window = permissionGuideWindow;
+  if (!window || window.isDestroyed()) return;
+  const revision = ++permissionGuideFitRevision;
+  const measured: unknown = await window.webContents
+    .executeJavaScript('document.querySelector(".permission-guide")?.scrollHeight')
+    .catch(() => undefined);
+  if (
+    window.isDestroyed() ||
+    permissionGuideWindow !== window ||
+    revision !== permissionGuideFitRevision ||
+    typeof measured !== "number" ||
+    !Number.isFinite(measured) ||
+    measured <= 0
+  )
+    return;
+  const bounds = window.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const height = Math.min(area.height, Math.max(144, Math.ceil(measured) + 2));
+  // Keep the existing bottom edge, including after the user moves the guide.
+  window.setBounds({
+    ...bounds,
+    height,
+    y: Math.max(area.y, Math.min(bounds.y + bounds.height - height, area.y + area.height - height))
+  });
 }
 
 function createMenuWindow(): BrowserWindow {
@@ -621,6 +649,7 @@ function wireIpc(): void {
   handle("permissionGuide", (event, action) =>
     performPermissionGuideAction(action, event.sender, {
       show: showPermissionGuide,
+      fit: fitPermissionGuide,
       close: () => {
         permissionGuideWindow?.close();
         showMainWindow("main");

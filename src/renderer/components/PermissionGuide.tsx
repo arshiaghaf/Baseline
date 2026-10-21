@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, GripVertical, X } from "lucide-react";
 import { baseline } from "../ipc";
 import type { PermissionGuideInfo, PermissionGuideAction } from "../../shared/permissionGuide";
 
 export function PermissionGuide() {
+  const panelRef = useRef<HTMLElement>(null);
   const [info, setInfo] = useState<PermissionGuideInfo>({});
   const [message, setMessage] = useState("");
   const [settingsOpened, setSettingsOpened] = useState(false);
@@ -45,6 +46,15 @@ export function PermissionGuide() {
       window.removeEventListener("keydown", key);
     };
   }, []);
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined" || !panelRef.current) return;
+    const observer = new ResizeObserver(() => {
+      void baseline.permissionGuide("fit").catch(() => {});
+    });
+    observer.observe(panelRef.current);
+    for (const child of panelRef.current.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, []);
   const instruction =
     message ||
     (!settingsOpened
@@ -53,7 +63,11 @@ export function PermissionGuide() {
         ? "Drag Baseline into App Management, or use +. Then turn it on."
         : "Turn on Baseline in App Management. Use + to add it if needed.");
   return (
-    <main className="app-shell permission-guide" aria-labelledby="permission-guide-title">
+    <main
+      ref={panelRef}
+      className="app-shell permission-guide"
+      aria-labelledby="permission-guide-title"
+    >
       <header className="permission-guide-header">
         <h1 id="permission-guide-title">App Management</h1>
         <button

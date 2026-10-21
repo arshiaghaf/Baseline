@@ -51,8 +51,12 @@ let preparedDrag: { appPath: string; icon: NativeImage } | undefined;
 export async function performPermissionGuideAction(
   action: PermissionGuideAction,
   sender: WebContents,
-  windows: { show(): void; close(): void }
+  windows: { show(): void; close(): void; fit?(): Promise<void> | void }
 ): Promise<PermissionGuideInfo> {
+  if (action === "fit") {
+    await windows.fit?.();
+    return {};
+  }
   if (action === "close") {
     preparedDrag = undefined;
     windows.close();

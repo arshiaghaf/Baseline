@@ -39,6 +39,8 @@ body:has(.permission-guide) {
 }
 
 .app-shell.permission-guide {
+  height: auto;
+  max-height: 100vh;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -76,7 +78,6 @@ body:has(.permission-guide) {
 .permission-guide-instruction {
   margin: 0;
   color: rgba(60, 60, 67, 0.7);
-  min-height: 34px;
 }
 .permission-app-card {
   display: flex;
