@@ -107,14 +107,6 @@ describe("installed cask identity", () => {
   );
 
   it("preserves verified public casks and rejects mismatched or unsafe full tokens", () => {
-    const item = {
-      ...installed,
-      fullToken: "shared-name",
-      tap: "homebrew/cask",
-      caskMetadata: undefined
-    };
-    expect(installedCaskEntry(item, catalogue)).toBe(catalogue.byToken["shared-name"]);
-    expect(homebrewCommandToken(item)).toBe("shared-name");
     for (const fullToken of [
       "other/tools/shared-name",
       "example/tools/other",

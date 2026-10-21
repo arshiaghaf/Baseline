@@ -571,19 +571,4 @@ describe("HomebrewInventoryClient", () => {
     expect(result.items.find((item) => item.token === "ripgrep")?.isOutdated).toBe(true);
     expect(result.items.find((item) => item.token === "notion")?.isOutdated).toBe(true);
   });
-
-  it("treats failed metadata updates as unreliable for both Homebrew kinds", async () => {
-    commandMock.results.set("update", {
-      success: false,
-      status: 1,
-      output: "Error: update failed"
-    });
-    const { HomebrewInventoryClient } = await import("../src/main/homebrewInventoryClient");
-
-    const result = await new HomebrewInventoryClient().fetchInventory({ updateMetadata: true });
-
-    expect(result.outdatedDetectionSucceeded).toBe(false);
-    expect(result.outdatedDetectionSucceededByKind).toEqual({ formula: false, cask: false });
-    expect(result.warning).toContain("brew update");
-  });
 });

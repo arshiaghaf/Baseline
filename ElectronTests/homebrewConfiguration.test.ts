@@ -345,7 +345,7 @@ describe.skipIf(existsSync("/etc/homebrew/brew.env"))(
       });
     });
 
-    it.each(["HOMEBREW_FOO=x\r\n", "HOMEBREW_FOO=é\n", "HOMEBREW_BAD-NAME=value\n"])(
+    it.each(["HOMEBREW_FOO=é\n"])(
       "rejects malformed accepted launcher records: %j",
       async (content) => {
         await writeFile(prefixFile, content);

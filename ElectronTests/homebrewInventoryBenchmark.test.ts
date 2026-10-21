@@ -72,6 +72,11 @@ setTimeout(() => {
             const elapsed = performance.now() - started;
             expect(count).toBe(plan === "legacy" ? 6 : 5);
             expect(result.items).toHaveLength(7 + additionalPerKind * 2);
+            expect(result.items.find((item) => item.token === "head-tool")?.isOutdated).toBe(true);
+            if (additionalPerKind)
+              expect(result.items.find((item) => item.token === "fixture-0")?.isOutdated).toBe(
+                true
+              );
             expect(result.warning).toBeUndefined();
             if (sample > 0) {
               measurements[plan].push(elapsed);

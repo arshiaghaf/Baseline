@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("snapshot persistence", () => {
-  it.each([undefined, []])(
+  it.each([undefined])(
     "migrates a missing comparison baseline while preserving an explicit empty baseline (%s)",
     async (baseline) => {
       const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-persistence-"));

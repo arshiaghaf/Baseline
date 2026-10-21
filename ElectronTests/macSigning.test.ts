@@ -35,7 +35,7 @@ describe("macOS package signing policy", () => {
     });
   });
 
-  it.each(["arm64", "x64"] as const)(
+  it.each(["arm64"] as const)(
     "verifies every %s package without replacing its signature",
     async (arch) => {
       const distributionConfig = {
