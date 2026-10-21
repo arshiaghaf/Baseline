@@ -162,7 +162,9 @@ export function appUpdateReadyLabel(
       ? "Download"
       : action.kind === "website"
         ? "Visit website"
-        : "Open app";
+        : action.kind === "link"
+          ? "Open link"
+          : "Open app";
   }
   return "Update";
 }

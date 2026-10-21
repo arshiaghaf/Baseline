@@ -586,7 +586,8 @@ describe("renderer button parity", () => {
       updateURLKind: "download" as const,
       label: "Download"
     },
-    { updateURL: "https://example.com/latest.dmg", label: "Visit website" },
+    { updateURL: "https://example.com/latest.dmg", label: "Open link" },
+    { source: "web" as const, updateURL: "https://example.com/releases", label: "Visit website" },
     {
       updateURL: "http://example.com/latest.dmg",
       updateURLKind: "download" as const,
