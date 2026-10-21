@@ -140,12 +140,14 @@ export function trackElectronLifecycle(
           `E2E lifecycle ${JSON.stringify({ event, windows: BrowserWindow.getAllWindows().length })}\n`
         );
       };
-      // This independent main-loop signal distinguishes a stuck inspector call
-      // from a blocked Node/AppKit main thread. It never keeps the app alive.
-      const heartbeat = setInterval(() => {
-        process.stderr.write(`E2E main heartbeat ${Date.now()}\n`);
-      }, 500);
-      heartbeat.unref();
+      // The focused comparison omits this timer to check whether it changes
+      // the shutdown race. It never keeps the app alive when enabled.
+      if (process.env.BASELINE_E2E_HEARTBEAT !== "0") {
+        const heartbeat = setInterval(() => {
+          process.stderr.write(`E2E main heartbeat ${Date.now()}\n`);
+        }, 500);
+        heartbeat.unref();
+      }
       app.on("before-quit", () => record("before-quit"));
       app.on("will-quit", () => record("will-quit"));
     })
