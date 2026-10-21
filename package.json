@@ -5,9 +5,9 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "build": "electron-forge package",
+    "package": "electron-forge package --platform=darwin --arch=arm64",
+    "make": "electron-forge make --platform=darwin --arch=arm64",
+    "build": "electron-forge package --platform=darwin --arch=arm64",
     "typecheck": "node scripts/typecheck.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

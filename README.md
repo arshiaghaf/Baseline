@@ -10,6 +10,11 @@
 
 ## Install
 
+Baseline requires an **Apple Silicon Mac (M1 or later) running macOS 15 or later**.
+Intel Macs are no longer supported. New downloads and updates are Apple Silicon-only;
+keep your existing app if you use an Intel Mac. Older release assets remain available,
+but their architecture must be checked before use.
+
 ### Homebrew
 
 ```bash
@@ -40,7 +45,7 @@ This removes quarantine from the app and its contents; it does not verify the ap
 
 ### GitHub Releases (DMG)
 
-Download the DMG from [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases), open it, and drag Baseline into Applications. Then follow the first-launch steps above.
+On an Apple Silicon Mac, download the DMG from [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases), open it, and drag Baseline into Applications. Then follow the first-launch steps above.
 
 ## Baseline
 

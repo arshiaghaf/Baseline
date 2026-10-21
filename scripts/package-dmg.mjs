@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath, URL } from "node:url";
 import process from "node:process";
@@ -11,6 +12,12 @@ import { createDMG } from "electron-installer-dmg";
 const [appPath, dmgPath, title] = process.argv.slice(2);
 if (!appPath || !dmgPath || !title || process.argv.length !== 5) {
   throw new Error("Usage: node scripts/package-dmg.mjs <app-path> <dmg-path> <volume-title>");
+}
+const executable = path.resolve(appPath, "Contents/MacOS/Baseline");
+if (
+  execFileSync("/usr/bin/lipo", ["-archs", executable], { encoding: "utf8" }).trim() !== "arm64"
+) {
+  throw new Error("Baseline disk images require an Apple Silicon-only application.");
 }
 const root = fileURLToPath(new URL("../", import.meta.url));
 const layout = JSON.parse(

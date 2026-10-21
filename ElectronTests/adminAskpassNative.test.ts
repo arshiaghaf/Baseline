@@ -46,14 +46,14 @@ describe.skipIf(process.platform !== "darwin")(
       if (directory) await rm(directory, { recursive: true, force: true });
     });
 
-    it.each(["arm64", "x64"])(
+    it.each(["arm64"])(
       "builds executable %s resources with spaces in their paths",
       async (arch) => {
         const output = path.join(directory, arch, "Contents/Resources/admin-askpass");
         await buildAdminAskpass(output, arch);
         expect((await stat(output)).mode & 0o111).toBe(0o111);
         expect(execFileSync("/usr/bin/lipo", ["-archs", output], { encoding: "utf8" }).trim()).toBe(
-          arch === "x64" ? "x86_64" : arch
+          arch
         );
         // Refusal before opening AppKit: no metadata means no dialog or output.
         if (arch === process.arch) {

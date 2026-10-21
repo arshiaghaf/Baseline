@@ -7,6 +7,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+const compatibilityNotice =
+  "Requires an Apple Silicon Mac (M1 or later) running macOS 15 or later. Intel Macs are not supported.\n\n";
+
 function prepareNotes(changelog: string): string {
   const root = mkdtempSync(path.join(tmpdir(), "baseline-release-notes-"));
   try {
@@ -49,12 +52,14 @@ describe("release note extraction", () => {
 
 - Recover failed checks.
 `;
-    expect(prepareNotes(`# Changelog\n\n## 0.8.0 — 2026-10-18\n\n${notes}`)).toBe(notes);
+    expect(prepareNotes(`# Changelog\n\n## 0.8.0 — 2026-10-18\n\n${notes}`)).toBe(
+      compatibilityNotice + notes
+    );
   });
 
-  it("keeps an older release with only Added unchanged", () => {
+  it("keeps Added entries and prepends the architecture requirement", () => {
     const notes = "### Added\n\n- Existing release entry.\n";
-    expect(prepareNotes(`## 0.8.0 — 2026-10-18\n\n${notes}`)).toBe(notes);
+    expect(prepareNotes(`## 0.8.0 — 2026-10-18\n\n${notes}`)).toBe(compatibilityNotice + notes);
   });
 
   it("excludes neighboring releases and unsupported subsections", () => {
@@ -85,7 +90,10 @@ describe("release note extraction", () => {
 
 - Previous fix.
 `)
-    ).toBe("### Highlights\n\n- Current highlight.\n\n### Fixed\n\n- Current fix.\n");
+    ).toBe(
+      compatibilityNotice +
+        "### Highlights\n\n- Current highlight.\n\n### Fixed\n\n- Current fix.\n"
+    );
   });
 
   it("still rejects an Unreleased section instead of preparing artifacts", () => {

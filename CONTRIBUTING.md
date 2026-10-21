@@ -7,9 +7,13 @@ with Vite, React, TypeScript, and Tailwind.
 
 Requirements:
 
-- macOS
+- macOS 15 or later on Apple Silicon for running and validating the app
 - Node.js 24 (the version used by CI)
 - npm
+
+Packages target only macOS arm64, including when built from another host. Native
+packaging needs the macOS SDK. Source-level checks may still run on other hosts;
+`typecheck` uses TypeScript 6 where the native tsrs checker is unavailable.
 
 Install dependencies:
 

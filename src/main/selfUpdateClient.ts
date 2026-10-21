@@ -9,12 +9,20 @@ const latestReleaseURL = "https://api.github.com/repos/arshiaghaf/Baseline/relea
 const fallbackReleasePageURL = "https://github.com/arshiaghaf/Baseline/releases/latest";
 
 export class SelfUpdateClient {
+  constructor(private readonly architecture: string = process.arch) {}
+
   async lookup(
     currentVersion: VersionValue,
     checkedAt: string,
     signal?: AbortSignal
   ): Promise<SelfUpdateRecord> {
     signal?.throwIfAborted();
+    if (this.architecture !== "arm64") {
+      return {
+        ...unavailableSelfUpdate(currentVersion, checkedAt),
+        releaseURL: "https://github.com/arshiaghaf/Baseline#install"
+      };
+    }
     try {
       const response = await fetch(latestReleaseURL, {
         headers: {

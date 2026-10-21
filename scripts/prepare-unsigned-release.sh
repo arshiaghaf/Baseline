@@ -115,7 +115,10 @@ if (releaseNoteLines.length === 0) {
   process.exit(1);
 }
 
-fs.writeFileSync(outputPath, `${releaseNoteLines.join("\n")}\n`);
+fs.writeFileSync(
+  outputPath,
+  `Requires an Apple Silicon Mac (M1 or later) running macOS 15 or later. Intel Macs are not supported.\n\n${releaseNoteLines.join("\n")}\n`,
+);
 NODE
 
 BASELINE_RELEASE_BUILD=1 scripts/create-unsigned-dmg.sh "$VERSION"
