@@ -59,7 +59,6 @@ test.afterEach(async () => {
 });
 
 const expectedBaselineAPI = [
-  "permissionGuide",
   "acknowledgeProfileStatsReset",
   "chooseDirectory",
   "cleanUpHomebrew",
@@ -80,6 +79,7 @@ const expectedBaselineAPI = [
   "performAppUpdate",
   "performHomebrewUpdate",
   "performHomebrewUpdateAll",
+  "permissionGuide",
   "refresh",
   "refreshToolStatus",
   "removeDirectory",
