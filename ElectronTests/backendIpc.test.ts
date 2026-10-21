@@ -18,6 +18,7 @@ const item = {
   version: { raw: "1" }
 };
 const validArguments = {
+  permissionGuide: ["info"],
   getSnapshot: [],
   getAppMetadata: [],
   getDiagnostics: [],
@@ -54,6 +55,9 @@ let handlers: Map<string, Handler>;
 let effects: ReturnType<typeof vi.fn>[];
 let windows: { isDestroyed: () => boolean; webContents: { mainFrame: { url: string } } }[];
 let store: Record<string, ReturnType<typeof vi.fn>>;
+let permissionAction: ReturnType<typeof vi.fn>;
+let closeGuide: ReturnType<typeof vi.fn>;
+let showMain: ReturnType<typeof vi.fn>;
 
 beforeEach(async () => {
   handlers = new Map();
@@ -63,6 +67,9 @@ beforeEach(async () => {
     effects.push(fn);
     return fn;
   };
+  permissionAction = effect(Promise.resolve({}));
+  closeGuide = effect();
+  showMain = effect();
   store = Object.fromEntries(Object.keys(validArguments).map((method) => [method, effect()]));
   store.getSnapshot = effect({});
   store.getCatalogueDiagnostics = effect("");
@@ -93,6 +100,10 @@ beforeEach(async () => {
     "ipcChannels",
     "mainWindow",
     "menuWindow",
+    "permissionGuideWindow",
+    "performPermissionGuideAction",
+    "showPermissionGuide",
+    "fitPermissionGuide",
     "MAIN_WINDOW_VITE_DEV_SERVER_URL",
     "store",
     "metadata",
@@ -109,13 +120,21 @@ beforeEach(async () => {
     isTrustedBackendSender,
     ipcChannels,
     ...windows,
+    {
+      isDestroyed: () => false,
+      webContents: { mainFrame: { url: "file:///fixture/index.html#/permission-guide" } },
+      close: closeGuide
+    },
+    permissionAction,
+    effect(),
+    effect(),
     "file:///fixture/index.html",
     store,
     { version: "1" },
     effect("Sanitized diagnostics"),
     { showOpenDialog: effect(Promise.resolve({ canceled: true, filePaths: [] })) },
     { writeText: effect() },
-    effect(),
+    showMain,
     { fromWebContents: effect() },
     effect()
   );
@@ -196,6 +215,7 @@ it.each(Object.keys(validArguments) as Method[])(
     for (const window of windows) await invoke(method, event(window), validArguments[method]);
     if (
       ![
+        "permissionGuide",
         "getAppMetadata",
         "getDiagnostics",
         "getToolStatus",
@@ -293,3 +313,17 @@ it("keeps copying sanitized failure details opt-in and returns false when unavai
   for (const effect of effects)
     if (effect !== store.operationFailureText) expect(effect).not.toHaveBeenCalled();
 });
+
+it.each(["settings", "menubar"])(
+  "dismissing the guide preserves the %s caller without opening the dashboard",
+  async (route) => {
+    const caller = route === "menubar" ? windows[1]! : windows[0]!;
+    caller.webContents.mainFrame.url = `file:///fixture/index.html#/${route}`;
+    await invoke("permissionGuide", event(caller), ["close"]);
+    const callbacks = permissionAction.mock.calls[0]![2] as { close(): void };
+    callbacks.close();
+    expect(closeGuide).toHaveBeenCalledOnce();
+    expect(showMain).not.toHaveBeenCalled();
+    expect(caller.webContents.mainFrame.url).toBe(`file:///fixture/index.html#/${route}`);
+  }
+);

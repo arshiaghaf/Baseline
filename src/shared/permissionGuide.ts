@@ -1,0 +1,20 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaf
+// SPDX-License-Identifier: GPL-3.0-only
+
+export const permissionGuideActions = [
+  "show",
+  "info",
+  "fit",
+  "settings",
+  "finder",
+  "copy",
+  "drag",
+  "close"
+] as const;
+export type PermissionGuideAction = (typeof permissionGuideActions)[number];
+export type PermissionGuideInfo = {
+  appPath?: string;
+  appName?: string;
+  iconDataURL?: string;
+  message?: string;
+};

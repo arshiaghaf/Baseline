@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { PermissionGuide } from "./components/PermissionGuide";
 import { baseline } from "./ipc";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -45,6 +46,8 @@ export function App() {
   const [snapshot, setSnapshot] = useState<BaselineSnapshot>(initialSnapshot);
   const [route, setRoute] = useState<Route>(currentRoute());
   const [searchActive, setSearchActive] = useState(false);
+  const [snapshotLoaded, setSnapshotLoaded] = useState(false);
+  const introductionShown = useRef(false);
   const previousSearchTextRef = useRef(initialSnapshot.searchText);
 
   useEffect(() => {
@@ -62,6 +65,7 @@ export function App() {
         return;
       current = next;
       setSnapshot(next);
+      setSnapshotLoaded(true);
     };
     const resync = () => {
       if (resyncing) {
@@ -112,6 +116,20 @@ export function App() {
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
+  useEffect(() => {
+    if (
+      route !== "main" ||
+      !snapshotLoaded ||
+      snapshot.updateIntroductionDismissed ||
+      introductionShown.current
+    )
+      return;
+    introductionShown.current = true;
+    void baseline.permissionGuide("show").catch(() => {});
+  }, [route, snapshotLoaded, snapshot.updateIntroductionDismissed]);
+
+  if (route === "permission-guide") return <PermissionGuide />;
+
   if (route === "settings") {
     return <SettingsView snapshot={snapshot} />;
   }
@@ -132,7 +150,7 @@ export function App() {
 
 function currentRoute(): Route {
   const raw = window.location.hash.replace(/^#\/?/u, "");
-  if (raw === "menubar" || raw === "settings") {
+  if (raw === "menubar" || raw === "settings" || raw === "permission-guide") {
     return raw;
   }
   return "main";

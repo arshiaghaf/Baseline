@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { PermissionGuide } from "../src/renderer/components/PermissionGuide";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -103,6 +104,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
 
 function installBaselineMock() {
   window.baseline = {
+    permissionGuide: vi.fn(async () => ({})),
     getSnapshot: vi.fn(),
     getAppMetadata: vi.fn(() =>
       Promise.resolve({
@@ -4464,3 +4466,133 @@ describe("Homebrew empty copy scope", () => {
     }
   );
 });
+
+describe("permission introduction", () => {
+  it("waits for saved preferences, dismisses without gating checks, and stays dismissed on relaunch", async () => {
+    let load!: (value: BaselineSnapshot) => void;
+    vi.mocked(window.baseline.getSnapshot).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          load = resolve;
+        })
+    );
+    vi.mocked(window.baseline.updatePreferences).mockResolvedValue(undefined);
+    window.location.hash = "/main";
+    const view = render(<App />);
+    expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
+    await act(async () => load(snapshot()));
+    await waitFor(() => expect(window.baseline.permissionGuide).toHaveBeenCalledWith("show"));
+    expect(window.baseline.updatePreferences).not.toHaveBeenCalled();
+    expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
+    expect(window.baseline.openExternal).not.toHaveBeenCalled();
+    view.unmount();
+    vi.mocked(window.baseline.getSnapshot).mockResolvedValue(
+      snapshot({ updateIntroductionDismissed: true })
+    );
+    render(<App />);
+    await act(async () => {});
+    expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
+  });
+
+  it("keeps first-run copy out of the compact tray and permission guidance inside failure details", async () => {
+    vi.mocked(window.baseline.getSnapshot).mockResolvedValue(snapshot());
+    window.location.hash = "/menubar";
+    const view = render(<App />);
+    await act(async () => {});
+    expect(screen.queryByText("Welcome to Baseline")).not.toBeInTheDocument();
+    view.unmount();
+    render(
+      <OperationFailures
+        snapshot={snapshot({
+          operationFailures: [
+            {
+              id: "update:example",
+              entityID: app.id,
+              operation: "update",
+              reason: "permission",
+              status: 1,
+              occurredAt: "2026-10-21T12:00:00.000Z"
+            }
+          ]
+        })}
+      />
+    );
+    expect(screen.getByText("Help with permissions").closest("details")).not.toHaveAttribute(
+      "open"
+    );
+    expect(screen.getByText(/does not confirm that App Management/)).toBeInTheDocument();
+    expect(screen.getByText(/opening Settings does not grant access/)).toBeInTheDocument();
+    expect(window.baseline.openExternal).not.toHaveBeenCalled();
+  });
+});
+
+it("offers guide controls without treating navigation or native drag as a grant", async () => {
+  vi.mocked(window.baseline.permissionGuide).mockResolvedValue({
+    appPath: "/Applications/Baseline.app",
+    iconDataURL: "data:image/png;base64,fixture"
+  });
+  render(<PermissionGuide />);
+  const image = await screen.findByAltText("Baseline app");
+  fireEvent.dragStart(image);
+  expect(window.baseline.permissionGuide).toHaveBeenCalledWith("drag");
+  fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+  await waitFor(() => expect(window.baseline.permissionGuide).toHaveBeenCalledWith("settings"));
+  expect(screen.queryByText(/permission granted/i)).not.toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(window.baseline.permissionGuide).toHaveBeenCalledWith("close");
+});
+
+it("keeps the app card static when the official icon cannot be prepared", async () => {
+  vi.mocked(window.baseline.permissionGuide).mockResolvedValue({
+    appPath: "/Applications/Baseline.app"
+  });
+  render(<PermissionGuide />);
+  await act(async () => {});
+  expect(screen.queryByAltText("Baseline app")).not.toBeInTheDocument();
+  const card = screen.getByText("Baseline").closest(".permission-app-card")!;
+  expect(card).toHaveAttribute("draggable", "false");
+  fireEvent.dragStart(card);
+  expect(window.baseline.permissionGuide).not.toHaveBeenCalledWith("drag");
+});
+
+it("shows native drag failure in the guide without claiming access or requiring Settings first", async () => {
+  vi.mocked(window.baseline.permissionGuide).mockImplementation(async (action) =>
+    action === "info"
+      ? { appPath: "/Applications/Baseline.app", iconDataURL: "data:image/png;base64,fixture" }
+      : { message: "Select Baseline with + in Settings." }
+  );
+  render(<PermissionGuide />);
+  await act(async () => {});
+  fireEvent.dragStart(screen.getByAltText("Baseline app"));
+  await waitFor(() =>
+    expect(screen.getByRole("status")).toHaveTextContent("Select Baseline with + in Settings.")
+  );
+  expect(screen.getByRole("button", { name: "Open Settings" })).toHaveAttribute(
+    "title",
+    "System Settings → Privacy & Security → App Management"
+  );
+});
+
+it.each(["icon", "text", "padding"])(
+  "routes the whole app card's %s drag through the native bridge",
+  async (start) => {
+    vi.mocked(window.baseline.permissionGuide).mockResolvedValue({
+      appPath: "/tmp/Baseline Permissions Preview.app",
+      appName: "Baseline Permissions Preview",
+      iconDataURL: "data:image/png;base64,fixture"
+    });
+    render(<PermissionGuide />);
+    await act(async () => {});
+    const image = screen.getByAltText("Baseline app");
+    const card = image.closest(".permission-app-card")!;
+    const target =
+      start === "icon"
+        ? image
+        : start === "text"
+          ? screen.getByText("Baseline Permissions Preview")
+          : card;
+    fireEvent.dragStart(target);
+    expect(card).toHaveAttribute("draggable", "true");
+    expect(window.baseline.permissionGuide).toHaveBeenCalledWith("drag");
+  }
+);

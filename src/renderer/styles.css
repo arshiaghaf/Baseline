@@ -15,3 +15,138 @@
 @import "./styles/90-animation-responsive.css";
 @import "./styles/95-dark.css";
 @import "./styles/99-operation-report.css";
+
+.permission-help {
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.settings-panel-box > .permission-help {
+  padding: 14px 16px;
+}
+
+.permission-help summary {
+  cursor: pointer;
+}
+
+.permission-help p {
+  margin: 10px 0 0;
+}
+
+body:has(.permission-guide) {
+  min-width: 0;
+}
+
+.app-shell.permission-guide {
+  height: auto;
+  max-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 0.5px solid rgba(60, 60, 67, 0.16);
+  border-radius: 18px;
+  background: var(--sidebar-background);
+  font-size: 14px;
+  line-height: 1.4;
+  overflow: auto;
+}
+.permission-guide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  -webkit-app-region: drag;
+}
+.permission-guide h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.permission-guide-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: rgba(120, 120, 128, 0.12);
+  -webkit-app-region: no-drag;
+}
+.permission-guide-instruction {
+  margin: 0;
+  color: rgba(60, 60, 67, 0.7);
+}
+.permission-app-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 0.5px solid rgba(60, 60, 67, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.58);
+}
+.permission-app-card {
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+.permission-app-card.can-drag,
+.permission-app-card.can-drag * {
+  cursor: grab;
+}
+.permission-app-card > * {
+  pointer-events: none;
+}
+.permission-app-card > svg {
+  margin-left: auto;
+  opacity: 0.45;
+}
+.permission-app-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+}
+.permission-app-icon img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+}
+.permission-app-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.permission-app-name > span {
+  font-size: 14px;
+  font-weight: 400;
+  opacity: 0.55;
+}
+.permission-settings-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  font-size: 14px;
+  border-radius: 7px;
+}
+@media (prefers-color-scheme: dark) {
+  .app-shell.permission-guide {
+    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(25, 25, 25, 0.75);
+  }
+  .permission-guide-instruction {
+    color: rgba(252, 252, 252, 0.65);
+  }
+  .permission-app-card {
+    border-color: rgba(255, 255, 255, 0.09);
+    background: rgba(255, 255, 255, 0.055);
+  }
+}

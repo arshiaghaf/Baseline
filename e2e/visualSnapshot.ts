@@ -9,6 +9,7 @@ export const visualTime = "2026-10-16T12:00:00.000Z";
 export function visualSnapshot(): BaselineSnapshot {
   return {
     ...defaultPersistedSnapshot(visualTime),
+    updateIntroductionDismissed: true,
     autoRefreshEnabled: false,
     lastRefreshDate: "2026-10-16T11:45:00.000Z",
     apps: [

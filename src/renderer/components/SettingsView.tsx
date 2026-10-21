@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { PermissionHelp } from "./PermissionHelp";
 import { baseline } from "../ipc";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -313,11 +314,12 @@ export function SettingsPane({
               />
               <Toggle
                 label="Use mas for App Store updates"
-                description="When enabled, Baseline can install App Store updates directly. When disabled, it opens App Store links instead."
+                description="Use the optional mas command-line tool to try App Store updates. It may need App Store sign-in or administrator authorization. When disabled, or if an update fails, Baseline opens the App Store link instead."
                 value={snapshot.useMasForAppStoreUpdates}
                 patch="useMasForAppStoreUpdates"
                 disabled={!snapshot.isMasInstalled}
               />
+              <PermissionHelp />
             </div>
           </section>
           <section className="panel settings-panel">

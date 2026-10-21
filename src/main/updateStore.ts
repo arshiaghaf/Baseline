@@ -1516,6 +1516,7 @@ function snapshotForPersistence(snapshot: BaselineSnapshot): PersistedSnapshot {
     selectedTab: "all",
     collapsedAppSectionIDs: snapshot.collapsedAppSectionIDs,
     collapsedHomebrewSectionIDs: snapshot.collapsedHomebrewSectionIDs,
+    updateIntroductionDismissed: snapshot.updateIntroductionDismissed,
     autoRefreshEnabled: snapshot.autoRefreshEnabled,
     refreshIntervalMinutes: snapshot.refreshIntervalMinutes,
     appearancePreference: snapshot.appearancePreference,

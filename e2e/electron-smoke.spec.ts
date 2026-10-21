@@ -5,7 +5,7 @@ import { _electron as electron, expect, test } from "@playwright/test";
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
-import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -79,6 +79,7 @@ const expectedBaselineAPI = [
   "performAppUpdate",
   "performHomebrewUpdate",
   "performHomebrewUpdateAll",
+  "permissionGuide",
   "refresh",
   "refreshToolStatus",
   "removeDirectory",
@@ -92,7 +93,9 @@ const expectedBaselineAPI = [
   "updatePreferences"
 ];
 
-async function launchBaseline(options: { packaged?: boolean; userData?: string } = {}) {
+async function launchBaseline(
+  options: { packaged?: boolean; userData?: string; firstUse?: boolean } = {}
+) {
   const appDirectory = process.env.BASELINE_E2E_APP_DIR;
   const executablePath = process.env.BASELINE_E2E_EXECUTABLE;
   if (!appDirectory || !executablePath) {
@@ -106,6 +109,19 @@ async function launchBaseline(options: { packaged?: boolean; userData?: string }
     throw new Error("Electron smoke tests require a disposable temporary user-data directory.");
   }
   userDataDirectories.add(userData);
+  if (!options.firstUse) {
+    // Ordinary smoke fixtures exercise an existing user's dashboard. First-use
+    // onboarding has its own test and must not add windows to those scenarios.
+    const snapshotPath = path.join(userData, "baseline-snapshot.json");
+    const snapshot = await readFile(snapshotPath, "utf8").then(JSON.parse, (error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return defaultPersistedSnapshot();
+    });
+    await writeFile(
+      snapshotPath,
+      JSON.stringify({ ...snapshot, updateIntroductionDismissed: true })
+    );
+  }
   const common = {
     env: {
       ...process.env,
@@ -1319,4 +1335,94 @@ test("keeps failure support collapsed and previews exact bounded report text wit
   expect(Buffer.byteLength(urls[0]!)).toBeLessThanOrEqual(6 * 1024);
   expect(errors).toEqual([]);
   await closeApp(application);
+});
+
+test("explains conditional app permissions without gating checks and remembers dismissal", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({
+      ...defaultPersistedSnapshot(),
+      autoRefreshEnabled: false,
+      operationFailures: [
+        {
+          id: "update:permission-fixture",
+          entityID: "permission-fixture",
+          operation: "update",
+          reason: "permission",
+          status: 1,
+          occurredAt: "2026-10-21T12:00:00.000Z"
+        }
+      ]
+    })
+  );
+  const application = await launchBaseline({ userData, firstUse: true });
+  const page = await application.firstWindow();
+  await expect(page.getByRole("region", { name: "Welcome to Baseline" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  await expect.poll(() => application.windows().length).toBeGreaterThan(1);
+  const guide = application.windows().find((window) => window !== page)!;
+  await expect(guide.getByRole("heading", { name: "App Management" })).toBeVisible();
+  await expect(guide.getByRole("button", { name: "Open Settings" })).toBeInViewport();
+  await expect(guide.getByRole("button", { name: "Later" })).toBeInViewport();
+  expect(await guide.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const bottomPadding = () =>
+    guide.evaluate(
+      () =>
+        innerHeight -
+        document.querySelector(".permission-settings-button")!.getBoundingClientRect().bottom
+    );
+  await expect.poll(bottomPadding).toBeLessThanOrEqual(24);
+  await expect.poll(bottomPadding).toBeGreaterThanOrEqual(12);
+  expect(
+    await guide
+      .locator("h1,p,.permission-app-name,.permission-app-name>span,.permission-settings-button")
+      .evaluateAll((elements) =>
+        elements.every((element) => getComputedStyle(element).fontSize === "14px")
+      )
+  ).toBe(true);
+  // Exercise the post-Settings layout without opening Settings on the CI desktop.
+  await application.evaluate(({ shell }) => {
+    shell.openExternal = async () => {};
+  });
+  await guide.getByRole("button", { name: "Open Settings", exact: true }).click();
+  await expect(guide.getByRole("button", { name: "Open Settings again" })).toBeInViewport();
+  await expect.poll(bottomPadding).toBeLessThanOrEqual(24);
+  await expect.poll(bottomPadding).toBeGreaterThanOrEqual(12);
+  await guide.screenshot({ path: test.info().outputPath("permission-guide-preview.png") });
+  await guide.getByRole("button", { name: "Later" }).click();
+  await expect.poll(() => guide.isClosed()).toBe(true);
+  const failure = page.locator(".operation-failure");
+  await failure.locator(":scope > summary").click();
+  const recovery = failure.locator(".permission-help");
+  await expect(recovery).not.toHaveAttribute("open");
+  await recovery.locator("summary").click();
+  await expect(recovery).toContainText("does not confirm that App Management access was denied");
+  await expect
+    .poll(() =>
+      page.evaluate(async () => (await window.baseline.getSnapshot()).updateIntroductionDismissed)
+    )
+    .toBe(true);
+  await page.evaluate(() => window.baseline.showSettings());
+  await expect(page).toHaveURL(/#\/settings$/);
+  await page.getByText("macOS permissions and updates", { exact: true }).click();
+  const reopenedGuide = application.waitForEvent("window");
+  await page.getByRole("button", { name: "Open guided setup", exact: true }).click();
+  const settingsGuide = await reopenedGuide;
+  await settingsGuide.getByRole("button", { name: "Later" }).click();
+  await expect.poll(() => settingsGuide.isClosed()).toBe(true);
+  await expect(page).toHaveURL(/#\/settings$/);
+  await closeApp(application);
+  const relaunched = await launchBaseline({ userData, firstUse: true });
+  const secondPage = await relaunched.firstWindow();
+  await expect
+    .poll(() =>
+      secondPage.evaluate(
+        async () => (await window.baseline.getSnapshot()).updateIntroductionDismissed
+      )
+    )
+    .toBe(true);
+  await expect(secondPage.getByRole("region", { name: "Welcome to Baseline" })).toHaveCount(0);
+  await expect.poll(() => relaunched.windows().length).toBe(1);
+  await closeApp(relaunched);
 });

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { performPermissionGuideAction } from "./permissionGuide";
 import { configureAdminAskpass, focusAdminAskpass } from "./adminAskpassRuntime";
 import { confirmHomebrewCleanup } from "./homebrewCleanupConfirmation";
 import {
@@ -45,6 +46,7 @@ declare const MAIN_WINDOW_VITE_NAME: string;
 let mainWindow: BrowserWindow | undefined;
 let mainWindowRoute: "main" | "settings" | undefined;
 let menuWindow: BrowserWindow | undefined;
+let permissionGuideWindow: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let trayBaseIcon: Electron.NativeImage | undefined;
 let trayRefreshIcon: Electron.NativeImage | undefined;
@@ -242,6 +244,107 @@ function createMainWindow(route: "main" | "settings"): BrowserWindow {
   return mainWindow;
 }
 
+function showPermissionGuide(): void {
+  if (permissionGuideWindow && !permissionGuideWindow.isDestroyed()) {
+    permissionGuideWindow.showInactive();
+    return;
+  }
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const width = Math.min(480, area.width);
+  const height = Math.min(252, area.height);
+  const window = new BrowserWindow({
+    width,
+    height,
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.max(area.y, area.y + area.height - height - 24),
+    minWidth: Math.min(320, width),
+    minHeight: Math.min(144, height),
+    title: "App Management help",
+    frame: false,
+    type: process.platform === "darwin" ? "panel" : undefined,
+    vibrancy: "popover",
+    visualEffectState: "active",
+    transparent: true,
+    backgroundColor: "#00000000",
+    resizable: false,
+    skipTaskbar: true,
+    show: false,
+    alwaysOnTop: true,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  permissionGuideWindow = window;
+  let displayed = false;
+  window.on("closed", () => {
+    if (displayed)
+      void store.updatePreferences({ updateIntroductionDismissed: true }).catch(() => {});
+    if (permissionGuideWindow === window) permissionGuideWindow = undefined;
+  });
+  const clamp = () => {
+    if (window.isDestroyed()) return;
+    const bounds = window.getBounds();
+    const area = screen.getDisplayMatching(bounds).workArea;
+    window.setMinimumSize(Math.min(320, area.width), Math.min(144, area.height));
+    window.setBounds({
+      x: Math.max(area.x, Math.min(bounds.x, area.x + area.width - bounds.width)),
+      y: Math.max(area.y, Math.min(bounds.y, area.y + area.height - bounds.height)),
+      width: Math.min(bounds.width, area.width),
+      height: Math.min(bounds.height, area.height)
+    });
+  };
+  screen.on("display-metrics-changed", clamp);
+  screen.on("display-removed", clamp);
+  window.on("closed", () => {
+    screen.removeListener("display-metrics-changed", clamp);
+    screen.removeListener("display-removed", clamp);
+  });
+  void loadRenderer(window, "permission-guide")
+    .then(() => {
+      if (!window.isDestroyed()) {
+        window.showInactive();
+        displayed = true;
+      }
+    })
+    .catch(() => {
+      if (!window.isDestroyed()) window.close();
+    });
+}
+
+let permissionGuideFitRevision = 0;
+async function fitPermissionGuide(): Promise<void> {
+  const window = permissionGuideWindow;
+  if (!window || window.isDestroyed()) return;
+  const revision = ++permissionGuideFitRevision;
+  const measured: unknown = await window.webContents
+    .executeJavaScript('document.querySelector(".permission-guide")?.scrollHeight')
+    .catch(() => undefined);
+  if (
+    window.isDestroyed() ||
+    permissionGuideWindow !== window ||
+    revision !== permissionGuideFitRevision ||
+    typeof measured !== "number" ||
+    !Number.isFinite(measured) ||
+    measured <= 0
+  )
+    return;
+  const bounds = window.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  const height = Math.min(area.height, Math.max(144, Math.ceil(measured) + 2));
+  // Keep the existing bottom edge, including after the user moves the guide.
+  window.setBounds({
+    ...bounds,
+    height,
+    y: Math.max(area.y, Math.min(bounds.y + bounds.height - height, area.y + area.height - height))
+  });
+}
+
 function createMenuWindow(): BrowserWindow {
   if (menuWindow) {
     return menuWindow;
@@ -283,7 +386,7 @@ function createMenuWindow(): BrowserWindow {
 
 async function loadRenderer(
   window: BrowserWindow,
-  route: "main" | "menubar" | "settings"
+  route: "main" | "menubar" | "settings" | "permission-guide"
 ): Promise<void> {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     await window.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}#/${route}`);
@@ -543,6 +646,15 @@ function updateTrayStatus(snapshot: BaselineSnapshot): void {
 
 function wireIpc(): void {
   const handle = backendIpcRegistrar(ipcMain, requireBackendSender);
+  handle("permissionGuide", (event, action) =>
+    performPermissionGuideAction(action, event.sender, {
+      show: showPermissionGuide,
+      fit: fitPermissionGuide,
+      close: () => {
+        permissionGuideWindow?.close();
+      }
+    })
+  );
   handle("getSnapshot", () => store.getSnapshot());
   handle("getAppMetadata", () => metadata);
   handle(
@@ -620,8 +732,8 @@ function wireIpc(): void {
 }
 
 function requireBackendSender(event: Electron.IpcMainInvokeEvent): void {
-  const windows = [mainWindow, menuWindow].filter((window): window is BrowserWindow =>
-    Boolean(window && !window.isDestroyed())
+  const windows = [mainWindow, menuWindow, permissionGuideWindow].filter(
+    (window): window is BrowserWindow => Boolean(window && !window.isDestroyed())
   );
   const documentURL =
     MAIN_WINDOW_VITE_DEV_SERVER_URL ||

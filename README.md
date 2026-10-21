@@ -89,6 +89,8 @@ Baseline uses public update sources and local tooling. It does not require priva
 
 The app may query public services such as Apple lookup endpoints, Sparkle or appcast URLs declared by installed apps, and Homebrew metadata endpoints. Homebrew and `mas` actions run locally when you choose those update paths.
 
+See [macOS permissions](docs/MACOS_PERMISSIONS.md) for conditional update approvals, administrator authorization, and recovery guidance.
+
 Report suspected security issues using the process in [SECURITY.md](SECURITY.md).
 
 ## Contributing
