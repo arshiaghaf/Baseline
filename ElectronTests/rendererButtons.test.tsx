@@ -580,6 +580,34 @@ describe("renderer button parity", () => {
     expect(window.baseline.performAppUpdate).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      updateURL: "https://example.com/latest",
+      updateURLKind: "download" as const,
+      label: "Download"
+    },
+    { updateURL: "https://example.com/latest.dmg", label: "Visit website" },
+    {
+      updateURL: "http://example.com/latest.dmg",
+      updateURLKind: "download" as const,
+      label: "Open app"
+    }
+  ])("labels the resolved publisher action as $label", ({ label, ...target }) => {
+    render(
+      <AppRow
+        app={app}
+        snapshot={snapshot({ updates: [{ ...update, source: "sparkle", ...target }] })}
+        recentlyUpdated={false}
+      />
+    );
+    fireEvent.click(
+      screen
+        .getAllByRole("button", { name: label })
+        .find((button) => button.classList.contains("update-action-button"))!
+    );
+    expect(window.baseline.performAppUpdate).toHaveBeenCalledWith(app.id);
+  });
+
   it("shows Sparkle build-only update versions in app rows", () => {
     const buildOnlyApp = {
       ...app,
@@ -610,7 +638,11 @@ describe("renderer button parity", () => {
 
     expect(screen.getByText("1.0 (100)")).toBeInTheDocument();
     expect(screen.getByText("1.0 (101)")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open updater" })).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("button", { name: "Open app" })
+        .find((button) => button.classList.contains("update-action-button"))!
+    ).toBeInTheDocument();
   });
 
   it("shows matched Homebrew cask progress on app update buttons", () => {
@@ -3754,7 +3786,11 @@ describe("Homebrew pin presentation", () => {
         />
       );
       expect(screen.queryByText("Pinned in Homebrew")).not.toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: "Open updater" }));
+      fireEvent.click(
+        screen
+          .getAllByRole("button", { name: "Open app" })
+          .find((button) => button.classList.contains("update-action-button"))!
+      );
       expect(window.baseline.performAppUpdate).toHaveBeenCalledWith(app.id);
     }
   );
@@ -3773,7 +3809,11 @@ describe("Homebrew pin presentation", () => {
         recentlyUpdated={false}
       />
     );
-    expect(screen.getByRole("button", { name: "Open updater" })).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("button", { name: "Open app" })
+        .find((button) => button.classList.contains("update-action-button"))!
+    ).toBeInTheDocument();
   });
 
   it.each([false, true])(

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
+import { externalAppUpdateAction } from "../../shared/appUpdateAction";
 import type {
   AppRecord,
   BaselineSnapshot,
@@ -155,11 +156,13 @@ export function appUpdateReadyLabel(
   if (update.source === "homebrew" && !uninstallableHomebrewItemForApp(app, snapshot)) {
     return "Open app";
   }
-  if (update.source === "sparkle") {
-    return "Open updater";
-  }
-  if (update.source === "web") {
-    return "Open website";
+  if (update.source === "sparkle" || update.source === "web") {
+    const action = externalAppUpdateAction(update);
+    return action.kind === "download"
+      ? "Download"
+      : action.kind === "website"
+        ? "Visit website"
+        : "Open app";
   }
   return "Update";
 }

@@ -65,6 +65,8 @@ export type SparkleLookupResult = {
   remoteBuildVersion?: VersionValue;
   versionComparison?: SparkleVersionComparison;
   updateURL?: string;
+  // Provider metadata identifies an installer/archive enclosure, independently of its URL shape.
+  updateURLKind?: "download";
   releaseNotesURL?: string;
   releaseDate?: string;
 };
@@ -127,6 +129,8 @@ export type UpdateRecord = {
   // Older snapshots lack the original feed's comparison domain.
   sparkleVersionComparison?: SparkleVersionComparison;
   updateURL?: string;
+  // Provider metadata identifies an installer/archive enclosure, independently of its URL shape.
+  updateURLKind?: "download";
   appStoreItemID?: number;
   homebrewToken?: string;
   releaseNotesURL?: string;

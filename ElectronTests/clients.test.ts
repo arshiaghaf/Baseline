@@ -287,6 +287,26 @@ describe("ported clients", () => {
     const result = new SparkleAppcastClient().parseAppcast(data, version("1.0.0"));
     expect(result?.remoteVersion.raw).toBe("2.0.0");
     expect(result?.updateURL).toBe("https://example.com/download/2.0.0.zip");
+    expect(result?.updateURLKind).toBe("download");
+  });
+
+  it("retains download intent for extensionless appcast enclosures without probing the target", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    try {
+      const result = new SparkleAppcastClient().parseAppcast(
+        Buffer.from(
+          '<rss><channel><item><enclosure url="https://example.com/latest?platform=mac" sparkle:version="2" /></item></channel></rss>'
+        ),
+        version("1")
+      );
+      expect(result).toMatchObject({
+        updateURL: "https://example.com/latest?platform=mac",
+        updateURLKind: "download"
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("detects Sparkle updates when only the build version advances", () => {

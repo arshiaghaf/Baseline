@@ -175,6 +175,7 @@ function selectUpdate(
     remoteBuildVersion: isVersionEmpty(best.buildVersion) ? undefined : { ...best.buildVersion },
     versionComparison: best.hasMarketingVersion ? "marketing" : "build",
     updateURL: best.updateURL,
+    updateURLKind: best.updateURL ? "download" : undefined,
     releaseNotesURL: best.releaseNotesURL,
     releaseDate: best.item.publicationDate
   };

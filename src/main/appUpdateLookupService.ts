@@ -322,6 +322,7 @@ export async function lookupAppUpdates(
             remoteBuildVersion: outcome.value.remoteBuildVersion,
             sparkleVersionComparison: outcome.value.versionComparison,
             updateURL: outcome.value.updateURL,
+            updateURLKind: outcome.value.updateURLKind,
             releaseNotesURL: outcome.value.releaseNotesURL,
             releaseDate: outcome.value.releaseDate,
             checkedAt: outcome.checkedAt ?? input.now
