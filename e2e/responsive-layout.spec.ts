@@ -301,20 +301,51 @@ test("dashboard cards fit narrow windows and scaled-display viewports", async ()
             stackWidth: stack.getBoundingClientRect().width,
             headingLeft: heading.getBoundingClientRect().left,
             contentGutter: content.offsetWidth - content.clientWidth,
-            topbarGutter: topbar.offsetWidth - topbar.clientWidth,
+            topbarOverflow: getComputedStyle(topbar).overflowY,
+            compensatedGutter: parseFloat(
+              getComputedStyle(topbar).getPropertyValue("--settings-scrollbar-width")
+            ),
             panelWidths,
             controlsOutside,
             overflow: content.scrollWidth > content.clientWidth
           };
         });
         expect(layout.stackWidth).toBeLessThanOrEqual(860);
-        expect(layout.topbarGutter).toBe(layout.contentGutter);
+        expect(layout.topbarOverflow).toBe("visible");
+        expect(layout.compensatedGutter).toBe(layout.contentGutter);
         expect(Math.abs(layout.stackLeft - layout.headingLeft)).toBeLessThan(1);
         expect(layout.panelWidths.every((panelWidth) => panelWidth <= layout.stackWidth + 1)).toBe(
           true
         );
         expect(layout.controlsOutside).toEqual([]);
         expect(layout.overflow).toBe(false);
+        if (section === "Profile" && (width === 660 || width === 1512)) {
+          for (const indicator of await page.locator(".profile-topbar-indicators > span").all()) {
+            const tooltip = indicator.getByRole("tooltip");
+            const isPainted = () =>
+              tooltip.evaluate((element) => {
+                const bounds = element.getBoundingClientRect();
+                const header = document.querySelector(".settings-topbar")!.getBoundingClientRect();
+                const painted = document.elementFromPoint(
+                  bounds.left + bounds.width / 2,
+                  bounds.top + Math.min(bounds.height / 2, 12)
+                );
+                return (
+                  bounds.top >= header.bottom &&
+                  getComputedStyle(element).opacity === "1" &&
+                  (painted === element || element.contains(painted))
+                );
+              });
+            await indicator.hover();
+            await expect.poll(isPainted).toBe(true);
+            await indicator.focus();
+            await page.keyboard.press("Shift+Tab");
+            await page.keyboard.press("Tab");
+            await expect(indicator).toBeFocused();
+            await page.mouse.move(0, 0);
+            await expect.poll(isPainted).toBe(true);
+          }
+        }
         if (width === 660 || width === 2560) {
           await page.screenshot({
             path: test.info().outputPath(`settings-${section.toLowerCase()}-${width}.png`)

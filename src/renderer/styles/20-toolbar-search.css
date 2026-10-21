@@ -29,8 +29,7 @@
 }
 
 .settings-topbar {
-  overflow-y: auto;
-  scrollbar-gutter: stable;
+  padding-right: calc(clamp(24px, 4vw, 60px) + var(--settings-scrollbar-width, 0px));
 }
 
 .dashboard-topbar-inner,
