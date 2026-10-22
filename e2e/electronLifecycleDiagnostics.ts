@@ -72,6 +72,9 @@ export async function requestElectronQuit(
         process.stderr.write(`E2E quit callback entered ${Date.now()}\n`);
         app.quit();
         process.stderr.write(`E2E quit call returned ${Date.now()}\n`);
+        setTimeout(() => {
+          process.stderr.write(`E2E post-quit main-loop turn ${Date.now()}\n`);
+        }, 100).unref();
       });
     });
     log?.event("quit-request-dispatched");
@@ -156,8 +159,12 @@ export function trackElectronLifecycle(
           `E2E lifecycle ${JSON.stringify({ event, windows: BrowserWindow.getAllWindows().length })}\n`
         );
       };
-      app.on("before-quit", () => record("before-quit"));
+      app.prependListener("before-quit", () => record("before-quit-first"));
+      app.on("before-quit", () => record("before-quit-last"));
       app.on("will-quit", () => record("will-quit"));
+      process.on("uncaughtExceptionMonitor", (error) => {
+        process.stderr.write(`E2E uncaught exception ${String(error).slice(0, 2000)}\n`);
+      });
     })
     .then(() => log.event("native-listeners-installed"))
     .catch((error: unknown) =>
