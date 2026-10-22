@@ -52,32 +52,19 @@ export class LifecycleLog {
 }
 
 // Playwright's internal close handler swallows app.quit() evaluation errors.
-// Dispatch quit outside the inspector evaluation stack, then wait for the
-// owned app to close before Playwright starts its own close handler. The caller
-// includes both phases in cleanupApplications' existing deadline.
+// Request quit explicitly so unexpected invocation failures remain test failures.
+// The caller must include this in cleanupApplications' existing deadline and
+// still verify process exit after an expected shutdown disconnection.
 export async function requestElectronQuit(
-  application: Pick<ElectronApplication, "evaluate" | "process"> & {
-    waitForEvent(event: "close"): Promise<unknown>;
-  }
+  application: Pick<ElectronApplication, "evaluate">
 ): Promise<void> {
   const log = lifecycleLogs.get(application);
   log?.event("quit-request-start");
-  const child = application.process();
-  const closed = application.waitForEvent("close");
-  // If dispatch itself fails, retain that error while cleanup handles the child.
-  void closed.catch(() => undefined);
   try {
-    await application.evaluate(({ app }) => {
-      setImmediate(() => {
-        process.stderr.write(`E2E quit callback entered ${Date.now()}\n`);
-        app.quit();
-        process.stderr.write(`E2E quit call returned ${Date.now()}\n`);
-        setTimeout(() => {
-          process.stderr.write(`E2E post-quit main-loop turn ${Date.now()}\n`);
-        }, 100).unref();
-      });
+    await application.evaluate(async ({ app }) => {
+      app.quit();
     });
-    log?.event("quit-request-dispatched");
+    log?.event("quit-request-complete");
   } catch (error) {
     if (
       error instanceof Error &&
@@ -86,18 +73,11 @@ export async function requestElectronQuit(
       )
     ) {
       log?.event("quit-request-disconnected", error.message.slice(-2000));
-    } else {
-      log?.event("quit-request-failed", String(error).slice(-2000));
-      throw error;
+      return;
     }
+    log?.event("quit-request-failed", String(error).slice(-2000));
+    throw error;
   }
-  await closed;
-  if (child.exitCode !== 0 || child.signalCode !== null) {
-    throw new Error(
-      `Test-owned application ${child.pid} exited abnormally after quit (code ${child.exitCode}, signal ${child.signalCode}).`
-    );
-  }
-  log?.event("quit-request-complete");
 }
 
 export function recordElectronLaunch(testInfo: TestInfo, executable: string): void {
@@ -153,18 +133,18 @@ export function trackElectronLifecycle(
   // Listener installation is best effort and does not delay the test or quit.
   // Native event messages enter the bounded stderr tail, not production code.
   void application
-    .evaluate(({ app, BrowserWindow }) => {
+    .evaluate(({ app }) => {
       const record = (event: string) => {
-        process.stderr.write(
-          `E2E lifecycle ${JSON.stringify({ event, windows: BrowserWindow.getAllWindows().length })}\n`
-        );
+        // A diagnostic listener must not interrupt Electron's quit event if
+        // shutdown has already torn down a module or closed stderr.
+        try {
+          process.stderr.write(`E2E lifecycle ${event}\n`);
+        } catch {
+          // Continue native quit even when diagnostics are unavailable.
+        }
       };
-      app.prependListener("before-quit", () => record("before-quit-first"));
-      app.on("before-quit", () => record("before-quit-last"));
+      app.on("before-quit", () => record("before-quit"));
       app.on("will-quit", () => record("will-quit"));
-      process.on("uncaughtExceptionMonitor", (error) => {
-        process.stderr.write(`E2E uncaught exception ${String(error).slice(0, 2000)}\n`);
-      });
     })
     .then(() => log.event("native-listeners-installed"))
     .catch((error: unknown) =>

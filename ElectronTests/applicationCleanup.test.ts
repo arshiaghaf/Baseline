@@ -190,8 +190,7 @@ test.each([
       close: () => new Promise<void>(() => undefined),
       evaluate: async () => {
         throw quitError;
-      },
-      waitForEvent: () => new Promise<void>((resolve) => child.once("close", resolve))
+      }
     };
     const cleanup = cleanupApplications([application], requestElectronQuit, 100);
     if (expectedDisconnect) {
@@ -205,43 +204,3 @@ test.each([
     expect(child.signalCode).toBe("SIGKILL");
   }
 );
-
-test("a quit request does not accept an abnormal owned-process exit", async () => {
-  const { child } = await startChild();
-  const application = {
-    process: () => child,
-    close: async () => {},
-    evaluate: async () => {
-      child.kill("SIGTERM");
-    },
-    waitForEvent: () => new Promise<void>((resolve) => child.once("close", resolve))
-  };
-  await expect(cleanupApplications([application], requestElectronQuit, 1000)).rejects.toMatchObject(
-    {
-      message: expect.stringContaining("exited abnormally after quit")
-    }
-  );
-  expect(child.signalCode).toBe("SIGTERM");
-});
-
-test("quit keeps the owned child handle before the Electron connection closes", async () => {
-  const { child } = await startChild();
-  let connectionClosed = false;
-  child.once("close", () => {
-    connectionClosed = true;
-  });
-  const application = {
-    process: () => {
-      if (connectionClosed) throw new Error("Electron connection is closed");
-      return child;
-    },
-    close: async () => {},
-    evaluate: async () => {
-      child.send("quit");
-    },
-    waitForEvent: () => new Promise<void>((resolve) => child.once("close", resolve))
-  };
-  await cleanupApplications([application], requestElectronQuit, 1000);
-  expect(connectionClosed).toBe(true);
-  expect(child.exitCode).toBe(0);
-});
