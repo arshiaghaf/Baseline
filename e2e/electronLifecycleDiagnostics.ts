@@ -136,9 +136,10 @@ export function trackElectronLifecycle(
     .evaluate(({ app }) => {
       const record = (event: string) => {
         // A diagnostic listener must not interrupt Electron's quit event if
-        // shutdown has already torn down a module or closed stderr.
+        // logging becomes unavailable during shutdown. Console handles stream
+        // errors that a direct stderr write can emit asynchronously.
         try {
-          process.stderr.write(`E2E lifecycle ${event}\n`);
+          console.error("E2E lifecycle", event);
         } catch {
           // Continue native quit even when diagnostics are unavailable.
         }
