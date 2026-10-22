@@ -86,14 +86,7 @@ jobs:
         run: npm run test:electron -- --grep "keeps hidden-Dock settings reachable|narrow operation notice wraps" --output=test-results/lifecycle-focused
 
       - name: Electron smoke test
-        run: |
-          if [[ "${{ matrix.os }}" == "xcode-27" ]]; then
-            for pass in 1 2 3; do
-              BASELINE_E2E_HEARTBEAT=0 npm run test:electron -- --output="test-results/full-$pass"
-            done
-          else
-            npm run test:electron -- --output=test-results/full
-          fi
+        run: npm run test:electron -- --output=test-results/full
 
       - name: Retain focused lifecycle diagnostics
         if: always() && matrix.os == 'macos-26'
@@ -101,15 +94,6 @@ jobs:
         with:
           name: electron-lifecycle-${{ matrix.os }}-${{ github.run_attempt }}
           path: test-results/lifecycle-focused/**/electron-lifecycle-*.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Retain Xcode 27 lifecycle diagnostics
-        if: always() && matrix.os == 'xcode-27'
-        uses: actions/upload-artifact@v7
-        with:
-          name: electron-lifecycle-${{ matrix.os }}-${{ github.run_attempt }}
-          path: test-results/full-*/**/electron-lifecycle-*.json
           if-no-files-found: ignore
           retention-days: 7
 

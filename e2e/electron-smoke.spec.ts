@@ -157,23 +157,7 @@ async function launchBaseline(
 }
 
 async function closeApp(app: Awaited<ReturnType<typeof electron.launch>>) {
-  const closePromise = app.waitForEvent("close");
-  await app
-    .evaluate(async ({ app }) => {
-      app.quit();
-    })
-    .catch((error: unknown) => {
-      if (
-        error instanceof Error &&
-        /Execution context was destroyed|Target page, context or browser has been closed/u.test(
-          error.message
-        )
-      ) {
-        return;
-      }
-      throw error;
-    });
-  await closePromise;
+  await requestElectronQuit(app);
   launchedApps.delete(app);
 }
 

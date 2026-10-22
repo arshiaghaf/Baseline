@@ -205,3 +205,21 @@ test.each([
     expect(child.signalCode).toBe("SIGKILL");
   }
 );
+
+test("a quit request does not accept an abnormal owned-process exit", async () => {
+  const { child } = await startChild();
+  const application = {
+    process: () => child,
+    close: async () => {},
+    evaluate: async () => {
+      child.kill("SIGTERM");
+    },
+    waitForEvent: () => new Promise<void>((resolve) => child.once("close", resolve))
+  };
+  await expect(cleanupApplications([application], requestElectronQuit, 1000)).rejects.toMatchObject(
+    {
+      message: expect.stringContaining("exited abnormally after quit")
+    }
+  );
+  expect(child.signalCode).toBe("SIGTERM");
+});

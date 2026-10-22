@@ -56,13 +56,15 @@ export class LifecycleLog {
 // owned app to close before Playwright starts its own close handler. The caller
 // includes both phases in cleanupApplications' existing deadline.
 export async function requestElectronQuit(
-  application: Pick<ElectronApplication, "evaluate"> & {
+  application: Pick<ElectronApplication, "evaluate" | "process"> & {
     waitForEvent(event: "close"): Promise<unknown>;
   }
 ): Promise<void> {
   const log = lifecycleLogs.get(application);
   log?.event("quit-request-start");
   const closed = application.waitForEvent("close");
+  // If dispatch itself fails, retain that error while cleanup handles the child.
+  void closed.catch(() => undefined);
   try {
     await application.evaluate(({ app }) => {
       setImmediate(() => {
@@ -86,6 +88,12 @@ export async function requestElectronQuit(
     }
   }
   await closed;
+  const child = application.process();
+  if (child.exitCode !== 0 || child.signalCode !== null) {
+    throw new Error(
+      `Test-owned application ${child.pid} exited abnormally after quit (code ${child.exitCode}, signal ${child.signalCode}).`
+    );
+  }
   log?.event("quit-request-complete");
 }
 
@@ -148,14 +156,6 @@ export function trackElectronLifecycle(
           `E2E lifecycle ${JSON.stringify({ event, windows: BrowserWindow.getAllWindows().length })}\n`
         );
       };
-      // The focused comparison omits this timer to check whether it changes
-      // the shutdown race. It never keeps the app alive when enabled.
-      if (process.env.BASELINE_E2E_HEARTBEAT !== "0") {
-        const heartbeat = setInterval(() => {
-          process.stderr.write(`E2E main heartbeat ${Date.now()}\n`);
-        }, 500);
-        heartbeat.unref();
-      }
       app.on("before-quit", () => record("before-quit"));
       app.on("will-quit", () => record("will-quit"));
     })
