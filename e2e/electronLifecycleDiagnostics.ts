@@ -62,6 +62,7 @@ export async function requestElectronQuit(
 ): Promise<void> {
   const log = lifecycleLogs.get(application);
   log?.event("quit-request-start");
+  const child = application.process();
   const closed = application.waitForEvent("close");
   // If dispatch itself fails, retain that error while cleanup handles the child.
   void closed.catch(() => undefined);
@@ -88,7 +89,6 @@ export async function requestElectronQuit(
     }
   }
   await closed;
-  const child = application.process();
   if (child.exitCode !== 0 || child.signalCode !== null) {
     throw new Error(
       `Test-owned application ${child.pid} exited abnormally after quit (code ${child.exitCode}, signal ${child.signalCode}).`

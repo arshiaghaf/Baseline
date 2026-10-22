@@ -223,3 +223,25 @@ test("a quit request does not accept an abnormal owned-process exit", async () =
   );
   expect(child.signalCode).toBe("SIGTERM");
 });
+
+test("quit keeps the owned child handle before the Electron connection closes", async () => {
+  const { child } = await startChild();
+  let connectionClosed = false;
+  child.once("close", () => {
+    connectionClosed = true;
+  });
+  const application = {
+    process: () => {
+      if (connectionClosed) throw new Error("Electron connection is closed");
+      return child;
+    },
+    close: async () => {},
+    evaluate: async () => {
+      child.send("quit");
+    },
+    waitForEvent: () => new Promise<void>((resolve) => child.once("close", resolve))
+  };
+  await cleanupApplications([application], requestElectronQuit, 1000);
+  expect(connectionClosed).toBe(true);
+  expect(child.exitCode).toBe(0);
+});
