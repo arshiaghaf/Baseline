@@ -74,12 +74,30 @@ jobs:
       - name: Package Electron app
         run: npm run build
 
-      - name: Verify Apple Silicon package architecture
+      - name: Verify Apple Silicon package architecture and icons
         run: |
           app="out/Baseline-darwin-arm64/Baseline.app"
           for binary in "$app/Contents/MacOS/Baseline" "$app/Contents/Frameworks/Electron Framework.framework/Electron Framework" "$app/Contents/Resources/admin-askpass"; do
             [[ "$(lipo -archs "$binary")" == "arm64" ]]
           done
+          icon_file="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$app/Contents/Info.plist")"
+          [[ -s "$app/Contents/Resources/$icon_file" ]]
+          if [[ "$(sw_vers -productVersion | cut -d. -f1)" -ge 26 ]]; then
+            [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$app/Contents/Info.plist")" == "Icon" ]]
+            [[ -s "$app/Contents/Resources/Assets.car" ]]
+            /usr/bin/assetutil --info "$app/Contents/Resources/Assets.car" > "$RUNNER_TEMP/baseline-icon-catalog.json"
+            node - "$RUNNER_TEMP/baseline-icon-catalog.json" <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const catalog = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const appearances = new Set(catalog
+            .filter(asset => asset.AssetType === 'IconImageStack' && asset.Name === 'Icon')
+            .map(asset => asset.Appearance));
+          for (const appearance of ['NSAppearanceNameAqua', 'NSAppearanceNameDarkAqua', 'ISAppearanceTintable']) {
+            assert(appearances.has(appearance), `Missing icon appearance: ${appearance}`);
+          }
+          NODE
+          fi
 
       - name: Focused Electron lifecycle checks
         if: matrix.os == 'macos-26'
