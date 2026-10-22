@@ -133,12 +133,16 @@ export function trackElectronLifecycle(
   // Listener installation is best effort and does not delay the test or quit.
   // Native event messages enter the bounded stderr tail, not production code.
   void application
-    .evaluate(({ app, BrowserWindow }) => {
+    .evaluate(({ app }) => {
       const record = (event: string) => {
-        console.error(
-          "E2E lifecycle",
-          JSON.stringify({ event, windows: BrowserWindow.getAllWindows().length })
-        );
+        // A diagnostic listener must not interrupt Electron's quit event if
+        // logging becomes unavailable during shutdown. Console handles stream
+        // errors that a direct stderr write can emit asynchronously.
+        try {
+          console.error("E2E lifecycle", event);
+        } catch {
+          // Continue native quit even when diagnostics are unavailable.
+        }
       };
       app.on("before-quit", () => record("before-quit"));
       app.on("will-quit", () => record("will-quit"));
