@@ -21,6 +21,7 @@ import type {
   RowActionMenuFloatingPosition
 } from "../types";
 import { actionStateLabel } from "../helpers/actionState";
+import { isCompactPointerBlur } from "../helpers/focus";
 import {
   rowActionMenuEstimatedWidth,
   rowActionMenuEstimatedHeight,
@@ -331,7 +332,13 @@ export function RowMoreActionButton({
     <div
       className="row-action-menu"
       ref={menuRef}
+      onMouseDownCapture={() => {
+        keyboardOpening.current = undefined;
+      }}
       onBlur={(event) => {
+        // Compact pointer focus clearing must not remove the click target
+        // between mousedown and click. Outside presses dismiss separately.
+        if (isCompactPointerBlur(event.target)) return;
         const next = event.relatedTarget as Node | null;
         if (open && !menuRef.current?.contains(next) && !popoverRef.current?.contains(next)) {
           setOpen(false);

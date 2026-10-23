@@ -3151,6 +3151,27 @@ describe("renderer button parity", () => {
     }
   );
 
+  it.each(["Ignore", "Actions"])(
+    "keeps the compact keyboard-open menu mounted until pointer %s activation",
+    (choice) => {
+      render(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
+      const actions = screen.getByRole("button", { name: "Actions" });
+      actions.focus();
+      fireEvent.keyDown(actions, { key: "ArrowDown" });
+      const ignore = screen.getByRole("menuitem", { name: "Ignore" });
+      expect(ignore).toHaveFocus();
+      const target = choice === "Ignore" ? ignore : actions;
+      fireEvent.mouseDown(target);
+      expect(screen.getByRole("menuitem", { name: "Ignore" })).toBeInTheDocument();
+      fireEvent.click(target, { detail: 1 });
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+      expect(document.activeElement).toBe(document.body);
+      if (choice === "Ignore")
+        expect(window.baseline.toggleIgnoredApp).toHaveBeenCalledWith(app.id);
+      else expect(window.baseline.toggleIgnoredApp).not.toHaveBeenCalled();
+    }
+  );
+
   it("retains compact keyboard focus on toolbar and row actions", () => {
     render(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
 

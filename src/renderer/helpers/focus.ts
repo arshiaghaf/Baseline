@@ -3,6 +3,12 @@
 
 import React from "react";
 
+const compactPointerBlurTargets = new WeakSet<EventTarget>();
+
+export function isCompactPointerBlur(target: EventTarget): boolean {
+  return compactPointerBlurTargets.has(target);
+}
+
 export function suppressCompactPopoverControlFocus(
   target: EventTarget | Element | null,
   compactShell: HTMLElement | null,
@@ -12,7 +18,14 @@ export function suppressCompactPopoverControlFocus(
     // Pointer activation must not leave a previously keyboard-focused action
     // armed while focus is intentionally suppressed on the clicked button.
     const active = document.activeElement;
-    if (active instanceof HTMLButtonElement && compactShell?.contains(active)) active.blur();
+    if (active instanceof HTMLButtonElement && compactShell?.contains(active)) {
+      compactPointerBlurTargets.add(active);
+      try {
+        active.blur();
+      } finally {
+        compactPointerBlurTargets.delete(active);
+      }
+    }
     event.preventDefault();
   }
 }

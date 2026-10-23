@@ -288,6 +288,39 @@ for (const [source, destination, intent] of [
   });
 }
 
+for (const choice of ["Ignore", "Actions"] as const) {
+  test(`compact keyboard-open menu supports pointer ${choice}`, async () => {
+    await withKeyboardFixture(
+      "menubar",
+      async (page, intents) => {
+        const actions = page.getByRole("button", { name: "Actions" });
+        await actions.focus();
+        await page.keyboard.press("ArrowDown");
+        const ignore = page.getByRole("menuitem", { name: "Ignore", exact: true });
+        await expect(ignore).toBeFocused();
+        if (choice === "Ignore") {
+          await ignore.click();
+          await expect.poll(intents).toEqual(["ignore"]);
+          await expect(actions).toHaveCount(0);
+        } else {
+          await actions.click();
+          await expect(page.getByRole("menu")).toHaveCount(0);
+          await expect(actions).toHaveAttribute("aria-expanded", "false");
+        }
+        expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+        await page.keyboard.press("Enter");
+        expect(await intents()).toEqual(choice === "Ignore" ? ["ignore"] : []);
+        if (choice === "Actions") {
+          await actions.focus();
+          await page.keyboard.press("ArrowDown");
+          await expect(ignore).toBeFocused();
+        }
+      },
+      { liveIgnore: true }
+    );
+  });
+}
+
 for (const [surface, homebrew] of [
   ["main-inline", false],
   ["main-floating", false],
