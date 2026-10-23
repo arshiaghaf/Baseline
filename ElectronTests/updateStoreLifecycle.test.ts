@@ -12,7 +12,8 @@ import {
   defaultPersistedSnapshot,
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
-  type AppRecord
+  type AppRecord,
+  type SelfUpdateRecord
 } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
@@ -54,7 +55,7 @@ async function makeStore(
   options: Partial<
     Pick<
       ConstructorParameters<typeof UpdateStore>[0],
-      "persistence" | "profileStatsIntegrity" | "persisted"
+      "persistence" | "profileStatsIntegrity" | "persisted" | "currentAppVersion"
     >
   > = {}
 ) {
@@ -106,6 +107,168 @@ async function makeStore(
 }
 
 describe("update store lifecycle boundaries", () => {
+  it.each(["refresh", "add directory", "remove directory"])(
+    "preserves outstanding source-search strength when superseded by %s",
+    async (replacement) => {
+      const oldScan = deferred<AppRecord[]>();
+      const record = {
+        ...app("1"),
+        bundleIdentifier: "com.example.utility",
+        sparkleFeedURL: "https://example.test/appcast.xml"
+      };
+      const now = new Date().toISOString();
+      const scanApplications = vi
+        .fn<() => Promise<AppRecord[]>>()
+        .mockImplementationOnce(() => oldScan.promise)
+        .mockResolvedValue([record]);
+      const lookupOutcome = vi.fn(async () => ({ type: "completed" as const }));
+      const sparkleLookup = vi.fn(async () => ({ type: "completed" as const }));
+      const store = await makeStore(
+        {
+          scanner: { scanApplications },
+          appStore: { lookupOutcome },
+          sparkle: { lookupOutcome: sparkleLookup }
+        },
+        {},
+        {
+          persisted: {
+            ...defaultPersistedSnapshot(),
+            additionalDirectories: ["/fixture/Extra"],
+            appProviderChecks: {
+              [record.id]: {
+                fingerprint: appProviderFingerprint(record),
+                storefront: "us",
+                status: "checked",
+                source: "sparkle",
+                sparkleFeedURL: record.sparkleFeedURL,
+                checkedAt: now,
+                discoveryCheckedAt: now
+              }
+            }
+          }
+        }
+      );
+      const first = store.refresh(false, { forceAppDiscovery: true });
+      const next =
+        replacement === "refresh"
+          ? store.refresh(false)
+          : replacement === "add directory"
+            ? store.addDirectory("/fixture/Other")
+            : store.removeDirectory("/fixture/Extra");
+      try {
+        await next;
+        expect(scanApplications).toHaveBeenCalledTimes(2);
+        expect(lookupOutcome).toHaveBeenCalledExactlyOnceWith(
+          record.bundleIdentifier,
+          record.localVersion,
+          expect.objectContaining({ force: true })
+        );
+        expect(sparkleLookup).toHaveBeenCalledWith(
+          record.sparkleFeedURL,
+          record.localVersion,
+          undefined,
+          expect.objectContaining({ force: true })
+        );
+        oldScan.resolve([record]);
+        await first;
+
+        // Completed requests must not make future folder scans force freshness
+        // or rediscover a recently checked alternative forever.
+        await store.refresh(false, { forceMetadata: false });
+        expect(lookupOutcome).toHaveBeenCalledTimes(1);
+        expect(sparkleLookup).toHaveBeenLastCalledWith(
+          record.sparkleFeedURL,
+          record.localVersion,
+          undefined,
+          expect.objectContaining({ force: false })
+        );
+      } finally {
+        oldScan.resolve([]);
+        await Promise.allSettled([first, next]);
+        await store.prepareToQuit();
+      }
+    }
+  );
+
+  it.each(["explicit", "background"])(
+    "keeps a newer %s self-update result when an older check completes last",
+    async (newest) => {
+      const results = [deferred<SelfUpdateRecord>(), deferred<SelfUpdateRecord>()];
+      const lookup = vi.fn(() => results[lookup.mock.calls.length - 1]!.promise);
+      const store = await makeStore({ selfUpdate: { lookup } }, {}, { currentAppVersion: "1" });
+      const older = newest === "explicit" ? store.refresh(true) : store.checkForSelfUpdate();
+      const newer = newest === "explicit" ? store.checkForSelfUpdate() : store.refresh(true);
+      const available = {
+        available: true,
+        currentVersion: version("1"),
+        latestVersion: version("2"),
+        checkedAt: "2026-10-01T01:01:00.000Z"
+      };
+      try {
+        expect(lookup).toHaveBeenCalledTimes(2);
+        results[1]!.resolve(available);
+        await newer;
+        expect(store.getSnapshot().selfUpdate).toEqual(available);
+        results[0]!.resolve({
+          available: false,
+          currentVersion: version("1"),
+          checkedAt: "2026-10-01T01:00:00.000Z"
+        });
+        await older;
+        expect(store.getSnapshot().selfUpdate).toEqual(available);
+        // A genuinely later failure is still a new result, not stale success.
+        lookup.mockResolvedValueOnce({ ...available, available: false });
+        await store.checkForSelfUpdate();
+        expect(store.getSnapshot().selfUpdate?.available).toBe(false);
+      } finally {
+        for (const result of results) result.resolve(available);
+        await Promise.allSettled([older, newer]);
+        await store.prepareToQuit();
+      }
+    }
+  );
+
+  it("keeps automatic-refresh deadlines through unrelated and unchanged preference saves", async () => {
+    vi.useFakeTimers();
+    let scan = deferred<AppRecord[]>();
+    const scanApplications = vi.fn(() => scan.promise);
+    const store = await makeStore({ scanner: { scanApplications } });
+    let joining: Promise<void> | undefined;
+    try {
+      await store.updatePreferences({ refreshIntervalMinutes: 5 });
+      const patches = [
+        { collapsedAppSectionIDs: ["installed"] },
+        { appearancePreference: "dark" as const },
+        { updateIntroductionDismissed: true },
+        { autoRefreshEnabled: true, refreshIntervalMinutes: 5 },
+        {}
+      ];
+      for (const [index, patch] of patches.entries()) {
+        await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+        await store.updatePreferences(patch);
+        await vi.advanceTimersByTimeAsync(60 * 1000);
+        expect(scanApplications).toHaveBeenCalledTimes(index + 1);
+        joining = store.refresh(true);
+        scan.resolve([]);
+        await joining;
+        scan = deferred<AppRecord[]>();
+      }
+      await store.updatePreferences({ autoRefreshEnabled: false });
+      const scans = scanApplications.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(scanApplications).toHaveBeenCalledTimes(scans);
+      await store.updatePreferences({ autoRefreshEnabled: true, refreshIntervalMinutes: 10 });
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(scanApplications).toHaveBeenCalledTimes(scans);
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(scanApplications).toHaveBeenCalledTimes(scans + 1);
+    } finally {
+      scan.resolve([]);
+      await Promise.allSettled([joining]);
+      await store.prepareToQuit();
+    }
+  });
+
   it("keeps the superseded caller pending until the winning refresh commits", async () => {
     const scans = [deferred<AppRecord[]>(), deferred<AppRecord[]>()];
     const scanApplications = vi.fn(() => scans[scanApplications.mock.calls.length - 1]!.promise);
