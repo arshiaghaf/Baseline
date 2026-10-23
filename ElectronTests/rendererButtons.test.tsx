@@ -1120,6 +1120,18 @@ describe("renderer button parity", () => {
         expect(window.baseline.toggleIgnoredApp).toHaveBeenCalledWith(app.id);
         expect(trigger).toHaveFocus();
         expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+        fireEvent.keyDown(trigger, { key: "ArrowDown" });
+        expect(screen.getByRole("menuitem", { name: "Ignore" })).toHaveFocus();
+        trigger.focus();
+        expect(screen.getByRole("menu")).toBeInTheDocument();
+        const updateButton = within(dialog).getByRole("button", { name: "Update" });
+        act(() => updateButton.focus());
+        expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+        expect(trigger).toHaveAttribute("aria-expanded", "false");
+        expect(updateButton).toHaveFocus();
+        fireEvent.keyDown(updateButton, { key: "Escape" });
+        expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Search" })).toHaveFocus();
       } finally {
         rectSpy.mockRestore();
       }

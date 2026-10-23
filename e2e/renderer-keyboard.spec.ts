@@ -223,6 +223,19 @@ for (const placement of ["inline", "floating"] as const) {
       await page.keyboard.press("Tab");
       await expect(page.getByRole("textbox")).toBeFocused();
       await expect(menu).toHaveCount(0);
+      await actions.focus();
+      await page.keyboard.press("ArrowDown");
+      await expect(ignore).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(actions).toBeFocused();
+      await expect(menu).toBeVisible();
+      await page.keyboard.press("Shift+Tab");
+      await expect(dialog.getByRole("button", { name: "Update", exact: true })).toBeFocused();
+      await expect(menu).toHaveCount(0);
+      await expect(actions).toHaveAttribute("aria-expanded", "false");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Search", exact: true })).toBeFocused();
     });
   });
 }

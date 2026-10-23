@@ -248,12 +248,6 @@ export function RowMoreActionButton({
     <div
       ref={popoverRef}
       id={menuID}
-      onBlur={(event) => {
-        const next = event.relatedTarget as Node | null;
-        if (!menuRef.current?.contains(next) && !popoverRef.current?.contains(next)) {
-          setOpen(false);
-        }
-      }}
       onKeyDown={(event) => {
         keyboardOpening.current = "first";
         if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -334,7 +328,16 @@ export function RowMoreActionButton({
   ) : null;
 
   return (
-    <div className="row-action-menu" ref={menuRef}>
+    <div
+      className="row-action-menu"
+      ref={menuRef}
+      onBlur={(event) => {
+        const next = event.relatedTarget as Node | null;
+        if (open && !menuRef.current?.contains(next) && !popoverRef.current?.contains(next)) {
+          setOpen(false);
+        }
+      }}
+    >
       <button
         ref={triggerRef}
         className="secondary-icon-button"
