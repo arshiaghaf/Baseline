@@ -13,6 +13,8 @@ export type HomebrewPresentation = "formula" | "app" | "cli" | "package" | "cask
 export type AppRecord = {
   id: string;
   bundlePath: string;
+  /** Last resolved scanner identity; refreshed when a bundle is scanned again. */
+  canonicalBundlePath?: string;
   /** Scanner evidence for invalidating saved provider mappings after replacement. */
   providerFingerprint?: string;
   /** Last positively resolved macOS-serviced location; not evidence of version freshness. */
@@ -242,6 +244,8 @@ export type HomebrewManagedItem = {
   kind: HomebrewManagedItemKind;
   presentation?: HomebrewPresentation;
   installedVersion: VersionValue;
+  /** Homebrew package version before an app marketing version is used for display. */
+  packageInstalledVersion?: VersionValue;
   latestVersion?: VersionValue;
   isOutdated: boolean;
   releaseDate?: string;

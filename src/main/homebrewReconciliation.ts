@@ -295,17 +295,13 @@ export function preservePreviousHomebrewOutdatedState(
     if (!previous?.isOutdated) {
       return item;
     }
-    const preserveSameVersionCaskUpdate =
+    const preserveReportedCaskUpdate =
       previous.latestVersion !== undefined &&
-      homebrewReportedSameVersionCaskUpdate(
-        previous,
-        item.installedVersion,
-        previous.latestVersion
-      );
+      preserveHomebrewReportedCaskUpdate(previous, item.installedVersion, previous.latestVersion);
     if (
       previous.latestVersion &&
       !isVersionGreater(previous.latestVersion, item.installedVersion) &&
-      !preserveSameVersionCaskUpdate
+      !preserveReportedCaskUpdate
     ) {
       return item;
     }
@@ -323,7 +319,8 @@ export function canUseHomebrewAppUpdate(
   appRecord: AppRecord,
   homebrewToken: string,
   homebrewItems: HomebrewManagedItem[],
-  caskIndex: HomebrewCaskIndex
+  caskIndex: HomebrewCaskIndex,
+  apps: AppRecord[] = [appRecord]
 ): boolean {
   if (isMacOSManagedApp(appRecord)) return false;
   const token = homebrewToken.toLowerCase();
@@ -331,7 +328,7 @@ export function canUseHomebrewAppUpdate(
     (item) =>
       item.kind === "cask" &&
       item.token.toLowerCase() === token &&
-      homebrewCaskItemProvesAppOwnership(item, appRecord, installedCaskEntry(item, caskIndex))
+      homebrewCaskItemProvesAppOwnership(item, appRecord, installedCaskEntry(item, caskIndex), apps)
   );
 }
 
@@ -348,17 +345,18 @@ export function homebrewItemCanRunAppUpdate(
 export function homebrewCaskItemProvesAppOwnership(
   item: HomebrewManagedItem,
   appRecord: AppRecord,
-  caskEntry: HomebrewCaskEntry | undefined
+  caskEntry: HomebrewCaskEntry | undefined,
+  apps: AppRecord[] = [appRecord]
 ): boolean {
-  if (isMacOSManagedApp(appRecord)) return false;
+  if (isMacOSManagedApp(appRecord) || item.kind !== "cask") return false;
   if (!homebrewCommandToken(item)) return false;
+  if (caskEntry) {
+    return appHasUniqueCaskMatch(appRecord, caskEntry, apps);
+  }
   if (item.appID === appRecord.id) {
     return true;
   }
-  if (item.kind !== "cask" || !caskEntry) {
-    return false;
-  }
-  return appMatchesCaskEntry(appRecord, caskEntry);
+  return false;
 }
 
 export function withoutMacOSManagedAppLinks(
@@ -412,18 +410,17 @@ export function reconcileHomebrewInventory(
       };
     const caskEntry = installedCaskEntry(item, caskIndex);
     const matchingApp = matchingHomebrewApp(
-      updatesByToken,
-      appsByID,
       apps,
-      item,
       caskEntry,
-      isSelfApp
+      isSelfApp,
+      updatesByToken.get(item.token.toLowerCase())?.appID
     );
     const iconDataURL =
       matchingApp?.iconDataURL ??
       (caskEntry ? undefined : matchingHomebrewAppIcon(item, updatesByToken, appsByID, apps));
     const preservedIconDataURL = caskEntry && !matchingApp ? undefined : item.iconDataURL;
-    const update = updatesByToken.get(item.token.toLowerCase());
+    const candidateUpdate = updatesByToken.get(item.token.toLowerCase());
+    const update = candidateUpdate?.appID === matchingApp?.id ? candidateUpdate : undefined;
     const installedVersion =
       matchingApp && isVersionGreater(matchingApp.localVersion, item.installedVersion)
         ? matchingApp.localVersion
@@ -447,14 +444,11 @@ export function reconcileHomebrewInventory(
     const latestVersionComparison = latestVersion
       ? compareVersions(latestVersion, installedVersion)
       : undefined;
-    const keepHomebrewReportedSameVersionUpdate =
+    const keepHomebrewReportedUpdate =
       latestVersion !== undefined &&
-      homebrewReportedSameVersionCaskUpdate(item, installedVersion, latestVersion);
+      preserveHomebrewReportedCaskUpdate(item, installedVersion, latestVersion);
 
-    if (
-      !latestVersion ||
-      ((latestVersionComparison ?? 0) <= 0 && !keepHomebrewReportedSameVersionUpdate)
-    ) {
+    if (!latestVersion || ((latestVersionComparison ?? 0) <= 0 && !keepHomebrewReportedUpdate)) {
       return {
         ...item,
         appID,
@@ -545,6 +539,10 @@ function bestHomebrewCaskLatestVersion(
   update: UpdateRecord | undefined,
   caskEntry: HomebrewCaskEntry | undefined
 ): HomebrewManagedItem["latestVersion"] {
+  // The greedy provider result is authoritative for version :latest. It is not
+  // comparable with the numeric marketing version displayed for an app.
+  if (item.isOutdated && item.latestVersion && isLatestCaskVersion(item.latestVersion))
+    return item.latestVersion;
   const caskIndexVersion = item.isOutdated ? caskEntry?.version : undefined;
   const candidates = [item.latestVersion, update?.remoteVersion, caskIndexVersion].filter(
     (candidate): candidate is NonNullable<HomebrewManagedItem["latestVersion"]> =>
@@ -558,7 +556,11 @@ function bestHomebrewCaskLatestVersion(
   );
 }
 
-function homebrewReportedSameVersionCaskUpdate(
+function isLatestCaskVersion(value: VersionValue): boolean {
+  return value.raw.trim().toLowerCase() === "latest";
+}
+
+function preserveHomebrewReportedCaskUpdate(
   item: HomebrewManagedItem,
   installedVersion: VersionValue,
   latestVersion: VersionValue
@@ -566,36 +568,26 @@ function homebrewReportedSameVersionCaskUpdate(
   return (
     item.kind === "cask" &&
     item.isOutdated &&
-    compareVersions(latestVersion, installedVersion) === 0 &&
-    compareVersions(installedVersion, item.installedVersion) === 0
+    (isLatestCaskVersion(latestVersion) ||
+      (compareVersions(latestVersion, installedVersion) === 0 &&
+        compareVersions(installedVersion, item.installedVersion) === 0))
   );
 }
 
 function matchingHomebrewApp(
-  updatesByToken: Map<string, UpdateRecord>,
-  appsByID: Map<string, AppRecord>,
   apps: AppRecord[],
-  item: HomebrewManagedItem,
   caskEntry: HomebrewCaskEntry | undefined,
-  isSelfApp?: (app: AppRecord) => boolean
+  isSelfApp?: (app: AppRecord) => boolean,
+  preferredAppID?: string
 ): AppRecord | undefined {
   const matches = (app: AppRecord) =>
     (!isSelfApp?.(app) || Boolean(caskEntry && installedCaskIdentifiesSelf(app, caskEntry))) &&
-    appMatchesCaskEntry(app, caskEntry);
-  const update = updatesByToken.get(item.token.toLowerCase());
-  const appFromUpdate = update ? appsByID.get(update.appID) : undefined;
-  if (appFromUpdate && matches(appFromUpdate)) {
-    return appFromUpdate;
-  }
-
-  if (caskEntry) {
-    const byCaskMetadata = apps.find(matches);
-    if (byCaskMetadata) {
-      return byCaskMetadata;
-    }
-  }
-
-  return undefined;
+    Boolean(caskEntry && appHasUniqueCaskMatch(app, caskEntry, apps));
+  // A previous app link or update is not stronger than current installed evidence.
+  // Ambiguous copies retain an independent package row. Distinct apps shipped
+  // by one cask can each retain their proven update route.
+  const candidates = apps.filter(matches);
+  return candidates.find((app) => app.id === preferredAppID) ?? candidates[0];
 }
 
 export function installedCaskIdentifiesSelf(app: AppRecord, entry: HomebrewCaskEntry): boolean {
@@ -607,13 +599,37 @@ export function installedCaskIdentifiesSelf(app: AppRecord, entry: HomebrewCaskE
     return true;
   // appID and artifact basenames may come from generic name matching; they cannot prove self ownership.
   return (entry.installedAppPaths ?? []).some(
-    (target) => path.resolve(target) === path.resolve(app.bundlePath)
+    (target) => path.resolve(target) === path.resolve(app.canonicalBundlePath ?? app.bundlePath)
   );
+}
+
+function appHasUniqueCaskMatch(
+  app: AppRecord,
+  entry: HomebrewCaskEntry,
+  apps: AppRecord[]
+): boolean {
+  if (!appMatchesCaskEntry(app, entry)) return false;
+  if (entry.installedAppPaths?.length) return true;
+  return !apps.some((other) => {
+    if (other.id === app.id || isMacOSManagedApp(other) || !appMatchesCaskEntry(other, entry))
+      return false;
+    // Multiple distinct artifacts are valid; two copies of the same app are not
+    // distinguishable by bundle metadata alone.
+    return app.bundleIdentifier && other.bundleIdentifier
+      ? app.bundleIdentifier.toLowerCase() === other.bundleIdentifier.toLowerCase()
+      : normalizedAppBundleName(app.bundlePath) === normalizedAppBundleName(other.bundlePath);
+  });
 }
 
 function appMatchesCaskEntry(app: AppRecord, caskEntry: HomebrewCaskEntry | undefined): boolean {
   if (!caskEntry) {
     return true;
+  }
+
+  if (caskEntry.installedAppPaths?.length) {
+    return caskEntry.installedAppPaths.some(
+      (target) => path.resolve(target) === path.resolve(app.canonicalBundlePath ?? app.bundlePath)
+    );
   }
 
   const bundleIdentifiers = new Set(

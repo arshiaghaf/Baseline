@@ -268,6 +268,7 @@ export class HomebrewInventoryParser {
         kind: "cask",
         presentation: "cask",
         installedVersion,
+        packageInstalledVersion: installedVersion,
         latestVersion: metadata?.latestVersion,
         isOutdated: Boolean(metadata),
         pinned: metadata?.pinned,

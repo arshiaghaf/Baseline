@@ -222,6 +222,7 @@ class BundleScan {
     return {
       id: appPath,
       bundlePath: appPath,
+      canonicalBundlePath: resolvedPath,
       providerFingerprint: await providerFingerprint(
         appPath,
         bundleInfo.providerFiles,

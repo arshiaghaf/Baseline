@@ -44,7 +44,8 @@ type LookupInput = {
     app: AppRecord,
     token: string,
     items: HomebrewManagedItem[],
-    index: HomebrewCaskIndex
+    index: HomebrewCaskIndex,
+    apps?: AppRecord[]
   ) => boolean;
 };
 
@@ -85,7 +86,8 @@ export async function lookupAppUpdates(
             app,
             previous.homebrewToken,
             input.homebrewItems,
-            input.homebrewIndex
+            input.homebrewIndex,
+            input.apps
           )))
     ) {
       updates.set(app.id, previous);
@@ -125,7 +127,13 @@ export async function lookupAppUpdates(
       input.homebrewItems.some(
         (item) =>
           item.kind === "cask" &&
-          input.canUseHomebrewAppUpdate(app, item.token, input.homebrewItems, input.homebrewIndex)
+          input.canUseHomebrewAppUpdate(
+            app,
+            item.token,
+            input.homebrewItems,
+            input.homebrewIndex,
+            input.apps
+          )
       )
     );
   };
@@ -354,7 +362,14 @@ export async function lookupAppUpdates(
       path.basename(app.bundlePath),
       app.localVersion,
       input.homebrewIndex,
-      (token) => input.canUseHomebrewAppUpdate(app, token, input.homebrewItems, input.homebrewIndex)
+      (token) =>
+        input.canUseHomebrewAppUpdate(
+          app,
+          token,
+          input.homebrewItems,
+          input.homebrewIndex,
+          input.apps
+        )
     );
     if (
       homebrewUpdate &&
@@ -363,7 +378,8 @@ export async function lookupAppUpdates(
         app,
         homebrewUpdate.token,
         input.homebrewItems,
-        input.homebrewIndex
+        input.homebrewIndex,
+        input.apps
       )
     ) {
       if (input.homebrewVersionCheckSucceeded === false) {
@@ -392,7 +408,13 @@ export async function lookupAppUpdates(
     const owned = input.homebrewItems.some(
       (item) =>
         item.kind === "cask" &&
-        input.canUseHomebrewAppUpdate(app, item.token, input.homebrewItems, input.homebrewIndex)
+        input.canUseHomebrewAppUpdate(
+          app,
+          item.token,
+          input.homebrewItems,
+          input.homebrewIndex,
+          input.apps
+        )
     );
     finish(
       failed || (owned && input.homebrewVersionCheckSucceeded === false)

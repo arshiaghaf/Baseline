@@ -1414,7 +1414,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         homebrewCaskItemProvesAppOwnership(
           item,
           appRecord,
-          installedCaskEntry(item, this.refreshComputation.caskIndex)
+          installedCaskEntry(item, this.refreshComputation.caskIndex),
+          this.state.apps
         )
     );
   }
@@ -1587,7 +1588,13 @@ function persistedUpdateHasValidRuntimeRoute(
   }
   const appRecord = snapshot.apps.find((app) => app.id === update.appID);
   if (!appRecord) return false;
-  return canUseHomebrewAppUpdate(appRecord, token, snapshot.homebrewItems, emptyHomebrewCaskIndex);
+  return canUseHomebrewAppUpdate(
+    appRecord,
+    token,
+    snapshot.homebrewItems,
+    emptyHomebrewCaskIndex,
+    snapshot.apps
+  );
 }
 
 function toggleSet(set: Set<string>, value: string): void {
