@@ -146,6 +146,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
 
   private state: BaselineSnapshot;
   private snapshotRevision = 0;
+  private refreshErrorRevision = 0;
+  private appOpenFailure?: { appID: string; revision: number };
   private closing = false;
   private refreshRequestedWhileClosing?: RefreshRecoveryRequest;
   private refreshRecoveryRequired?: RefreshRecoveryRequest;
@@ -905,9 +907,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private async openAppWithFeedback(appRecord: AppRecord): Promise<void> {
+    const previousFailure = this.appOpenFailure;
     try {
       await this.openAppBundle(appRecord.bundlePath);
+      if (
+        previousFailure?.appID === appRecord.id &&
+        previousFailure.revision === this.refreshErrorRevision
+      ) {
+        this.appOpenFailure = undefined;
+        this.patch({ refreshErrorMessage: undefined });
+      }
     } catch {
+      this.appOpenFailure = { appID: appRecord.id, revision: this.refreshErrorRevision + 1 };
       this.patch({
         refreshErrorMessage:
           "Could not open the app. It may have moved or be unavailable. Refresh and try again."
@@ -1470,6 +1481,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   }
 
   private patch(patch: Partial<BaselineSnapshot>): void {
+    // Repeated identical errors can still belong to a newer operation. Track
+    // their ownership even when there is no visible snapshot change.
+    if (Object.hasOwn(patch, "refreshErrorMessage")) this.refreshErrorRevision++;
     const keys = Object.keys(patch) as (keyof BaselineSnapshot)[];
     // Compare only supplied fields, before cloning or advancing the stream.
     // An unchanged patch must also leave any queued progress delta intact.
