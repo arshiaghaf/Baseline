@@ -6934,7 +6934,7 @@ describe("verified formula identity and Homebrew pins", () => {
         displayName: previous.name,
         fromVersion: version("0"),
         toVersion: version("1"),
-        updatedAt: "2026-10-09T00:00:00.000Z"
+        updatedAt: new Date().toISOString()
       };
       let items = [firstRefreshFailure ? missing : current];
       let formulaReadFailed = false;
