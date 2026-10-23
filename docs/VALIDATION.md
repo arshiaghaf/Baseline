@@ -47,10 +47,13 @@ copy beside the installation, checks its bundle identity and signing hash, then
 moves the previous bundle into the reported recovery directory. A successful
 installed preview stays running for inspection.
 
-Copy and verification failures retain the previous bundle. Interrupted promotion
-restores it if the installation path is still absent. Recovery directories are
-retained after completion, including the launch log. After an installed launch,
-restoring a bundle does not reverse user-data migrations; assess compatibility
-before manually restoring it. If a crash leaves `.Baseline-preview-lock` in the
+Copy and verification failures retain the previous bundle. Automatic restoration
+is permitted only before any preview launch and while the installation path is
+still absent. The mounted smoke already uses the ordinary user profile and may
+persist migrations. After that first launch, failed or interrupted promotion
+retains the old bundle in the recovery directory for a compatibility check before
+manual restoration; the installation path may remain absent. Restoring a bundle
+does not reverse user-data migrations. Recovery directories and launch logs are
+retained after completion. If a crash leaves `.Baseline-preview-lock` in the
 installation directory, confirm no helper is running before removing that empty
 lock directory and retrying.

@@ -13,13 +13,21 @@ process_identity() {
 }
 
 require_app_stopped() {
-  local executable processes
+  local executable processes process
   executable="$(canonical_executable "$1")" || return 1
-  processes="$(ps -axww -o comm=)" || return 1
-  if printf '%s\n' "$processes" | grep -Fxq "$executable"; then
-    echo "Quit $1 after its current operations finish, then retry. No running app was stopped." >&2
+  processes="$(ps -axww -o comm=)" || {
+    echo "Could not inspect running apps; refusing replacement." >&2
     return 1
-  fi
+  }
+  # A pipeline with grep -q can lose a match to SIGPIPE under pipefail.
+  # Read the captured output directly so a found target always refuses admission.
+  while IFS= read -r process; do
+    if [[ "$process" == "$executable" ]]; then
+      echo "Quit $1 after its current operations finish, then retry. No running app was stopped." >&2
+      return 1
+    fi
+  done <<< "$processes"
+  return 0
 }
 
 stop_owned_preview() {
@@ -49,6 +57,9 @@ smoke_launch_app() {
   executable="$(canonical_executable "$app_path")" || return 1
   require_app_stopped "$app_path" || return 1
   echo "Launching $label"
+  # Mounted smoke also uses the ordinary profile and may persist migrations.
+  # Set this before spawning, including failed or interrupted startup attempts.
+  PREVIEW_LAUNCH_STARTED=true
   "$executable" >"$TRANSACTION_DIR/preview-launch.log" 2>&1 &
   PREVIEW_PID=$!
   PREVIEW_IDENTITY=""
@@ -117,14 +128,12 @@ install_preview() {
   mv -n "$staged" "$(dirname "$INSTALL_PATH")/" || return 1
   [[ ! -e "$staged" ]] || return 1
   verify_preview_bundle "$INSTALL_PATH" "$source" || return 1
-  # Once launched, bundle restoration cannot undo possible user-data migrations.
-  INSTALL_LAUNCH_STARTED=true
   smoke_launch_app "$INSTALL_PATH" "installed preview app" true || return 1
 }
 
 recover_preview() {
   stop_owned_preview || true
-  if [[ "${INSTALL_LAUNCH_STARTED:-false}" != true && -d "$TRANSACTION_DIR/previous/$(basename "$INSTALL_PATH")" && ! -e "$INSTALL_PATH" && ! -L "$INSTALL_PATH" ]]; then
+  if [[ "${PREVIEW_LAUNCH_STARTED:-false}" != true && -d "$TRANSACTION_DIR/previous/$(basename "$INSTALL_PATH")" && ! -e "$INSTALL_PATH" && ! -L "$INSTALL_PATH" ]]; then
     mv -n "$TRANSACTION_DIR/previous/$(basename "$INSTALL_PATH")" "$(dirname "$INSTALL_PATH")/" || true
   fi
   if [[ -d "$TRANSACTION_DIR/previous/$(basename "$INSTALL_PATH")" ]]; then

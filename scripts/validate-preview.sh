@@ -28,7 +28,7 @@ cleanup_mount() {
 source "$ROOT_DIR/scripts/preview-install.sh"
 TRANSACTION_DIR=""
 PREVIEW_PID=""
-INSTALL_LAUNCH_STARTED=false
+PREVIEW_LAUNCH_STARTED=false
 cleanup_preview() {
   if [[ -n "$TRANSACTION_DIR" ]]; then recover_preview; fi
   cleanup_mount
