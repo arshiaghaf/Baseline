@@ -301,6 +301,7 @@ export class RefreshComputationService {
         },
         {
           apps: scannedApps,
+          homebrewOwnershipApps: apps,
           previousUpdates,
           previousChecks,
           homebrewVersionCheckSucceeded:
@@ -359,7 +360,8 @@ export class RefreshComputationService {
         scannedApps,
         homebrewIndex,
         previousHomebrewItems,
-        (app) => this.ports.isSelfApp(app)
+        (app) => this.ports.isSelfApp(app),
+        apps
       );
       const homebrewFormulaIdentityContinuity = preserveFormulaIdentityContinuity(
         reconciledHomebrewItems,

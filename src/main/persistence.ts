@@ -222,6 +222,7 @@ function normalizeApp(value: SavedRecord): AppRecord | undefined {
   return {
     id: text(value.id) ?? value.bundlePath,
     bundlePath: value.bundlePath,
+    canonicalBundlePath: text(value.canonicalBundlePath),
     displayName: value.displayName,
     providerFingerprint: text(value.providerFingerprint),
     macOSManagedPath: macOSManagedPath(value.macOSManagedPath),
@@ -347,6 +348,7 @@ function normalizeHomebrewItem(value: SavedRecord): HomebrewManagedItem | undefi
     isSelf: boolean(value.isSelf),
     presentation: presentation(value.presentation),
     installedVersion: savedVersion(value.installedVersion),
+    packageInstalledVersion: optionalVersion(value.packageInstalledVersion),
     latestVersion: optionalVersion(value.latestVersion),
     isOutdated: value.isOutdated === true,
     releaseDate: text(value.releaseDate),
