@@ -11,6 +11,7 @@ import type {
 import { homebrewPresentationLabel, sourceDisplayName } from "../../shared/domain";
 import { profileStatsLifetimeFromEvents } from "../../shared/profileStats";
 import { homebrewItemHasAppRepresentation } from "../../shared/homebrewAppLinking";
+import { localCalendarDay } from "./calendar";
 
 type SummaryEvent = Pick<ProfileStatsEvent, "type" | "targetID" | "displayName" | "channel"> & {
   count?: number;
@@ -259,14 +260,7 @@ export function startedUsingSummary(createdAt: string): ProfileSummary["startedU
     year: "numeric"
   });
   const exactDate = dateFormatter.format(createdDate);
-  const startOfCreatedDay = new Date(createdDate);
-  startOfCreatedDay.setHours(0, 0, 0, 0);
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const elapsedDays = Math.max(
-    0,
-    Math.floor((startOfToday.getTime() - startOfCreatedDay.getTime()) / 86_400_000)
-  );
+  const elapsedDays = Math.max(0, localCalendarDay(new Date()) - localCalendarDay(createdDate));
   const relativeLabel =
     elapsedDays === 0 ? "Today" : `${elapsedDays} day${elapsedDays === 1 ? "" : "s"}`;
   return {
