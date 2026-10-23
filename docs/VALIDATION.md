@@ -37,3 +37,20 @@ After the GitHub Release is created, verify its published assets and notes:
 ```bash
 scripts/check-release-assets.sh v<version>
 ```
+
+## Installed Preview Helper
+
+Run `scripts/validate-preview.sh [preview-version]` only when an installed preview
+is intended. Quit the installed app after its current operations finish before
+replacement; the helper refuses to stop an existing user session. It stages the
+copy beside the installation, checks its bundle identity and signing hash, then
+moves the previous bundle into the reported recovery directory. A successful
+installed preview stays running for inspection.
+
+Copy and verification failures retain the previous bundle. Interrupted promotion
+restores it if the installation path is still absent. Recovery directories are
+retained after completion, including the launch log. After an installed launch,
+restoring a bundle does not reverse user-data migrations; assess compatibility
+before manually restoring it. If a crash leaves `.Baseline-preview-lock` in the
+installation directory, confirm no helper is running before removing that empty
+lock directory and retrying.

@@ -66,7 +66,7 @@ When the required local tooling is available, Baseline can run update and instal
 - Provides unified update views for Mac apps, Homebrew casks, and Homebrew formulae
 - Shows recently updated items so you can see what was updated and when
 - Lets you ignore specific apps or Homebrew items so they stay out of the main update list
-- Supports uninstalling Homebrew-managed casks and formulae from item actions
+- Supports uninstalling Homebrew-managed casks from item actions
 - Supports Homebrew search from the main window and menu bar tray to discover installable casks and formulae
 - Lets you search installed apps and filter available updates
 - Lets you hide the Dock icon in Settings > Appearance while keeping menu-bar access, with right-click actions for Refresh, Open Baseline, Settings, Check for Updates (Baseline itself), and Quit
