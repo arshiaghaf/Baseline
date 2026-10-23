@@ -107,7 +107,7 @@ async function makeStore(
 }
 
 describe("update store lifecycle boundaries", () => {
-  it.each(["refresh", "add directory", "remove directory"])(
+  it.each(["refresh", "add directory", "remove directory", "cancelled cleanup"])(
     "preserves outstanding source-search strength when superseded by %s",
     async (replacement) => {
       const oldScan = deferred<AppRecord[]>();
@@ -148,13 +148,19 @@ describe("update store lifecycle boundaries", () => {
           }
         }
       );
+      if (replacement === "cancelled cleanup") await store.refreshToolStatus();
       const first = store.refresh(false, { forceAppDiscovery: true });
-      const next =
-        replacement === "refresh"
+      const next = (async () => {
+        if (replacement === "cancelled cleanup")
+          await new Promise((resolve) => setImmediate(resolve));
+        return replacement === "refresh"
           ? store.refresh(false)
           : replacement === "add directory"
             ? store.addDirectory("/fixture/Other")
-            : store.removeDirectory("/fixture/Extra");
+            : replacement === "remove directory"
+              ? store.removeDirectory("/fixture/Extra")
+              : store.cleanUpHomebrew(async () => false);
+      })();
       try {
         await next;
         expect(scanApplications).toHaveBeenCalledTimes(2);
