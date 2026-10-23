@@ -11,8 +11,9 @@ and 1280×900, and tray 360×560 and 440×640. Visual launches use
 `--disable-gpu --force-color-profile=srgb`. This software-rendered lane does not
 establish production GPU/backdrop rendering equivalence.
 
-CI screenshot portability is deferred with user approval. Ordinary CI retains all
-five macOS lanes and its existing tests, build and default-GPU Electron smoke
+CI screenshot portability is deferred with user approval. Ordinary CI uses the three
+Apple Silicon macOS lanes in [the current CI matrix](../../.github/workflows/ci.yml)
+with tests, build and default-GPU Electron smoke
 coverage; it does not run or establish screenshot acceptance. The macOS 27.0.1
 CI image produced stable per-launch differences on partially transparent toolbar
 edges despite unchanged measured layout/styles/animations. Those CI references

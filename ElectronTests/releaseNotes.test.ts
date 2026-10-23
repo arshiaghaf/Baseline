@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 const compatibilityNotice =
   "Requires an Apple Silicon Mac (M1 or later) running macOS 15 or later. Intel Macs are not supported.\n\n";
 
-function prepareNotes(changelog: string): string {
+function prepareNotes(changelog: string, checkAssets = false): string {
   const root = mkdtempSync(path.join(tmpdir(), "baseline-release-notes-"));
   try {
     mkdirSync(path.join(root, "scripts"));
@@ -32,13 +32,51 @@ function prepareNotes(changelog: string): string {
       cwd: root,
       stdio: "pipe"
     });
-    return readFileSync(path.join(root, "dist/Baseline-0.8.0-unsigned-release-notes.md"), "utf8");
+    const notes = readFileSync(
+      path.join(root, "dist/Baseline-0.8.0-unsigned-release-notes.md"),
+      "utf8"
+    );
+    if (checkAssets) {
+      // The checker consumes exactly the producer output; GitHub is a local fixture.
+      const bin = path.join(root, "bin");
+      mkdirSync(bin);
+      writeFileSync(path.join(bin, "gh"), '#!/usr/bin/env bash\ncat "$RELEASE_FIXTURE"\n', {
+        mode: 0o755
+      });
+      const release = path.join(root, "release.json");
+      writeFileSync(
+        release,
+        JSON.stringify({
+          tagName: "v0.8.0",
+          name: "Baseline 0.8.0",
+          body: notes,
+          assets: ["Baseline-0.8.0-unsigned.dmg", "Baseline-0.8.0-unsigned.dmg.sha256"].map(
+            (name) => ({ name })
+          )
+        })
+      );
+      execFileSync("bash", [path.resolve("scripts/check-release-assets.sh"), "v0.8.0"], {
+        cwd: root,
+        stdio: "pipe",
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, RELEASE_FIXTURE: release }
+      });
+    }
+    return notes;
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 }
 
 describe("release note extraction", () => {
+  it.each(["Highlights", "Added", "Fixed"])(
+    "passes generated %s-only notes through the release checker",
+    (heading) => {
+      const notes = `### ${heading}\n\n- Release entry.\n`;
+      expect(prepareNotes(`## 0.8.0 — 2026-10-18\n\n${notes}`, true)).toBe(
+        compatibilityNotice + notes
+      );
+    }
+  );
   it("preserves Highlights and detailed sections in order, including links", () => {
     const notes = `### Highlights
 

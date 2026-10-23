@@ -25,55 +25,18 @@ cleanup_mount() {
   fi
 }
 
-trap cleanup_mount EXIT
-
-stop_existing_app() {
-  if ! pgrep -x "$APP_NAME" >/dev/null; then
-    return
-  fi
-
-  echo "Stopping existing ${APP_NAME} process"
-  osascript -e "tell application \"${APP_NAME}\" to quit" >/dev/null 2>&1 || true
-
-  for _ in {1..20}; do
-    if ! pgrep -x "$APP_NAME" >/dev/null; then
-      return
-    fi
-    sleep 0.25
-  done
-
-  pkill -x "$APP_NAME" >/dev/null 2>&1 || true
-  for _ in {1..20}; do
-    if ! pgrep -x "$APP_NAME" >/dev/null; then
-      return
-    fi
-    sleep 0.25
-  done
-
-  echo "Could not stop existing ${APP_NAME} process before smoke launch."
-  exit 1
+source "$ROOT_DIR/scripts/preview-install.sh"
+TRANSACTION_DIR=""
+PREVIEW_PID=""
+PREVIEW_LAUNCH_STARTED=false
+cleanup_preview() {
+  if [[ -n "$TRANSACTION_DIR" ]]; then recover_preview; fi
+  cleanup_mount
+  if [[ "${INSTALL_LOCK_HELD:-false}" == true ]]; then rmdir "$INSTALL_LOCK"; fi
 }
-
-smoke_launch_app() {
-  local app_path="$1"
-  local label="$2"
-
-  echo "Launching $label"
-  stop_existing_app
-  open "$app_path"
-
-  for _ in {1..40}; do
-    if pgrep -x "$APP_NAME" >/dev/null; then
-      echo "Smoke launch succeeded for $label."
-      stop_existing_app
-      return
-    fi
-    sleep 0.25
-  done
-
-  echo "Smoke launch failed for $label; ${APP_NAME} process was not detected."
-  exit 1
-}
+trap cleanup_preview EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "Checking generated artifacts are ignored"
 for ignored_path in "node_modules" "out" ".vite" "dist"; do
@@ -87,6 +50,7 @@ echo "Linting scripts"
 bash -n scripts/create-unsigned-dmg.sh
 bash -n scripts/prepare-unsigned-release.sh
 bash -n scripts/validate-preview.sh
+bash -n scripts/preview-install.sh
 
 echo "Running Electron validation"
 npm run typecheck
@@ -118,6 +82,18 @@ if [[ ! -L "$MOUNT_DIR/Applications" ]]; then
   exit 1
 fi
 
+INSTALL_LOCK="$(dirname "$INSTALL_PATH")/.Baseline-preview-lock"
+if ! mkdir "$INSTALL_LOCK"; then
+  echo "Another preview installation may be active. Inspect $INSTALL_LOCK before retrying."
+  exit 1
+fi
+INSTALL_LOCK_HELD=true
+TRANSACTION_DIR="$(mktemp -d "$(dirname "$INSTALL_PATH")/.Baseline-preview.XXXXXX")"
+# Check before the mounted smoke too: another copy can hold the shared app lock.
+if [[ -e "$INSTALL_PATH" || -L "$INSTALL_PATH" ]]; then
+  require_app_stopped "$INSTALL_PATH"
+fi
+verify_preview_bundle "$MOUNT_DIR/${APP_NAME}.app" "$PACKAGE_APP_PATH"
 smoke_launch_app "$MOUNT_DIR/${APP_NAME}.app" "mounted preview app"
 
 if [[ ! -d "$PACKAGE_APP_PATH" ]]; then
@@ -126,9 +102,5 @@ if [[ ! -d "$PACKAGE_APP_PATH" ]]; then
 fi
 
 echo "Installing mounted app to $INSTALL_PATH"
-stop_existing_app
-rm -rf "$INSTALL_PATH"
-ditto "$MOUNT_DIR/${APP_NAME}.app" "$INSTALL_PATH"
-
-smoke_launch_app "$INSTALL_PATH" "installed preview app"
+install_preview "$MOUNT_DIR/${APP_NAME}.app"
 echo "Known-good preview validation completed."

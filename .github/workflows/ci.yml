@@ -58,6 +58,7 @@ jobs:
           bash -n scripts/check-release-assets.sh
           bash -n scripts/prepare-unsigned-release.sh
           bash -n scripts/validate-preview.sh
+          bash -n scripts/preview-install.sh
 
       - name: Typecheck
         run: npm run typecheck
