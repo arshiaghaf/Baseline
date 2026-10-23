@@ -21,6 +21,7 @@ import path from "node:path";
 import { realpath } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { appMetadata } from "./appMetadata";
+import { openAppBundle } from "./appOpener";
 import { renderDiagnostics } from "../shared/diagnostics";
 import type {
   AppearancePreference,
@@ -113,9 +114,7 @@ if (hasSingleInstanceLock) {
         await shell.openExternal(url);
         return true;
       },
-      openAppBundle: async (bundlePath) => {
-        await shell.openPath(bundlePath);
-      },
+      openAppBundle,
       currentAppVersion: metadata.version,
       currentAppIdentity: {
         bundleIdentifier: "com.arshiaghaf.baseline",

@@ -7,6 +7,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { BundleScannerClient, testingExports } from "../src/main/bundleScanner";
 import { UpdateStore } from "../src/main/updateStore";
 import { SnapshotPersistence } from "../src/main/persistence";
+import * as commands from "../src/main/commandRunner";
 import {
   defaultPersistedSnapshot,
   emptyHomebrewCaskIndex,
@@ -281,8 +282,88 @@ it("keeps malformed bundle metadata separate from required metadata read failure
   expect(
     await new BundleScannerClient().scanApplications([directory], { onRootRead: health })
   ).toEqual([]);
-  expect(health).toHaveBeenCalledWith({ directory, complete: false });
+  expect(health).toHaveBeenCalledWith({
+    directory,
+    complete: true,
+    unavailableApps: [{ bundlePath: `${directory}/Malformed.app`, notFound: false }]
+  });
 });
+
+it.each([
+  ["permission", true],
+  ["permission", false],
+  ["timeout", true],
+  ["timeout", false]
+] as const)(
+  "isolates a %s metadata failure (previously known: %s) and recovers through store reconciliation",
+  async (failure, known) => {
+    const root = await rootFixture();
+    const directory = `${root}/Apps`;
+    const unreadable = `${directory}/A-Unreadable.app`;
+    const healthy = `${directory}/Z-Healthy.app`;
+    const removed = `${directory}/Removed.app`;
+    await app(unreadable);
+    await app(healthy);
+    // Fix enumeration order so discovery of the later sibling is part of the assertion.
+    vi.spyOn(testingExports.directoryRuntime, "readdir").mockImplementation((async (
+      input: string,
+      options: { withFileTypes: true }
+    ) => {
+      const entries = await readdir(input, options);
+      return input === directory
+        ? entries.sort((a, b) => String(a.name).localeCompare(String(b.name)))
+        : entries;
+    }) as typeof readdir);
+    let failing = true;
+    const access = testingExports.directoryRuntime.access;
+    vi.spyOn(testingExports.directoryRuntime, "access").mockImplementation((input, mode) =>
+      failing && failure === "permission" && input === `${unreadable}/Contents/Info.plist`
+        ? Promise.reject(Object.assign(new Error("denied"), { code: "EACCES" }))
+        : access(input, mode)
+    );
+    const runCommand = commands.runCommand;
+    vi.spyOn(commands, "runCommand").mockImplementation((file, args, onLine, options) =>
+      failing && failure === "timeout" && args.includes(`${unreadable}/Contents/Info.plist`)
+        ? Promise.resolve({
+            success: false,
+            status: null,
+            output: "",
+            failure: { kind: "timeout", message: "Synthetic metadata deadline" }
+          })
+        : runCommand(file, args, onLine, options)
+    );
+    const previous = record(unreadable);
+    const store = await storeFixture(
+      root,
+      [directory],
+      [...(known ? [previous] : []), record(removed)],
+      known
+    );
+    await store.refresh(false);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.apps.map((app) => app.bundlePath).sort()).toEqual(
+      [...(known ? [unreadable] : []), healthy].sort()
+    );
+    if (known) {
+      expect(snapshot.apps.find((app) => app.id === previous.id)).toEqual(previous);
+      expect(snapshot.ignoredIDs).toContain(previous.id);
+    }
+    expect(snapshot.updates).toEqual([]);
+    expect(snapshot.lastRefreshNoticeMessage).toBe(
+      `Some apps could not be fully read.${known ? " Previously found apps have been kept." : ""} Refresh to retry.`
+    );
+    failing = false;
+    await store.refresh(false);
+    expect(
+      store
+        .getSnapshot()
+        .apps.map((app) => app.bundlePath)
+        .sort()
+    ).toEqual([unreadable, healthy]);
+    expect(store.getSnapshot().lastRefreshNoticeMessage).toBeUndefined();
+    if (known) expect(store.getSnapshot().ignoredIDs).toContain(previous.id);
+  }
+);
 
 it.each(["lstat", "parent"] as const)(
   "keeps an optional root uncertain when its %s probe fails",

@@ -900,7 +900,18 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     this.requireOpen();
     const appRecord = this.state.apps.find((app) => app.id === appID);
     if (appRecord) {
+      await this.openAppWithFeedback(appRecord);
+    }
+  }
+
+  private async openAppWithFeedback(appRecord: AppRecord): Promise<void> {
+    try {
       await this.openAppBundle(appRecord.bundlePath);
+    } catch {
+      this.patch({
+        refreshErrorMessage:
+          "Could not open the app. It may have moved or be unavailable. Refresh and try again."
+      });
     }
   }
 
@@ -929,7 +940,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (isMacOSManagedApp(appRecord)) return;
     const update = this.state.updates.find((candidate) => candidate.appID === appID);
     if (!update) {
-      await this.openAppBundle(appRecord.bundlePath);
+      await this.openAppWithFeedback(appRecord);
       return;
     }
 
@@ -1287,7 +1298,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (action.kind !== "app" && (await this.openExternal(action.url))) {
       return;
     }
-    await this.openAppBundle(appRecord.bundlePath);
+    await this.openAppWithFeedback(appRecord);
   }
 
   async cleanUpHomebrew(confirm: () => Promise<boolean>): Promise<string> {
