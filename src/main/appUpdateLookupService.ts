@@ -28,6 +28,8 @@ type LookupClients = {
 
 type LookupInput = {
   apps: AppRecord[];
+  /** Includes retained records as ambiguity constraints, never lookup targets. */
+  homebrewOwnershipApps?: AppRecord[];
   previousUpdates: Map<string, UpdateRecord>;
   homebrewItems: HomebrewManagedItem[];
   homebrewIndex: HomebrewCaskIndex;
@@ -87,7 +89,7 @@ export async function lookupAppUpdates(
             previous.homebrewToken,
             input.homebrewItems,
             input.homebrewIndex,
-            input.apps
+            input.homebrewOwnershipApps ?? input.apps
           )))
     ) {
       updates.set(app.id, previous);
@@ -132,7 +134,7 @@ export async function lookupAppUpdates(
             item.token,
             input.homebrewItems,
             input.homebrewIndex,
-            input.apps
+            input.homebrewOwnershipApps ?? input.apps
           )
       )
     );
@@ -368,7 +370,7 @@ export async function lookupAppUpdates(
           token,
           input.homebrewItems,
           input.homebrewIndex,
-          input.apps
+          input.homebrewOwnershipApps ?? input.apps
         )
     );
     if (
@@ -379,7 +381,7 @@ export async function lookupAppUpdates(
         homebrewUpdate.token,
         input.homebrewItems,
         input.homebrewIndex,
-        input.apps
+        input.homebrewOwnershipApps ?? input.apps
       )
     ) {
       if (input.homebrewVersionCheckSucceeded === false) {
@@ -413,7 +415,7 @@ export async function lookupAppUpdates(
           item.token,
           input.homebrewItems,
           input.homebrewIndex,
-          input.apps
+          input.homebrewOwnershipApps ?? input.apps
         )
     );
     finish(

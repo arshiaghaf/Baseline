@@ -1,7 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,9 +25,19 @@ import {
   reconcileHomebrewInventory
 } from "../src/main/homebrewReconciliation";
 import { reconcileScannedApps } from "../src/main/scanReconciliation";
+import { UpdateStore } from "../src/main/updateStore";
 import { SnapshotPersistence } from "../src/main/persistence";
-import { defaultPersistedSnapshot, emptyHomebrewCaskIndex } from "../src/shared/domain";
-import type { AppRecord, BaselineSnapshot, HomebrewManagedItem } from "../src/shared/domain";
+import {
+  defaultPersistedSnapshot,
+  emptyHomebrewCaskIndex,
+  emptyHomebrewFormulaIndex
+} from "../src/shared/domain";
+import type {
+  AppRecord,
+  BaselineSnapshot,
+  HomebrewManagedItem,
+  PersistedSnapshot
+} from "../src/shared/domain";
 import { caskIndexForInstalledItems } from "../src/shared/homebrewIdentity";
 import { version } from "../src/shared/version";
 import {
@@ -28,7 +47,8 @@ import {
 } from "../src/renderer/helpers/sections";
 
 // Exercise the real scanner with disposable bundles, without plist subprocesses or GUI IO.
-vi.mock("../src/main/commandRunner", () => ({
+vi.mock("../src/main/commandRunner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/main/commandRunner")>()),
   runCommand: async (_executable: string, args: string[]) => ({
     success: true,
     status: 0,
@@ -41,7 +61,9 @@ vi.mock("electron", () => ({
 }));
 
 const roots: string[] = [];
+const stores: UpdateStore[] = [];
 afterEach(async () => {
+  for (const store of stores.splice(0)) await store.prepareToQuit();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 async function temporaryRoot() {
@@ -134,6 +156,80 @@ function snapshot(apps: AppRecord[], homebrewItems: HomebrewManagedItem[]) {
     isChecking: false,
     isRefreshing: false
   };
+}
+
+async function storeFixture(
+  root: string,
+  apps: AppRecord[],
+  items: HomebrewManagedItem[],
+  directories = [root]
+) {
+  const persistence = new SnapshotPersistence(path.join(root, "store-profile"));
+  await persistence.save({
+    ...defaultPersistedSnapshot(),
+    apps,
+    homebrewItems: items,
+    additionalDirectories: directories,
+    ignoredIDs: ["unrelated-app"],
+    ignoredHomebrewItemIDs: ["cask:other"]
+  });
+  const persisted: PersistedSnapshot = await persistence.load();
+  const client = new HomebrewCaskClient();
+  const run = vi.fn(async () => ({
+    success: false,
+    status: 1,
+    output: "Synthetic refusal"
+  }));
+  const open = vi.fn(async () => undefined);
+  const apple = vi.fn(async () => ({ type: "completed" as const }));
+  const store = new UpdateStore({
+    persistence,
+    persisted,
+    openExternalURL: async () => false,
+    openAppBundle: open,
+    runBrewCommand: run,
+    runMasCommand: run,
+    isHomebrewCleanupUnconfirmed: () => false,
+    successRefreshDelayMS: 0,
+    profileStatsIntegrity: {
+      verifyOrInitialize: async (stats) => ({ ...stats, integrityStatus: "verified" }),
+      seal: async (stats) => stats
+    },
+    clients: {
+      scanner: {
+        scanApplications: async (_directories, options) =>
+          new BundleScannerClient().scanApplications(directories, options)
+      },
+      appStore: { lookupOutcome: apple },
+      sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
+      homebrew: {
+        fetchIndex: async () => emptyHomebrewCaskIndex,
+        lookupUpdate: client.lookupUpdate.bind(client),
+        searchCasks: () => []
+      },
+      homebrewFormula: {
+        fetchIndex: async () => emptyHomebrewFormulaIndex,
+        searchFormulae: () => []
+      },
+      homebrewInventory: {
+        fetchInventory: async () => ({
+          items: structuredClone(items),
+          inventoryReadSucceededByKind: { formula: true, cask: true },
+          outdatedDetectionSucceeded: true,
+          outdatedDetectionSucceededByKind: { formula: true, cask: true }
+        })
+      },
+      selfUpdate: {
+        lookup: async (currentVersion, checkedAt) => ({
+          available: false,
+          currentVersion,
+          checkedAt
+        })
+      }
+    }
+  });
+  stores.push(store);
+  return { store, run, open, apple, persistence };
 }
 
 describe("installed cask app ownership", () => {
@@ -254,6 +350,90 @@ describe("installed cask app ownership", () => {
       "saved-app-identity"
     );
   });
+});
+
+describe("cask ownership at store boundaries", () => {
+  it.each([false, true])(
+    "revalidates persisted app links before the first refresh (correct target %s)",
+    async (correctTarget) => {
+      const root = await temporaryRoot();
+      const target = await bundle(root, "Installed");
+      const archivePath = await bundle(root, "Archive");
+      const apps = await new BundleScannerClient().scanApplications([root]);
+      const archive = apps.find((app) => app.bundlePath === archivePath)!;
+      const targetApp = apps.find((app) => app.bundlePath === target)!;
+      const items = await inventory(metadata(target));
+      items[0]!.appID = correctTarget ? targetApp.id : archive.id;
+      items[0]!.iconDataURL = "data:image/png;base64,cached";
+      const { store, run } = await storeFixture(root, apps, items);
+      const state = store.getSnapshot();
+      const control = uninstallableHomebrewItemForApp(archive, state);
+      if (control) await store.uninstallHomebrewItem(control.id);
+      expect(run).not.toHaveBeenCalled();
+      expect(control).toBeUndefined();
+      expect(state.homebrewItems[0]!.appID).toBe(correctTarget ? targetApp.id : undefined);
+      expect(state.homebrewItems[0]!.iconDataURL).toBe(
+        correctTarget ? items[0]!.iconDataURL : undefined
+      );
+      expect(state.homebrewItems[0]!.isOutdated).toBe(true);
+      expect(state.ignoredIDs).toEqual(["unrelated-app"]);
+      expect(state.ignoredHomebrewItemIDs).toEqual(["cask:other"]);
+      expect(uninstallableHomebrewItemForApp(targetApp, state)?.id).toBe(
+        correctTarget ? items[0]!.id : undefined
+      );
+    }
+  );
+
+  it.each([undefined, "healthy", "unavailable"] as const)(
+    "uses retained copies only as ambiguity constraints (target %s)",
+    async (targetKind) => {
+      const root = await temporaryRoot();
+      const healthyPath = await bundle(root, "Healthy");
+      const unavailablePath = await bundle(root, "Unavailable");
+      const apps = await new BundleScannerClient().scanApplications([root]);
+      await rename(path.dirname(unavailablePath), path.join(root, "Moved"));
+      const target =
+        targetKind === "healthy"
+          ? healthyPath
+          : targetKind === "unavailable"
+            ? unavailablePath
+            : undefined;
+      const items = await inventory(metadata(target));
+      const { store, run, apple, persistence } = await storeFixture(root, apps, items, [
+        path.dirname(healthyPath),
+        path.dirname(unavailablePath)
+      ]);
+      const observed: BaselineSnapshot[] = [];
+      store.on("snapshot", (state) => observed.push(state));
+      await store.refresh(false);
+      const state = store.getSnapshot();
+      expect(state.apps).toHaveLength(2);
+      expect(state.lastRefreshNoticeMessage).toContain("Previously found apps have been kept");
+      const expectedUpdateIDs = targetKind === "healthy" ? [healthyPath] : [];
+      expect(state.updates.map((update) => update.appID)).toEqual(expectedUpdateIDs);
+      expect(
+        observed.every((state) =>
+          state.updates.every((update) => expectedUpdateIDs.includes(update.appID))
+        )
+      ).toBe(true);
+      expect(state.homebrewItems[0]!.appID).toBe(
+        targetKind === "healthy" ? healthyPath : undefined
+      );
+      expect(state.homebrewItems[0]!.isOutdated).toBe(true);
+      expect(apple).toHaveBeenCalledTimes(1);
+      expect(deriveSections(state).allHomebrewOutdated).toHaveLength(
+        targetKind === "healthy" ? 0 : 1
+      );
+      expect(combinedAvailableCount(deriveSections(state))).toBe(1);
+      if (!targetKind) {
+        for (const app of state.apps) await store.performAppUpdate(app.id);
+        expect(run).not.toHaveBeenCalled();
+      }
+      expect((await persistence.load()).homebrewItems[0]!.appID).toBe(
+        state.homebrewItems[0]!.appID
+      );
+    }
+  );
 });
 
 describe("app-backed latest casks", () => {

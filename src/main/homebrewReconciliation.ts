@@ -377,7 +377,8 @@ export function reconcileHomebrewInventory(
   apps: AppRecord[] = [],
   caskIndex: HomebrewCaskIndex = emptyHomebrewCaskIndex,
   previousItems: HomebrewManagedItem[] = [],
-  isSelfApp?: (app: AppRecord) => boolean
+  isSelfApp?: (app: AppRecord) => boolean,
+  ownershipApps: AppRecord[] = apps
 ): HomebrewManagedItem[] {
   const managedIDs = new Set(apps.filter(isMacOSManagedApp).map((app) => app.id));
   items = withoutMacOSManagedAppLinks(items, apps);
@@ -413,7 +414,8 @@ export function reconcileHomebrewInventory(
       apps,
       caskEntry,
       isSelfApp,
-      updatesByToken.get(item.token.toLowerCase())?.appID
+      updatesByToken.get(item.token.toLowerCase())?.appID,
+      ownershipApps
     );
     const iconDataURL =
       matchingApp?.iconDataURL ??
@@ -578,11 +580,12 @@ function matchingHomebrewApp(
   apps: AppRecord[],
   caskEntry: HomebrewCaskEntry | undefined,
   isSelfApp?: (app: AppRecord) => boolean,
-  preferredAppID?: string
+  preferredAppID?: string,
+  ownershipApps: AppRecord[] = apps
 ): AppRecord | undefined {
   const matches = (app: AppRecord) =>
     (!isSelfApp?.(app) || Boolean(caskEntry && installedCaskIdentifiesSelf(app, caskEntry))) &&
-    Boolean(caskEntry && appHasUniqueCaskMatch(app, caskEntry, apps));
+    Boolean(caskEntry && appHasUniqueCaskMatch(app, caskEntry, ownershipApps));
   // A previous app link or update is not stronger than current installed evidence.
   // Ambiguous copies retain an independent package row. Distinct apps shipped
   // by one cask can each retain their proven update route.
