@@ -9,6 +9,10 @@ export function suppressCompactPopoverControlFocus(
   event: React.MouseEvent
 ): void {
   if (compactPopoverControlFocusTarget(target, compactShell)) {
+    // Pointer activation must not leave a previously keyboard-focused action
+    // armed while focus is intentionally suppressed on the clicked button.
+    const active = document.activeElement;
+    if (active instanceof HTMLButtonElement && compactShell?.contains(active)) active.blur();
     event.preventDefault();
   }
 }

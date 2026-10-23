@@ -3062,6 +3062,95 @@ describe("renderer button parity", () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each([
+    ["Update", "Settings"],
+    ["Open app", "Refresh"]
+  ])(
+    "clears compact keyboard focus on %s when pointer activation chooses %s",
+    (source, destination) => {
+      render(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
+      const previous = screen.getByRole("button", { name: source });
+      previous.focus();
+      expect(previous).toHaveFocus();
+      const clicked = screen.getByRole("button", { name: destination });
+      fireEvent.mouseDown(clicked);
+      fireEvent.click(clicked, { detail: 1 });
+      expect(document.activeElement).toBe(document.body);
+    }
+  );
+
+  it.each([
+    [false, false],
+    [false, true],
+    [true, false],
+    [true, true]
+  ])(
+    "recovers keyboard focus after a live ignore snapshot (compact %s, Homebrew %s)",
+    (compact, homebrew) => {
+      const item = { ...cask, appID: undefined, kind: "formula" as const, id: "formula:example" };
+      let current = snapshot({
+        apps: homebrew ? [] : [app],
+        updates: homebrew ? [] : [update],
+        homebrewItems: homebrew ? [item] : [cask],
+        searchText: compact ? "" : "example"
+      });
+      const dashboard = () => (
+        <Dashboard compact={compact} onOpenSettings={() => undefined} snapshot={current} />
+      );
+      const view = render(dashboard());
+      const publishToggle = async () => {
+        current = {
+          ...current,
+          ...(homebrew ? { ignoredHomebrewItemIDs: [item.id] } : { ignoredIDs: [app.id] })
+        };
+        view.rerender(dashboard());
+      };
+      if (homebrew)
+        vi.mocked(window.baseline.toggleIgnoredHomebrew).mockImplementation(publishToggle);
+      else vi.mocked(window.baseline.toggleIgnoredApp).mockImplementation(publishToggle);
+      if (!compact) fireEvent.click(screen.getByRole("button", { name: "Search" }));
+      const actions = screen.getByRole("button", { name: "Actions" });
+      actions.focus();
+      fireEvent.keyDown(actions, { key: "ArrowDown" });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Ignore" }), { detail: 0 });
+      if (compact) {
+        expect(screen.queryByRole("button", { name: "Actions" })).not.toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Search" })).toHaveFocus();
+      } else {
+        expect(
+          screen.getByRole("heading", { name: homebrew ? "Ignored Homebrew" : "Ignored Apps" })
+        ).toBeInTheDocument();
+        expect(screen.getByPlaceholderText("Search")).toHaveFocus();
+      }
+    }
+  );
+
+  it.each(["another control", "pointer background"])(
+    "does not reclaim focus after the user chooses %s before an ignore snapshot",
+    (destination) => {
+      const current = snapshot({ searchText: "example" });
+      const dashboard = (next: BaselineSnapshot) => (
+        <Dashboard compact={false} onOpenSettings={() => undefined} snapshot={next} />
+      );
+      const view = render(dashboard(current));
+      fireEvent.click(screen.getByRole("button", { name: "Search" }));
+      const actions = screen.getByRole("button", { name: "Actions" });
+      actions.focus();
+      fireEvent.keyDown(actions, { key: "ArrowDown" });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Ignore" }), { detail: 0 });
+      const clear = screen.getByRole("button", { name: "Clear Search" });
+      if (destination === "another control") clear.focus();
+      else {
+        fireEvent.mouseDown(screen.getByRole("dialog", { name: "Search" }));
+        actions.blur();
+      }
+      view.rerender(dashboard({ ...current, ignoredIDs: [app.id] }));
+      expect(screen.getByRole("heading", { name: "Ignored Apps" })).toBeInTheDocument();
+      if (destination === "another control") expect(clear).toHaveFocus();
+      else expect(document.activeElement).toBe(document.body);
+    }
+  );
+
   it("retains compact keyboard focus on toolbar and row actions", () => {
     render(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
 

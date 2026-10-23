@@ -14,7 +14,8 @@ import { version } from "../src/shared/version";
 // dispatches real commands. Its profile and IPC intents belong only to the test.
 async function withKeyboardFixture(
   route: "main" | "menubar",
-  run: (page: Page, intents: () => Promise<string[]>) => Promise<void>
+  run: (page: Page, intents: () => Promise<string[]>) => Promise<void>,
+  options: { liveIgnore?: boolean; homebrew?: boolean } = {}
 ) {
   const appDirectory = process.env.BASELINE_E2E_APP_DIR;
   if (!appDirectory) throw new Error("Use the isolated E2E global setup.");
@@ -53,6 +54,21 @@ async function withKeyboardFixture(
       isOutdated: true
     }
   ];
+  if (options.homebrew) {
+    state.apps = [];
+    state.updates = [];
+    state.homebrewItems = [
+      {
+        id: "formula:example",
+        token: "example",
+        name: "Example",
+        kind: "formula",
+        installedVersion: version("1.0"),
+        latestVersion: version("2.0"),
+        isOutdated: true
+      }
+    ];
+  }
   state.homebrewDiscoverItems = [];
   state.recentlyUpdated = [];
   state.homebrewRecentlyUpdated = [];
@@ -80,7 +96,22 @@ async function withKeyboardFixture(
       showSettings: () => record('settings'),
       openApp: () => record('open'),
       performAppUpdate: () => record('update'),
-      toggleIgnoredApp: () => record('ignore'),
+      toggleIgnoredApp: async (id) => {
+        await record('ignore');
+        if (${JSON.stringify(Boolean(options.liveIgnore))}) {
+          snapshot = { ...snapshot, ignoredIDs: snapshot.ignoredIDs.includes(id)
+            ? snapshot.ignoredIDs.filter((value) => value !== id) : [...snapshot.ignoredIDs, id] };
+          receive(snapshot);
+        }
+      },
+      toggleIgnoredHomebrew: async (id) => {
+        await record('ignore');
+        if (${JSON.stringify(Boolean(options.liveIgnore))}) {
+          snapshot = { ...snapshot, ignoredHomebrewItemIDs: snapshot.ignoredHomebrewItemIDs.includes(id)
+            ? snapshot.ignoredHomebrewItemIDs.filter((value) => value !== id) : [...snapshot.ignoredHomebrewItemIDs, id] };
+          receive(snapshot);
+        }
+      },
       uninstallHomebrewItem: () => record('uninstall')
     });
   `
@@ -117,7 +148,7 @@ async function withKeyboardFixture(
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await expect(page).toHaveTitle("Baseline");
-      await expect(page.getByRole("button", { name: "Open app" })).toBeVisible();
+      await expect(page.getByText("Example", { exact: true })).toBeVisible();
       expect(
         await application.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows().every((window) => !window.isVisible())
@@ -237,5 +268,88 @@ for (const placement of ["inline", "floating"] as const) {
       await expect(dialog).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Search", exact: true })).toBeFocused();
     });
+  });
+}
+
+for (const [source, destination, intent] of [
+  ["Update", "Settings", "settings"],
+  ["Open app", "Refresh", "refresh"]
+] as const) {
+  test(`compact pointer ${destination} clears earlier keyboard ${source} focus`, async () => {
+    await withKeyboardFixture("menubar", async (page, intents) => {
+      const previous = page.getByRole("button", { name: source, exact: true });
+      await previous.focus();
+      await expect(previous).toBeFocused();
+      await page.getByRole("button", { name: destination, exact: true }).click();
+      await page.keyboard.press("Enter");
+      expect(await intents()).toEqual([intent]);
+      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+    });
+  });
+}
+
+for (const [surface, homebrew] of [
+  ["main-inline", false],
+  ["main-floating", false],
+  ["main-floating", true],
+  ["main-updates", false],
+  ["compact-updates", false],
+  ["compact-updates", true],
+  ["compact-search", false],
+  ["compact-search", true]
+] as const) {
+  test(`${surface} ${homebrew ? "Homebrew" : "app"} ignore relocation retains keyboard focus`, async () => {
+    const compact = surface.startsWith("compact");
+    await withKeyboardFixture(
+      compact ? "menubar" : "main",
+      async (page, intents) => {
+        const searching = !surface.endsWith("updates");
+        const searchButton = page.getByRole("button", { name: "Search", exact: true });
+        const input = page.getByRole("textbox");
+        if (searching) {
+          await searchButton.focus();
+          await page.keyboard.press("Enter");
+          await input.fill("example");
+          if (!compact)
+            await page.addStyleTag({
+              content: `.search-palette-results { height: ${surface === "main-floating" ? 78 : 320}px; }`
+            });
+        }
+        const scope =
+          !compact && searching ? page.getByRole("dialog", { name: "Search", exact: true }) : page;
+        const actions = scope.getByRole("button", { name: "Actions" });
+        await actions.focus();
+        await page.keyboard.press("ArrowDown");
+        await page.getByRole("menuitem", { name: "Ignore", exact: true }).press("Enter");
+        await expect.poll(intents).toEqual(["ignore"]);
+        if (searching) {
+          await expect(page.getByRole("heading", { name: /Ignored/ })).toBeVisible();
+          await expect(input).toBeFocused();
+        } else {
+          await expect(actions).toHaveCount(0);
+          await expect(searchButton).toBeFocused();
+          await page.keyboard.press("Enter");
+          await input.fill("example");
+        }
+        const relocatedActions = compact
+          ? page.getByRole("button", { name: "Actions" })
+          : page
+              .getByRole("dialog", { name: "Search", exact: true })
+              .getByRole("button", { name: "Actions" });
+        await relocatedActions.focus();
+        await page.keyboard.press("ArrowDown");
+        await page.getByRole("menuitem", { name: "Unignore", exact: true }).press("Enter");
+        await expect.poll(intents).toEqual(["ignore", "ignore"]);
+        await expect(
+          page.getByRole("heading", {
+            name: homebrew ? "Homebrew Updates" : "App Updates",
+            exact: true
+          })
+        ).toBeVisible();
+        await expect(input).toBeFocused();
+        expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+      },
+      { liveIgnore: true, homebrew }
+    );
   });
 }

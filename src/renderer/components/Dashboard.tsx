@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { baseline } from "../ipc";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AppWindowMac,
   Beer,
@@ -16,7 +16,11 @@ import {
 import type { BaselineSnapshot, MenuTab } from "../../shared/domain";
 import { deriveSections, type DerivedSections, combinedAvailableCount } from "../helpers/sections";
 import type { ActionConfirmation } from "../types";
-import { setElementInert, suppressCompactPopoverControlFocus } from "../helpers/focus";
+import {
+  focusableElementsIn,
+  setElementInert,
+  suppressCompactPopoverControlFocus
+} from "../helpers/focus";
 import { ToolbarSearch, SearchPalette } from "./Search";
 import { sidebarIconStrokeWidth } from "../constants";
 import { OperationFailures } from "./OperationFailures";
@@ -84,6 +88,9 @@ export function Dashboard({
   );
   const derived = compact && searchActive ? searchDerived : sidebarDerived;
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
+  const actionSurfaceRef = useRef<HTMLDivElement>(null);
+  const keyboardFocusRef = useRef(false);
+  const lastKeyboardControlRef = useRef<HTMLElement | null>(null);
   const compactShellRef = useRef<HTMLElement>(null);
   const appContentRef = useRef<HTMLDivElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
@@ -91,6 +98,23 @@ export function Dashboard({
   const confirmationReturnFocusRef = useRef<HTMLElement | null>(null);
   const confirmationOpenRef = useRef(false);
   const shouldRestoreSearchPaletteFocusRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const previous = lastKeyboardControlRef.current;
+    const surface = actionSurfaceRef.current;
+    if (
+      !previous ||
+      previous.isConnected ||
+      !surface ||
+      surface.hasAttribute("inert") ||
+      document.activeElement !== document.body
+    )
+      return;
+    // A snapshot can relocate a row into another section or remove it from
+    // the tray. Recover only lost keyboard focus, after that render commits.
+    const scope = surface.querySelector<HTMLElement>("[aria-modal='true']") ?? surface;
+    focusableElementsIn(scope)[0]?.focus();
+  }, [snapshot]);
 
   const openSearchPalette = () => {
     const activeElement = document.activeElement;
@@ -292,6 +316,18 @@ export function Dashboard({
   return (
     <ActionConfirmationContext.Provider value={requestActionConfirmation}>
       <div
+        ref={actionSurfaceRef}
+        onKeyDownCapture={() => {
+          keyboardFocusRef.current = true;
+        }}
+        onMouseDownCapture={() => {
+          keyboardFocusRef.current = false;
+          lastKeyboardControlRef.current = null;
+        }}
+        onFocusCapture={(event) => {
+          if (keyboardFocusRef.current && event.target instanceof HTMLElement)
+            lastKeyboardControlRef.current = event.target;
+        }}
         className={actionConfirmation ? "action-surface action-surface-disabled" : "action-surface"}
         aria-hidden={actionConfirmation ? true : undefined}
         inert={Boolean(actionConfirmation)}
