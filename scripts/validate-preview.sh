@@ -89,6 +89,10 @@ if ! mkdir "$INSTALL_LOCK"; then
 fi
 INSTALL_LOCK_HELD=true
 TRANSACTION_DIR="$(mktemp -d "$(dirname "$INSTALL_PATH")/.Baseline-preview.XXXXXX")"
+# Check before the mounted smoke too: another copy can hold the shared app lock.
+if [[ -e "$INSTALL_PATH" || -L "$INSTALL_PATH" ]]; then
+  require_app_stopped "$INSTALL_PATH"
+fi
 verify_preview_bundle "$MOUNT_DIR/${APP_NAME}.app" "$PACKAGE_APP_PATH"
 smoke_launch_app "$MOUNT_DIR/${APP_NAME}.app" "mounted preview app"
 
