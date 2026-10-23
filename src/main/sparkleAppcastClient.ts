@@ -236,8 +236,8 @@ function usableCandidate(item: AppcastItem): AppcastCandidate | undefined {
 }
 
 function compareAppcastItems(
-  lhs: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
-  rhs: { parsedVersion: VersionValue; buildVersion: VersionValue; hasMarketingVersion: boolean },
+  lhs: AppcastCandidate,
+  rhs: AppcastCandidate,
   useBuildOrder: boolean
 ): number {
   if (useBuildOrder) {
@@ -260,7 +260,11 @@ function compareAppcastItems(
   if (versionComparison !== 0) {
     return versionComparison;
   }
-  return compareVersions(lhs.buildVersion, rhs.buildVersion);
+  const buildComparison = compareVersions(lhs.buildVersion, rhs.buildVersion);
+  if (buildComparison !== 0) return buildComparison;
+  // Shared notes must not let an unusable enclosure hide a valid download for
+  // the same release. Newer notes-only releases retain their version ranking.
+  return Number(Boolean(lhs.updateURL)) - Number(Boolean(rhs.updateURL));
 }
 
 function isEligible(
@@ -270,7 +274,7 @@ function isEligible(
 ): boolean {
   if (!item.validEligibility || host.platform !== "darwin") return false;
   if (item.channel && !options.allowedChannels?.includes(item.channel)) return false;
-  if (item.os && item.os !== "macos") return false;
+  if (item.os !== undefined && item.os !== "macos") return false;
   for (const [bound, direction] of [
     [item.minimumSystemVersion, -1],
     [item.maximumSystemVersion, 1]

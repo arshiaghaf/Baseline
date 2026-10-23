@@ -53,6 +53,8 @@ describe("Sparkle release eligibility", () => {
     ["maximum OS", "<sparkle:maximumSystemVersion>14.5.0</sparkle:maximumSystemVersion>", ""],
     ["other OS", "", 'sparkle:os="windows"'],
     ["unknown OS", "", 'sparkle:os="other"'],
+    ["empty OS", "", 'sparkle:os=""'],
+    ["blank OS", "", 'sparkle:os="   "'],
     [
       "malformed OS bound",
       "<sparkle:minimumSystemVersion>unknown</sparkle:minimumSystemVersion>",
@@ -122,6 +124,68 @@ describe("Sparkle release eligibility", () => {
     );
   });
 
+  it.each([false, true])(
+    "ignores a blank-platform sibling in either enclosure order (%s)",
+    (reverse) => {
+      const enclosures = [
+        '<enclosure sparkle:os=" " url="https://example.com/unknown.zip" />',
+        '<enclosure sparkle:os="macos" url="https://example.com/mac.zip" />'
+      ];
+      if (reverse) enclosures.reverse();
+      const data = feed(`<item><sparkle:version>300</sparkle:version>
+      <sparkle:shortVersionString>3.0</sparkle:shortVersionString>${enclosures.join("")}</item>`);
+      expect(new SparkleAppcastClient(host).parseAppcast(data, version("1"))?.updateURL).toBe(
+        "https://example.com/mac.zip"
+      );
+    }
+  );
+
+  it.each([
+    ["absent", ""],
+    ["rejected", 'url="http://example.com/rejected.zip"'],
+    ["malformed", 'url="https://"']
+  ])("prefers a valid same-release download over a %s URL sibling", (_label, invalidURL) => {
+    for (const reverse of [false, true]) {
+      const enclosures = [
+        `<enclosure sparkle:os="macos" ${invalidURL} />`,
+        '<enclosure sparkle:os="macos" url="https://example.com/mac.zip" />'
+      ];
+      if (reverse) enclosures.reverse();
+      const data = feed(`<item><sparkle:version>300</sparkle:version>
+        <sparkle:shortVersionString>3.0</sparkle:shortVersionString>
+        <sparkle:releaseNotesLink>https://example.com/notes</sparkle:releaseNotesLink>
+        ${enclosures.join("")}</item>`);
+      const result = new SparkleAppcastClient(host).parseAppcast(data, version("1"));
+      expect(result).toMatchObject({
+        remoteVersion: version("3.0"),
+        updateURL: "https://example.com/mac.zip",
+        updateURLKind: "download",
+        releaseNotesURL: "https://example.com/notes"
+      });
+    }
+  });
+
+  it.each([
+    "",
+    '<enclosure sparkle:os="macos" />',
+    '<enclosure sparkle:os="macos" url="http://example.com/rejected.zip" />'
+  ])("preserves a newer notes-only release without a usable sibling (%s)", (enclosure) => {
+    const data = feed(
+      release(2),
+      `<item><sparkle:version>300</sparkle:version>
+      <sparkle:shortVersionString>3.0</sparkle:shortVersionString>
+      <sparkle:releaseNotesLink>https://example.com/notes</sparkle:releaseNotesLink>
+      ${enclosure}</item>`
+    );
+    const result = new SparkleAppcastClient(host).parseAppcast(data, version("1"));
+    expect(result).toMatchObject({
+      remoteVersion: version("3.0"),
+      releaseNotesURL: "https://example.com/notes"
+    });
+    expect(result?.updateURL).toBeUndefined();
+    expect(result?.updateURLKind).toBeUndefined();
+  });
+
   it("does not offer release notes for an ineligible enclosure", () => {
     const data = feed(
       release(
@@ -165,7 +229,12 @@ describe("Sparkle release eligibility", () => {
         async () =>
           new Response(
             feed(
-              release(2),
+              `<item><sparkle:version>200</sparkle:version>
+                <sparkle:shortVersionString>2.0</sparkle:shortVersionString>
+                <sparkle:releaseNotesLink>https://example.com/notes</sparkle:releaseNotesLink>
+                <enclosure sparkle:os="macos" url="http://example.com/rejected.zip" />
+                <enclosure sparkle:os="macos" url="https://example.com/release-2.zip" />
+              </item>`,
               release(3, "<sparkle:channel>beta</sparkle:channel>"),
               release(4, "<sparkle:minimumSystemVersion>99</sparkle:minimumSystemVersion>"),
               release(5, "", 'sparkle:os="windows"')
