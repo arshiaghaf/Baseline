@@ -23,6 +23,7 @@ export type HomebrewMaintenanceProgressEvent = {
     | { type: "progress"; progress: number }
     | { type: "completed" }
     | { type: "unchanged" }
+    | { type: "skipped" }
     | { type: "failed" };
 };
 
@@ -44,6 +45,10 @@ export class HomebrewMaintenanceOutputParser {
 
     if (this.isFailureLine(normalizedLine)) {
       return matchedTokens.map((token) => ({ token, kindHint, kind: { type: "failed" } }));
+    }
+
+    if (normalizedLine.includes("cannot be upgraded as-is")) {
+      return matchedTokens.map((token) => ({ token, kindHint, kind: { type: "skipped" } }));
     }
 
     if (this.isUnchangedLine(normalizedLine)) {

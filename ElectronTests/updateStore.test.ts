@@ -3422,6 +3422,103 @@ describe("update store helpers", () => {
     }
   );
 
+  it.each(["single", "queued", "batch"] as const)(
+    "persists no update for a skipped cask while retaining genuine rebuilds in a %s run",
+    async (scenario) => {
+      const skipped = homebrewItem({
+        id: "cask:example",
+        token: "example",
+        name: "Example",
+        kind: "cask",
+        installedVersion: version("1"),
+        latestVersion: version("2"),
+        isOutdated: true
+      });
+      const rebuilt = homebrewItem({
+        id: "cask:other",
+        token: "other",
+        name: "Other",
+        kind: "cask",
+        installedVersion: version("1"),
+        latestVersion: version("1"),
+        isOutdated: true
+      });
+      const items = scenario === "single" ? [skipped] : [skipped, rebuilt];
+      let operated = false;
+      // Homebrew cask/upgrade.rb warns and skips unreadable installed metadata.
+      // The suggested repair is output only; Baseline must not execute it.
+      const warning =
+        "Warning: The cask 'example' cannot be upgraded as-is. To fix this, run:\n  brew reinstall --cask --force example";
+      const runBrewCommand = vi.fn<
+        NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+      >(async (command, onLine) => {
+        if (command[0] === "update") return { success: true, status: 0, output: "" };
+        operated = true;
+        const output =
+          warning + (scenario === "single" ? "" : "\nCask other was successfully installed!");
+        for (const line of output.split("\n")) onLine?.(line);
+        return { success: true, status: 0, output };
+      });
+      const fetchInventory = vi.fn(async () => ({
+        items: items.map((item) =>
+          item.id === rebuilt.id && operated ? { ...item, isOutdated: false } : item
+        ),
+        inventoryReadSucceededByKind: { formula: true, cask: true },
+        outdatedDetectionSucceeded: true,
+        outdatedDetectionSucceededByKind: { formula: true, cask: true }
+      }));
+      const integrity = new ProfileStatsIntegrityService(
+        async () => "synthetic-skipped-cask-fixture-key"
+      );
+      let persistence!: SnapshotPersistence;
+      const store = await makeVerifiedStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: items },
+        clients: { homebrewInventory: { fetchInventory } },
+        runBrewCommand,
+        profileStatsIntegrity: integrity,
+        onPersistence: (value) => {
+          persistence = value;
+        }
+      });
+      const work: Promise<void>[] = [];
+      try {
+        if (scenario === "queued") {
+          work.push(store.refresh(true));
+          work.push(...items.map((item) => store.performHomebrewUpdate(item.id)));
+          expect(store.getSnapshot().homebrewQueuedItemIDs).toEqual(items.map((item) => item.id));
+        } else if (scenario === "batch") work.push(store.performHomebrewUpdateAll());
+        else work.push(store.performHomebrewUpdate(skipped.id));
+        await Promise.all(work);
+
+        const saved = await persistence.load();
+        const verified = await integrity.verifyOrInitialize(saved.profileStats);
+        const expectedIDs = scenario === "single" ? [] : [rebuilt.id];
+        expect(verified.integrityStatus).toBe("verified");
+        expect(verified.events.map((event) => event.targetID)).toEqual(expectedIDs);
+        expect(
+          verified.lifetime?.entries.map((entry) => ({ id: entry.targetID, count: entry.count }))
+        ).toEqual(expectedIDs.map((id) => ({ id, count: 1 })));
+        expect(saved.profileStats.events).toEqual(store.getSnapshot().profileStats.events);
+        expect(saved.homebrewItems.find((item) => item.id === skipped.id)).toMatchObject({
+          isOutdated: true,
+          installedVersion: version("1")
+        });
+        expect(store.getSnapshot()).toMatchObject({
+          homebrewUpdatedPendingRefreshItemIDs: [],
+          homebrewBatchFailedItemIDs: [],
+          isHomebrewCommandLocked: false
+        });
+        expect(runBrewCommand.mock.calls.map(([command]) => command)).toEqual([
+          ...(scenario === "batch" ? [["update"]] : []),
+          ["upgrade", "--cask", "--greedy", ...items.map((item) => item.token)]
+        ]);
+      } finally {
+        await Promise.allSettled(work);
+        await persistence.load();
+      }
+    }
+  );
+
   it("updates only non-ignored Homebrew items in a batch run", async () => {
     const runBrewCommand = vi.fn<
       NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>

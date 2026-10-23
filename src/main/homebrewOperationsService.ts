@@ -1269,6 +1269,7 @@ export class HomebrewOperationsService {
               completedItemIDs?.add(id);
               unchangedItemIDs?.delete(id);
             } else if (!completedItemIDs?.has(id)) {
+              // Unchanged and skipped targets finish without installation evidence.
               unchangedItemIDs?.add(id);
             }
             this.patch({

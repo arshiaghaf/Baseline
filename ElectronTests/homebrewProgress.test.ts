@@ -20,6 +20,18 @@ describe("HomebrewMaintenanceOutputParser", () => {
     ]);
   });
 
+  it("distinguishes Homebrew's skipped cask warning from an installation", () => {
+    const parser = new HomebrewMaintenanceOutputParser(["example", "example-helper"]);
+    expect(
+      parser.parse("Warning: The cask 'example' cannot be upgraded as-is. To fix this, run:", [
+        "upgrade",
+        "--cask",
+        "--greedy",
+        "example"
+      ])
+    ).toEqual([{ token: "example", kindHint: "cask", kind: { type: "skipped" } }]);
+  });
+
   it("parses progress, completion, failure, and token boundaries", () => {
     const parser = new HomebrewMaintenanceOutputParser(["notion", "notion-helper"]);
 
