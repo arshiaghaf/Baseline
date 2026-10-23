@@ -8,14 +8,24 @@ import path from "node:path";
 import { visualSnapshot } from "./visualSnapshot";
 import { cleanupApplications, runWithCleanup } from "./applicationCleanup";
 import { version } from "../src/shared/version";
+import type { BaselineSnapshot } from "../src/shared/domain";
 
 // Exercise Chromium's native keyboard defaults with the real built renderer.
 // This hidden shell never loads Baseline's main process, scans the host, or
 // dispatches real commands. Its profile and IPC intents belong only to the test.
 async function withKeyboardFixture(
   route: "main" | "menubar",
-  run: (page: Page, intents: () => Promise<string[]>) => Promise<void>,
-  options: { liveIgnore?: boolean; homebrew?: boolean } = {}
+  run: (
+    page: Page,
+    intents: () => Promise<string[]>,
+    publish: (patch: Partial<BaselineSnapshot>) => Promise<void>
+  ) => Promise<void>,
+  options: {
+    liveIgnore?: boolean;
+    homebrew?: boolean;
+    standaloneCask?: boolean;
+    liveUninstall?: boolean;
+  } = {}
 ) {
   const appDirectory = process.env.BASELINE_E2E_APP_DIR;
   if (!appDirectory) throw new Error("Use the isolated E2E global setup.");
@@ -69,6 +79,11 @@ async function withKeyboardFixture(
       }
     ];
   }
+  if (options.standaloneCask) {
+    state.apps = [];
+    state.updates = [];
+    state.homebrewItems = [{ ...state.homebrewItems[0]!, appID: undefined }];
+  }
   state.homebrewDiscoverItems = [];
   state.recentlyUpdated = [];
   state.homebrewRecentlyUpdated = [];
@@ -85,6 +100,11 @@ async function withKeyboardFixture(
     const { contextBridge, ipcRenderer } = require('electron');
     let snapshot = ${JSON.stringify(state)};
     let receive = () => {};
+    const publish = (patch) => {
+      snapshot = { ...snapshot, ...patch, snapshotRevision: (snapshot.snapshotRevision ?? 0) + 1 };
+      receive(snapshot);
+    };
+    ipcRenderer.on('fixture:snapshot-patch', (_event, patch) => publish(patch));
     const record = (name) => ipcRenderer.invoke('fixture:intent', name);
     contextBridge.exposeInMainWorld('baseline', {
       getSnapshot: async () => snapshot,
@@ -112,7 +132,10 @@ async function withKeyboardFixture(
           receive(snapshot);
         }
       },
-      uninstallHomebrewItem: () => record('uninstall')
+      uninstallHomebrewItem: async (id) => {
+        if (${JSON.stringify(Boolean(options.liveUninstall))}) publish({ homebrewUninstallingItemIDs: [id] });
+        await record('uninstall');
+      }
     });
   `
   );
@@ -154,10 +177,16 @@ async function withKeyboardFixture(
           BrowserWindow.getAllWindows().every((window) => !window.isVisible())
         )
       ).toBe(true);
-      await run(page, () =>
-        application!.evaluate(
-          () => (globalThis as typeof globalThis & { fixtureIntents: string[] }).fixtureIntents
-        )
+      await run(
+        page,
+        () =>
+          application!.evaluate(
+            () => (globalThis as typeof globalThis & { fixtureIntents: string[] }).fixtureIntents
+          ),
+        (patch) =>
+          application!.evaluate(({ BrowserWindow }, state) => {
+            BrowserWindow.getAllWindows()[0]!.webContents.send("fixture:snapshot-patch", state);
+          }, patch)
       );
       expect(errors).toEqual([]);
     },
@@ -383,6 +412,74 @@ for (const [surface, homebrew] of [
         expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
       },
       { liveIgnore: true, homebrew }
+    );
+  });
+}
+
+for (const [surface, standaloneCask, arrival] of [
+  ["compact", false, "immediate"],
+  ["main", true, "after-cleanup"],
+  ["main-search", false, "immediate"],
+  ["compact", true, "cancel-busy"]
+] as const) {
+  test(`${surface} ${standaloneCask ? "cask" : "app"} confirmation recovers from disabled Actions (${arrival})`, async () => {
+    await withKeyboardFixture(
+      surface === "compact" ? "menubar" : "main",
+      async (page, intents, publish) => {
+        if (surface === "main-search") {
+          await page.getByRole("button", { name: "Search", exact: true }).focus();
+          await page.keyboard.press("Enter");
+          await page.getByRole("textbox").fill("example");
+        }
+        const actions = page.getByRole("button", { name: "Actions" });
+        const source = await actions.elementHandle();
+        if (!source) throw new Error("Expected a row Actions trigger.");
+        await actions.focus();
+        await page.keyboard.press("ArrowUp");
+        await page.getByRole("menuitem", { name: "Uninstall", exact: true }).press("Enter");
+        const confirmation = page.getByRole("dialog", { name: "Uninstall Example?", exact: true });
+        await expect(
+          confirmation.getByRole("button", { name: "Cancel", exact: true })
+        ).toBeFocused();
+        if (arrival === "cancel-busy") {
+          await publish({ homebrewUninstallingItemIDs: ["cask:example"] });
+          await expect
+            .poll(() => source.evaluate((element) => (element as HTMLButtonElement).disabled))
+            .toBe(true);
+          await expect(
+            confirmation.getByRole("button", { name: "Cancel", exact: true })
+          ).toBeFocused();
+          await page.keyboard.press("Enter");
+          expect(await intents()).toEqual([]);
+        } else {
+          await confirmation
+            .getByRole("button", { name: "Uninstall Example", exact: true })
+            .press("Enter");
+          await expect.poll(intents).toEqual(["uninstall"]);
+          await expect(confirmation).toHaveCount(0);
+          if (arrival === "after-cleanup") {
+            await expect(actions).toBeFocused();
+            await publish({ homebrewUninstallingItemIDs: ["cask:example"] });
+          }
+        }
+        await expect(confirmation).toHaveCount(0);
+        await expect(actions).toBeDisabled();
+        if (surface !== "main-search")
+          expect(await source.evaluate((element) => element.isConnected)).toBe(true);
+        const stable = page.getByRole("button", { name: "Search", exact: true });
+        await expect(stable).toBeFocused();
+        await expect(stable).toBeEnabled();
+        await page.keyboard.press("Tab");
+        expect(
+          await page.evaluate(
+            () =>
+              document.activeElement instanceof HTMLButtonElement &&
+              !document.activeElement.disabled
+          )
+        ).toBe(true);
+        await source.dispose();
+      },
+      { standaloneCask, liveUninstall: arrival === "immediate" }
     );
   });
 }

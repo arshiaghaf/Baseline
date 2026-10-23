@@ -3172,6 +3172,50 @@ describe("renderer button parity", () => {
     }
   );
 
+  it.each(["immediate", "after-cleanup", "cancel-busy"])(
+    "recovers focus from retained disabled Actions after confirmation (%s)",
+    async (arrival) => {
+      let current = snapshot();
+      const dashboard = () => (
+        <Dashboard compact onOpenSettings={() => undefined} snapshot={current} />
+      );
+      const view = render(dashboard());
+      const disableActions = () => {
+        current = { ...current, homebrewUninstallingItemIDs: [cask.id] };
+        view.rerender(dashboard());
+      };
+      vi.mocked(window.baseline.uninstallHomebrewItem).mockImplementation(async () => {
+        if (arrival === "immediate") disableActions();
+      });
+      const actions = screen.getByRole("button", { name: "Actions" });
+      actions.focus();
+      fireEvent.keyDown(actions, { key: "ArrowUp" });
+      fireEvent.click(screen.getByRole("menuitem", { name: "Uninstall" }), { detail: 0 });
+      const confirmation = screen.getByRole("dialog", { name: "Uninstall Example?" });
+      const cancel = within(confirmation).getByRole("button", { name: "Cancel" });
+      expect(cancel).toHaveFocus();
+      if (arrival === "cancel-busy") {
+        disableActions();
+        expect(cancel).toHaveFocus();
+        fireEvent.click(cancel, { detail: 0 });
+        expect(window.baseline.uninstallHomebrewItem).not.toHaveBeenCalled();
+      } else {
+        fireEvent.click(within(confirmation).getByRole("button", { name: "Uninstall Example" }), {
+          detail: 0
+        });
+        expect(window.baseline.uninstallHomebrewItem).toHaveBeenCalledWith(cask.id);
+        if (arrival === "after-cleanup") {
+          expect(actions).toHaveFocus();
+          disableActions();
+        }
+      }
+      expect(actions).toBeInTheDocument();
+      expect(actions).toBeDisabled();
+      await waitFor(() => expect(screen.getByRole("button", { name: "Search" })).toHaveFocus());
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    }
+  );
+
   it("retains compact keyboard focus on toolbar and row actions", () => {
     render(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
 

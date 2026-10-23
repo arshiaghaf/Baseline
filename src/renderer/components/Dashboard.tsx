@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { baseline } from "../ipc";
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AppWindowMac,
   Beer,
@@ -99,23 +99,6 @@ export function Dashboard({
   const confirmationOpenRef = useRef(false);
   const shouldRestoreSearchPaletteFocusRef = useRef(false);
 
-  useLayoutEffect(() => {
-    const previous = lastKeyboardControlRef.current;
-    const surface = actionSurfaceRef.current;
-    if (
-      !previous ||
-      previous.isConnected ||
-      !surface ||
-      surface.hasAttribute("inert") ||
-      document.activeElement !== document.body
-    )
-      return;
-    // A snapshot can relocate a row into another section or remove it from
-    // the tray. Recover only lost keyboard focus, after that render commits.
-    const scope = surface.querySelector<HTMLElement>("[aria-modal='true']") ?? surface;
-    focusableElementsIn(scope)[0]?.focus();
-  }, [snapshot]);
-
   const openSearchPalette = () => {
     const activeElement = document.activeElement;
     searchPaletteReturnFocusRef.current =
@@ -180,6 +163,25 @@ export function Dashboard({
     setElementInert(appContent, searchActive);
     return () => setElementInert(appContent, false);
   }, [compact, searchActive]);
+
+  useEffect(() => {
+    const previous = lastKeyboardControlRef.current;
+    const surface = actionSurfaceRef.current;
+    if (!previous || !surface || surface.hasAttribute("inert")) return;
+    if (
+      previous.isConnected &&
+      previous.tabIndex >= 0 &&
+      !previous.matches(":disabled") &&
+      !previous.closest("[hidden], [inert], [aria-hidden='true']")
+    )
+      return;
+    const active = document.activeElement;
+    if (active !== document.body && active !== previous) return;
+    // Recover after confirmation cleanup and the inert update above. Snapshots
+    // can remove a row or leave its focused control mounted but disabled.
+    const scope = surface.querySelector<HTMLElement>("[aria-modal='true']") ?? surface;
+    focusableElementsIn(scope)[0]?.focus();
+  }, [snapshot, actionConfirmation, searchActive]);
 
   useEffect(() => {
     if (compact || searchActive || !shouldRestoreSearchPaletteFocusRef.current) {
