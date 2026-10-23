@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Arshia Ghaf
 // SPDX-License-Identifier: GPL-3.0-only
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Check,
@@ -109,6 +109,12 @@ export function RowMoreActionButton({
   onUninstall: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const menuID = useId();
+  const keyboardOpening = useRef<"first" | "last" | undefined>(undefined);
+  const closeMenu = (restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  };
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -130,7 +136,8 @@ export function RowMoreActionButton({
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setOpen(false);
+        event.preventDefault();
+        closeMenu(true);
       }
     };
 
@@ -208,8 +215,18 @@ export function RowMoreActionButton({
     };
   }, [canUninstall, open, updateAction]);
 
+  useLayoutEffect(() => {
+    if (!open || !keyboardOpening.current) return;
+    const items = Array.from(
+      popoverRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']:not(:disabled)") ??
+        []
+    );
+    if (popoverRef.current?.contains(document.activeElement)) return;
+    (keyboardOpening.current === "last" ? items.at(-1) : items[0])?.focus();
+  }, [open, popoverPlacement]);
+
   const invokeIgnore = () => {
-    setOpen(false);
+    closeMenu(Boolean(keyboardOpening.current));
     onToggleIgnore();
   };
 
@@ -218,18 +235,44 @@ export function RowMoreActionButton({
       return;
     }
 
-    setOpen(false);
+    closeMenu(Boolean(keyboardOpening.current));
     updateAction.onAction();
   };
 
   const invokeUninstall = () => {
-    setOpen(false);
+    closeMenu(Boolean(keyboardOpening.current));
     onUninstall();
   };
   const isSearchPaletteRowMenu = Boolean(menuRef.current?.closest(".search-palette"));
   const popover = open ? (
     <div
       ref={popoverRef}
+      id={menuID}
+      onBlur={(event) => {
+        const next = event.relatedTarget as Node | null;
+        if (!menuRef.current?.contains(next) && !popoverRef.current?.contains(next)) {
+          setOpen(false);
+        }
+      }}
+      onKeyDown={(event) => {
+        keyboardOpening.current = "first";
+        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+        const items = Array.from(
+          popoverRef.current?.querySelectorAll<HTMLButtonElement>(
+            "[role='menuitem']:not(:disabled)"
+          ) ?? []
+        );
+        if (!items.length) return;
+        event.preventDefault();
+        const index = items.indexOf(document.activeElement as HTMLButtonElement);
+        const next =
+          event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? items.length - 1
+              : (index + (event.key === "ArrowUp" ? -1 : 1) + items.length) % items.length;
+        items[next]?.focus();
+      }}
       className={rowActionMenuPopoverClassName(popoverPlacement)}
       data-search-palette-floating-row-menu={
         isSearchPaletteRowMenu && popoverPlacement === "floating" ? "true" : undefined
@@ -296,11 +339,27 @@ export function RowMoreActionButton({
         ref={triggerRef}
         className="secondary-icon-button"
         disabled={disabled}
-        onClick={() => setOpen((isOpen) => !isOpen)}
+        onClick={(event) => {
+          keyboardOpening.current = event.detail === 0 ? "first" : undefined;
+          setOpen((isOpen) => !isOpen);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          event.preventDefault();
+          keyboardOpening.current = event.key === "ArrowUp" ? "last" : "first";
+          setOpen(true);
+          if (open) {
+            const items = popoverRef.current?.querySelectorAll<HTMLButtonElement>(
+              "[role='menuitem']:not(:disabled)"
+            );
+            (event.key === "ArrowUp" ? items?.[items.length - 1] : items?.[0])?.focus();
+          }
+        }}
         title="Actions"
         aria-label="Actions"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={open ? menuID : undefined}
       >
         {uninstalling ? <UninstallActionGlyph /> : <MoreHorizontal size={15} />}
       </button>

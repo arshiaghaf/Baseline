@@ -100,13 +100,7 @@ export function UpdateCheckStatus({ snapshot }: { snapshot: BaselineSnapshot }) 
   );
 }
 
-export function RefreshControl({
-  snapshot,
-  compact = false
-}: {
-  snapshot: BaselineSnapshot;
-  compact?: boolean;
-}) {
+export function RefreshControl({ snapshot }: { snapshot: BaselineSnapshot }) {
   const disabled = snapshot.isRefreshing || snapshot.isHomebrewCleanupLocked;
   return (
     <div className="refresh-control">
@@ -114,7 +108,6 @@ export function RefreshControl({
         className="toolbar-button refresh-button"
         onClick={() => void baseline.refresh(false)}
         title="Refresh"
-        tabIndex={compact ? -1 : undefined}
       >
         <RefreshCcw
           className={snapshot.isRefreshing ? "spin" : undefined}

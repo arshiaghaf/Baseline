@@ -16,11 +16,7 @@ import {
 import type { BaselineSnapshot, MenuTab } from "../../shared/domain";
 import { deriveSections, type DerivedSections, combinedAvailableCount } from "../helpers/sections";
 import type { ActionConfirmation } from "../types";
-import {
-  clearCompactPopoverControlFocus,
-  setElementInert,
-  suppressCompactPopoverControlFocus
-} from "../helpers/focus";
+import { setElementInert, suppressCompactPopoverControlFocus } from "../helpers/focus";
 import { ToolbarSearch, SearchPalette } from "./Search";
 import { sidebarIconStrokeWidth } from "../constants";
 import { OperationFailures } from "./OperationFailures";
@@ -128,14 +124,6 @@ export function Dashboard({
   }, [compact, controlledSearchActive, snapshot.searchText]);
 
   useEffect(() => {
-    if (!compact || searchActive) {
-      return;
-    }
-
-    clearCompactPopoverControlFocus(document.activeElement, compactShellRef.current);
-  }, [compact, searchActive]);
-
-  useEffect(() => {
     if (compact) {
       return undefined;
     }
@@ -212,9 +200,6 @@ export function Dashboard({
       <main
         ref={compactShellRef}
         className="app-shell compact"
-        onFocusCapture={(event) =>
-          clearCompactPopoverControlFocus(event.target, compactShellRef.current)
-        }
         onMouseDownCapture={(event) =>
           suppressCompactPopoverControlFocus(event.target, compactShellRef.current, event)
         }
@@ -231,16 +216,10 @@ export function Dashboard({
               onClose={() => {
                 if (!confirmationOpenRef.current) setSearchActive(false);
               }}
-              toolbarButtonTabIndex={-1}
             />
             <UpdateCheckStatus snapshot={snapshot} />
-            <RefreshControl snapshot={snapshot} compact={compact} />
-            <button
-              className="toolbar-button"
-              onClick={onOpenSettings}
-              title="Settings"
-              tabIndex={-1}
-            >
+            <RefreshControl snapshot={snapshot} />
+            <button className="toolbar-button" onClick={onOpenSettings} title="Settings">
               <Settings size={16} />
             </button>
           </div>
@@ -290,7 +269,7 @@ export function Dashboard({
                   <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
                 ) : null}
                 <UpdateCheckStatus snapshot={snapshot} />
-                <RefreshControl snapshot={snapshot} compact={compact} />
+                <RefreshControl snapshot={snapshot} />
               </div>
             </div>
           </header>

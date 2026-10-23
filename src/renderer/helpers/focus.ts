@@ -3,17 +3,6 @@
 
 import React from "react";
 
-export function clearCompactPopoverControlFocus(
-  target: EventTarget | Element | null,
-  compactShell: HTMLElement | null
-): void {
-  const focusTarget = compactPopoverControlFocusTarget(target, compactShell);
-  if (!focusTarget) {
-    return;
-  }
-  focusTarget.blur();
-}
-
 export function suppressCompactPopoverControlFocus(
   target: EventTarget | Element | null,
   compactShell: HTMLElement | null,
@@ -85,12 +74,28 @@ export function compareDocumentOrder(lhs: HTMLElement, rhs: HTMLElement): number
   return 0;
 }
 
-export function trapFocusWithin(event: KeyboardEvent, container: HTMLElement | null): void {
-  if (!container) {
+export function trapFocusWithin(
+  event: KeyboardEvent,
+  container: HTMLElement | null,
+  includeSearchMenus = false
+): void {
+  if (event.defaultPrevented || !container) {
     return;
   }
 
   const focusableElements = focusableElementsIn(container);
+  const floatingMenus = includeSearchMenus
+    ? Array.from(document.querySelectorAll<HTMLElement>(searchPaletteFloatingRowMenuSelector))
+    : [];
+  let hasFloatingMenu = false;
+  for (const menu of floatingMenus) {
+    const triggerIndex = focusableElements.findIndex(
+      (element) => element.getAttribute("aria-controls") === menu.id
+    );
+    if (triggerIndex < 0) continue;
+    focusableElements.splice(triggerIndex + 1, 0, ...focusableElementsIn(menu));
+    hasFloatingMenu = true;
+  }
   if (focusableElements.length === 0) {
     event.preventDefault();
     container.focus();
@@ -100,6 +105,20 @@ export function trapFocusWithin(event: KeyboardEvent, container: HTMLElement | n
   const firstElement = focusableElements[0]!;
   const lastElement = focusableElements[focusableElements.length - 1]!;
   const activeElement = document.activeElement;
+  // A portal has a different DOM tab order. Keep it next to its owning trigger,
+  // and handle traversal explicitly while it is part of this modal scope.
+  if (hasFloatingMenu) {
+    event.preventDefault();
+    const index = focusableElements.indexOf(activeElement as HTMLElement);
+    const next =
+      index < 0
+        ? event.shiftKey
+          ? focusableElements.length - 1
+          : 0
+        : (index + (event.shiftKey ? -1 : 1) + focusableElements.length) % focusableElements.length;
+    focusableElements[next]?.focus();
+    return;
+  }
   if (event.shiftKey) {
     if (activeElement === firstElement || !container.contains(activeElement)) {
       event.preventDefault();
