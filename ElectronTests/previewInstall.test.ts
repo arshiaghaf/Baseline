@@ -170,12 +170,32 @@ stop_owned_preview`);
     expect(result.stderr).toContain("No force signal was sent");
   });
 
+  it("waits for its launched child to exec and leaves a successful installed preview running", () => {
+    const result = processFixture(`
+canonical_executable() { printf '/usr/bin/true\n'; }
+require_app_stopped() { :; }
+TRANSACTION_DIR="$(mktemp -d)"
+trap 'rm -f "$TRANSACTION_DIR/preview-launch.log" "$TRANSACTION_DIR/probed"; rmdir "$TRANSACTION_DIR"' EXIT
+ps() {
+  if [[ -f "$TRANSACTION_DIR/probed" ]]; then printf 'start /usr/bin/true\n';
+  else touch "$TRANSACTION_DIR/probed"; printf 'start /bin/bash\n'; fi
+}
+sleep() { :; }
+kill() { echo UNEXPECTED_SIGNAL; }
+smoke_launch_app /fixture/app fixture true
+[[ -z "$PREVIEW_PID" ]]`);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Smoke launch succeeded");
+    expect(result.stdout).not.toContain("UNEXPECTED_SIGNAL");
+  });
+
   it("rejects a post-launch namesake race instead of accepting another PID", () => {
     const result = processFixture(`
 canonical_executable() { printf '/usr/bin/true\n'; }
 require_app_stopped() { :; }
 TRANSACTION_DIR="$(mktemp -d)"; trap 'rm -f "$TRANSACTION_DIR/preview-launch.log"; rmdir "$TRANSACTION_DIR"' EXIT
 ps() { printf 'start /different/Baseline\n'; }
+sleep() { :; }
 smoke_launch_app /fixture/app fixture`);
     expect(result.status).toBe(1);
     expect(result.stdout).not.toContain("succeeded");

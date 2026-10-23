@@ -51,9 +51,18 @@ smoke_launch_app() {
   echo "Launching $label"
   "$executable" >"$TRANSACTION_DIR/preview-launch.log" 2>&1 &
   PREVIEW_PID=$!
-  PREVIEW_IDENTITY="$(process_identity "$PREVIEW_PID")" || return 1
-  # Refuse a launch wrapper or an executable replaced before identity capture.
-  [[ "$PREVIEW_IDENTITY" == *" $executable" ]] || return 1
+  PREVIEW_IDENTITY=""
+  # The child may still be between fork and exec when the first probe runs.
+  # Wait only for this PID to report the intended executable, never a namesake.
+  for _ in {1..40}; do
+    current="$(process_identity "$PREVIEW_PID")" || return 1
+    if [[ "$current" == *" $executable" ]]; then
+      PREVIEW_IDENTITY="$current"
+      break
+    fi
+    sleep 0.05
+  done
+  [[ -n "$PREVIEW_IDENTITY" ]] || return 1
   sleep 2
   current="$(process_identity "$PREVIEW_PID")" || return 1
   [[ "$current" == "$PREVIEW_IDENTITY" ]] || return 1
