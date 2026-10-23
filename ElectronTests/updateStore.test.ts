@@ -13,6 +13,7 @@ import {
   profileStatsSignatureVersion
 } from "../src/shared/domain";
 import { SnapshotPersistence } from "../src/main/persistence";
+import { ProfileStatsIntegrityService } from "../src/main/profileStatsIntegrityService";
 import { HomebrewCaskClient } from "../src/main/homebrewCaskClient";
 import { SparkleAppcastClient } from "../src/main/sparkleAppcastClient";
 import {
@@ -3335,6 +3336,91 @@ describe("update store helpers", () => {
     );
     expect(store.getSnapshot().refreshErrorMessage).toContain("Error: still running");
   });
+
+  it.each(["no-op", "same-version rebuild"] as const)(
+    "persists only performed Homebrew updates in profile history and lifetime totals: %s",
+    async (outcome) => {
+      const item = homebrewItem({
+        id: "cask:example",
+        token: "example",
+        name: "Example",
+        kind: "cask",
+        installedVersion: version("1"),
+        latestVersion: version(outcome === "no-op" ? "2" : "1"),
+        isOutdated: true
+      });
+      const completedItem = {
+        ...item,
+        isOutdated: false,
+        installedVersion: version(outcome === "no-op" ? "2" : "1")
+      };
+      const output =
+        outcome === "no-op"
+          ? "Warning: Not upgrading example, the latest version is already installed"
+          : "Cask example was successfully installed!";
+      const runBrewCommand = vi.fn<
+        NonNullable<ConstructorParameters<typeof UpdateStore>[0]["runBrewCommand"]>
+      >(async (_command, onLine) => {
+        onLine?.(output);
+        return { success: true, status: 0, output };
+      });
+      const fetchInventory = vi.fn(async () => ({
+        items: [completedItem],
+        inventoryReadSucceededByKind: { formula: true, cask: true },
+        outdatedDetectionSucceeded: true,
+        outdatedDetectionSucceededByKind: { formula: true, cask: true }
+      }));
+      const integrity = new ProfileStatsIntegrityService(
+        async () => "synthetic-history-fixture-key"
+      );
+      let persistence!: SnapshotPersistence;
+      const store = await makeVerifiedStore({
+        persisted: { ...defaultPersistedSnapshot(), homebrewItems: [item] },
+        clients: { homebrewInventory: { fetchInventory } },
+        runBrewCommand,
+        profileStatsIntegrity: integrity,
+        onPersistence: (value) => {
+          persistence = value;
+        }
+      });
+
+      await store.performHomebrewUpdate(item.id);
+
+      expect(fetchInventory).toHaveBeenCalledOnce();
+      expect(runBrewCommand).toHaveBeenCalledOnce();
+      expect(store.getSnapshot()).toMatchObject({
+        homebrewItems: [
+          expect.objectContaining({
+            isOutdated: false,
+            installedVersion: completedItem.installedVersion
+          })
+        ],
+        homebrewUpdatedPendingRefreshItemIDs: [],
+        isHomebrewCommandLocked: false
+      });
+      const saved = await persistence.load();
+      const verified = await integrity.verifyOrInitialize(saved.profileStats);
+      expect(verified.integrityStatus).toBe("verified");
+      const expectedCount = outcome === "no-op" ? 0 : 1;
+      expect(verified.events).toHaveLength(expectedCount);
+      expect(verified.lifetime?.entries.reduce((total, entry) => total + entry.count, 0)).toBe(
+        expectedCount
+      );
+      expect(saved.profileStats.events).toEqual(store.getSnapshot().profileStats.events);
+      expect(saved.profileStats.lifetime).toEqual(store.getSnapshot().profileStats.lifetime);
+      if (outcome !== "no-op") {
+        expect(verified.events[0]).toMatchObject({ type: "homebrewUpdate", targetID: item.id });
+        expect(verified.lifetime?.entries).toEqual([
+          expect.objectContaining({
+            type: "homebrewUpdate",
+            targetID: item.id,
+            channel: "homebrew",
+            count: 1
+          })
+        ]);
+      }
+    }
+  );
 
   it("updates only non-ignored Homebrew items in a batch run", async () => {
     const runBrewCommand = vi.fn<

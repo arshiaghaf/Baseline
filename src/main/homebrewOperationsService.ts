@@ -264,15 +264,26 @@ export class HomebrewOperationsService {
     const progressTokens = homebrewItemProgressTokens(item);
     const parser = new HomebrewMaintenanceOutputParser(progressTokens);
     const completedItemIDs = new Set<string>();
+    const unchangedItemIDs = new Set<string>();
     const commandResult = await this.runBrewWithResultEvents(command, (event) => {
       this.applyHomebrewProgressEvent(
         event,
         parser,
         new Map(progressTokens.map((token) => [token, [itemID]])),
         new Map([[itemID, item.kind]]),
-        completedItemIDs
+        completedItemIDs,
+        unchangedItemIDs
       );
     });
+    this.applyHomebrewResultOutput(
+      commandResult,
+      command,
+      parser,
+      new Map(progressTokens.map((token) => [token, [itemID]])),
+      new Map([[itemID, item.kind]]),
+      completedItemIDs,
+      unchangedItemIDs
+    );
     if (
       await this.reconcileStoppedOperation(
         commandResult,
@@ -290,6 +301,10 @@ export class HomebrewOperationsService {
           [itemID]: HomebrewMaintenanceProgressStage.finalizing
         }
       });
+      if (unchangedItemIDs.has(itemID)) {
+        await this.refresh(true);
+        return;
+      }
       const statsNotice = await this.recordCompletedUpdateHistory([
         profileStatsEvent ??
           homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
@@ -377,6 +392,7 @@ export class HomebrewOperationsService {
       ...(caskTokens.length > 0 ? [["upgrade", "--cask", "--greedy", ...caskTokens]] : [])
     ];
     const completedItemIDs = new Set<string>();
+    const unchangedItemIDs = new Set<string>();
     let success = true;
     let failedResult: CommandResult | undefined;
     let failedCommand: string[] = [];
@@ -387,9 +403,19 @@ export class HomebrewOperationsService {
           parser,
           affectedByToken,
           affectedKindByID,
-          completedItemIDs
+          completedItemIDs,
+          unchangedItemIDs
         );
       });
+      this.applyHomebrewResultOutput(
+        commandResult,
+        command,
+        parser,
+        affectedByToken,
+        affectedKindByID,
+        completedItemIDs,
+        unchangedItemIDs
+      );
       if (
         await this.reconcileStoppedOperation(
           commandResult,
@@ -405,7 +431,7 @@ export class HomebrewOperationsService {
         const upgradedKind = homebrewUpgradeKindForCommand(command);
         if (upgradedKind) {
           for (const item of affected.filter((candidate) => candidate.kind === upgradedKind)) {
-            completedItemIDs.add(item.id);
+            if (!unchangedItemIDs.has(item.id)) completedItemIDs.add(item.id);
           }
         }
       }
@@ -417,10 +443,10 @@ export class HomebrewOperationsService {
       }
     }
 
-    const completedIDs = success
-      ? affectedIDs
-      : affectedIDs.filter((id) => completedItemIDs.has(id));
-    const failedIDs = success ? [] : affectedIDs.filter((id) => !completedItemIDs.has(id));
+    const completedIDs = affectedIDs.filter((id) => completedItemIDs.has(id));
+    const failedIDs = success
+      ? []
+      : affectedIDs.filter((id) => !completedItemIDs.has(id) && !unchangedItemIDs.has(id));
     if (failedResult) {
       const result = failedResult;
       await this.recordOperationFailures(
@@ -555,6 +581,7 @@ export class HomebrewOperationsService {
         ...(caskTokens.length > 0 ? [["upgrade", "--cask", "--greedy", ...caskTokens]] : [])
       ];
       const completedItemIDs = new Set<string>();
+      const unchangedItemIDs = new Set<string>();
       let success = true;
       let failedResult: CommandResult | undefined;
       let failedCommand: string[] = [];
@@ -565,9 +592,19 @@ export class HomebrewOperationsService {
             parser,
             affectedByToken,
             affectedKindByID,
-            completedItemIDs
+            completedItemIDs,
+            unchangedItemIDs
           );
         });
+        this.applyHomebrewResultOutput(
+          commandResult,
+          command,
+          parser,
+          affectedByToken,
+          affectedKindByID,
+          completedItemIDs,
+          unchangedItemIDs
+        );
         if (
           await this.reconcileStoppedOperation(
             commandResult,
@@ -581,7 +618,7 @@ export class HomebrewOperationsService {
           const upgradedKind = homebrewUpgradeKindForCommand(command);
           if (upgradedKind) {
             for (const item of affected.filter((candidate) => candidate.kind === upgradedKind)) {
-              completedItemIDs.add(item.id);
+              if (!unchangedItemIDs.has(item.id)) completedItemIDs.add(item.id);
             }
           }
         }
@@ -592,10 +629,10 @@ export class HomebrewOperationsService {
           break;
         }
       }
-      const completedIDs = success
-        ? affectedIDs
-        : affectedIDs.filter((id) => completedItemIDs.has(id));
-      const failedIDs = affectedIDs.filter((id) => !completedItemIDs.has(id));
+      const completedIDs = affectedIDs.filter((id) => completedItemIDs.has(id));
+      const failedIDs = success
+        ? []
+        : affectedIDs.filter((id) => !completedItemIDs.has(id) && !unchangedItemIDs.has(id));
       if (failedResult) {
         const result = failedResult;
         await this.recordOperationFailures([
@@ -1172,12 +1209,36 @@ export class HomebrewOperationsService {
     });
   }
 
+  private applyHomebrewResultOutput(
+    result: CommandResult,
+    command: string[],
+    parser: HomebrewMaintenanceOutputParser,
+    affectedByToken: Map<string, string[]>,
+    affectedKindByID: Map<string, HomebrewManagedItemKind>,
+    completedItemIDs: Set<string>,
+    unchangedItemIDs: Set<string>
+  ): void {
+    // Streamed evidence survives output truncation. Also inspect returned output
+    // for runners that do not stream every line; sets make duplicate evidence safe.
+    for (const line of result.output.split(/\r?\n/u)) {
+      this.applyHomebrewProgressEvent(
+        { type: "outputLine", command, line },
+        parser,
+        affectedByToken,
+        affectedKindByID,
+        completedItemIDs,
+        unchangedItemIDs
+      );
+    }
+  }
+
   private applyHomebrewProgressEvent(
     event: HomebrewMaintenanceRunEvent,
     parser: HomebrewMaintenanceOutputParser,
     affectedByToken: Map<string, string[]>,
     affectedKindByID?: Map<string, HomebrewManagedItemKind>,
-    completedItemIDs?: Set<string>
+    completedItemIDs?: Set<string>,
+    unchangedItemIDs?: Set<string>
   ): void {
     if (event.type === "commandStarted") {
       return;
@@ -1204,7 +1265,12 @@ export class HomebrewOperationsService {
               homebrewBatchFailedItemIDs: addToArray(this.state.homebrewBatchFailedItemIDs, id)
             });
           } else {
-            completedItemIDs?.add(id);
+            if (parsed.kind.type === "completed") {
+              completedItemIDs?.add(id);
+              unchangedItemIDs?.delete(id);
+            } else if (!completedItemIDs?.has(id)) {
+              unchangedItemIDs?.add(id);
+            }
             this.patch({
               homebrewBatchProgressByItemID: {
                 ...this.state.homebrewBatchProgressByItemID,

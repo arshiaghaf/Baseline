@@ -8,6 +8,18 @@ import {
 } from "../src/shared/homebrewProgress";
 
 describe("HomebrewMaintenanceOutputParser", () => {
+  it.each([
+    "Warning: Not upgrading example, the latest version is already installed",
+    "Warning: Not upgrading example, the downloaded artifact has not changed",
+    "Warning: example 2.0 already installed",
+    "example is up-to-date"
+  ])("distinguishes unchanged packages from completed updates: %s", (line) => {
+    const parser = new HomebrewMaintenanceOutputParser(["example", "other"]);
+    expect(parser.parse(line, ["upgrade", "--cask", "example"])).toEqual([
+      { token: "example", kindHint: "cask", kind: { type: "unchanged" } }
+    ]);
+  });
+
   it("parses progress, completion, failure, and token boundaries", () => {
     const parser = new HomebrewMaintenanceOutputParser(["notion", "notion-helper"]);
 
