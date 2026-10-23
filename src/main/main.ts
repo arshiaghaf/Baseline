@@ -132,12 +132,6 @@ if (hasSingleInstanceLock) {
     wireIpc();
     void verifyProfileStatsIntegrityAfterLaunch();
     syncAppVisibility(store.getSnapshot());
-    if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
-      store.emit("snapshot", store.getSnapshot());
-    } else {
-      await store.start();
-    }
-
     app.on("activate", () => {
       if (!mainWindow) {
         createMainWindow("main");
@@ -145,6 +139,14 @@ if (hasSingleInstanceLock) {
         showWindow(mainWindow);
       }
     });
+
+    if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
+      store.emit("snapshot", store.getSnapshot());
+    } else {
+      await store.start().catch((error: unknown) => {
+        console.error("Could not start update checks:", error);
+      });
+    }
   });
 }
 
