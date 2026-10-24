@@ -2,7 +2,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import type { Dirent } from "node:fs";
-import { readdir, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  readdir,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -46,6 +56,163 @@ afterEach(async () => {
 });
 
 describe("bundle scanner", () => {
+  it.each(["caller", "deadline"] as const)(
+    "handles %s cancellation during a required metadata read without losing sibling health",
+    async (cause) => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "baseline-metadata-cancel-"));
+      tempDirs.push(root);
+      const first = path.join(root, "A.app");
+      const healthy = path.join(root, "Z.app");
+      for (const appPath of [first, healthy])
+        await writeAppPlist(appPath, {
+          displayName: path.basename(appPath),
+          bundleIdentifier: "com.example.fixture",
+          version: "1"
+        });
+      const caller = new AbortController();
+      const deadline = new AbortController();
+      let started = false;
+      let reject!: (error: Error) => void;
+      const blocked = new Promise<never>((_, fail) => {
+        reject = fail;
+      });
+      const access = testingExports.directoryRuntime.access;
+      vi.spyOn(testingExports.directoryRuntime, "access").mockImplementation((input, mode) => {
+        if (input !== path.join(first, "Contents", "Info.plist")) return access(input, mode);
+        started = true;
+        return blocked;
+      });
+      const timeout = AbortSignal.timeout.bind(AbortSignal);
+      let metadataDeadlineAssigned = false;
+      vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+        if (started && !metadataDeadlineAssigned) {
+          metadataDeadlineAssigned = true;
+          return deadline.signal;
+        }
+        return timeout(ms);
+      });
+      const health = vi.fn();
+      const task = new BundleScannerClient().scanApplications([root], {
+        signal: caller.signal,
+        onRootRead: health
+      });
+      let completed = false;
+      let failure: unknown;
+      const observed = task.then(
+        () => {
+          completed = true;
+        },
+        (error: unknown) => {
+          failure = error;
+        }
+      );
+      const reason = new DOMException(
+        "metadata stopped",
+        cause === "caller" ? "AbortError" : "TimeoutError"
+      );
+      try {
+        await vi.waitFor(() => expect(started).toBe(true));
+        (cause === "caller" ? caller : deadline).abort(reason);
+        await vi.waitFor(() => expect(completed || failure !== undefined).toBe(true));
+        if (cause === "caller") {
+          expect(failure).toBe(reason);
+          expect(health).not.toHaveBeenCalled();
+        } else {
+          expect(failure).toBeUndefined();
+          expect((await task).map((app) => app.bundlePath)).toEqual([healthy]);
+          expect(health).toHaveBeenCalledWith({
+            directory: root,
+            complete: true,
+            unavailableApps: [{ bundlePath: first, notFound: false }]
+          });
+        }
+      } finally {
+        caller.abort();
+        reject(new Error("late metadata read failure"));
+        await Promise.allSettled([blocked, task, observed]);
+      }
+    }
+  );
+
+  it.each(["APP", "aPp"])(
+    "respects .%s package boundaries and name fallback for directories and aliases",
+    async (suffix) => {
+      const root = await mkdtemp(path.join(os.tmpdir(), "baseline-package-case-"));
+      tempDirs.push(root);
+      const appPath = path.join(root, "Apps", `Example.${suffix}`);
+      await writeAppPlist(appPath, {
+        displayName: "Example",
+        bundleIdentifier: "com.example.outer",
+        version: "1"
+      });
+      const plistPath = path.join(appPath, "Contents", "Info.plist");
+      await writeFile(
+        plistPath,
+        (await readFile(plistPath, "utf8")).replace(
+          /<key>CFBundleDisplayName<\/key>\s*<string>Example<\/string>/,
+          ""
+        )
+      );
+      await writeAppPlist(path.join(appPath, "Contents", "Frameworks", "Hidden.app"), {
+        displayName: "Hidden",
+        bundleIdentifier: "com.example.hidden",
+        version: "1"
+      });
+      const aliases = path.join(root, "Aliases");
+      await mkdir(aliases);
+      const alias = path.join(aliases, `Linked.${suffix}`);
+      await symlink(appPath, alias);
+      for (const directories of [
+        [path.dirname(appPath), aliases],
+        [aliases, path.dirname(appPath)]
+      ]) {
+        const records = await new BundleScannerClient().scanApplications(directories);
+        expect(records).toHaveLength(1);
+        expect(records[0]).toMatchObject({
+          bundleIdentifier: "com.example.outer",
+          displayName: directories[0] === aliases ? "Linked" : "Example"
+        });
+      }
+    }
+  );
+
+  it("reads mixed-case wrapped app and Safari extension suffixes", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "baseline-wrapped-case-"));
+    tempDirs.push(root);
+    const wrapped = path.join(root, "Wrapped.APP");
+    await writeWrappedIOSAppPlist(wrapped, {
+      displayName: "Wrapped",
+      bundleIdentifier: "com.example.wrapped",
+      version: "1"
+    });
+    await rename(
+      path.join(wrapped, "Wrapper", "Wrapped.app"),
+      path.join(wrapped, "Wrapper", "Wrapped.aPp")
+    );
+    const native = path.join(root, "Native.aPp");
+    await writeAppPlist(native, {
+      displayName: "Native",
+      bundleIdentifier: "com.example.native",
+      version: "1"
+    });
+    await writeAppPlist(path.join(native, "Contents", "PlugIns", "Extension.ApPeX"), {
+      displayName: "Extension",
+      bundleIdentifier: "com.example.extension",
+      version: "1",
+      extraKeys:
+        "<key>NSExtension</key><dict><key>NSExtensionPointIdentifier</key><string>com.apple.Safari.web-extension</string></dict>"
+    });
+    const records = await new BundleScannerClient().scanApplications([root]);
+    expect(records).toHaveLength(2);
+    expect(records.find((app) => app.bundlePath === wrapped)).toMatchObject({
+      isIOSAppOnMac: true,
+      hasAppStoreEvidence: true
+    });
+    expect(records.find((app) => app.bundlePath === native)).toMatchObject({
+      hasSafariWebExtension: true
+    });
+  });
+
   it("distinguishes an unavailable root or nested folder from a successfully empty root", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "baseline-scan-health-"));
     tempDirs.push(root);

@@ -107,7 +107,16 @@ class BundleScan {
             this.options.onAppRead?.(appPath, canonicalPath);
             continue;
           }
-          const record = await this.makeRecord(appPath, resolvedPath);
+          let record: AppRecord | undefined;
+          try {
+            record = await this.makeRecord(appPath, resolvedPath);
+          } catch {
+            this.options.signal?.throwIfAborted();
+            // Metadata failures affect this entry, not the directory enumeration.
+            // Keep prior evidence for it while continuing readable siblings.
+            this.unavailableApps.set(appPath, false);
+            continue;
+          }
           if (record) {
             seen.add(canonicalPath);
             this.options.onAppRead?.(appPath, canonicalPath);
@@ -145,7 +154,7 @@ class BundleScan {
       const apps: string[] = [];
       for (const entry of entries) {
         const entryPath = path.join(directory, entry.name);
-        if (entry.name.endsWith(".app")) {
+        if (entry.name.toLowerCase().endsWith(".app")) {
           if (entry.isDirectory()) apps.push(entryPath);
           else if (entry.isSymbolicLink()) {
             const directory = await isDirectory(entryPath, this.options.signal);
@@ -205,7 +214,7 @@ class BundleScan {
     const displayName =
       stringValue(info.CFBundleDisplayName) ??
       stringValue(info.CFBundleName) ??
-      path.basename(appPath, ".app");
+      path.basename(appPath).replace(/\.app$/i, "");
     const bundleIdentifier = stringValue(info.CFBundleIdentifier);
     const rawBundleVersion = stringValue(info.CFBundleVersion);
     const rawVersion = stringValue(info.CFBundleShortVersionString) ?? rawBundleVersion;
@@ -278,7 +287,7 @@ class BundleScan {
         directoryRuntime.readdir(wrapperPath, { withFileTypes: true })
       );
       for (const entry of entries) {
-        if (!entry.isDirectory() || !entry.name.endsWith(".app")) {
+        if (!entry.isDirectory() || !entry.name.toLowerCase().endsWith(".app")) {
           continue;
         }
         const info = await readInfoPlistAtPath(
@@ -322,7 +331,7 @@ class BundleScan {
         directoryRuntime.readdir(pluginsPath, { withFileTypes: true })
       );
       for (const entry of entries) {
-        if (!entry.isDirectory() || !entry.name.endsWith(".appex")) {
+        if (!entry.isDirectory() || !entry.name.toLowerCase().endsWith(".appex")) {
           continue;
         }
         const info = await readInfoPlistAtPath(
