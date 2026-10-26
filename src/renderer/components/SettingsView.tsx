@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { PermissionHelp } from "./PermissionHelp";
+import { SelfUpdateButton } from "./SelfUpdateButton";
 import { baseline } from "../ipc";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
@@ -431,6 +432,10 @@ export function SettingsPane({
               <div className="settings-row settings-row-action">
                 <span>Current version</span>
                 <strong className="settings-row-value">{appMetadata?.version ?? "Loading"}</strong>
+              </div>
+              <div className="settings-row settings-row-action">
+                <span>Baseline updates</span>
+                <SelfUpdateButton />
               </div>
             </div>
           </section>

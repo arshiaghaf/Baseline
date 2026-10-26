@@ -1,4 +1,8 @@
-# Baseline
+<p align="center">
+  <img src="docs/images/baseline-icon.png" width="96" alt="Baseline icon">
+</p>
+
+<h1 align="center">Baseline</h1>
 
 [![Release](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2Farshiaghaf%2FBaseline%2Freleases%2Flatest&query=%24.tag_name&label=release&color=0a0a0c&style=flat-square)](https://github.com/arshiaghaf/baseline/releases/latest)
 &nbsp;
@@ -18,31 +22,9 @@ Requires Apple Silicon.
 brew install --cask arshiaghaf/tap/baseline
 ```
 
-### First launch on macOS 15 and later
-
-Baseline is ad-hoc signed, without Developer ID or notarization. macOS Gatekeeper may block the first launch after either a Homebrew or DMG install.
-
-If you trust your official Baseline download:
-
-1. Try opening Baseline from Applications. If macOS blocks it, dismiss the alert.
-2. Open **System Settings > Privacy & Security**, scroll to **Security**, and click **Open Anyway** for Baseline.
-3. Confirm the warning by clicking **Open**. Authenticate if macOS asks, then open Baseline again if needed.
-
-![Apple's macOS Sequoia screenshot showing Privacy & Security and the Open Anyway button for Example App](docs/images/macos-sequoia-open-anyway.png)
-
-Apple's macOS Sequoia (macOS 15) example above shows “Example App”; it is not a Baseline dialog. [Screenshot source](https://cdsassets.apple.com/live/7WUAS350/images/macos/sequoia/macos-sequoia-system-settings-privacy-and-security-open-app-anyway.png) and [Apple's guidance on safely opening apps](https://support.apple.com/en-us/102445).
-
-Alternatively, after installing Baseline in `/Applications`, you can run this in Terminal **only for a trusted official download**:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Baseline.app
-```
-
-This removes quarantine from the app and its contents; it does not verify the app's safety. Try opening Baseline again afterward.
-
 ### GitHub Releases (DMG)
 
-Download the DMG from [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases), open it, and drag Baseline into Applications. Then follow the first-launch steps above.
+Download the DMG from [GitHub Releases](https://github.com/arshiaghaf/Baseline/releases), open it, and drag Baseline into Applications. Then follow the [first-launch steps](#first-launch-on-macos-15-and-later).
 
 ## Baseline
 
@@ -77,6 +59,28 @@ When the required local tooling is available, Baseline can run update and instal
 ![Baseline main window Homebrew search showing installable casks](docs/images/baseline-homebrew-search.png)
 
 ![Baseline menu bar tray showing app and Homebrew updates](docs/images/baseline-menu-bar.png)
+
+## First launch on macOS 15 and later
+
+Baseline is ad-hoc signed, without Developer ID or notarization. macOS Gatekeeper may block the first launch after either a Homebrew or DMG install.
+
+If you trust your official Baseline download:
+
+1. Try opening Baseline from Applications. If macOS blocks it, dismiss the alert.
+2. Open **System Settings > Privacy & Security**, scroll to **Security**, and click **Open Anyway** for Baseline.
+3. Confirm the warning by clicking **Open**. Authenticate if macOS asks, then open Baseline again if needed.
+
+![Apple's macOS Sequoia screenshot showing Privacy & Security and the Open Anyway button for Example App](docs/images/macos-sequoia-open-anyway.png)
+
+Apple's macOS Sequoia (macOS 15) example above shows “Example App”; it is not a Baseline dialog. [Screenshot source](https://cdsassets.apple.com/live/7WUAS350/images/macos/sequoia/macos-sequoia-system-settings-privacy-and-security-open-app-anyway.png) and [Apple's guidance on safely opening apps](https://support.apple.com/en-us/102445).
+
+Alternatively, after installing Baseline in `/Applications`, you can run this in Terminal **only for a trusted official download**:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Baseline.app
+```
+
+This removes quarantine from the app and its contents; it does not verify the app's safety. Try opening Baseline again afterward.
 
 ## Limitations
 

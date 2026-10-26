@@ -94,6 +94,7 @@ function setup(scan: Promise<AppRecord[]>, inventory: HomebrewInventoryResult) {
       searchCasks: vi.fn().mockReturnValue([])
     },
     homebrewFormula: {
+      cacheStatus: undefined as CatalogueStatus | undefined,
       fetchIndex: vi.fn().mockResolvedValue(emptyHomebrewFormulaIndex),
       searchFormulae: vi.fn().mockReturnValue([])
     }
@@ -614,6 +615,91 @@ it("scopes catalogue warnings to Homebrew and clears them after recovery", async
   expect(fixture.state).toMatchObject({
     homebrewCheckNoticeMessage: undefined,
     lastRefreshNoticeMessage: undefined
+  });
+});
+
+it.each([
+  { locale: "en-US", timeZone: "America/Los_Angeles" },
+  { locale: "de-DE", timeZone: "America/Los_Angeles" },
+  { locale: "ja-JP", timeZone: "Asia/Tokyo" }
+])("formats the cached catalogue timestamp with device defaults: %j", async (device) => {
+  const checkedAt = "2026-10-24T01:11:01.394Z";
+  const localFormat = new Intl.DateTimeFormat(device.locale, {
+    timeZone: device.timeZone,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric"
+  });
+  const toLocaleString = Date.prototype.toLocaleString;
+  const format = vi.spyOn(Date.prototype, "toLocaleString").mockImplementation(function (
+    this: Date,
+    ...args
+  ) {
+    // Simulate device settings while using the real locale/timezone formatter.
+    expect(args).toEqual([]);
+    return toLocaleString.call(this, device.locale, { timeZone: device.timeZone });
+  });
+  try {
+    const fixture = setup(Promise.resolve([]), completeInventory);
+    fixture.clients.homebrew.cacheStatus = { stale: true, unavailable: false, checkedAt };
+    await fixture.service.compute(false, 1, {}, new AbortController().signal);
+    const message = `Using cached Homebrew catalogue metadata (last checked ${localFormat.format(new Date(checkedAt))}). Refresh to retry.`;
+    expect(format).toHaveBeenCalled();
+    expect(fixture.state).toMatchObject({
+      homebrewCheckNoticeMessage: message,
+      lastRefreshNoticeMessage: message
+    });
+  } finally {
+    format.mockRestore();
+  }
+});
+
+it.each([undefined, "", "not-a-date"])(
+  "omits an absent or invalid cached catalogue timestamp: %j",
+  async (checkedAt) => {
+    const fixture = setup(Promise.resolve([]), completeInventory);
+    fixture.clients.homebrew.cacheStatus = { stale: true, unavailable: false, checkedAt };
+    await fixture.service.compute(false, 1, {}, new AbortController().signal);
+    expect(fixture.state).toMatchObject({
+      homebrewCheckNoticeMessage: "Using cached Homebrew catalogue metadata. Refresh to retry.",
+      lastRefreshNoticeMessage: "Using cached Homebrew catalogue metadata. Refresh to retry."
+    });
+  }
+);
+
+it.each([
+  { cask: "2026-10-24T01:00:00Z", formula: "2026-10-23T22:00:00-04:00" },
+  { cask: "invalid", formula: "2026-10-24T01:00:00Z" },
+  { cask: "2026-10-24T01:00:00Z", formula: "invalid" }
+])("uses the oldest valid stale catalogue timestamp: %j", async ({ cask, formula }) => {
+  const fixture = setup(Promise.resolve([]), completeInventory);
+  fixture.clients.homebrew.cacheStatus = { stale: true, unavailable: false, checkedAt: cask };
+  fixture.clients.homebrewFormula.cacheStatus = {
+    stale: true,
+    unavailable: false,
+    checkedAt: formula
+  };
+  await fixture.service.compute(false, 1, {}, new AbortController().signal);
+  const localTime = new Date("2026-10-24T01:00:00Z").toLocaleString();
+  expect(fixture.state).toMatchObject({
+    homebrewCheckNoticeMessage: `Using cached Homebrew catalogue metadata (last checked ${localTime}). Refresh to retry.`
+  });
+});
+
+it("preserves the unavailable catalogue warning when the other catalogue is cached", async () => {
+  const fixture = setup(Promise.resolve([]), completeInventory);
+  fixture.clients.homebrew.cacheStatus = {
+    stale: true,
+    unavailable: false,
+    checkedAt: "2026-10-24T01:11:01.394Z"
+  };
+  fixture.clients.homebrewFormula.cacheStatus = { stale: false, unavailable: true };
+  await fixture.service.compute(false, 1, {}, new AbortController().signal);
+  expect(fixture.state).toMatchObject({
+    homebrewCheckNoticeMessage: "Homebrew catalogue metadata is unavailable. Refresh to retry."
   });
 });
 

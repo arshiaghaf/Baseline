@@ -114,7 +114,7 @@ export function SearchPalette({
       return;
     }
     if (event.key === "Tab") {
-      trapFocusWithin(event.nativeEvent, dialogRef.current);
+      trapFocusWithin(event.nativeEvent, dialogRef.current, true);
     }
   };
 
@@ -129,7 +129,7 @@ export function SearchPalette({
         return;
       }
       if (event.key === "Tab") {
-        trapFocusWithin(event, dialogRef.current);
+        trapFocusWithin(event, dialogRef.current, true);
       }
     };
 

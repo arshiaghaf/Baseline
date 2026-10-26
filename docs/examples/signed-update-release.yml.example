@@ -1,0 +1,29 @@
+# INACTIVE TEMPLATE. Builds artifacts for review, without signing or publication.
+# Publisher signing stays in the maintainer Mac's login Keychain.
+name: Prepare update build for local signing
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run prepare:sparkle
+      - run: npm run typecheck && npm test && npm run lint
+      - name: Build updater-enabled app without publisher signing
+        env:
+          BASELINE_RELEASE_BUILD: "1"
+        run: npm run make
+      - uses: actions/upload-artifact@v7
+        with:
+          name: update-build-for-review
+          path: out/make/
+# The approved local path is scripts/prepare-signed-updates.sh <stable-version>.
+# It checks the Keychain public key, builds locally and signs through Sparkle.
+# No private signing key is uploaded to GitHub; publishing is a separate action.

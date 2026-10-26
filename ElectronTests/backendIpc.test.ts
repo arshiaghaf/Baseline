@@ -21,6 +21,7 @@ const validArguments = {
   permissionGuide: ["info"],
   getSnapshot: [],
   getAppMetadata: [],
+  checkForBaselineUpdates: [],
   getDiagnostics: [],
   collectHomebrewDiagnostics: [{ doctor: true, services: false }],
   getHomebrewInstalledContext: ["cask:example"],
@@ -113,6 +114,7 @@ beforeEach(async () => {
     "showMainWindow",
     "BrowserWindow",
     "confirmHomebrewCleanup",
+    "checkForBaselineUpdates",
     `${js}\nwireIpc();`
   )(
     { handle: (channel: string, handler: Handler) => handlers.set(channel, handler) },
@@ -136,7 +138,8 @@ beforeEach(async () => {
     { writeText: effect() },
     showMain,
     { fromWebContents: effect() },
-    effect()
+    effect(),
+    effect(Promise.resolve())
   );
 });
 
@@ -217,6 +220,7 @@ it.each(Object.keys(validArguments) as Method[])(
       ![
         "permissionGuide",
         "getAppMetadata",
+        "checkForBaselineUpdates",
         "getDiagnostics",
         "getToolStatus",
         "cleanUpHomebrew",
