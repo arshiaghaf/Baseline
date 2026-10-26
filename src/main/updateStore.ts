@@ -1455,7 +1455,8 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         homebrewCaskItemProvesAppOwnership(
           item,
           appRecord,
-          installedCaskEntry(item, this.refreshComputation.caskIndex)
+          installedCaskEntry(item, this.refreshComputation.caskIndex),
+          this.state.apps
         )
     );
   }
@@ -1594,8 +1595,23 @@ function sanitizePersistedSnapshotForRuntime(snapshot: PersistedSnapshot): Persi
             }
           : item
   );
+  // Cached links feed renderer uninstall controls before the first refresh. Apply
+  // the same target and duplicate-copy rules used for app-update admission.
+  const linkedItems = homebrewItems.map((item) => {
+    if (item.kind !== "cask" || !item.appID) return item;
+    const app = snapshot.apps.find((candidate) => candidate.id === item.appID);
+    return app &&
+      homebrewCaskItemProvesAppOwnership(
+        item,
+        app,
+        installedCaskEntry(item, emptyHomebrewCaskIndex),
+        snapshot.apps
+      )
+      ? item
+      : { ...item, appID: undefined, iconDataURL: undefined };
+  });
   const managedIDs = new Set(snapshot.apps.filter(isMacOSManagedApp).map((app) => app.id));
-  const migrated = { ...snapshot, homebrewItems };
+  const migrated = { ...snapshot, homebrewItems: linkedItems };
   return {
     ...migrated,
     appProviderChecks:
@@ -1628,7 +1644,13 @@ function persistedUpdateHasValidRuntimeRoute(
   }
   const appRecord = snapshot.apps.find((app) => app.id === update.appID);
   if (!appRecord) return false;
-  return canUseHomebrewAppUpdate(appRecord, token, snapshot.homebrewItems, emptyHomebrewCaskIndex);
+  return canUseHomebrewAppUpdate(
+    appRecord,
+    token,
+    snapshot.homebrewItems,
+    emptyHomebrewCaskIndex,
+    snapshot.apps
+  );
 }
 
 function toggleSet(set: Set<string>, value: string): void {
