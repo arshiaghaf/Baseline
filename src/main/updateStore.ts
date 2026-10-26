@@ -565,6 +565,9 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       this.deferRefresh(request);
       return;
     }
+    // Superseded callers await the winner, so it must fulfill their accepted
+    // source-search and freshness requirements as well as its own scan intent.
+    options = { ...options, ...this.carryOutstandingRefreshStrength(request) };
     this.activeRefreshRequests.add(request);
     try {
       await this.trackProducer(this.refreshLifecycle.refresh(lightweight, options));
@@ -583,6 +586,14 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         (!lightweight && !options.allowHomebrewInventoryDuringActiveCommand),
       forceAppDiscovery: options.forceAppDiscovery === true
     };
+  }
+
+  private carryOutstandingRefreshStrength(request: RefreshRecoveryRequest): RefreshRecoveryRequest {
+    for (const outstanding of this.activeRefreshRequests) {
+      request.forceMetadata ||= outstanding.forceMetadata;
+      request.forceAppDiscovery ||= outstanding.forceAppDiscovery;
+    }
+    return request;
   }
 
   private deferRefresh(request: RefreshRecoveryRequest): void {
@@ -625,8 +636,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       showMenuBarIcon:
         patch.showMenuBarIcon ?? (patch.showDockIcon === false ? true : this.state.showMenuBarIcon)
     });
+    const scheduleChanged =
+      (patch.autoRefreshEnabled ?? this.state.autoRefreshEnabled) !==
+        this.state.autoRefreshEnabled ||
+      refreshIntervalMinutes !== this.state.refreshIntervalMinutes;
     this.patch({ ...patch, ...visibility, appearancePreference, refreshIntervalMinutes });
-    this.restartAutoRefreshLoop();
+    if (scheduleChanged) this.restartAutoRefreshLoop();
     await this.persist();
   }
 
@@ -1428,6 +1443,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
           true,
           sequence,
           {
+            ...this.carryOutstandingRefreshStrength(this.refreshRequestStrength(true, {})),
             allowHomebrewInventoryDuringActiveCommand: true,
             onHomebrewInventoryReconciled: (inventory) => {
               refreshed = homebrewInventoryIsComplete(inventory);

@@ -85,7 +85,6 @@ export type RefreshPatch = Partial<
     | "homebrewDiscoverInstallingItemIDs"
     | "homebrewDiscoverInstalledPendingRefreshItemIDs"
     | "homebrewDiscoverProgressByItemID"
-    | "selfUpdate"
     | "laggingHomebrewCaskTokens"
     | "homebrewDiscoverItems"
   >
@@ -111,6 +110,8 @@ export type RefreshPorts = {
     lightweight: boolean,
     options: RefreshOptions
   ) => Promise<HomebrewInventoryResult>;
+  // The store publishes this result in shared request order, independently of
+  // the app refresh's final commit.
   lookupSelfUpdate: (now: string, signal?: AbortSignal) => Promise<SelfUpdateRecord | undefined>;
   isCurrent: (sequence: number) => boolean;
   isSelfApp: (app: AppRecord) => boolean;

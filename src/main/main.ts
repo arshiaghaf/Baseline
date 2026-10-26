@@ -147,13 +147,6 @@ if (hasSingleInstanceLock) {
     wireIpc();
     void verifyProfileStatsIntegrityAfterLaunch();
     syncAppVisibility(store.getSnapshot());
-    if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
-      store.emit("snapshot", store.getSnapshot());
-    } else {
-      selfUpdateScheduler.start();
-      await store.start();
-    }
-
     app.on("activate", () => {
       if (process.env.BASELINE_SKIP_INITIAL_REFRESH !== "1") selfUpdateScheduler?.request();
       if (!mainWindow) {
@@ -165,6 +158,15 @@ if (hasSingleInstanceLock) {
     powerMonitor.on("resume", () => {
       if (process.env.BASELINE_SKIP_INITIAL_REFRESH !== "1") selfUpdateScheduler?.request(true);
     });
+
+    if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
+      store.emit("snapshot", store.getSnapshot());
+    } else {
+      selfUpdateScheduler.start();
+      await store.start().catch((error: unknown) => {
+        console.error("Could not start update checks:", error);
+      });
+    }
   });
 }
 
