@@ -32,6 +32,9 @@ jobs:
       - name: Prepare Electron runtime before parallel tests
         run: node -e 'require("electron")'
 
+      - name: Prepare pinned upstream Sparkle
+        run: npm run prepare:sparkle
+
       - name: Derive version from tag
         id: version
         run: |

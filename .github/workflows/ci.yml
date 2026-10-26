@@ -52,11 +52,15 @@ jobs:
       - name: Prepare Electron runtime before parallel tests
         run: node -e 'require("electron")'
 
+      - name: Prepare pinned upstream Sparkle for native guard tests
+        run: npm run prepare:sparkle
+
       - name: Lint shell scripts
         run: |
           bash -n scripts/create-unsigned-dmg.sh
           bash -n scripts/check-release-assets.sh
           bash -n scripts/prepare-unsigned-release.sh
+          bash -n scripts/prepare-signed-updates.sh
           bash -n scripts/validate-preview.sh
 
       - name: Typecheck
@@ -73,6 +77,11 @@ jobs:
 
       - name: Package Electron app
         run: npm run build
+
+      - name: Authenticated isolated updater lifecycle and rejection checks
+        env:
+          BASELINE_SELF_UPDATE_FIXTURE_TESTS: "1"
+        run: npm test -- ElectronTests/selfUpdateLifecycle.test.ts
 
       - name: Verify Apple Silicon package architecture and icons
         run: |

@@ -19,6 +19,7 @@ export const ipcChannels = {
   permissionGuide: "baseline:permissionGuide",
   getSnapshot: "baseline:getSnapshot",
   getAppMetadata: "baseline:getAppMetadata",
+  checkForBaselineUpdates: "baseline:checkForBaselineUpdates",
   getDiagnostics: "baseline:getDiagnostics",
   collectHomebrewDiagnostics: "baseline:collectHomebrewDiagnostics",
   getHomebrewInstalledContext: "baseline:getHomebrewInstalledContext",
@@ -66,6 +67,7 @@ export type BaselineAPI = {
   permissionGuide(action: PermissionGuideAction): Promise<PermissionGuideInfo>;
   getSnapshot(): Promise<BaselineSnapshot>;
   getAppMetadata(): Promise<AppMetadata>;
+  checkForBaselineUpdates(): Promise<void>;
   getDiagnostics(): Promise<string>;
   collectHomebrewDiagnostics(
     request?: HomebrewDiagnosticsRequest

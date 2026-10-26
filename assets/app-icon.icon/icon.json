@@ -36,10 +36,10 @@
             }
           ],
           "position" : {
-            "scale" : 0.82,
+            "scale" : 0.77,
             "translation-in-points" : [
-              -12,
-              -6
+              -9,
+              -10
             ]
           }
         },
@@ -62,10 +62,10 @@
             }
           ],
           "position" : {
-            "scale" : 0.82,
+            "scale" : 0.77,
             "translation-in-points" : [
-              -12,
-              -6
+              -9,
+              -11.165000000000077
             ]
           }
         }
