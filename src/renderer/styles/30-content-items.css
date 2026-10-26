@@ -18,7 +18,7 @@
 }
 
 .app-shell:not(.compact):not(.settings-shell) .content > .stack {
-  max-width: 860px;
+  max-width: var(--main-content-max-width);
   margin-inline: auto;
   container: dashboard / inline-size;
 }

@@ -11,6 +11,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { defaultPersistedSnapshot } from "../src/shared/domain";
 import { version } from "../src/shared/version";
+import { visualSnapshot } from "./visualSnapshot";
 import type { E2ECommandControl } from "./commandRunner";
 import { cleanupApplications } from "./applicationCleanup";
 import {
@@ -192,6 +193,21 @@ test("launches the Electron shell and renders the dashboard", async () => {
   const page = await app.firstWindow();
   await expect(page).toHaveTitle("Baseline");
   await expect(page.locator("h1")).toContainText("All");
+  const initialWindow = await app.evaluate(({ BrowserWindow, screen }) => {
+    const window = BrowserWindow.getAllWindows()[0]!;
+    const bounds = window.getBounds();
+    return {
+      bounds,
+      area: screen.getDisplayMatching(bounds).workArea,
+      resizable: window.isResizable()
+    };
+  });
+  expect(initialWindow.resizable).toBe(true);
+  if (initialWindow.area.width >= 1042 && initialWindow.area.height >= 759) {
+    expect(initialWindow.bounds.width).toBe(1042);
+    expect(initialWindow.bounds.height).toBe(759);
+  }
+
   await expect(page.getByRole("button", { name: "Search", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "All", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Apps", exact: true })).toBeVisible();
@@ -680,6 +696,106 @@ test("routes native tray events with the Dock hidden and protects a running upda
     });
   await closed;
   launchedApps.delete(application);
+});
+
+test("fits the compact window to changing work areas and restores its preferred size", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  await writeFile(path.join(userData, "baseline-snapshot.json"), JSON.stringify(visualSnapshot()));
+  const application = await launchBaseline({ packaged: true, userData });
+  const main = await application.firstWindow();
+  await expect(main.locator("h1")).toContainText("All");
+  await expect
+    .poll(() =>
+      application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible())
+    )
+    .toBe(true);
+  await application.evaluate(({ Tray }) => {
+    const probe: NativeTrayProbe = { dialogs: [], selfUpdateChecks: 0, command: { commands: [] } };
+    (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe }).nativeTrayProbe =
+      probe;
+    const setTitle = Tray.prototype.setTitle;
+    Tray.prototype.setTitle = function (title, options) {
+      probe.tray = this;
+      if (options) setTitle.call(this, title, options);
+      else setTitle.call(this, title);
+    };
+  });
+  await main.evaluate(() => window.baseline.updatePreferences({ appearancePreference: "dark" }));
+  const compactReady = application.waitForEvent("window");
+  const area = await application.evaluate(({ screen }) => {
+    const real = screen.getPrimaryDisplay();
+    const workArea = { x: real.workArea.x + 20, y: real.workArea.y + 20, width: 360, height: 380 };
+    const probe = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe!;
+    // Keep the simulated screen inside the actual screen so native constraints
+    // do not reinterpret coordinates for a monitor that is not connected.
+    screen.getDisplayMatching = () => ({ ...real, workArea });
+    probe.tray!.getBounds = () => ({
+      x: workArea.x + 340,
+      y: workArea.y + 350,
+      width: 24,
+      height: 24
+    });
+    probe.tray!.emit("click");
+    return workArea;
+  });
+  const compact = await compactReady;
+  await expect(compact.locator(".compact")).toBeVisible();
+  const compactBounds = () =>
+    application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().endsWith("#/menubar"))!
+        .getBounds()
+    );
+  await expect.poll(compactBounds).toEqual(area);
+  await expect(compact.getByRole("button", { name: "Refresh", exact: true })).toBeVisible();
+  expect(await compact.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+    true
+  );
+  await compact.screenshot({ path: test.info().outputPath("compact-small-work-area.png") });
+  const content = compact.locator(".content");
+  expect(
+    await content.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+      return element.scrollTop;
+    })
+  ).toBeGreaterThan(0);
+  await application.evaluate(({ screen }) => {
+    const real = screen.getPrimaryDisplay();
+    screen.getDisplayMatching = () => real;
+    const tray = (globalThis as typeof globalThis & { nativeTrayProbe?: NativeTrayProbe })
+      .nativeTrayProbe!.tray!;
+    tray.getBounds = () => ({
+      x: real.workArea.x + real.workArea.width - 24,
+      y: real.workArea.y - 24,
+      width: 24,
+      height: 24
+    });
+    screen.emit("display-metrics-changed", {}, real, ["workArea", "scaleFactor"]);
+  });
+  await expect
+    .poll(async () => {
+      const bounds = await compactBounds();
+      return { width: bounds.width, height: bounds.height };
+    })
+    .toEqual({ width: 440, height: 560 });
+  await application.evaluate(({ screen }) => {
+    const real = screen.getPrimaryDisplay();
+    const workArea = { x: real.workArea.x + 20, y: real.workArea.y + 20, width: 360, height: 380 };
+    screen.getDisplayMatching = () => ({ ...real, workArea });
+    screen.emit("display-removed", {}, real);
+  });
+  await expect.poll(compactBounds).toEqual(area);
+  await application.evaluate(({ BrowserWindow, screen }) => {
+    const compact = BrowserWindow.getAllWindows().find((window) =>
+      window.webContents.getURL().endsWith("#/menubar")
+    )!;
+    const before = screen.listenerCount("display-removed");
+    compact.destroy();
+    if (screen.listenerCount("display-removed") !== before - 1)
+      throw new Error("Compact display listener was not removed.");
+  });
+  await closeApp(application);
 });
 
 test("opens a keyboard-usable popover over another app's full-screen Space", async () => {

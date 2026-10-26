@@ -83,7 +83,7 @@
 }
 
 /* Card counts follow the space inside the dashboard, including its sidebar and gutters. */
-@container dashboard (max-width: 749px) {
+@container dashboard (max-width: 719px) {
   .card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }

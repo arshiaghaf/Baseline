@@ -25,11 +25,11 @@ import { visualSnapshot } from "./visualSnapshot";
 test.afterEach(async () => attachElectronDiagnostics(test.info()));
 
 const widths = [
-  660, 740, 755, 756, 760, 920, 1020, 1027, 1028, 1030, 1280, 1352, 1512, 1536, 1728, 1800, 2048,
-  2056, 2304, 2560, 2880, 1030, 760, 1512
+  660, 740, 755, 756, 760, 920, 1000, 1004, 1005, 1020, 1027, 1028, 1030, 1042, 1280, 1352, 1512,
+  1536, 1728, 1800, 2048, 2056, 2304, 2560, 2880, 1030, 760, 1512
 ];
 const screenshotWidths = new Set([
-  660, 755, 756, 760, 1020, 1027, 1028, 1030, 1512, 1728, 2304, 2560
+  660, 755, 756, 760, 1020, 1027, 1028, 1030, 1042, 1512, 1728, 2304, 2560
 ]);
 
 async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") {
@@ -89,6 +89,17 @@ async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") 
           snapshot.apps[1]!.displayName = `A long application name ${"W".repeat(90)}`;
           snapshot.updates[1]!.remoteVersion = version(`2026.${"1234567890".repeat(9)}`);
           snapshot.homebrewItems[1] = { ...snapshot.homebrewItems[1]!, pinned: true };
+          snapshot.apps[2]!.displayName = "Professional Image Editor Studio";
+          snapshot.updates.push({
+            id: "canvas",
+            appID: "canvas",
+            source: "web",
+            supportLevel: "limited",
+            localVersion: version("4.1"),
+            remoteVersion: version("4.2"),
+            updateURL: "https://example.com/editor",
+            checkedAt: "2026-10-16T12:00:00.000Z"
+          });
           snapshot.lastRefreshNoticeMessage = `Some update information may be incomplete. ${"Details ".repeat(35)}`;
           return snapshot;
         })()
@@ -197,7 +208,7 @@ async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") 
         };
       });
       const expectedColumns =
-        width <= 740 ? 1 : width >= 900 && width <= 1020 ? 2 : width >= 1280 ? 3 : null;
+        width <= 740 ? 1 : width >= 900 && width <= 1000 ? 2 : width >= 1020 ? 3 : null;
       if (expectedColumns !== null)
         expect(geometry.columns, `grid columns at ${width}px`).toBe(expectedColumns);
       else {
@@ -205,14 +216,15 @@ async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") 
         expect(geometry.columns, `grid columns at ${width}px`).toBeLessThanOrEqual(3);
       }
       expect(geometry.sidebar).toBe(196);
-      expect(geometry.stack).toBeLessThanOrEqual(860);
+      expect(geometry.stack).toBeLessThanOrEqual(840);
+      if (width >= 1280) expect(geometry.stack).toBeCloseTo(840, 0);
       expect(geometry.failureWidth).toBeLessThanOrEqual(geometry.stack);
       expect(Math.abs(geometry.failureCenter - geometry.stackCenter)).toBeLessThan(1);
       expect(Math.abs(geometry.stackLeft - geometry.headingLeft)).toBeLessThan(1);
       expect(Math.abs(geometry.noticeLeft - geometry.stackLeft)).toBeLessThan(1);
       expect(geometry.noticeWidth).toBeCloseTo(geometry.stack, 0);
       expect(geometry.icon).toBe(50);
-      expect(geometry.card).toBeGreaterThanOrEqual(240);
+      expect(geometry.card).toBeGreaterThanOrEqual(geometry.columns === 3 ? 231.5 : 240);
       expect(geometry.card).toBeCloseTo(
         (geometry.stack - (geometry.columns - 1) * 12) / geometry.columns,
         0
@@ -227,6 +239,49 @@ async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") 
         await page.screenshot({ path: test.info().outputPath(`dashboard-${width}.png`) });
       }
     }
+
+    // Verify the actual container boundary independently of viewport gutters.
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]!.setContentSize(1280, 900)
+    );
+    for (const [containerWidth, expectedColumns] of [
+      [719, 2],
+      [720, 3],
+      [734, 3],
+      [750, 3]
+    ] as const) {
+      const geometry = await page.evaluate((width) => {
+        const stack = document.querySelector<HTMLElement>(".content > .stack")!;
+        stack.style.width = `${width}px`;
+        const grid = stack.querySelector<HTMLElement>(".update-grid")!;
+        const cards = [...grid.querySelectorAll<HTMLElement>(".item-card")];
+        return {
+          columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length,
+          cardWidths: cards.map((card) => card.getBoundingClientRect().width),
+          iconWidths: cards.map(
+            (card) => card.querySelector(".app-icon")!.getBoundingClientRect().width
+          ),
+          overflow: cards.some((card) => card.scrollWidth > card.clientWidth + 1),
+          clippedActions: cards.some((card) =>
+            [...card.querySelectorAll<HTMLElement>(".item-card-actions button")].some((button) => {
+              const bounds = button.getBoundingClientRect();
+              const parent = card.getBoundingClientRect();
+              return bounds.left < parent.left || bounds.right > parent.right;
+            })
+          )
+        };
+      }, containerWidth);
+      expect(geometry.columns).toBe(expectedColumns);
+      expect(geometry.cardWidths.length).toBeGreaterThanOrEqual(3);
+      expect(geometry.cardWidths.every((width) => width >= 232)).toBe(true);
+      expect(geometry.iconWidths.every((width) => width === 50)).toBe(true);
+      expect(geometry.overflow).toBe(false);
+      expect(geometry.clippedActions).toBe(false);
+      await expect(page.getByRole("button", { name: "Visit website", exact: true })).toBeVisible();
+    }
+    await page.evaluate(() =>
+      document.querySelector<HTMLElement>(".content > .stack")!.style.removeProperty("width")
+    );
 
     const scrollbarRows: unknown[] = [];
     const gutterStyle = await page.addStyleTag({
@@ -338,7 +393,8 @@ async function checkResponsiveLayout(scrollbarMode: "WhenScrolling" | "Always") 
             overflow: content.scrollWidth > content.clientWidth
           };
         });
-        expect(layout.stackWidth).toBeLessThanOrEqual(860);
+        expect(layout.stackWidth).toBeLessThanOrEqual(840);
+        if (width >= 1512) expect(layout.stackWidth).toBeCloseTo(840, 0);
         expect(layout.topbarOverflow).toBe("visible");
         expect(layout.compensatedGutter).toBe(layout.contentGutter);
         expect(Math.abs(layout.stackLeft - layout.headingLeft)).toBeLessThan(1);

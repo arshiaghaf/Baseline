@@ -5,20 +5,26 @@ import type { Display, Rectangle } from "electron";
 
 type TrayDisplay = Pick<Display, "workArea">;
 
-export function calculateTrayWindowPosition(
+export function calculateTrayWindowBounds(
   trayBounds: Rectangle,
-  windowBounds: Rectangle,
+  preferredSize: Pick<Rectangle, "width" | "height">,
   display: TrayDisplay
-): { x: number; y: number } {
-  const proposedX = trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2;
+): Rectangle {
+  const width = Math.min(preferredSize.width, display.workArea.width);
+  const height = Math.min(preferredSize.height, display.workArea.height);
+  const proposedX = trayBounds.x + trayBounds.width / 2 - width / 2;
   const minX = display.workArea.x;
-  const maxX = display.workArea.x + display.workArea.width - windowBounds.width;
-  const x = clamp(proposedX, minX, Math.max(minX, maxX));
-  const y = trayBounds.y + trayBounds.height;
+  const maxX = display.workArea.x + display.workArea.width - width;
+  const x = clamp(proposedX, minX, maxX);
+  const minY = display.workArea.y;
+  const maxY = display.workArea.y + display.workArea.height - height;
+  const y = clamp(trayBounds.y + trayBounds.height, minY, maxY);
 
   return {
     x: Math.round(x),
-    y: Math.round(y)
+    y: Math.round(y),
+    width,
+    height
   };
 }
 

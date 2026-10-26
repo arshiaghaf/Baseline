@@ -9,6 +9,7 @@
 
 :root {
   --sidebar-width: 196px;
+  --main-content-max-width: 840px;
   --update-accent-rgb: 1, 105, 204;
 
   color: #0d0d0d;
