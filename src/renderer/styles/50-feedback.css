@@ -155,7 +155,7 @@
 
 .app-shell:not(.compact):not(.settings-shell) .content > .notice {
   width: 100%;
-  max-width: 860px;
+  max-width: var(--main-content-max-width);
   margin: 0 auto 10px;
 }
 
@@ -261,7 +261,7 @@
 }
 
 .app-shell:not(.compact):not(.settings-shell) .content > .operation-failures {
-  width: min(calc(100% - 28px), 860px);
+  width: min(calc(100% - 28px), var(--main-content-max-width));
   margin-inline: auto;
 }
 

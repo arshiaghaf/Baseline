@@ -39,7 +39,7 @@
   justify-content: space-between;
   gap: 14px;
   width: 100%;
-  max-width: 860px;
+  max-width: var(--main-content-max-width);
   margin-inline: auto;
 }
 

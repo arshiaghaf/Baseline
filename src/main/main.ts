@@ -34,7 +34,7 @@ import { trayUpdateTitle } from "./trayStatus";
 import { ipcChannels, type PreferencePatch } from "../shared/ipc";
 import { isAllowedExternalURL } from "../shared/security";
 import { SnapshotPersistence } from "./persistence";
-import { calculateTrayWindowPosition } from "./trayWindowPosition";
+import { calculateTrayWindowBounds } from "./trayWindowPosition";
 import { UpdateStore } from "./updateStore";
 import { catalogueCacheDirectory } from "./catalogueCacheDirectory";
 import { isTrustedBackendSender } from "./backendIpcAuthorization";
@@ -65,6 +65,7 @@ let selfUpdateCheckOpen = false;
 let selfUpdateScheduler: SelfUpdateScheduler | undefined;
 let signedSelfUpdater: SignedSelfUpdater | undefined;
 let metadata: ReturnType<typeof appMetadata>;
+const menuWindowSize = { width: 440, height: 560 };
 
 const trayRefreshIconDataURL =
   "data:image/png;base64," +
@@ -236,8 +237,8 @@ function createMainWindow(route: "main" | "settings"): BrowserWindow {
   }
 
   mainWindow = new BrowserWindow({
-    width: 1020,
-    height: 760,
+    width: 1042,
+    height: 759,
     minWidth: 660,
     minHeight: 620,
     title: "Baseline",
@@ -377,8 +378,7 @@ function createMenuWindow(): BrowserWindow {
   }
 
   menuWindow = new BrowserWindow({
-    width: 440,
-    height: 560,
+    ...menuWindowSize,
     resizable: false,
     movable: true,
     title: "Baseline",
@@ -402,7 +402,11 @@ function createMenuWindow(): BrowserWindow {
   });
 
   menuWindow.on("blur", hideMenuWindowForNativeDismissal);
+  screen.on("display-metrics-changed", fitMenuWindow);
+  screen.on("display-removed", fitMenuWindow);
   menuWindow.on("closed", () => {
+    screen.removeListener("display-metrics-changed", fitMenuWindow);
+    screen.removeListener("display-removed", fitMenuWindow);
     menuWindow = undefined;
   });
 
@@ -538,16 +542,18 @@ function toggleMenuWindow(): void {
     window.hide();
     return;
   }
-  if (tray) {
-    const bounds = tray.getBounds();
-    const windowBounds = window.getBounds();
-    const display = screen.getDisplayMatching(bounds);
-    const position = calculateTrayWindowPosition(bounds, windowBounds, display);
-    window.setPosition(position.x, position.y, false);
-  }
+  fitMenuWindow();
   window.setAlwaysOnTop(true, "pop-up-menu");
   window.show();
   focusCurrentAdminPrompt();
+}
+
+function fitMenuWindow(): void {
+  if (!tray || !menuWindow || menuWindow.isDestroyed()) return;
+  const bounds = tray.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  // Start from the preferred size so a previously constrained popover can grow again.
+  menuWindow.setBounds(calculateTrayWindowBounds(bounds, menuWindowSize, display), false);
 }
 
 function hideMenuWindowForNativeDismissal(): void {
