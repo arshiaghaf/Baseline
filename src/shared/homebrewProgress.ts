@@ -19,7 +19,12 @@ export const HomebrewMaintenanceProgressStage = {
 export type HomebrewMaintenanceProgressEvent = {
   token: string;
   kindHint?: HomebrewManagedItemKind;
-  kind: { type: "progress"; progress: number } | { type: "completed" } | { type: "failed" };
+  kind:
+    | { type: "progress"; progress: number }
+    | { type: "completed" }
+    | { type: "unchanged" }
+    | { type: "skipped" }
+    | { type: "failed" };
 };
 
 export class HomebrewMaintenanceOutputParser {
@@ -40,6 +45,14 @@ export class HomebrewMaintenanceOutputParser {
 
     if (this.isFailureLine(normalizedLine)) {
       return matchedTokens.map((token) => ({ token, kindHint, kind: { type: "failed" } }));
+    }
+
+    if (normalizedLine.includes("cannot be upgraded as-is")) {
+      return matchedTokens.map((token) => ({ token, kindHint, kind: { type: "skipped" } }));
+    }
+
+    if (this.isUnchangedLine(normalizedLine)) {
+      return matchedTokens.map((token) => ({ token, kindHint, kind: { type: "unchanged" } }));
     }
 
     if (this.isCompletionLine(normalizedLine)) {
@@ -82,14 +95,17 @@ export class HomebrewMaintenanceOutputParser {
     return undefined;
   }
 
-  private isCompletionLine(line: string): boolean {
+  private isUnchangedLine(line: string): boolean {
     return this.matchesAny(line, [
-      "is up-to-date",
+      "up-to-date",
       "already installed",
-      "was successfully installed",
-      "purging files for version",
-      "🍺"
+      "not upgrading",
+      "downloaded artifact has not changed"
     ]);
+  }
+
+  private isCompletionLine(line: string): boolean {
+    return this.matchesAny(line, ["was successfully installed", "purging files for version", "🍺"]);
   }
 
   private isFailureLine(line: string): boolean {
