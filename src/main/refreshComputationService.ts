@@ -340,7 +340,6 @@ export class RefreshComputationService {
       const [formulaResult, selfUpdateResult] = await supplementaryResults;
       if (formulaResult.status === "rejected") throw formulaResult.reason;
       if (selfUpdateResult.status === "rejected") throw selfUpdateResult.reason;
-      const selfUpdate = selfUpdateResult.value;
 
       if (!this.ports.isCurrent(sequence)) {
         return;
@@ -423,7 +422,6 @@ export class RefreshComputationService {
         homebrewDiscoverProgressByItemID: preserveHomebrewCommandState
           ? this.ports.readState().homebrewDiscoverProgressByItemID
           : {},
-        selfUpdate,
         laggingHomebrewCaskTokens: detectLaggingHomebrewCaskTokens(
           homebrewItems,
           updates,
@@ -601,8 +599,8 @@ function catalogueCacheNotice(...statuses: Array<CatalogueStatus | undefined>): 
   const stale = statuses.filter((status): status is CatalogueStatus => Boolean(status?.stale));
   if (stale.length === 0) return undefined;
   const checkedAt = stale
-    .map((status) => status.checkedAt)
-    .filter(Boolean)
-    .sort()[0];
-  return `Using cached Homebrew catalogue metadata${checkedAt ? ` (last checked ${checkedAt})` : ""}. Refresh to retry.`;
+    .map((status) => new Date(status.checkedAt ?? ""))
+    .filter((date) => Number.isFinite(date.getTime()))
+    .sort((lhs, rhs) => lhs.getTime() - rhs.getTime())[0];
+  return `Using cached Homebrew catalogue metadata${checkedAt ? ` (last checked ${checkedAt.toLocaleString()})` : ""}. Refresh to retry.`;
 }

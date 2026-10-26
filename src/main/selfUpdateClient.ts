@@ -25,6 +25,7 @@ export class SelfUpdateClient {
     }
     try {
       const response = await fetch(latestReleaseURL, {
+        cache: "no-store",
         headers: {
           Accept: "application/vnd.github+json"
         },
@@ -40,7 +41,12 @@ export class SelfUpdateClient {
       const raw = (await response.json()) as any;
       signal?.throwIfAborted();
       const latestVersion = version(latestVersionString(raw));
-      const releaseURL = sanitizeExternalURL(raw?.html_url) ?? fallbackReleasePageURL;
+      const candidateURL = sanitizeExternalURL(raw?.html_url);
+      const releaseURL = candidateURL?.startsWith(
+        "https://github.com/arshiaghaf/Baseline/releases/tag/"
+      )
+        ? candidateURL
+        : fallbackReleasePageURL;
       return {
         available: isSelfUpdateAvailable(latestVersion, currentVersion),
         currentVersion,
