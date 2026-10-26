@@ -71,6 +71,11 @@ export function deriveSections(
     item.token.toLowerCase().includes(term) ||
     item.installedVersion.raw.toLowerCase().includes(term) ||
     item.latestVersion?.raw.toLowerCase().includes(term);
+  const matchingCaskAppIDs = new Set(
+    snapshot.homebrewItems
+      .filter((item) => isCask(item.kind) && item.appID && homebrewFilter(item))
+      .map((item) => item.appID)
+  );
 
   const availableApps = snapshot.apps
     .filter((app) => updatesByAppID.has(app.id) && !snapshot.ignoredIDs.includes(app.id))
@@ -83,7 +88,7 @@ export function deriveSections(
     .sort(sortByName);
   const ignoredApps = snapshot.apps
     .filter((app) => snapshot.ignoredIDs.includes(app.id))
-    .filter(appFilter)
+    .filter((app) => appFilter(app) || matchingCaskAppIDs.has(app.id))
     .sort(sortByName);
   const recentlyUpdatedApps = snapshot.recentlyUpdated
     .map((record) => appByID.get(record.appID))
@@ -102,9 +107,8 @@ export function deriveSections(
     )
     .filter(homebrewFilter)
     .sort(sortHomebrewOutdated);
-  const ignoredAppsUnfiltered = snapshot.apps.filter((app) => snapshot.ignoredIDs.includes(app.id));
   const appsRepresentedOutsideHomebrew = term
-    ? [...availableApps, ...ignoredAppsUnfiltered]
+    ? [...availableApps, ...ignoredApps]
     : snapshot.apps.filter(
         (app) => updatesByAppID.has(app.id) || snapshot.ignoredIDs.includes(app.id)
       );

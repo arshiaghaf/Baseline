@@ -15,6 +15,7 @@ import { homebrewConfigurationValidatedMessage } from "../../shared/homebrewConf
 import { compareVersions } from "../../shared/version";
 import { compactVersionLabelMaxLength } from "../constants";
 import { uninstallableHomebrewItemForApp } from "./sections";
+import { localCalendarDay } from "./calendar";
 
 export function defaultScanDirectoryLabel(directory: string): string {
   if (directory === "/Applications") {
@@ -228,7 +229,10 @@ export function updatedRelativeLabel(updatedAt: string, now = Date.now()): strin
     return "Updated recently";
   }
 
-  const days = Math.max(0, Math.floor((now - updatedTime) / 86_400_000));
+  const days = Math.max(
+    0,
+    localCalendarDay(new Date(now)) - localCalendarDay(new Date(updatedTime))
+  );
   if (days === 0) {
     return "Updated today";
   }
