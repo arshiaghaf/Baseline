@@ -339,7 +339,6 @@ export class RefreshComputationService {
       const [formulaResult, selfUpdateResult] = await supplementaryResults;
       if (formulaResult.status === "rejected") throw formulaResult.reason;
       if (selfUpdateResult.status === "rejected") throw selfUpdateResult.reason;
-      const selfUpdate = selfUpdateResult.value;
 
       if (!this.ports.isCurrent(sequence)) {
         return;
@@ -421,7 +420,6 @@ export class RefreshComputationService {
         homebrewDiscoverProgressByItemID: preserveHomebrewCommandState
           ? this.ports.readState().homebrewDiscoverProgressByItemID
           : {},
-        selfUpdate,
         laggingHomebrewCaskTokens: detectLaggingHomebrewCaskTokens(
           homebrewItems,
           updates,

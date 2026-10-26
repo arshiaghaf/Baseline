@@ -104,6 +104,7 @@ function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
 
 function installBaselineMock() {
   window.baseline = {
+    checkForBaselineUpdates: vi.fn(async () => undefined),
     permissionGuide: vi.fn(async () => ({})),
     getSnapshot: vi.fn(),
     getAppMetadata: vi.fn(() =>
@@ -911,9 +912,8 @@ describe("renderer button parity", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New Baseline Update Available" }));
 
-    expect(window.baseline.openExternal).toHaveBeenCalledWith(
-      "https://github.com/arshiaghaf/Baseline/releases/latest"
-    );
+    expect(window.baseline.checkForBaselineUpdates).toHaveBeenCalledOnce();
+    expect(window.baseline.openExternal).not.toHaveBeenCalled();
 
     rerender(<Dashboard compact onOpenSettings={() => undefined} snapshot={snapshot()} />);
 

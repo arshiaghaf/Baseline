@@ -1191,6 +1191,87 @@ describe("update store helpers", () => {
     expect(lookup).toHaveBeenCalledTimes(2);
   });
 
+  it("publishes self-update results before app scans finish", async () => {
+    let finishScan!: (apps: AppRecord[]) => void;
+    const scanApplications = vi.fn(
+      () =>
+        new Promise<AppRecord[]>((done) => {
+          finishScan = done;
+        })
+    );
+    const result = {
+      available: true,
+      currentVersion: version("0.8.0"),
+      latestVersion: version("0.10.0"),
+      releaseURL: "https://example.com/new"
+    };
+    const store = await makeStore({
+      currentAppVersion: "0.8.0",
+      clients: {
+        scanner: { scanApplications },
+        selfUpdate: { lookup: vi.fn(async () => result) }
+      }
+    });
+    const refreshing = store.refresh();
+    try {
+      await vi.waitFor(() => expect(scanApplications).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(store.getSnapshot().selfUpdate).toEqual(result));
+      expect(store.getSnapshot().isRefreshing).toBe(true);
+    } finally {
+      finishScan([]);
+      await refreshing;
+    }
+  });
+
+  it("cannot overwrite a newer manual self-update check when an earlier scan finishes later", async () => {
+    let finishScan!: (apps: AppRecord[]) => void;
+    let finishOld!: (record: SelfUpdateRecord) => void;
+    const scanApplications = vi.fn(
+      () =>
+        new Promise<AppRecord[]>((done) => {
+          finishScan = done;
+        })
+    );
+    const old = {
+      available: true,
+      currentVersion: version("0.8.0"),
+      latestVersion: version("0.9.0"),
+      releaseURL: "https://example.com/old"
+    };
+    const latest = {
+      ...old,
+      latestVersion: version("0.10.0"),
+      releaseURL: "https://example.com/latest"
+    };
+    const lookup = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<SelfUpdateRecord>((done) => {
+            finishOld = done;
+          })
+      )
+      .mockResolvedValue(latest);
+    const store = await makeStore({
+      currentAppVersion: "0.8.0",
+      clients: { scanner: { scanApplications }, selfUpdate: { lookup } }
+    });
+    const refreshing = store.refresh();
+    try {
+      await vi.waitFor(() => expect(scanApplications).toHaveBeenCalledOnce());
+      await store.checkForSelfUpdate();
+      expect(store.getSnapshot().selfUpdate).toEqual(latest);
+      finishOld(old);
+      finishScan([]);
+      await refreshing;
+      expect(store.getSnapshot().selfUpdate).toEqual(latest);
+    } finally {
+      finishOld(old);
+      finishScan([]);
+      await refreshing;
+    }
+  });
+
   it("scans default directories before additional directories", async () => {
     const scannedDirectories: string[][] = [];
     const store = await makeStore({

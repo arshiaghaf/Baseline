@@ -69,6 +69,7 @@ test.afterEach(async () => attachElectronDiagnostics(test.info()));
 
 const expectedBaselineAPI = [
   "acknowledgeProfileStatsReset",
+  "checkForBaselineUpdates",
   "chooseDirectory",
   "cleanUpHomebrew",
   "collectHomebrewDiagnostics",

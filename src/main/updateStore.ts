@@ -126,6 +126,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly homebrewInventory: Pick<HomebrewInventoryClient, "fetchInventory">;
   private readonly selfUpdate: Pick<SelfUpdateClient, "lookup">;
   private selfUpdateCheckTask?: Promise<SelfUpdateRecord | undefined>;
+  private selfUpdateSequence = 0;
   private readonly currentAppVersion: VersionValue;
   private readonly currentAppIdentity?: { bundlePath?: string; bundleIdentifier?: string };
   private readonly runBrewCommand: typeof defaultRunBrewCommand;
@@ -628,10 +629,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   async checkForSelfUpdate(): Promise<SelfUpdateRecord | undefined> {
     this.requireOpen();
     if (this.selfUpdateCheckTask) return this.selfUpdateCheckTask;
-    const task = this.lookupSelfUpdate(new Date().toISOString()).then((selfUpdate) => {
-      this.patch({ selfUpdate });
-      return selfUpdate;
-    });
+    const task = this.lookupSelfUpdate(new Date().toISOString());
     this.selfUpdateCheckTask = task;
     void this.trackProducer(task).catch(() => undefined);
     try {
@@ -1152,7 +1150,12 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     if (isVersionEmpty(this.currentAppVersion)) {
       return undefined;
     }
-    return this.selfUpdate.lookup(this.currentAppVersion, now, signal);
+    const sequence = ++this.selfUpdateSequence;
+    const selfUpdate = await this.selfUpdate.lookup(this.currentAppVersion, now, signal);
+    if (!this.closing && !signal?.aborted && sequence === this.selfUpdateSequence) {
+      this.patch({ selfUpdate });
+    }
+    return selfUpdate;
   }
 
   private async fetchHomebrewInventory(

@@ -13,6 +13,7 @@ import {
   Menu,
   nativeTheme,
   nativeImage,
+  powerMonitor,
   screen,
   shell,
   Tray
@@ -39,6 +40,8 @@ import { isTrustedBackendSender } from "./backendIpcAuthorization";
 import { backendIpcRegistrar } from "./backendIpc";
 import type { HomebrewDiagnosticsRequest } from "../shared/homebrewDiagnostics";
 import { trayMenuTemplate } from "./trayMenu";
+import { SelfUpdateScheduler } from "./selfUpdateScheduler";
+import { SignedSelfUpdater } from "./signedSelfUpdater";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -58,6 +61,8 @@ let dockShowTask: Promise<void> | undefined;
 let lastDockShowTime = -Infinity;
 let dockHideTimer: ReturnType<typeof setTimeout> | undefined;
 let selfUpdateCheckOpen = false;
+let selfUpdateScheduler: SelfUpdateScheduler | undefined;
+let signedSelfUpdater: SignedSelfUpdater | undefined;
 let metadata: ReturnType<typeof appMetadata>;
 
 const trayRefreshIconDataURL =
@@ -127,6 +132,16 @@ if (hasSingleInstanceLock) {
       }
     });
 
+    signedSelfUpdater = new SignedSelfUpdater({
+      bundlePath: app.isPackaged
+        ? await realpath(path.resolve(process.resourcesPath, "../.."))
+        : "",
+      resourcesPath: process.resourcesPath,
+      home: app.getPath("home"),
+      packaged: app.isPackaged,
+      isolatedProfile: Boolean(process.env.BASELINE_USER_DATA_DIR)
+    });
+    selfUpdateScheduler = new SelfUpdateScheduler(() => store.checkForSelfUpdate());
     createMainWindow("main");
     wireStoreEvents();
     wireIpc();
@@ -135,20 +150,29 @@ if (hasSingleInstanceLock) {
     if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
       store.emit("snapshot", store.getSnapshot());
     } else {
+      selfUpdateScheduler.start();
       await store.start();
     }
 
     app.on("activate", () => {
+      if (process.env.BASELINE_SKIP_INITIAL_REFRESH !== "1") selfUpdateScheduler?.request();
       if (!mainWindow) {
         createMainWindow("main");
       } else {
         showWindow(mainWindow);
       }
     });
+    powerMonitor.on("resume", () => {
+      if (process.env.BASELINE_SKIP_INITIAL_REFRESH !== "1") selfUpdateScheduler?.request(true);
+    });
   });
 }
 
 app.on("window-all-closed", () => undefined);
+app.on("will-quit", () => {
+  selfUpdateScheduler?.dispose();
+  signedSelfUpdater?.dispose();
+});
 app.on("before-quit", (event) => {
   if (isQuitting || !store) return;
   event.preventDefault();
@@ -435,9 +459,21 @@ function createTrayContextMenu(): Menu {
 }
 
 async function checkForBaselineUpdates(): Promise<void> {
-  if (selfUpdateCheckOpen) return;
+  if (selfUpdateCheckOpen || isQuitting || quitTask) return;
   selfUpdateCheckOpen = true;
   try {
+    const updater = signedSelfUpdater;
+    if (updater && (await updater.available())) {
+      await updater.check(
+        () => store.prepareToQuit(),
+        () => {
+          if (dockHideTimer) clearTimeout(dockHideTimer);
+          isQuitting = true;
+          app.quit();
+        }
+      );
+      return;
+    }
     const update = await store.checkForSelfUpdate();
     if (isQuitting || quitTask) return;
     if (update?.available && update.releaseURL) {
@@ -462,6 +498,20 @@ async function checkForBaselineUpdates(): Promise<void> {
           : "Check your internet connection and try again.",
         buttons: ["OK"]
       });
+    }
+  } catch {
+    if (!isQuitting && !quitTask) {
+      const response = await dialog.showMessageBox({
+        type: "error",
+        message: "Baseline could not complete the update check",
+        detail:
+          "Finish any active operations and try again. You can also download the latest release manually.",
+        buttons: ["Open releases", "Later"],
+        defaultId: 1,
+        cancelId: 1
+      });
+      if (response.response === 0)
+        await store.openExternal("https://github.com/arshiaghaf/Baseline/releases/latest");
     }
   } finally {
     selfUpdateCheckOpen = false;
@@ -657,6 +707,7 @@ function wireIpc(): void {
   );
   handle("getSnapshot", () => store.getSnapshot());
   handle("getAppMetadata", () => metadata);
+  handle("checkForBaselineUpdates", () => checkForBaselineUpdates());
   handle(
     "getDiagnostics",
     () =>
