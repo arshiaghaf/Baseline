@@ -67,6 +67,9 @@ describe("main startup activation", () => {
           if (!preventDefault.mock.calls.length) this.emit("closed");
         }
       }
+      const powerMonitor = new EventEmitter();
+      const schedulerStart = vi.fn();
+      const schedulerRequest = vi.fn();
       const snapshot = { ...defaultPersistedSnapshot(), showMenuBarIcon: false };
       class FakeStore extends EventEmitter {
         getSnapshot() {
@@ -83,7 +86,7 @@ describe("main startup activation", () => {
           app: electronApp,
           BrowserWindow: FakeWindow,
           nativeTheme: {},
-          powerMonitor: new EventEmitter()
+          powerMonitor
         },
         "node:path": path,
         "node:fs/promises": {},
@@ -92,8 +95,8 @@ describe("main startup activation", () => {
         "./signedSelfUpdater": { SignedSelfUpdater: class {} },
         "./selfUpdateScheduler": {
           SelfUpdateScheduler: class {
-            start() {}
-            request() {}
+            start = schedulerStart;
+            request = schedulerRequest;
           }
         },
         "./permissionGuide": {},
@@ -138,11 +141,15 @@ describe("main startup activation", () => {
           context
         );
         await starting;
+        expect(schedulerStart).toHaveBeenCalledOnce();
+        powerMonitor.emit("resume");
+        expect(schedulerRequest).toHaveBeenLastCalledWith(true);
         const window = windows[0]!;
         window.emit("ready-to-show");
         window.close();
         expect(window.visible).toBe(false);
         electronApp.emit("activate");
+        expect(schedulerRequest).toHaveBeenLastCalledWith();
         expect(window.visible).toBe(true);
         expect(windows).toHaveLength(1);
         if (outcome === "reject") reject(new Error("synthetic probe failure"));
@@ -151,6 +158,7 @@ describe("main startup activation", () => {
         expect(errors).toHaveBeenCalledTimes(outcome === "reject" ? 1 : 0);
         window.close();
         electronApp.emit("activate");
+        expect(schedulerRequest).toHaveBeenLastCalledWith();
         expect(window.visible).toBe(true);
         expect(electronApp.listenerCount("activate")).toBe(1);
         window.emit("closed");
