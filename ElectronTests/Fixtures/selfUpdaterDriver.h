@@ -3,3 +3,4 @@
 #import <Sparkle/Sparkle.h>
 @interface BaselineFixtureUserDriver : NSObject <SPUUserDriver>
 @end
+void BaselineFixtureDriveStandardCancellation(void);

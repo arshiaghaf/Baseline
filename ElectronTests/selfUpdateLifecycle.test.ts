@@ -17,7 +17,9 @@ import {
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import path from "node:path";
+import os from "node:os";
 import ts from "typescript";
+import { build } from "vite";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildSelfUpdater } from "../selfUpdatePackaging.config";
 
@@ -73,10 +75,24 @@ async function fixture(mode: string) {
     await rm(root, { recursive: true, force: true });
   });
   const id = `org.example.baselinefixture.${randomUUID().replaceAll("-", "")}`;
+  const cachePaths = [id, id + ".updater"].map((value) =>
+    path.join(os.homedir(), "Library/Caches", value)
+  );
+  if (cachePaths.some(existsSync)) throw new Error("Refusing to reuse fixture cache identity.");
+  cleanups.push(async () => {
+    if (!processesConfirmed)
+      throw new Error("Cannot remove fixture caches before process exit is confirmed.");
+    for (const cache of cachePaths) await rm(cache, { recursive: true, force: true });
+  });
   const installed = path.join(root, "installed/Fixture.app");
   const incoming = path.join(root, "incoming/Fixture.app");
-  const observed = { feed: 0, archive: 0, completed: 0 };
+  const observed = { feed: 0, archive: 0, completed: 0, redirects: 0 };
   const server = createServer((request, response) => {
+    if (request.url === "/redirect.zip") {
+      observed.redirects++;
+      response.writeHead(302, { location: "/update.zip" }).end();
+      return;
+    }
     const feed = request.url === "/appcast.xml";
     if (!feed && request.url !== "/update.zip") {
       response.writeHead(404).end();
@@ -84,6 +100,7 @@ async function fixture(mode: string) {
     }
     if (feed) observed.feed++;
     else observed.archive++;
+    if (!feed && mode === "standard-cancel") return;
     response.setHeader("content-type", feed ? "application/xml" : "application/zip");
     response.on("finish", () => observed.completed++);
     createReadStream(path.join(root, feed ? "appcast.xml" : "update.zip")).pipe(response);
@@ -113,6 +130,31 @@ async function fixture(mode: string) {
   await mkdir(path.join(app, "src/shared"), { recursive: true });
   await json(path.join(app, "package.json"), { name: id, version: "1.0.0", main: "fixture.cjs" });
   await json(path.join(app, "fixture.json"), configuration);
+  await build({
+    configFile: false,
+    logLevel: "silent",
+    resolve: { alias: { "./profileStatsIntegrity": path.resolve("e2e/profileStatsIntegrity.ts") } },
+    plugins: [
+      {
+        name: "exclude-production-secret-provider",
+        moduleParsed(module) {
+          if (module.id === path.resolve("src/main/profileStatsIntegrity.ts"))
+            throw new Error("Production Keychain provider entered lifecycle fixture.");
+        }
+      }
+    ],
+    build: {
+      outDir: app,
+      emptyOutDir: false,
+      minify: false,
+      lib: {
+        entry: path.resolve("ElectronTests/Fixtures/selfUpdatePreparation.ts"),
+        formats: ["cjs"],
+        fileName: () => "prepare.cjs"
+      },
+      rollupOptions: { external: [/^node:/, "electron"] }
+    }
+  });
   for (const source of ["main/signedSelfUpdater", "shared/signedSelfUpdate"]) {
     const result = ts.transpileModule(await readFile(`src/${source}.ts`, "utf8"), {
       compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
@@ -126,6 +168,8 @@ async function fixture(mode: string) {
     const fs = require('node:fs'); const path = require('node:path'); const cp = require('node:child_process');
     const config = require('./fixture.json');
     const {SignedSelfUpdater} = require('./src/main/signedSelfUpdater.js');
+    const {createPreparation}=require('./prepare.cjs');
+    const prepare=createPreparation(config.root,config.mode);
     fs.mkdirSync(path.join(config.root,'profile'),{recursive:true});
     app.setPath('userData',path.join(config.root,'profile')); app.setName(config.id);
     app.disableHardwareAcceleration();
@@ -133,7 +177,7 @@ async function fixture(mode: string) {
     const timer=setTimeout(()=>{record('error.json',{reason:'fixture timeout'});app.quit()},60000);
     app.whenReady().then(async()=>{
       record('host.json',{pid:process.pid,executable:process.execPath,version:app.getVersion()});
-      if(app.getVersion()==='2.0.0') {record('relaunched.json',{version:app.getVersion(),saved:fs.existsSync(path.join(config.root,'saved.json'))});clearTimeout(timer);app.quit();return}
+      if(app.getVersion()==='2.0.0') {const saved=JSON.parse(fs.readFileSync(path.join(config.root,'profile/baseline-snapshot.json')));record('relaunched.json',{version:app.getVersion(),saved:saved.appearancePreference==='dark'});clearTimeout(timer);app.quit();return}
       const updater=new SignedSelfUpdater({bundlePath:path.resolve(process.resourcesPath,'../..'),resourcesPath:process.resourcesPath,home:config.root,packaged:true,isolatedProfile:false},{
         available:async()=>true,
         spawn:(file,args)=>{
@@ -144,7 +188,7 @@ async function fixture(mode: string) {
           return child;
         }
       });
-      try {await updater.check(async()=>{record('prepare.json',{requested:true});if(config.mode==='save-fail')return false;record('saved.json',{setting:'preserved',history:[1,2]});return true},()=>app.quit())}
+      try {await updater.check(async()=>{record('prepare.json',{requested:true});return prepare()},()=>app.quit());record('completed.json',{finished:true})}
       catch(error){record('error.json',{reason:error.message})}
       finally{clearTimeout(timer);app.quit()}
     }).catch(error=>{record('error.json',{reason:error.message});app.quit()});
@@ -243,12 +287,12 @@ async function fixture(mode: string) {
   const appcast = path.join(root, "appcast.xml");
   await writeFile(
     appcast,
-    `<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><title>Updater fixture</title><item><title>Fixture 2.0.0</title><sparkle:version>200</sparkle:version><sparkle:shortVersionString>2.0.0</sparkle:shortVersionString><sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion><enclosure url="http://127.0.0.1:${port}/update.zip" type="application/octet-stream" ${attrs}/></item></channel></rss>`
+    `<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><title>Updater fixture</title><item><title>Fixture 2.0.0</title><sparkle:version>200</sparkle:version><sparkle:shortVersionString>2.0.0</sparkle:shortVersionString><sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion><enclosure url="http://127.0.0.1:${port}/${mode.startsWith("redirected-") ? "redirect.zip" : "update.zip"}" type="application/octet-stream" ${attrs}/></item></channel></rss>`
   );
   execFileSync(path.join(upstream, "bin/sign_update"), ["--ed-key-file", key.file, appcast], {
     stdio: "pipe"
   });
-  if (mode === "tampered-archive") await appendFile(archive, "unauthenticated change");
+  if (mode.endsWith("tampered-archive")) await appendFile(archive, "unauthenticated change");
   if (mode === "tampered-feed")
     await writeFile(
       appcast,
@@ -260,7 +304,11 @@ async function fixture(mode: string) {
   const executable = path.join(installed, "Contents/MacOS/Baseline");
   const launched: ChildProcess = spawn(executable, [], {
     stdio: ["ignore", "ignore", "pipe"],
-    env: { ...process.env, CFFIXED_USER_HOME: path.join(root, "home") }
+    env: {
+      ...process.env,
+      CFFIXED_USER_HOME: path.join(root, "home"),
+      BASELINE_SELF_UPDATE_FIXTURE_MODE: mode
+    }
   });
   processesConfirmed = false;
   launched.stderr?.on("data", (data: Buffer) => {
@@ -290,7 +338,9 @@ async function fixture(mode: string) {
     for (;;) {
       const running: number[] = [];
       try {
-        const matches = execFileSync("/usr/bin/pgrep", ["-f", root], { encoding: "utf8" })
+        const matches = execFileSync("/usr/bin/pgrep", ["-f", root + "|" + id], {
+          encoding: "utf8"
+        })
           .trim()
           .split(/\s+/);
         for (const match of matches) {
@@ -298,7 +348,8 @@ async function fixture(mode: string) {
           const command = execFileSync("/bin/ps", ["-p", match, "-o", "comm="], {
             encoding: "utf8"
           }).trim();
-          if (command.startsWith(root + "/")) running.push(Number(match));
+          if ([root, ...cachePaths].some((owned) => command.startsWith(owned + "/")))
+            running.push(Number(match));
         }
       } catch (error) {
         if ((error as { status?: number }).status !== 1) throw error;
@@ -339,28 +390,79 @@ async function waitForOutcome(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe.skipIf(!enabled)("authenticated isolated Sparkle lifecycle", () => {
-  it("downloads, verifies, installs and relaunches without touching the installed app", async () => {
-    const f = await fixture("valid");
-    try {
-      const error = await waitForOutcome(f);
-      expect(error).toBeUndefined();
-      expect(JSON.parse(await readFile(path.join(f.root, "relaunched.json"), "utf8"))).toEqual({
-        version: "2.0.0",
-        saved: true
-      });
-      expect(f.observed.feed).toBeGreaterThan(0);
-      expect(f.observed.archive).toBeGreaterThan(0);
-    } catch (error) {
-      console.error("observed requests", f.observed);
-      // Public diagnostics only. Disposable private seed is never printed or retained.
-      for (const file of ["events.log", "helper-error.log", "host-error.log"])
-        if (existsSync(path.join(f.root, file)))
-          console.error(file, (await readFile(path.join(f.root, file), "utf8")).slice(-10000));
-      throw error;
-    }
-  }, 180000);
+  it.each(["valid", "delayed-save", "redirected-valid"])(
+    "downloads, verifies, installs and relaunches with %s persistence",
+    async (mode) => {
+      const f = await fixture(mode);
+      try {
+        const error = await waitForOutcome(f);
+        expect(error).toBeUndefined();
+        expect(JSON.parse(await readFile(path.join(f.root, "relaunched.json"), "utf8"))).toEqual({
+          version: "2.0.0",
+          saved: true
+        });
+        expect(f.observed.feed).toBeGreaterThan(0);
+        expect(f.observed.archive).toBeGreaterThan(0);
+        if (mode.startsWith("redirected-")) expect(f.observed.redirects).toBeGreaterThan(0);
+        if (mode === "delayed-save")
+          expect(
+            JSON.parse(await readFile(path.join(f.root, "saved.json"), "utf8")).elapsed
+          ).toBeGreaterThanOrEqual(31000);
+      } catch (error) {
+        console.error("observed requests", f.observed);
+        // Public diagnostics only. Disposable private seed is never printed or retained.
+        for (const file of ["events.log", "helper-error.log", "host-error.log"])
+          if (existsSync(path.join(f.root, file)))
+            console.error(file, (await readFile(path.join(f.root, file), "utf8")).slice(-10000));
+        throw error;
+      }
+    },
+    180000
+  );
 
-  it.each(["tampered-feed", "tampered-archive", "wrong-archive-key", "save-fail"])(
+  it.each(["cancel-ready", "standard-cancel"])(
+    "cancels %s without install-on-quit",
+    async (mode) => {
+      const f = await fixture(mode);
+      const deadline = Date.now() + 60000;
+      while (
+        !existsSync(path.join(f.root, "completed.json")) &&
+        !existsSync(path.join(f.root, "error.json")) &&
+        Date.now() < deadline
+      )
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(existsSync(path.join(f.root, "completed.json"))).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      expect(existsSync(path.join(f.root, "prepare.json"))).toBe(false);
+      if (mode === "standard-cancel") {
+        expect(await readFile(path.join(f.root, "helper-error.log"), "utf8")).toContain(
+          "fixture: standard UI cancel download"
+        );
+        expect(f.observed.archive).toBeGreaterThan(0);
+      }
+      expect(existsSync(path.join(f.root, "relaunched.json"))).toBe(false);
+      expect(
+        execFileSync(
+          "/usr/libexec/PlistBuddy",
+          [
+            "-c",
+            "Print :CFBundleShortVersionString",
+            path.join(f.installed, "Contents/Info.plist")
+          ],
+          { encoding: "utf8" }
+        ).trim()
+      ).toBe("1.0.0");
+    },
+    180000
+  );
+
+  it.each([
+    "tampered-feed",
+    "tampered-archive",
+    "wrong-archive-key",
+    "save-fail",
+    "redirected-tampered-archive"
+  ])(
     "refuses %s without replacing or relaunching the original app",
     async (mode) => {
       const f = await fixture(mode);
@@ -379,6 +481,7 @@ describe.skipIf(!enabled)("authenticated isolated Sparkle lifecycle", () => {
       expect(existsSync(path.join(f.root, "prepare.json"))).toBe(mode === "save-fail");
       expect(f.observed.feed).toBeGreaterThan(0);
       expect(f.observed.archive > 0).toBe(mode !== "tampered-feed");
+      if (mode.startsWith("redirected-")) expect(f.observed.redirects).toBeGreaterThan(0);
     },
     180000
   );

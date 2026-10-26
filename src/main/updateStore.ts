@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { isMacOSManagedApp } from "./macOSManagedApps";
+import { directSelfInstallIsVerified } from "./selfUpdateOwnership";
 import { operationDetailsText } from "../shared/operationReport";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -127,6 +128,7 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
   private readonly selfUpdate: Pick<SelfUpdateClient, "lookup">;
   private selfUpdateCheckTask?: Promise<SelfUpdateRecord | undefined>;
   private selfUpdateSequence = 0;
+  private latestSelfUpdateLookup?: Promise<SelfUpdateRecord | undefined>;
   private readonly currentAppVersion: VersionValue;
   private readonly currentAppIdentity?: { bundlePath?: string; bundleIdentifier?: string };
   private readonly runBrewCommand: typeof defaultRunBrewCommand;
@@ -652,6 +654,30 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     );
   }
 
+  async canUseNativeSelfUpdater(): Promise<boolean> {
+    this.requireOpen();
+    // A read may coexist with provider/app scanning, but never another inventory
+    // read or mutation. Its result is independent of that refresh's cached state.
+    const release = this.reserveHomebrewCommandLock({ allowRefreshSupersession: true });
+    if (!release) return false;
+    try {
+      return await this.trackProducer(
+        directSelfInstallIsVerified(this.runBrewCommand, this.currentAppIdentity ?? {})
+      );
+    } catch {
+      return false;
+    } finally {
+      release();
+    }
+  }
+
+  async prepareToQuitForSelfUpdate(): Promise<boolean> {
+    // Recheck after download. A new managed installation must not inherit an
+    // earlier direct-install decision. prepareToQuit fences admission synchronously.
+    if (!(await this.canUseNativeSelfUpdater())) return false;
+    return this.prepareToQuit();
+  }
+
   prepareToQuit(): Promise<boolean> {
     if (this.quitTask) return this.quitTask;
     if (this.hasActiveUpdateOperation()) return Promise.resolve(false);
@@ -1151,9 +1177,21 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
       return undefined;
     }
     const sequence = ++this.selfUpdateSequence;
-    const selfUpdate = await this.selfUpdate.lookup(this.currentAppVersion, now, signal);
+    const task = this.selfUpdate.lookup(this.currentAppVersion, now, signal);
+    this.latestSelfUpdateLookup = task;
+    const selfUpdate = await task;
     if (!this.closing && !signal?.aborted && sequence === this.selfUpdateSequence) {
       this.patch({ selfUpdate });
+    }
+    if (sequence !== this.selfUpdateSequence) {
+      // Manual actions may have joined an older scheduler task. Return the
+      // newest result too, rather than only protecting the published snapshot.
+      let latest = this.latestSelfUpdateLookup;
+      while (latest !== undefined) {
+        const result = await latest;
+        if (latest === this.latestSelfUpdateLookup) return result;
+        latest = this.latestSelfUpdateLookup;
+      }
     }
     return selfUpdate;
   }

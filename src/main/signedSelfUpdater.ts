@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { access, lstat, readFile, realpath } from "node:fs/promises";
-import { constants } from "node:fs";
+import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { signedSelfUpdateConfiguration } from "../shared/signedSelfUpdate";
 
@@ -15,7 +14,7 @@ type UpdaterOptions = {
   isolatedProfile: boolean;
   platform?: string;
   architecture?: string;
-  environment?: NodeJS.ProcessEnv;
+  verifyOwnership?: () => Promise<boolean>;
 };
 
 /** Missing, damaged or unapproved configuration always leaves the manual route available. */
@@ -41,47 +40,9 @@ export async function signedUpdaterIsAvailable(options: UpdaterOptions): Promise
       ].includes(canonical)
     )
       return false;
-    // Until receipt-backed provenance is available, do not replace installations
-    // on Macs with a detectable package manager, including ambiguous manual copies.
-    const environment = options.environment ?? process.env;
-    if (environment.HOMEBREW_PREFIX || environment.HOMEBREW_CELLAR) return false;
-    const candidates = new Set([
-      "/opt/homebrew/bin/brew",
-      "/usr/local/bin/brew",
-      "/opt/homebrew/Caskroom",
-      "/usr/local/Caskroom",
-      ...(environment.PATH ?? "")
-        .split(path.delimiter)
-        .filter(path.isAbsolute)
-        .map((directory) => path.join(directory, "brew"))
-    ]);
-    for (const candidate of candidates) if (!(await definitelyAbsent(candidate))) return false;
-    return true;
+    return options.verifyOwnership ? await options.verifyOwnership() : false;
   } catch {
     return false;
-  }
-}
-
-async function definitelyAbsent(candidate: string): Promise<boolean> {
-  try {
-    await lstat(candidate);
-    return false;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
-    let parent = path.dirname(candidate);
-    for (;;) {
-      try {
-        const entry = await lstat(parent);
-        if (!entry.isDirectory() && !entry.isSymbolicLink()) return false;
-        await access(parent, constants.R_OK | constants.X_OK);
-        return true;
-      } catch (parentError) {
-        if ((parentError as NodeJS.ErrnoException).code !== "ENOENT") return false;
-        const next = path.dirname(parent);
-        if (next === parent) return false;
-        parent = next;
-      }
-    }
   }
 }
 

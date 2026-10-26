@@ -11,6 +11,7 @@ let store: {
   checkForSelfUpdate: ReturnType<typeof vi.fn>;
   openExternal: ReturnType<typeof vi.fn>;
   prepareToQuit: ReturnType<typeof vi.fn>;
+  prepareToQuitForSelfUpdate: ReturnType<typeof vi.fn>;
 };
 let native: { available: ReturnType<typeof vi.fn>; check: ReturnType<typeof vi.fn> };
 let dialog: { showMessageBox: ReturnType<typeof vi.fn<() => Promise<{ response: number }>>> };
@@ -23,7 +24,8 @@ beforeEach(async () => {
       releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.10.0"
     })),
     openExternal: vi.fn(async () => true),
-    prepareToQuit: vi.fn(async () => true)
+    prepareToQuit: vi.fn(async () => true),
+    prepareToQuitForSelfUpdate: vi.fn(async () => true)
   };
   native = { available: vi.fn(async () => false), check: vi.fn(async () => undefined) };
   dialog = { showMessageBox: vi.fn(async () => ({ response: 0 })) };
@@ -68,7 +70,7 @@ it("routes eligible installations to Sparkle without authorizing via GitHub meta
   expect(store.openExternal).not.toHaveBeenCalled();
   const prepare = (native.check.mock.calls[0] as unknown[])[0] as () => Promise<boolean>;
   await expect(prepare()).resolves.toBe(true);
-  expect(store.prepareToQuit).toHaveBeenCalledOnce();
+  expect(store.prepareToQuitForSelfUpdate).toHaveBeenCalledOnce();
 });
 
 it("offers a safe manual release route after native failure", async () => {

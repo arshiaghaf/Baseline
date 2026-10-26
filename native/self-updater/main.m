@@ -98,22 +98,24 @@ static BOOL configurationIsValid(NSBundle *host) {
     NSBundle *host = hostBundle();
     id<SPUUserDriver> driver;
 #ifdef BASELINE_SELF_UPDATE_FIXTURE
-    driver = [BaselineFixtureUserDriver new];
+    BOOL standardFixture = [NSProcessInfo.processInfo.environment[@"BASELINE_SELF_UPDATE_FIXTURE_MODE"] isEqualToString:@"standard-cancel"];
+    driver = standardFixture ? [[SPUStandardUserDriver alloc] initWithHostBundle:host delegate:nil] : [BaselineFixtureUserDriver new];
 #else
     driver = [[SPUStandardUserDriver alloc] initWithHostBundle:host delegate:nil];
 #endif
-    __weak UpdaterDelegate *weakSelf = self;
     self.driver = [[BaselineInstallGateDriver alloc] initWithDriver:driver request:^{
         emit(@"restart-request");
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            if (!weakSelf.installationAuthorized) [weakSelf.driver cancelInstallation];
-        });
+        // Saving may legitimately wait for accepted producers. Keep this choice
+        // pending until explicit acknowledgement/refusal or parent-pipe EOF.
     }];
     self.updater = [[SPUUpdater alloc] initWithHostBundle:host applicationBundle:host userDriver:self.driver delegate:self];
     NSError *error = nil;
     if (![self.updater startUpdater:&error]) { emitFailure(error); [NSApp terminate:nil]; return; }
     emit(@"checking");
     [self.updater checkForUpdates];
+#ifdef BASELINE_SELF_UPDATE_FIXTURE
+    if (standardFixture) BaselineFixtureDriveStandardCancellation();
+#endif
 }
 - (void)updater:(SPUUpdater *)updater didFinishUpdateCycleForUpdateCheck:(SPUUpdateCheck)check error:(NSError *)error {
     (void)updater; (void)check;

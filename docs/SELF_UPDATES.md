@@ -37,12 +37,16 @@ and managed-device restrictions remain authoritative. No quarantine removal or
 security-setting changes are performed.
 
 Only canonical `/Applications/Baseline.app` and `~/Applications/Baseline.app`
-locations are candidates. Development and isolated profiles are excluded. As an
-initial conservative restriction, detectable Homebrew executables, standard
-Caskroom directories, custom prefix variables and inconclusive reads retain the
-manual route. This also excludes manual copies on Macs with Homebrew; it does not
-claim receipt-backed ownership. Extending support requires a verified ownership
-policy. No Homebrew command runs in the native helper.
+locations are candidates. Development and isolated profiles are excluded. Homebrew
+presence alone does not block a direct install. Under the existing Homebrew command
+reservation, fresh installed-cask list/info and artifact reads resolve actual
+Caskroom app links, including renamed/custom targets. Installed identity evidence
+for Baseline retains the manual route. Missing links, partial or changed inventories,
+package/flight installers without an app ownership map, multiple Homebrew scopes
+and unrecognized configuration also remain manual. Cached snapshots and catalogue
+name matches never establish ownership absence. Admission is checked again after
+download and before preparing to quit. These are read-only commands in the Electron
+main process; no Homebrew command runs in the native helper.
 
 The helper derives its host from its embedded location. IPC and arguments cannot
 supply another app, download URL or trust key. Before permitting installation,
@@ -50,6 +54,8 @@ Baseline rejects active operations, fences new work, drains producers and saves
 through its existing durable quit path. Only then does its private pipe allow
 Sparkle to proceed, and Baseline quits. A refused save explicitly cancels the
 staged installation through Sparkle's public Skip choice before helper exit.
+The helper does not independently time out a live parent's durable save; it waits
+for acknowledgement, explicit refusal or parent EOF.
 Sparkle can install an already staged, authenticated update after the host crashes
 or exits; the helper does not provide a crash-atomic persistence guarantee.
 Baseline's normal quit path still saves durably. If the helper exits after quit
@@ -109,9 +115,10 @@ The opt-in lifecycle suite creates temporary apps with unique bundle IDs,
 disposable Ed25519 keys, private profiles, a loopback feed and a headless user
 driver. It runs the actual updater controller and upstream installer, including
 feed/archive authentication, save acknowledgement and relaunch. No Keychain key or
-installed Baseline data is used. Loopback transport and the headless driver are
+installed Baseline data is used. Loopback transport and automated UI choices are
 compiled only for fixtures; production uses HTTPS and Sparkle's standard UI.
-Owned processes are confirmed stopped before fixture removal.
+Owned processes are confirmed stopped before fixture and per-identity Sparkle cache
+removal. Persistence cases exercise the real store and durable save.
 
 ```sh
 npm run build
@@ -119,12 +126,29 @@ BASELINE_SELF_UPDATE_FIXTURE_TESTS=1 npm test -- ElectronTests/selfUpdateLifecyc
 ```
 
 Run lifecycle tests only in an authorized desktop lane. They cover valid updates,
-tampered feeds/archives, wrong archive keys and failed saves. Real release hosting,
-quarantine/App Management prompts, denied installation locations and the standard
-interactive UI still need release-level testing. CI's macOS matrix checks bundle
+tampered feeds/archives, wrong archive keys, failed saves, a 31-second save drain,
+authenticated archives after redirects, staged cancellation and actual standard
+window download cancellation. Real release hosting, quarantine/App Management
+prompts, denied installation locations and a complete interactive update still
+need release-level testing. CI's macOS matrix checks bundle
 integrity and compatibility; a passing fixture does not establish notarization.
+
+## Redirect transport boundary
+
+The helper validates the fixed HTTPS feed and the signed enclosure's initial HTTPS
+URL. Pinned Sparkle 2.10.1 uses the system's default `NSURLSession` downloader and
+does not implement a custom redirect or authentication-challenge delegate. The
+helper adds no App Transport Security exceptions or certificate-trust bypass.
+Redirect transport follows macOS policy; this integration does not independently
+pin every redirect destination or prove rejection of every HTTPS-to-HTTP chain.
+The archive and feed authentication requirements remain in force after redirects.
+Replay or transport denial is a separate availability concern; signatures alone do
+not establish that a server supplied its newest release. Loopback redirect fixtures
+verify authentication of the final bytes, not a production TLS downgrade scenario.
 
 Sources: [Sparkle setup](https://sparkle-project.org/documentation/),
 [security settings](https://sparkle-project.org/documentation/customization/),
 [programmatic API](https://sparkle-project.org/documentation/programmatic-setup/),
+[pinned downloader](https://github.com/sparkle-project/Sparkle/blob/2.10.1/Downloader/SPUDownloader.m),
+[Apple transport security](https://developer.apple.com/documentation/bundleresources/information-property-list/nsapptransportsecurity),
 [upstream release](https://github.com/sparkle-project/Sparkle/releases/tag/2.10.1).

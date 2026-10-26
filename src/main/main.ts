@@ -139,7 +139,8 @@ if (hasSingleInstanceLock) {
       resourcesPath: process.resourcesPath,
       home: app.getPath("home"),
       packaged: app.isPackaged,
-      isolatedProfile: Boolean(process.env.BASELINE_USER_DATA_DIR)
+      isolatedProfile: Boolean(process.env.BASELINE_USER_DATA_DIR),
+      verifyOwnership: () => store.canUseNativeSelfUpdater()
     });
     selfUpdateScheduler = new SelfUpdateScheduler(() => store.checkForSelfUpdate());
     createMainWindow("main");
@@ -465,7 +466,7 @@ async function checkForBaselineUpdates(): Promise<void> {
     const updater = signedSelfUpdater;
     if (updater && (await updater.available())) {
       await updater.check(
-        () => store.prepareToQuit(),
+        () => store.prepareToQuitForSelfUpdate(),
         () => {
           if (dockHideTimer) clearTimeout(dockHideTimer);
           isQuitting = true;
