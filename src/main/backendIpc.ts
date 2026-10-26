@@ -47,6 +47,7 @@ const argumentValidators: Record<InvokeMethod, ValueValidator[]> = {
   ],
   getSnapshot: [],
   getAppMetadata: [],
+  checkForBaselineUpdates: [],
   getDiagnostics: [],
   collectHomebrewDiagnostics: [
     optional(record({ doctor: optional(isBoolean), services: optional(isBoolean) }))

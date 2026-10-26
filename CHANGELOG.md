@@ -1,10 +1,38 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 — 2026-10-25
 
 ### Highlights
 
-- **Apple Silicon required.** Future Baseline releases require an Apple Silicon Mac (M1 or later) running macOS 15 or later. Intel builds and Intel CI coverage are discontinued. Existing installations and historical release assets are preserved.
+- **Apple Silicon is now required.** This release supports M1 or later Macs running macOS 15 or later; Intel builds are discontinued, while existing installations and historical downloads remain intact. ([#348](https://github.com/arshiaghaf/Baseline/pull/348))
+- **Navigate menus and controls with the keyboard.** Menu-bar controls and Search action menus retain usable focus as results move, disappear, or become unavailable. ([#361](https://github.com/arshiaghaf/Baseline/pull/361))
+- **Find Baseline by its new icon.** The redesigned app icon includes light, dark, and tinted appearances on supported macOS versions, with a matching fallback for macOS 15. ([#353](https://github.com/arshiaghaf/Baseline/pull/353))
+- **See more of your desktop through Baseline.** Main-window, setup-guide, and menu-bar backgrounds use refined transparency in light and dark appearances. ([#349](https://github.com/arshiaghaf/Baseline/pull/349)), ([#350](https://github.com/arshiaghaf/Baseline/pull/350))
+- **Read cached check times in your local time.** Homebrew catalogue warnings use your device's timezone and date format. ([#362](https://github.com/arshiaghaf/Baseline/pull/362))
+
+### Added
+
+- Maintainer documentation makes native Finder appearance review optional while retaining automated DMG integrity, read-only mount, Applications-link, metadata, artwork, and bundled-signature checks. ([#344](https://github.com/arshiaghaf/Baseline/pull/344))
+- Typed linting rejects floating and misused promises across source and test TypeScript, retaining deliberate fire-and-forget calls with internal error handling. ([#346](https://github.com/arshiaghaf/Baseline/pull/346))
+- Standalone no-emit type checks use pinned tsrs 0.18.0-ts7.1.0-dev.20260929 with the existing tsconfig. TypeScript 6 remains for typed ESLint and compiler consumers; unsupported hosts fail clearly, and checker errors never trigger fallback. ([#347](https://github.com/arshiaghaf/Baseline/pull/347)), ([#348](https://github.com/arshiaghaf/Baseline/pull/348))
+- Application packages, native helpers, and disk images target Apple Silicon only, with arm64 app, framework, and helper checks across the three supported macOS CI runners. README and release requirements state Apple Silicon and macOS 15 or later; historical assets and user data remain untouched. ([#348](https://github.com/arshiaghaf/Baseline/pull/348))
+- Main-window and App Management guide tints share 15% opacity in light appearance and 20% in dark appearance, preserving native vibrancy, colors, layout, and settings. ([#349](https://github.com/arshiaghaf/Baseline/pull/349)), ([#350](https://github.com/arshiaghaf/Baseline/pull/350))
+- Menu-bar popup tints use 5% opacity in light appearance and 15% in dark appearance without changing popup layout or native materials. ([#349](https://github.com/arshiaghaf/Baseline/pull/349)), ([#350](https://github.com/arshiaghaf/Baseline/pull/350))
+- Electron test failure reports preserve body and cleanup errors together, with bounded, fixture-secret-redacted process, window, quit-event, and shutdown-phase diagnostics retained in separate focused and full-suite CI logs. ([#351](https://github.com/arshiaghaf/Baseline/pull/351))
+- The composed application icon ships native light, dark, and tinted catalog entries on macOS 26 or later, synchronized 16–1024-pixel ICNS fallbacks for macOS 15, matching DMG artwork, package checks, and regeneration documentation. ([#353](https://github.com/arshiaghaf/Baseline/pull/353))
+- Row action menus support initial focus, arrow keys, Home/End, Escape, and focus return. Floating Search menus participate in the owning row's logical Tab and Shift+Tab order, dismissing when focus leaves their trigger/menu scope. ([#361](https://github.com/arshiaghaf/Baseline/pull/361))
+
+### Fixed
+
+- Native Electron test files run with one worker to avoid competing for desktop focus, preserving real visibility assertions, timeouts, retries, and unit-test parallelism. ([#345](https://github.com/arshiaghaf/Baseline/pull/345))
+- Clipboard IPC calls await write completion and propagate rejection. ([#346](https://github.com/arshiaghaf/Baseline/pull/346))
+- Command completion retains cleanup ordering and propagates unexpected close-listener rejection. ([#346](https://github.com/arshiaghaf/Baseline/pull/346))
+- Self-update checks on unsupported architectures return an unavailable result and installation guidance instead of offering future releases. Already-shipped clients cannot receive this guard; no last-compatible Intel release is claimed. ([#348](https://github.com/arshiaghaf/Baseline/pull/348))
+- Electron test cleanup explicitly requests quit and preserves unexpected invocation errors, requiring confirmed child exit after shutdown disconnections. Diagnostic listeners avoid unavailable BrowserWindow methods and tolerate closed stderr without interrupting quit; the five-second deadline and exit assertions remain intact. ([#351](https://github.com/arshiaghaf/Baseline/pull/351)), ([#352](https://github.com/arshiaghaf/Baseline/pull/352))
+- Compact toolbar and row actions restore keyboard tab stops while pointer activation clears stale button focus and keeps menu targets mounted through click dispatch. ([#361](https://github.com/arshiaghaf/Baseline/pull/361))
+- Keyboard focus recovers to a stable control in the active Search or dashboard after rows move, disappear, or become disabled, waiting for modal cleanup and preserving focus deliberately moved elsewhere. ([#361](https://github.com/arshiaghaf/Baseline/pull/361))
+- The formula-rename history test fixture stays recent relative to execution so its retention assertions do not expire with the calendar; production history policy is unchanged. ([#361](https://github.com/arshiaghaf/Baseline/pull/361))
+- Cached Homebrew catalogue warnings format dates in the device's local timezone and locale, select the oldest valid stale check, and omit missing or invalid timestamps while preserving unavailable-catalogue fallback and warning wording. ([#362](https://github.com/arshiaghaf/Baseline/pull/362))
 
 ## 0.9.0 — 2026-10-21
 

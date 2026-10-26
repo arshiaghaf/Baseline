@@ -1,0 +1,485 @@
+// SPDX-FileCopyrightText: 2026 Arshia Ghaf
+// SPDX-License-Identifier: GPL-3.0-only
+
+import { _electron as electron, expect, test, type Page } from "@playwright/test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { visualSnapshot } from "./visualSnapshot";
+import { cleanupApplications, runWithCleanup } from "./applicationCleanup";
+import { version } from "../src/shared/version";
+import type { BaselineSnapshot } from "../src/shared/domain";
+
+// Exercise Chromium's native keyboard defaults with the real built renderer.
+// This hidden shell never loads Baseline's main process, scans the host, or
+// dispatches real commands. Its profile and IPC intents belong only to the test.
+async function withKeyboardFixture(
+  route: "main" | "menubar",
+  run: (
+    page: Page,
+    intents: () => Promise<string[]>,
+    publish: (patch: Partial<BaselineSnapshot>) => Promise<void>
+  ) => Promise<void>,
+  options: {
+    liveIgnore?: boolean;
+    homebrew?: boolean;
+    standaloneCask?: boolean;
+    liveUninstall?: boolean;
+  } = {}
+) {
+  const appDirectory = process.env.BASELINE_E2E_APP_DIR;
+  if (!appDirectory) throw new Error("Use the isolated E2E global setup.");
+  const directory = await mkdtemp(path.join(os.tmpdir(), "baseline-keyboard-"));
+  const state = visualSnapshot();
+  state.apps = [
+    {
+      id: "example",
+      bundlePath: "/synthetic/Example.app",
+      displayName: "Example",
+      localVersion: version("1.0"),
+      sourceHint: "homebrew"
+    }
+  ];
+  state.updates = [
+    {
+      id: "example",
+      appID: "example",
+      source: "homebrew",
+      supportLevel: "supported",
+      localVersion: version("1.0"),
+      remoteVersion: version("2.0"),
+      homebrewToken: "example",
+      checkedAt: "2026-10-22T12:00:00.000Z"
+    }
+  ];
+  state.homebrewItems = [
+    {
+      id: "cask:example",
+      token: "example",
+      name: "Example",
+      kind: "cask",
+      appID: "example",
+      installedVersion: version("1.0"),
+      latestVersion: version("2.0"),
+      isOutdated: true
+    }
+  ];
+  if (options.homebrew) {
+    state.apps = [];
+    state.updates = [];
+    state.homebrewItems = [
+      {
+        id: "formula:example",
+        token: "example",
+        name: "Example",
+        kind: "formula",
+        installedVersion: version("1.0"),
+        latestVersion: version("2.0"),
+        isOutdated: true
+      }
+    ];
+  }
+  if (options.standaloneCask) {
+    state.apps = [];
+    state.updates = [];
+    state.homebrewItems = [{ ...state.homebrewItems[0]!, appID: undefined }];
+  }
+  state.homebrewDiscoverItems = [];
+  state.recentlyUpdated = [];
+  state.homebrewRecentlyUpdated = [];
+  state.ignoredIDs = [];
+  state.ignoredHomebrewItemIDs = [];
+  state.searchText = "";
+  state.operationFailures = [];
+  state.operationFailureDetails = {};
+  const preload = path.join(directory, "preload.cjs");
+  const main = path.join(directory, "main.cjs");
+  await writeFile(
+    preload,
+    `
+    const { contextBridge, ipcRenderer } = require('electron');
+    let snapshot = ${JSON.stringify(state)};
+    let receive = () => {};
+    const publish = (patch) => {
+      snapshot = { ...snapshot, ...patch, snapshotRevision: (snapshot.snapshotRevision ?? 0) + 1 };
+      receive(snapshot);
+    };
+    ipcRenderer.on('fixture:snapshot-patch', (_event, patch) => publish(patch));
+    const record = (name) => ipcRenderer.invoke('fixture:intent', name);
+    contextBridge.exposeInMainWorld('baseline', {
+      getSnapshot: async () => snapshot,
+      getAppMetadata: async () => ({ version: '0.0.0', displayVersion: 'Fixture' }),
+      onSnapshotChanged: (listener) => { receive = listener; return () => {}; },
+      onSnapshotProgress: () => () => {},
+      setSearchText: async (searchText) => { snapshot = { ...snapshot, searchText }; receive(snapshot); },
+      refresh: () => record('refresh'),
+      showSettings: () => record('settings'),
+      openApp: () => record('open'),
+      performAppUpdate: () => record('update'),
+      toggleIgnoredApp: async (id) => {
+        await record('ignore');
+        if (${JSON.stringify(Boolean(options.liveIgnore))}) {
+          snapshot = { ...snapshot, ignoredIDs: snapshot.ignoredIDs.includes(id)
+            ? snapshot.ignoredIDs.filter((value) => value !== id) : [...snapshot.ignoredIDs, id] };
+          receive(snapshot);
+        }
+      },
+      toggleIgnoredHomebrew: async (id) => {
+        await record('ignore');
+        if (${JSON.stringify(Boolean(options.liveIgnore))}) {
+          snapshot = { ...snapshot, ignoredHomebrewItemIDs: snapshot.ignoredHomebrewItemIDs.includes(id)
+            ? snapshot.ignoredHomebrewItemIDs.filter((value) => value !== id) : [...snapshot.ignoredHomebrewItemIDs, id] };
+          receive(snapshot);
+        }
+      },
+      uninstallHomebrewItem: async (id) => {
+        if (${JSON.stringify(Boolean(options.liveUninstall))}) publish({ homebrewUninstallingItemIDs: [id] });
+        await record('uninstall');
+      }
+    });
+  `
+  );
+  await writeFile(
+    main,
+    `
+    const { app, BrowserWindow, ipcMain, session } = require('electron');
+    app.setPath('userData', ${JSON.stringify(path.join(directory, "profile"))});
+    app.disableHardwareAcceleration();
+    app.dock?.hide();
+    global.fixtureIntents = [];
+    ipcMain.handle('fixture:intent', (_event, name) => { global.fixtureIntents.push(name); });
+    app.whenReady().then(async () => {
+      session.defaultSession.webRequest.onBeforeRequest((request, done) =>
+        done({ cancel: !/^(file|data):/.test(request.url) }));
+      const window = new BrowserWindow({ show: false, width: ${route === "menubar" ? 400 : 900},
+        height: 640, webPreferences: { preload: ${JSON.stringify(preload)},
+          contextIsolation: true, nodeIntegration: false } });
+      window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+      await window.loadFile(${JSON.stringify(path.join(appDirectory, ".vite/renderer/main_window/index.html"))},
+        { hash: ${JSON.stringify(`/${route}`)} });
+    });
+  `
+  );
+  let application: Awaited<ReturnType<typeof electron.launch>> | undefined;
+  await runWithCleanup(
+    async () => {
+      application = await electron.launch({ args: [main], cwd: directory });
+      console.log(
+        `Keyboard fixture PID ${application.process().pid}: ${application.process().spawnfile}`
+      );
+      const page = await application.firstWindow();
+      const errors: string[] = [];
+      page.on("pageerror", (error) => errors.push(error.message));
+      await expect(page).toHaveTitle("Baseline");
+      await expect(page.getByText("Example", { exact: true })).toBeVisible();
+      expect(
+        await application.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().every((window) => !window.isVisible())
+        )
+      ).toBe(true);
+      await run(
+        page,
+        () =>
+          application!.evaluate(
+            () => (globalThis as typeof globalThis & { fixtureIntents: string[] }).fixtureIntents
+          ),
+        (patch) =>
+          application!.evaluate(({ BrowserWindow }, state) => {
+            BrowserWindow.getAllWindows()[0]!.webContents.send("fixture:snapshot-patch", state);
+          }, patch)
+      );
+      expect(errors).toEqual([]);
+    },
+    async () => {
+      if (application) await cleanupApplications([application]);
+      await rm(directory, { recursive: true, force: true });
+    }
+  );
+}
+
+test("compact tray keeps keyboard focus through toolbar and row actions", async () => {
+  await withKeyboardFixture("menubar", async (page, intents) => {
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "Search", exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("textbox")).toBeFocused();
+    await page.getByRole("button", { name: "Close Search" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("button", { name: "Close Search" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Refresh", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(intents).toContain("refresh");
+    await page.getByRole("button", { name: "Settings", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(intents).toContain("settings");
+    await page.getByRole("button", { name: "Open app" }).focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(intents).toContain("open");
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "Update", exact: true })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect.poll(intents).toContain("update");
+    await page.keyboard.press("Tab");
+    const actions = page.getByRole("button", { name: "Actions" });
+    await expect(actions).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("menuitem", { name: "Ignore" })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: "Uninstall" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(actions).toBeFocused();
+    await test.info().attach("compact-keyboard-focus", {
+      body: await page.screenshot(),
+      contentType: "image/png"
+    });
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    await expect.poll(intents).toContain("ignore");
+    await expect(actions).toBeFocused();
+  });
+});
+
+for (const placement of ["inline", "floating"] as const) {
+  test(`${placement} Search row menu supports keyboard traversal and activation`, async () => {
+    await withKeyboardFixture("main", async (page, intents) => {
+      await page.getByRole("button", { name: "Search", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      const dialog = page.getByRole("dialog", { name: "Search", exact: true });
+      await page.getByRole("textbox").fill("example");
+      // Control panel height rather than mocking focus or keyboard dispatch.
+      await page.addStyleTag({
+        content: `.search-palette-results { height: ${placement === "floating" ? 78 : 320}px; }`
+      });
+      const actions = dialog.getByRole("button", { name: "Actions" });
+      await actions.focus();
+      await page.keyboard.press("Enter");
+      const menu = page.getByRole("menu");
+      const ignore = menu.getByRole("menuitem", { name: "Ignore" });
+      const uninstall = menu.getByRole("menuitem", { name: "Uninstall" });
+      await expect(ignore).toBeFocused();
+      await test.info().attach(`${placement}-menu-keyboard-focus`, {
+        body: await page.screenshot(),
+        contentType: "image/png"
+      });
+      expect(await menu.evaluate((element) => Boolean(element.closest(".search-palette")))).toBe(
+        placement === "inline"
+      );
+      await page.keyboard.press("Tab");
+      await expect(uninstall).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(ignore).toBeFocused();
+      await page.keyboard.press("ArrowUp");
+      await expect(uninstall).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(menu).toHaveCount(0);
+      await expect(actions).toBeFocused();
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Enter");
+      await expect.poll(intents).toContain("ignore");
+      await expect(actions).toBeFocused();
+      await page.keyboard.press("ArrowUp");
+      await expect(uninstall).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(page.getByRole("textbox")).toBeFocused();
+      await expect(menu).toHaveCount(0);
+      await actions.focus();
+      await page.keyboard.press("ArrowDown");
+      await expect(ignore).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(actions).toBeFocused();
+      await expect(menu).toBeVisible();
+      await page.keyboard.press("Shift+Tab");
+      await expect(dialog.getByRole("button", { name: "Update", exact: true })).toBeFocused();
+      await expect(menu).toHaveCount(0);
+      await expect(actions).toHaveAttribute("aria-expanded", "false");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Search", exact: true })).toBeFocused();
+    });
+  });
+}
+
+for (const [source, destination, intent] of [
+  ["Update", "Settings", "settings"],
+  ["Open app", "Refresh", "refresh"]
+] as const) {
+  test(`compact pointer ${destination} clears earlier keyboard ${source} focus`, async () => {
+    await withKeyboardFixture("menubar", async (page, intents) => {
+      const previous = page.getByRole("button", { name: source, exact: true });
+      await previous.focus();
+      await expect(previous).toBeFocused();
+      await page.getByRole("button", { name: destination, exact: true }).click();
+      await page.keyboard.press("Enter");
+      expect(await intents()).toEqual([intent]);
+      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+    });
+  });
+}
+
+for (const choice of ["Ignore", "Actions"] as const) {
+  test(`compact keyboard-open menu supports pointer ${choice}`, async () => {
+    await withKeyboardFixture(
+      "menubar",
+      async (page, intents) => {
+        const actions = page.getByRole("button", { name: "Actions" });
+        await actions.focus();
+        await page.keyboard.press("ArrowDown");
+        const ignore = page.getByRole("menuitem", { name: "Ignore", exact: true });
+        await expect(ignore).toBeFocused();
+        if (choice === "Ignore") {
+          await ignore.click();
+          await expect.poll(intents).toEqual(["ignore"]);
+          await expect(actions).toHaveCount(0);
+        } else {
+          await actions.click();
+          await expect(page.getByRole("menu")).toHaveCount(0);
+          await expect(actions).toHaveAttribute("aria-expanded", "false");
+        }
+        expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+        await page.keyboard.press("Enter");
+        expect(await intents()).toEqual(choice === "Ignore" ? ["ignore"] : []);
+        if (choice === "Actions") {
+          await actions.focus();
+          await page.keyboard.press("ArrowDown");
+          await expect(ignore).toBeFocused();
+        }
+      },
+      { liveIgnore: true }
+    );
+  });
+}
+
+for (const [surface, homebrew] of [
+  ["main-inline", false],
+  ["main-floating", false],
+  ["main-floating", true],
+  ["main-updates", false],
+  ["compact-updates", false],
+  ["compact-updates", true],
+  ["compact-search", false],
+  ["compact-search", true]
+] as const) {
+  test(`${surface} ${homebrew ? "Homebrew" : "app"} ignore relocation retains keyboard focus`, async () => {
+    const compact = surface.startsWith("compact");
+    await withKeyboardFixture(
+      compact ? "menubar" : "main",
+      async (page, intents) => {
+        const searching = !surface.endsWith("updates");
+        const searchButton = page.getByRole("button", { name: "Search", exact: true });
+        const input = page.getByRole("textbox");
+        if (searching) {
+          await searchButton.focus();
+          await page.keyboard.press("Enter");
+          await input.fill("example");
+          if (!compact)
+            await page.addStyleTag({
+              content: `.search-palette-results { height: ${surface === "main-floating" ? 78 : 320}px; }`
+            });
+        }
+        const scope =
+          !compact && searching ? page.getByRole("dialog", { name: "Search", exact: true }) : page;
+        const actions = scope.getByRole("button", { name: "Actions" });
+        await actions.focus();
+        await page.keyboard.press("ArrowDown");
+        await page.getByRole("menuitem", { name: "Ignore", exact: true }).press("Enter");
+        await expect.poll(intents).toEqual(["ignore"]);
+        if (searching) {
+          await expect(page.getByRole("heading", { name: /Ignored/ })).toBeVisible();
+          await expect(input).toBeFocused();
+        } else {
+          await expect(actions).toHaveCount(0);
+          await expect(searchButton).toBeFocused();
+          await page.keyboard.press("Enter");
+          await input.fill("example");
+        }
+        const relocatedActions = compact
+          ? page.getByRole("button", { name: "Actions" })
+          : page
+              .getByRole("dialog", { name: "Search", exact: true })
+              .getByRole("button", { name: "Actions" });
+        await relocatedActions.focus();
+        await page.keyboard.press("ArrowDown");
+        await page.getByRole("menuitem", { name: "Unignore", exact: true }).press("Enter");
+        await expect.poll(intents).toEqual(["ignore", "ignore"]);
+        await expect(
+          page.getByRole("heading", {
+            name: homebrew ? "Homebrew Updates" : "App Updates",
+            exact: true
+          })
+        ).toBeVisible();
+        await expect(input).toBeFocused();
+        expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+      },
+      { liveIgnore: true, homebrew }
+    );
+  });
+}
+
+for (const [surface, standaloneCask, arrival] of [
+  ["compact", false, "immediate"],
+  ["main", true, "after-cleanup"],
+  ["main-search", false, "immediate"],
+  ["compact", true, "cancel-busy"]
+] as const) {
+  test(`${surface} ${standaloneCask ? "cask" : "app"} confirmation recovers from disabled Actions (${arrival})`, async () => {
+    await withKeyboardFixture(
+      surface === "compact" ? "menubar" : "main",
+      async (page, intents, publish) => {
+        if (surface === "main-search") {
+          await page.getByRole("button", { name: "Search", exact: true }).focus();
+          await page.keyboard.press("Enter");
+          await page.getByRole("textbox").fill("example");
+        }
+        const actions = page.getByRole("button", { name: "Actions" });
+        const source = await actions.elementHandle();
+        if (!source) throw new Error("Expected a row Actions trigger.");
+        await actions.focus();
+        await page.keyboard.press("ArrowUp");
+        await page.getByRole("menuitem", { name: "Uninstall", exact: true }).press("Enter");
+        const confirmation = page.getByRole("dialog", { name: "Uninstall Example?", exact: true });
+        await expect(
+          confirmation.getByRole("button", { name: "Cancel", exact: true })
+        ).toBeFocused();
+        if (arrival === "cancel-busy") {
+          await publish({ homebrewUninstallingItemIDs: ["cask:example"] });
+          await expect
+            .poll(() => source.evaluate((element) => (element as HTMLButtonElement).disabled))
+            .toBe(true);
+          await expect(
+            confirmation.getByRole("button", { name: "Cancel", exact: true })
+          ).toBeFocused();
+          await page.keyboard.press("Enter");
+          expect(await intents()).toEqual([]);
+        } else {
+          await confirmation
+            .getByRole("button", { name: "Uninstall Example", exact: true })
+            .press("Enter");
+          await expect.poll(intents).toEqual(["uninstall"]);
+          await expect(confirmation).toHaveCount(0);
+          if (arrival === "after-cleanup") {
+            await expect(actions).toBeFocused();
+            await publish({ homebrewUninstallingItemIDs: ["cask:example"] });
+          }
+        }
+        await expect(confirmation).toHaveCount(0);
+        await expect(actions).toBeDisabled();
+        if (surface !== "main-search")
+          expect(await source.evaluate((element) => element.isConnected)).toBe(true);
+        const stable = page.getByRole("button", { name: "Search", exact: true });
+        await expect(stable).toBeFocused();
+        await expect(stable).toBeEnabled();
+        await page.keyboard.press("Tab");
+        expect(
+          await page.evaluate(
+            () =>
+              document.activeElement instanceof HTMLButtonElement &&
+              !document.activeElement.disabled
+          )
+        ).toBe(true);
+        await source.dispose();
+      },
+      { standaloneCask, liveUninstall: arrival === "immediate" }
+    );
+  });
+}
