@@ -9,10 +9,13 @@ Intel application packages are no longer supported.
 The CI workflow:
 
 - Uses Node.js 24 and installs dependencies with `npm ci`.
+- Prepares the checksum-pinned upstream Sparkle framework without accessing keys.
 - Lints release scripts with `bash -n`.
 - Typechecks the Electron main/preload/renderer TypeScript.
 - Runs Vitest unit tests.
 - Packages the unsigned Electron app.
+- Exercises authenticated fixture updates and rejected feeds, archives, keys and
+  failed saves with disposable keys and temporary apps; production keys stay local.
 - Runs Playwright Electron smoke tests with initial refresh disabled, temporary
   user data, and an injected test secret provider that never accesses Keychain.
 - Runs a production dependency audit.
@@ -30,9 +33,11 @@ The local equivalent for build and test validation is:
 
 ```bash
 npm ci
+npm run prepare:sparkle
 npm run typecheck
 npm test
 npm run build
+BASELINE_SELF_UPDATE_FIXTURE_TESTS=1 npm test -- ElectronTests/selfUpdateLifecycle.test.ts
 npm run test:electron
 ```
 

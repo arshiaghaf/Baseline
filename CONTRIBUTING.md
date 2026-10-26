@@ -57,6 +57,7 @@ or update-source policy directly inside React components.
 Run these before opening a pull request:
 
 ```bash
+npm run prepare:sparkle
 npm run typecheck
 npm test
 npm run lint

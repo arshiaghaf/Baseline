@@ -3,16 +3,7 @@
 
 import { baseline } from "../ipc";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  AppWindowMac,
-  Beer,
-  CheckCircle2,
-  Download,
-  EyeOff,
-  Search,
-  Server,
-  Settings
-} from "lucide-react";
+import { AppWindowMac, Beer, CheckCircle2, EyeOff, Search, Server, Settings } from "lucide-react";
 import type { BaselineSnapshot, MenuTab } from "../../shared/domain";
 import { deriveSections, type DerivedSections, combinedAvailableCount } from "../helpers/sections";
 import type { ActionConfirmation } from "../types";
@@ -28,6 +19,7 @@ import { SelectedTabContent } from "./DashboardContent";
 import { RefreshFeedback, RefreshControl, UpdateCheckStatus } from "./RefreshFeedback";
 import { selectedTabTitle } from "../helpers/labels";
 import { ActionConfirmationContext, ActionConfirmationOverlay } from "./ActionConfirmation";
+import { SelfUpdateButton } from "./SelfUpdateButton";
 
 export function Dashboard({
   snapshot,
@@ -292,7 +284,7 @@ export function Dashboard({
               </div>
               <div className="topbar-actions">
                 {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
-                  <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
+                  <SelfUpdateToolbarButton />
                 ) : null}
                 <UpdateCheckStatus snapshot={snapshot} />
                 <RefreshControl snapshot={snapshot} />
@@ -460,15 +452,6 @@ export function SidebarBadge({ count }: { count: number }) {
   return count > 0 ? <strong>{count}</strong> : null;
 }
 
-export function SelfUpdateToolbarButton({ releaseURL }: { releaseURL: string }) {
-  return (
-    <button
-      className="toolbar-button self-update-toolbar-button"
-      onClick={() => void baseline.openExternal(releaseURL)}
-      title="New Baseline Update Available"
-      aria-label="New Baseline Update Available"
-    >
-      <Download size={16} strokeWidth={2} />
-    </button>
-  );
+export function SelfUpdateToolbarButton() {
+  return <SelfUpdateButton toolbar />;
 }
