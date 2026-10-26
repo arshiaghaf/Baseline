@@ -3,21 +3,12 @@
 
 import { baseline } from "../ipc";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  AppWindowMac,
-  Beer,
-  CheckCircle2,
-  Download,
-  EyeOff,
-  Search,
-  Server,
-  Settings
-} from "lucide-react";
+import { AppWindowMac, Beer, CheckCircle2, EyeOff, Search, Server, Settings } from "lucide-react";
 import type { BaselineSnapshot, MenuTab } from "../../shared/domain";
 import { deriveSections, type DerivedSections, combinedAvailableCount } from "../helpers/sections";
 import type { ActionConfirmation } from "../types";
 import {
-  clearCompactPopoverControlFocus,
+  focusableElementsIn,
   setElementInert,
   suppressCompactPopoverControlFocus
 } from "../helpers/focus";
@@ -28,6 +19,7 @@ import { SelectedTabContent } from "./DashboardContent";
 import { RefreshFeedback, RefreshControl, UpdateCheckStatus } from "./RefreshFeedback";
 import { selectedTabTitle } from "../helpers/labels";
 import { ActionConfirmationContext, ActionConfirmationOverlay } from "./ActionConfirmation";
+import { SelfUpdateButton } from "./SelfUpdateButton";
 
 export function Dashboard({
   snapshot,
@@ -88,6 +80,9 @@ export function Dashboard({
   );
   const derived = compact && searchActive ? searchDerived : sidebarDerived;
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
+  const actionSurfaceRef = useRef<HTMLDivElement>(null);
+  const keyboardFocusRef = useRef(false);
+  const lastKeyboardControlRef = useRef<HTMLElement | null>(null);
   const compactShellRef = useRef<HTMLElement>(null);
   const appContentRef = useRef<HTMLDivElement>(null);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
@@ -128,14 +123,6 @@ export function Dashboard({
   }, [compact, controlledSearchActive, snapshot.searchText]);
 
   useEffect(() => {
-    if (!compact || searchActive) {
-      return;
-    }
-
-    clearCompactPopoverControlFocus(document.activeElement, compactShellRef.current);
-  }, [compact, searchActive]);
-
-  useEffect(() => {
     if (compact) {
       return undefined;
     }
@@ -168,6 +155,25 @@ export function Dashboard({
     setElementInert(appContent, searchActive);
     return () => setElementInert(appContent, false);
   }, [compact, searchActive]);
+
+  useEffect(() => {
+    const previous = lastKeyboardControlRef.current;
+    const surface = actionSurfaceRef.current;
+    if (!previous || !surface || surface.hasAttribute("inert")) return;
+    if (
+      previous.isConnected &&
+      previous.tabIndex >= 0 &&
+      !previous.matches(":disabled") &&
+      !previous.closest("[hidden], [inert], [aria-hidden='true']")
+    )
+      return;
+    const active = document.activeElement;
+    if (active !== document.body && active !== previous) return;
+    // Recover after confirmation cleanup and the inert update above. Snapshots
+    // can remove a row or leave its focused control mounted but disabled.
+    const scope = surface.querySelector<HTMLElement>("[aria-modal='true']") ?? surface;
+    focusableElementsIn(scope)[0]?.focus();
+  }, [snapshot, actionConfirmation, searchActive]);
 
   useEffect(() => {
     if (compact || searchActive || !shouldRestoreSearchPaletteFocusRef.current) {
@@ -212,9 +218,6 @@ export function Dashboard({
       <main
         ref={compactShellRef}
         className="app-shell compact"
-        onFocusCapture={(event) =>
-          clearCompactPopoverControlFocus(event.target, compactShellRef.current)
-        }
         onMouseDownCapture={(event) =>
           suppressCompactPopoverControlFocus(event.target, compactShellRef.current, event)
         }
@@ -231,16 +234,10 @@ export function Dashboard({
               onClose={() => {
                 if (!confirmationOpenRef.current) setSearchActive(false);
               }}
-              toolbarButtonTabIndex={-1}
             />
             <UpdateCheckStatus snapshot={snapshot} />
-            <RefreshControl snapshot={snapshot} compact={compact} />
-            <button
-              className="toolbar-button"
-              onClick={onOpenSettings}
-              title="Settings"
-              tabIndex={-1}
-            >
+            <RefreshControl snapshot={snapshot} />
+            <button className="toolbar-button" onClick={onOpenSettings} title="Settings">
               <Settings size={16} />
             </button>
           </div>
@@ -287,10 +284,10 @@ export function Dashboard({
               </div>
               <div className="topbar-actions">
                 {snapshot.selfUpdate?.available && snapshot.selfUpdate.releaseURL ? (
-                  <SelfUpdateToolbarButton releaseURL={snapshot.selfUpdate.releaseURL} />
+                  <SelfUpdateToolbarButton />
                 ) : null}
                 <UpdateCheckStatus snapshot={snapshot} />
-                <RefreshControl snapshot={snapshot} compact={compact} />
+                <RefreshControl snapshot={snapshot} />
               </div>
             </div>
           </header>
@@ -313,6 +310,18 @@ export function Dashboard({
   return (
     <ActionConfirmationContext.Provider value={requestActionConfirmation}>
       <div
+        ref={actionSurfaceRef}
+        onKeyDownCapture={() => {
+          keyboardFocusRef.current = true;
+        }}
+        onMouseDownCapture={() => {
+          keyboardFocusRef.current = false;
+          lastKeyboardControlRef.current = null;
+        }}
+        onFocusCapture={(event) => {
+          if (keyboardFocusRef.current && event.target instanceof HTMLElement)
+            lastKeyboardControlRef.current = event.target;
+        }}
         className={actionConfirmation ? "action-surface action-surface-disabled" : "action-surface"}
         aria-hidden={actionConfirmation ? true : undefined}
         inert={Boolean(actionConfirmation)}
@@ -443,15 +452,6 @@ export function SidebarBadge({ count }: { count: number }) {
   return count > 0 ? <strong>{count}</strong> : null;
 }
 
-export function SelfUpdateToolbarButton({ releaseURL }: { releaseURL: string }) {
-  return (
-    <button
-      className="toolbar-button self-update-toolbar-button"
-      onClick={() => void baseline.openExternal(releaseURL)}
-      title="New Baseline Update Available"
-      aria-label="New Baseline Update Available"
-    >
-      <Download size={16} strokeWidth={2} />
-    </button>
-  );
+export function SelfUpdateToolbarButton() {
+  return <SelfUpdateButton toolbar />;
 }

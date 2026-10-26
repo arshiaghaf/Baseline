@@ -34,6 +34,7 @@ import { homebrewCommandToken } from "../src/shared/homebrewIdentity";
 import { trayMenuTemplate } from "../src/main/trayMenu";
 import { configurationBlockedInventory } from "../src/main/homebrewInventoryClient";
 import type { CommandResult } from "../src/main/commandRunner";
+import * as selfOwnership from "../src/main/selfUpdateOwnership";
 
 let tempDirs: string[] = [];
 const fixtureCleanups: (() => Promise<void>)[] = [];
@@ -94,6 +95,132 @@ function caskIndexForSelfUpdatingApp(latestVersion: ReturnType<typeof version>):
 }
 
 describe("update store helpers", () => {
+  it("returns the newer release to an action that joined an older scheduler lookup", async () => {
+    let finishOld!: (value: SelfUpdateRecord) => void;
+    const old = {
+      available: true,
+      currentVersion: version("0.8.0"),
+      latestVersion: version("0.9.0"),
+      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.9.0"
+    };
+    const latest = {
+      ...old,
+      latestVersion: version("0.10.0"),
+      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.10.0"
+    };
+    const lookup = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<SelfUpdateRecord>((resolve) => {
+            finishOld = resolve;
+          })
+      )
+      .mockResolvedValue(latest);
+    const store = await makeStore({
+      currentAppVersion: "0.8.0",
+      clients: { selfUpdate: { lookup } }
+    });
+    const scheduler = store.checkForSelfUpdate();
+    const manual = store.checkForSelfUpdate();
+    const scan = store.refresh();
+    try {
+      await vi.waitFor(() => expect(store.getSnapshot().selfUpdate).toEqual(latest));
+      finishOld(old);
+      expect(await manual).toEqual(latest);
+      expect(await scheduler).toEqual(latest);
+    } finally {
+      finishOld(old);
+      await scan;
+      await scheduler;
+      await manual;
+    }
+  });
+
+  it("serializes fresh ownership reads with mutations and never reuses cached approval", async () => {
+    let finish!: (value: boolean) => void;
+    const verify = vi
+      .spyOn(selfOwnership, "directSelfInstallIsVerified")
+      .mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          })
+      )
+      .mockResolvedValue(false);
+    const store = await makeStore({
+      currentAppIdentity: {
+        bundlePath: "/fixture/Baseline.app",
+        bundleIdentifier: "com.example.fixture"
+      }
+    });
+    const first = store.canUseNativeSelfUpdater();
+    try {
+      expect(store.hasActiveUpdateOperation()).toBe(true);
+      await expect(store.canUseNativeSelfUpdater()).resolves.toBe(false);
+      await expect(store.prepareToQuit()).resolves.toBe(false);
+      finish(true);
+      await expect(first).resolves.toBe(true);
+      expect(store.hasActiveUpdateOperation()).toBe(false);
+      await expect(store.canUseNativeSelfUpdater()).resolves.toBe(false);
+      expect(verify).toHaveBeenCalledTimes(2);
+    } finally {
+      finish(true);
+      await first;
+      verify.mockRestore();
+    }
+  });
+
+  it("can verify ownership while app scanning continues after inventory releases its reservation", async () => {
+    let finish!: (apps: AppRecord[]) => void;
+    const scanApplications = vi.fn(
+      () =>
+        new Promise<AppRecord[]>((resolve) => {
+          finish = resolve;
+        })
+    );
+    const verify = vi.spyOn(selfOwnership, "directSelfInstallIsVerified").mockResolvedValue(true);
+    const store = await makeStore({
+      currentAppIdentity: {
+        bundlePath: "/fixture/Baseline.app",
+        bundleIdentifier: "com.example.fixture"
+      },
+      clients: { scanner: { scanApplications } }
+    });
+    const refresh = store.refresh();
+    try {
+      await vi.waitFor(() => expect(scanApplications).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(store.getSnapshot().isHomebrewCleanupLocked).toBe(false));
+      expect(store.getSnapshot().isRefreshing).toBe(true);
+      await expect(store.canUseNativeSelfUpdater()).resolves.toBe(true);
+    } finally {
+      finish([]);
+      await refresh;
+      verify.mockRestore();
+    }
+  });
+
+  it("rechecks ownership after download and preserves the live store when admission changes", async () => {
+    const verify = vi
+      .spyOn(selfOwnership, "directSelfInstallIsVerified")
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false);
+    const store = await makeStore({
+      currentAppIdentity: {
+        bundlePath: "/fixture/Baseline.app",
+        bundleIdentifier: "com.example.fixture"
+      }
+    });
+    try {
+      await expect(store.canUseNativeSelfUpdater()).resolves.toBe(true);
+      await expect(store.prepareToQuitForSelfUpdate()).resolves.toBe(false);
+      await expect(store.setSearchText("still usable")).resolves.toBeUndefined();
+      expect(verify).toHaveBeenCalledTimes(2);
+    } finally {
+      verify.mockRestore();
+    }
+  });
+
   it("cancels queued mutations before a configuration-blocked refresh releases its reservation", async () => {
     const item = homebrewItem({
       id: "cask:queued",
@@ -1189,6 +1316,87 @@ describe("update store helpers", () => {
     lookup.mockResolvedValueOnce(firstResult!);
     await store.checkForSelfUpdate();
     expect(lookup).toHaveBeenCalledTimes(2);
+  });
+
+  it("publishes self-update results before app scans finish", async () => {
+    let finishScan!: (apps: AppRecord[]) => void;
+    const scanApplications = vi.fn(
+      () =>
+        new Promise<AppRecord[]>((done) => {
+          finishScan = done;
+        })
+    );
+    const result = {
+      available: true,
+      currentVersion: version("0.8.0"),
+      latestVersion: version("0.10.0"),
+      releaseURL: "https://example.com/new"
+    };
+    const store = await makeStore({
+      currentAppVersion: "0.8.0",
+      clients: {
+        scanner: { scanApplications },
+        selfUpdate: { lookup: vi.fn(async () => result) }
+      }
+    });
+    const refreshing = store.refresh();
+    try {
+      await vi.waitFor(() => expect(scanApplications).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(store.getSnapshot().selfUpdate).toEqual(result));
+      expect(store.getSnapshot().isRefreshing).toBe(true);
+    } finally {
+      finishScan([]);
+      await refreshing;
+    }
+  });
+
+  it("cannot overwrite a newer manual self-update check when an earlier scan finishes later", async () => {
+    let finishScan!: (apps: AppRecord[]) => void;
+    let finishOld!: (record: SelfUpdateRecord) => void;
+    const scanApplications = vi.fn(
+      () =>
+        new Promise<AppRecord[]>((done) => {
+          finishScan = done;
+        })
+    );
+    const old = {
+      available: true,
+      currentVersion: version("0.8.0"),
+      latestVersion: version("0.9.0"),
+      releaseURL: "https://example.com/old"
+    };
+    const latest = {
+      ...old,
+      latestVersion: version("0.10.0"),
+      releaseURL: "https://example.com/latest"
+    };
+    const lookup = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<SelfUpdateRecord>((done) => {
+            finishOld = done;
+          })
+      )
+      .mockResolvedValue(latest);
+    const store = await makeStore({
+      currentAppVersion: "0.8.0",
+      clients: { scanner: { scanApplications }, selfUpdate: { lookup } }
+    });
+    const refreshing = store.refresh();
+    try {
+      await vi.waitFor(() => expect(scanApplications).toHaveBeenCalledOnce());
+      await store.checkForSelfUpdate();
+      expect(store.getSnapshot().selfUpdate).toEqual(latest);
+      finishOld(old);
+      finishScan([]);
+      await refreshing;
+      expect(store.getSnapshot().selfUpdate).toEqual(latest);
+    } finally {
+      finishOld(old);
+      finishScan([]);
+      await refreshing;
+    }
   });
 
   it("scans default directories before additional directories", async () => {
@@ -6934,7 +7142,7 @@ describe("verified formula identity and Homebrew pins", () => {
         displayName: previous.name,
         fromVersion: version("0"),
         toVersion: version("1"),
-        updatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+        updatedAt: new Date().toISOString()
       };
       let items = [firstRefreshFailure ? missing : current];
       let formulaReadFailed = false;

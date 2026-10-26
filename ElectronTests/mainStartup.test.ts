@@ -79,10 +79,23 @@ describe("main startup activation", () => {
         }
       }
       const modules: Record<string, unknown> = {
-        electron: { app: electronApp, BrowserWindow: FakeWindow, nativeTheme: {} },
+        electron: {
+          app: electronApp,
+          BrowserWindow: FakeWindow,
+          nativeTheme: {},
+          powerMonitor: new EventEmitter()
+        },
         "node:path": path,
         "node:fs/promises": {},
         "node:url": { pathToFileURL },
+        "./appOpener": {},
+        "./signedSelfUpdater": { SignedSelfUpdater: class {} },
+        "./selfUpdateScheduler": {
+          SelfUpdateScheduler: class {
+            start() {}
+            request() {}
+          }
+        },
         "./permissionGuide": {},
         "./adminAskpassRuntime": {},
         "./homebrewCleanupConfirmation": {},
