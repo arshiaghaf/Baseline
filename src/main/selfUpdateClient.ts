@@ -5,8 +5,8 @@ import type { SelfUpdateRecord } from "../shared/domain";
 import { sanitizeExternalURL } from "../shared/security";
 import { compareVersions, version, type VersionValue } from "../shared/version";
 
-const latestReleaseURL = "https://api.github.com/repos/arshiaghaf/Baseline/releases/latest";
-const fallbackReleasePageURL = "https://github.com/arshiaghaf/Baseline/releases/latest";
+const latestReleaseURL = "https://api.github.com/repos/arshiaghaf/baseline/releases/latest";
+const fallbackReleasePageURL = "https://github.com/arshiaghaf/baseline/releases/latest";
 
 export class SelfUpdateClient {
   constructor(private readonly architecture: string = process.arch) {}
@@ -20,7 +20,7 @@ export class SelfUpdateClient {
     if (this.architecture !== "arm64") {
       return {
         ...unavailableSelfUpdate(currentVersion, checkedAt),
-        releaseURL: "https://github.com/arshiaghaf/Baseline#install"
+        releaseURL: "https://github.com/arshiaghaf/baseline#install"
       };
     }
     try {
@@ -43,7 +43,7 @@ export class SelfUpdateClient {
       const latestVersion = version(latestVersionString(raw));
       const candidateURL = sanitizeExternalURL(raw?.html_url);
       const releaseURL = candidateURL?.startsWith(
-        "https://github.com/arshiaghaf/Baseline/releases/tag/"
+        "https://github.com/arshiaghaf/baseline/releases/tag/"
       )
         ? candidateURL
         : fallbackReleasePageURL;

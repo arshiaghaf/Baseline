@@ -261,7 +261,7 @@ export function SettingsPane({
                       <button
                         className="ghost-button small-button"
                         onClick={() => {
-                          const url = new URL("https://github.com/arshiaghaf/Baseline/issues/new");
+                          const url = new URL("https://github.com/arshiaghaf/baseline/issues/new");
                           url.searchParams.set("template", "bug_report.yml");
                           url.searchParams.set(
                             "logs",

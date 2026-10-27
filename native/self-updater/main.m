@@ -16,7 +16,7 @@
 #define BASELINE_UPDATE_HOST_IDENTIFIER @"com.arshiaghaf.baseline"
 #endif
 #ifndef BASELINE_UPDATE_FEED_URL
-#define BASELINE_UPDATE_FEED_URL @"https://github.com/arshiaghaf/Baseline/releases/latest/download/appcast.xml"
+#define BASELINE_UPDATE_FEED_URL @"https://github.com/arshiaghaf/baseline/releases/latest/download/appcast.xml"
 #endif
 #ifdef BASELINE_SELF_UPDATE_FIXTURE
 #import "selfUpdaterDriver.h"

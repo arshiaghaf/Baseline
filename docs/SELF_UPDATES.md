@@ -16,7 +16,7 @@ dependencies, running tests and building never create keys or publish releases.
 
 The fixed appcast URL is:
 
-`https://github.com/arshiaghaf/Baseline/releases/latest/download/appcast.xml`
+`https://github.com/arshiaghaf/baseline/releases/latest/download/appcast.xml`
 
 Sparkle requires authenticated archives before extraction and authenticated feeds
 and release notes. Signed-feed verification has no expiration fallback. The helper

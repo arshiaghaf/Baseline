@@ -508,7 +508,7 @@ test("routes native tray events with the Dock hidden and protects a running upda
       return new Response(
         JSON.stringify({
           tag_name: app.getVersion(),
-          html_url: "https://github.com/arshiaghaf/Baseline/releases/latest"
+          html_url: "https://github.com/arshiaghaf/baseline/releases/latest"
         }),
         { status: 200 }
       );

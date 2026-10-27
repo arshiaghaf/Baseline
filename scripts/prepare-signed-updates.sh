@@ -43,6 +43,6 @@ mkdir "$destination"
 cp "dist/Baseline-${version}-unsigned-release-notes.md" "$destination/Baseline-${version}-arm64.md"
 node_modules/.cache/baseline-sparkle/2.10.1/upstream/bin/generate_appcast \
   --account "$account" \
-  --download-url-prefix "https://github.com/arshiaghaf/Baseline/releases/download/v${version}/" \
+  --download-url-prefix "https://github.com/arshiaghaf/baseline/releases/download/v${version}/" \
   "$destination"
 echo "Signed update artifacts prepared for review at $destination. Nothing was published."

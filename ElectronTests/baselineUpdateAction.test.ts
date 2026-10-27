@@ -21,7 +21,7 @@ beforeEach(async () => {
     checkForSelfUpdate: vi.fn(async () => ({
       available: true,
       latestVersion: { raw: "v0.10.0" },
-      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.10.0"
+      releaseURL: "https://github.com/arshiaghaf/baseline/releases/tag/v0.10.0"
     })),
     openExternal: vi.fn(async () => true),
     prepareToQuit: vi.fn(async () => true),
@@ -58,7 +58,7 @@ it("opens a freshly checked release rather than the toolbar snapshot destination
     expect.objectContaining({ detail: expect.stringContaining("v0.10.0") })
   );
   expect(store.openExternal).toHaveBeenCalledWith(
-    "https://github.com/arshiaghaf/Baseline/releases/tag/v0.10.0"
+    "https://github.com/arshiaghaf/baseline/releases/tag/v0.10.0"
   );
 });
 
@@ -79,7 +79,7 @@ it("offers a safe manual release route after native failure", async () => {
   await check();
   expect(dialog.showMessageBox).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
   expect(store.openExternal).toHaveBeenCalledWith(
-    "https://github.com/arshiaghaf/Baseline/releases/latest"
+    "https://github.com/arshiaghaf/baseline/releases/latest"
   );
 });
 

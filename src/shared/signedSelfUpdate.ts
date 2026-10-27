@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 export const signedUpdateFeedURL =
-  "https://github.com/arshiaghaf/Baseline/releases/latest/download/appcast.xml";
+  "https://github.com/arshiaghaf/baseline/releases/latest/download/appcast.xml";
 
 export type SignedSelfUpdateConfiguration = {
   enabled: true;

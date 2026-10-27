@@ -940,7 +940,7 @@ describe("ported clients", () => {
         new Response(
           JSON.stringify({
             tag_name: "v0.2.0",
-            html_url: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0"
+            html_url: "https://github.com/arshiaghaf/baseline/releases/tag/v0.2.0"
           }),
           { status: 200 }
         )
@@ -953,7 +953,7 @@ describe("ported clients", () => {
           available,
           currentVersion: version(currentVersion),
           latestVersion: version("v0.2.0"),
-          releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.2.0",
+          releaseURL: "https://github.com/arshiaghaf/baseline/releases/tag/v0.2.0",
           checkedAt: "2026-05-31T12:00:00.000Z"
         });
       } finally {
@@ -977,7 +977,7 @@ describe("self-update read cancellation", () => {
         new Response(
           JSON.stringify({
             tag_name: `v${latest}`,
-            html_url: `https://github.com/arshiaghaf/Baseline/releases/tag/v${latest}`
+            html_url: `https://github.com/arshiaghaf/baseline/releases/tag/v${latest}`
           }),
           { status: 200 }
         )
@@ -987,7 +987,7 @@ describe("self-update read cancellation", () => {
           new SelfUpdateClient("arm64").lookup(version(current), "2026-10-26")
         ).resolves.toMatchObject({ available, latestVersion: version(`v${latest}`) });
         expect(fetchMock).toHaveBeenCalledWith(
-          "https://api.github.com/repos/arshiaghaf/Baseline/releases/latest",
+          "https://api.github.com/repos/arshiaghaf/baseline/releases/latest",
           expect.objectContaining({ cache: "no-store" })
         );
       } finally {
@@ -1043,7 +1043,7 @@ describe("self-update architecture compatibility", () => {
         available: false,
         currentVersion: version("0.1.0"),
         checkedAt: "2026-10-21",
-        releaseURL: "https://github.com/arshiaghaf/Baseline#install"
+        releaseURL: "https://github.com/arshiaghaf/baseline#install"
       });
       expect(fetchMock).not.toHaveBeenCalled();
     } finally {

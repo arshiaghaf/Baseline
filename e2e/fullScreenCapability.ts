@@ -32,7 +32,7 @@ export function nativeFullScreenSkipReason(output: string): string | undefined {
     "Full-screen regression unverified on GitHub macos-26-intel image 20260824.0517.1: " +
     "the independent AppKit probe stalled with healthy native window preconditions. " +
     "Only this test is skipped; successful probes run its full assertions. Evidence: " +
-    "https://github.com/arshiaghaf/Baseline/actions/runs/38087651079/job/114317409490. " +
+    "https://github.com/arshiaghaf/baseline/actions/runs/38087651079/job/114317409490. " +
     "Image report: https://github.com/actions/runner-images/issues/14773."
   );
 }

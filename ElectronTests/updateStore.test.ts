@@ -102,12 +102,12 @@ describe("update store helpers", () => {
       available: true,
       currentVersion: version("0.8.0"),
       latestVersion: version("0.9.0"),
-      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.9.0"
+      releaseURL: "https://github.com/arshiaghaf/baseline/releases/tag/v0.9.0"
     };
     const latest = {
       ...old,
       latestVersion: version("0.10.0"),
-      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/tag/v0.10.0"
+      releaseURL: "https://github.com/arshiaghaf/baseline/releases/tag/v0.10.0"
     };
     const lookup = vi
       .fn()
@@ -2218,7 +2218,7 @@ describe("update store helpers", () => {
       available: true,
       currentVersion,
       latestVersion: version("0.2.0"),
-      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+      releaseURL: "https://github.com/arshiaghaf/baseline/releases/latest",
       checkedAt
     }));
     const store = await makeStore({
@@ -2239,7 +2239,7 @@ describe("update store helpers", () => {
       available: true,
       currentVersion: version("0.1.0"),
       latestVersion: version("0.2.0"),
-      releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest"
+      releaseURL: "https://github.com/arshiaghaf/baseline/releases/latest"
     });
   });
 
@@ -6867,7 +6867,7 @@ async function makeStore({
       lookup: async (currentVersion, checkedAt) => ({
         available: false,
         currentVersion,
-        releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+        releaseURL: "https://github.com/arshiaghaf/baseline/releases/latest",
         checkedAt
       })
     },

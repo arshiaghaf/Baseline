@@ -897,7 +897,7 @@ describe("renderer button parity", () => {
             available: true,
             currentVersion: version("0.1.0"),
             latestVersion: version("0.2.0"),
-            releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+            releaseURL: "https://github.com/arshiaghaf/baseline/releases/latest",
             checkedAt: "2026-04-30T12:00:00.000Z"
           }
         })}

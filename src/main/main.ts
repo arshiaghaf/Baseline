@@ -517,7 +517,7 @@ async function checkForBaselineUpdates(): Promise<void> {
         cancelId: 1
       });
       if (response.response === 0)
-        await store.openExternal("https://github.com/arshiaghaf/Baseline/releases/latest");
+        await store.openExternal("https://github.com/arshiaghaf/baseline/releases/latest");
     }
   } finally {
     selfUpdateCheckOpen = false;

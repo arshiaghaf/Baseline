@@ -96,7 +96,7 @@ async function setup(
         lookup: async (currentVersion: VersionValue, checkedAt: string) => ({
           available: false,
           currentVersion,
-          releaseURL: "https://github.com/arshiaghaf/Baseline/releases/latest",
+          releaseURL: "https://github.com/arshiaghaf/baseline/releases/latest",
           checkedAt
         })
       },

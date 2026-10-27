@@ -16,7 +16,7 @@ export function operationIssueReport(
   outputTail?: string
 ): { text: string; url: string } {
   const urlFor = (text: string) => {
-    const url = new URL("https://github.com/arshiaghaf/Baseline/issues/new");
+    const url = new URL("https://github.com/arshiaghaf/baseline/issues/new");
     url.searchParams.set("template", "bug_report.yml");
     url.searchParams.set("logs", text);
     return url.href;
