@@ -1,0 +1,11 @@
+{
+  "name": "@baseline/image-size-compat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Patched image dimensions with appdmg's callback API",
+  "license": "GPL-3.0-only",
+  "main": "index.cjs",
+  "dependencies": {
+    "image-size-parser": "npm:image-size@2.0.4"
+  }
+}
