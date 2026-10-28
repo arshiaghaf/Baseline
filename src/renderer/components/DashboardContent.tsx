@@ -734,7 +734,12 @@ export function HomebrewSection({
         ) : cardLayout ? (
           <CardGrid sectionClassName="update-grid">
             {items.map((item) => (
-              <HomebrewUpdateCard key={item.id} item={item} snapshot={snapshot} />
+              <HomebrewUpdateCard
+                key={item.id}
+                item={item}
+                snapshot={snapshot}
+                showUpdateHistory={sectionID === "installed"}
+              />
             ))}
           </CardGrid>
         ) : (

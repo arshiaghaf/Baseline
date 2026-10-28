@@ -3661,6 +3661,96 @@ describe("renderer button parity", () => {
     expect(within(installedHomebrew as HTMLElement).getByText("Managed")).toBeInTheDocument();
   });
 
+  it.each(["formula", "cask"] as const)(
+    "shows saved %s version changes and relative time in Installed without inventing history",
+    (kind) => {
+      const item: HomebrewManagedItem = {
+        ...cask,
+        kind,
+        id: `${kind}:example`,
+        installedVersion: version("2.0.0"),
+        latestVersion: version("2.0.0"),
+        isOutdated: false
+      };
+      const history = {
+        id: item.id,
+        itemID: item.id,
+        token: item.token,
+        kind,
+        displayName: item.name,
+        fromVersion: version("1.0.0"),
+        toVersion: version("2.0.0"),
+        updatedAt: new Date().toISOString()
+      };
+      const renderInstalled = (records: BaselineSnapshot["homebrewRecentlyUpdated"]) => (
+        <Dashboard
+          compact={false}
+          onOpenSettings={() => undefined}
+          snapshot={snapshot({
+            selectedTab: "installed",
+            updates: [],
+            homebrewItems: [item],
+            homebrewRecentlyUpdated: records
+          })}
+        />
+      );
+      const { rerender } = render(renderInstalled([history]));
+      const section = () =>
+        screen.getByRole("button", { name: "Installed Homebrew" }).closest("section")!;
+
+      expect(within(section()).getByText("Updated from").closest("p")).toHaveTextContent(
+        "Updated from 1.0.0→2.0.0"
+      );
+      expect(within(section()).getByText("Updated today")).toBeInTheDocument();
+
+      rerender(renderInstalled([{ ...history, fromVersion: version("2.0.0") }]));
+      expect(within(section()).getByText("Version unchanged")).toBeInTheDocument();
+      expect(within(section()).queryByText("→")).not.toBeInTheDocument();
+      expect(within(section()).getByText("2.0.0")).toBeInTheDocument();
+
+      for (const records of [
+        [],
+        [{ ...history, fromVersion: version("") }],
+        [{ ...history, fromVersion: version("latest") }],
+        [{ ...history, toVersion: version("") }],
+        [{ ...history, toVersion: version("3.0.0") }],
+        [{ ...history, kind: kind === "cask" ? ("formula" as const) : ("cask" as const) }]
+      ]) {
+        rerender(renderInstalled(records));
+        expect(within(section()).queryByText("Updated from")).not.toBeInTheDocument();
+        expect(within(section()).queryByText("→")).not.toBeInTheDocument();
+        expect(within(section()).getByText("2.0.0")).toBeInTheDocument();
+      }
+    }
+  );
+
+  it("does not replace an available Homebrew target with saved history", () => {
+    render(
+      <HomebrewUpdateCard
+        item={{ ...cask, pinned: true }}
+        showUpdateHistory
+        snapshot={snapshot({
+          homebrewRecentlyUpdated: [
+            {
+              id: cask.id,
+              itemID: cask.id,
+              token: cask.token,
+              kind: cask.kind,
+              displayName: cask.name,
+              fromVersion: version("0.9.0"),
+              toVersion: cask.installedVersion,
+              updatedAt: new Date().toISOString()
+            }
+          ]
+        })}
+      />
+    );
+    expect(screen.queryByText("Updated from")).not.toBeInTheDocument();
+    expect(screen.getByText("1.0.0")).toBeInTheDocument();
+    expect(screen.getByText("2.0.0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
+  });
+
   it("does not show a Homebrew-backed app twice when another installed variant shares its display name", () => {
     const managedApp: AppRecord = {
       ...app,
