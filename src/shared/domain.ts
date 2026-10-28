@@ -328,6 +328,8 @@ export type HomebrewConfigurationReason = {
 };
 
 export type RefreshState = {
+  /** Current-session app discovery health; never inferred from notices or persisted. */
+  appDiscoveryComplete?: boolean;
   /** Runtime-only failure of refresh computation, independent of operation errors. */
   refreshCheckFailed?: boolean;
   /** Current-session inventory and outdated-check health; never persisted. */

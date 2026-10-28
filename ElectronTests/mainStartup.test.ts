@@ -13,9 +13,13 @@ import { describe, expect, it, vi } from "vitest";
 import { defaultPersistedSnapshot } from "../src/shared/domain";
 
 describe("main startup activation", () => {
-  it.each(["resolve", "reject"])(
-    "reopens the window while startup probes wait and after they %s",
-    async (outcome) => {
+  it.each([
+    { outcome: "resolve", cli: false },
+    { outcome: "reject", cli: false },
+    { outcome: "resolve", cli: true }
+  ])(
+    "reopens while startup probes $outcome, with CLI background $cli",
+    async ({ outcome, cli }) => {
       let release!: () => void;
       let reject!: (error: Error) => void;
       const probe = new Promise<void>((yes, no) => {
@@ -92,6 +96,8 @@ describe("main startup activation", () => {
         "node:fs/promises": {},
         "node:url": { pathToFileURL },
         "./appOpener": {},
+        "./cliService": { CLIService: class {} },
+        "./cliServer": { startCLIServer: async () => async () => undefined },
         "./signedSelfUpdater": { SignedSelfUpdater: class {} },
         "./selfUpdateScheduler": {
           SelfUpdateScheduler: class {
@@ -129,7 +135,7 @@ describe("main startup activation", () => {
           return modules[name];
         },
         __dirname: "/fixture/main",
-        process: { env: {} },
+        process: { env: {}, argv: cli ? ["--baseline-cli-background"] : [] },
         console: { error: errors },
         MAIN_WINDOW_VITE_DEV_SERVER_URL: "https://example.test",
         MAIN_WINDOW_VITE_NAME: "main_window"
@@ -140,6 +146,16 @@ describe("main startup activation", () => {
           transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
           context
         );
+        if (cli) {
+          await startup;
+          expect(windows).toHaveLength(0);
+          expect(schedulerStart).not.toHaveBeenCalled();
+          powerMonitor.emit("resume");
+          expect(schedulerRequest).not.toHaveBeenCalled();
+          electronApp.emit("second-instance", {}, [], "/fixture", { cliBackground: true });
+          expect(windows).toHaveLength(0);
+          electronApp.emit("activate");
+        }
         await starting;
         expect(schedulerStart).toHaveBeenCalledOnce();
         powerMonitor.emit("resume");

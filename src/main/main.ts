@@ -43,6 +43,8 @@ import type { HomebrewDiagnosticsRequest } from "../shared/homebrewDiagnostics";
 import { trayMenuTemplate } from "./trayMenu";
 import { SelfUpdateScheduler } from "./selfUpdateScheduler";
 import { SignedSelfUpdater } from "./signedSelfUpdater";
+import { CLIService } from "./cliService";
+import { startCLIServer } from "./cliServer";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -65,6 +67,10 @@ let selfUpdateCheckOpen = false;
 let selfUpdateScheduler: SelfUpdateScheduler | undefined;
 let signedSelfUpdater: SignedSelfUpdater | undefined;
 let metadata: ReturnType<typeof appMetadata>;
+let cliService: CLIService | undefined;
+let closeCLI: (() => Promise<void>) | undefined;
+let cliBackground = process.argv.includes("--baseline-cli-background");
+let backgroundChecksStarted = false;
 const menuWindowSize = { width: 440, height: 560 };
 
 const trayRefreshIconDataURL =
@@ -77,14 +83,18 @@ if (process.env.BASELINE_USER_DATA_DIR) {
   app.setPath("userData", process.env.BASELINE_USER_DATA_DIR);
 }
 
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const hasSingleInstanceLock = app.requestSingleInstanceLock({ cliBackground });
 
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    if (mainWindow) {
-      showWindow(mainWindow);
+  app.on("second-instance", (_event, _argv, _cwd, data) => {
+    if ((data as { cliBackground?: boolean } | undefined)?.cliBackground === true) return;
+    cliBackground = false;
+    if (store) {
+      syncAppVisibility(store.getSnapshot());
+      showMainWindow("main");
+      startChecksAfterCLILaunch();
     }
   });
 }
@@ -143,12 +153,21 @@ if (hasSingleInstanceLock) {
       verifyOwnership: () => store.canUseNativeSelfUpdater()
     });
     selfUpdateScheduler = new SelfUpdateScheduler(() => store.checkForSelfUpdate());
-    createMainWindow("main");
+    if (!cliBackground) createMainWindow("main");
+    else app.dock?.hide();
     wireStoreEvents();
     wireIpc();
-    void verifyProfileStatsIntegrityAfterLaunch();
+    if (!cliBackground) void verifyProfileStatsIntegrityAfterLaunch();
     syncAppVisibility(store.getSnapshot());
+    cliService = new CLIService(store, metadata.version);
+    closeCLI = await startCLIServer(app.getPath("userData"), cliService).catch((error: unknown) => {
+      console.error("Could not start the local CLI backend:", error);
+      return undefined;
+    });
     app.on("activate", () => {
+      cliBackground = false;
+      syncAppVisibility(store.getSnapshot());
+      startChecksAfterCLILaunch();
       if (process.env.BASELINE_SKIP_INITIAL_REFRESH !== "1") selfUpdateScheduler?.request();
       if (!mainWindow) {
         createMainWindow("main");
@@ -157,12 +176,14 @@ if (hasSingleInstanceLock) {
       }
     });
     powerMonitor.on("resume", () => {
-      if (process.env.BASELINE_SKIP_INITIAL_REFRESH !== "1") selfUpdateScheduler?.request(true);
+      if (!cliBackground && process.env.BASELINE_SKIP_INITIAL_REFRESH !== "1")
+        selfUpdateScheduler?.request(true);
     });
 
-    if (process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
+    if (cliBackground || process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") {
       store.emit("snapshot", store.getSnapshot());
     } else {
+      backgroundChecksStarted = true;
       selfUpdateScheduler.start();
       await store.start().catch((error: unknown) => {
         console.error("Could not start update checks:", error);
@@ -171,8 +192,20 @@ if (hasSingleInstanceLock) {
   });
 }
 
+function startChecksAfterCLILaunch(): void {
+  if (backgroundChecksStarted || process.env.BASELINE_SKIP_INITIAL_REFRESH === "1") return;
+  backgroundChecksStarted = true;
+  void verifyProfileStatsIntegrityAfterLaunch();
+  selfUpdateScheduler?.start();
+  void store.start().catch((error: unknown) => {
+    console.error("Could not start update checks:", error);
+  });
+}
+
 app.on("window-all-closed", () => undefined);
 app.on("will-quit", () => {
+  cliService?.close();
+  void closeCLI?.();
   selfUpdateScheduler?.dispose();
   signedSelfUpdater?.dispose();
 });
@@ -638,6 +671,7 @@ function applyAppearancePreference(preference: AppearancePreference): void {
 }
 
 function syncAppVisibility(snapshot: BaselineSnapshot): void {
+  if (cliBackground) return;
   if (snapshot.showMenuBarIcon) updateTrayStatus(snapshot);
   if (!app.dock) {
     if (!snapshot.showMenuBarIcon) destroyTray();

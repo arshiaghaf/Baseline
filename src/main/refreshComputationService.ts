@@ -68,6 +68,7 @@ export type RefreshPatch = Partial<
     | "appProviderChecks"
     | "appUpdateComparisonBaseline"
     | "isRefreshing"
+    | "appDiscoveryComplete"
     | "homebrewCheckStatus"
     | "homebrewCheckNoticeMessage"
     | "refreshErrorMessage"
@@ -153,6 +154,7 @@ export class RefreshComputationService {
       // and unrelated preference saves, including a later relaunch.
       appUpdateComparisonBaseline: comparisonBaseline,
       isRefreshing: true,
+      appDiscoveryComplete: false,
       homebrewCheckStatus: "checking",
       homebrewCheckNoticeMessage: undefined,
       refreshErrorMessage: undefined,
@@ -244,16 +246,17 @@ export class RefreshComputationService {
             (!previousPaths.has(entry.bundlePath) || retainedPaths.has(entry.bundlePath))
         )
       );
-      const scanNotice =
-        failedRoots.length > 0 || unreadableApps || retainedApps.length > 0
-          ? [
-              failedRoots.length > 0
-                ? "Some app folders could not be fully read."
-                : "Some apps could not be fully read.",
-              ...(retainedApps.length > 0 ? ["Previously found apps have been kept."] : []),
-              "Refresh to retry."
-            ].join(" ")
-          : undefined;
+      const appDiscoveryComplete =
+        failedRoots.length === 0 && !unreadableApps && retainedApps.length === 0;
+      const scanNotice = !appDiscoveryComplete
+        ? [
+            failedRoots.length > 0
+              ? "Some app folders could not be fully read."
+              : "Some apps could not be fully read.",
+            ...(retainedApps.length > 0 ? ["Previously found apps have been kept."] : []),
+            "Refresh to retry."
+          ].join(" ")
+        : undefined;
       const homebrewItems = preservePreviousHomebrewInventoryMembership(
         homebrewInventory.items,
         this.ports.readState().homebrewItems,
@@ -407,6 +410,7 @@ export class RefreshComputationService {
         recentlyUpdated,
         homebrewRecentlyUpdated,
         lastRefreshDate: new Date().toISOString(),
+        appDiscoveryComplete,
         homebrewCheckNoticeMessage,
         lastRefreshNoticeMessage:
           [scanNotice, homebrewCheckNoticeMessage].filter(Boolean).join(" ") || undefined,

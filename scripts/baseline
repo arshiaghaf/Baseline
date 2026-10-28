@@ -1,0 +1,25 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: 2026 Arshia Ghaf
+# SPDX-License-Identifier: GPL-3.0-only
+set -euo pipefail
+source_path="${BASH_SOURCE[0]}"
+links=0
+while [[ -h "$source_path" ]]; do
+  if ((links >= 40)); then
+    echo 'Baseline CLI encountered a symlink loop.' >&2
+    exit 5
+  fi
+  links=$((links + 1))
+  source_dir="$(cd -P "$(/usr/bin/dirname "$source_path")" && pwd)"
+  source_path="$(/usr/bin/readlink "$source_path")"
+  [[ "$source_path" = /* ]] || source_path="$source_dir/$source_path"
+done
+source_dir="$(cd -P "$(/usr/bin/dirname "$source_path")" && pwd)"
+contents="$(cd "$source_dir/../../.." && pwd)"
+if [[ ! -x "$contents/MacOS/Baseline" || ! -f "$contents/Resources/cli/cli.cjs" ]]; then
+  echo 'Baseline CLI could not locate its app. Recreate your symlink after moving or reinstalling Baseline.' >&2
+  exit 5
+fi
+unset NODE_OPTIONS NODE_REPL_EXTERNAL_MODULE
+export ELECTRON_RUN_AS_NODE=1
+exec "$contents/MacOS/Baseline" "$contents/Resources/cli/cli.cjs" "$@"

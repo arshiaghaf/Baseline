@@ -12,6 +12,7 @@ import { buildNumberForAppVersion, validBuildNumber } from "./src/shared/buildNu
 import { localAdHocSigningOptions, verifyPackagedMacSignatures } from "./macSigning.config";
 import { packageAdminAskpass } from "./adminAskpass.config";
 import { packageSelfUpdater, selfUpdateInfo } from "./selfUpdatePackaging.config";
+import { packageCLI } from "./cliPackaging.config";
 
 function macOSMajorVersion(): number | undefined {
   if (process.platform !== "darwin") {
@@ -59,6 +60,7 @@ const config: ForgeConfig = {
     packageAfterCopy: async (...args) => {
       await packageAdminAskpass(...args);
       await packageSelfUpdater(args[1]);
+      await packageCLI(args[1]);
     },
     postPackage: verifyPackagedMacSignatures
   },
