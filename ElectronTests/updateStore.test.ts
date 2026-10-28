@@ -4141,7 +4141,13 @@ describe("update store helpers", () => {
       ]
     };
     const successfulMas = vi.fn(async () => ({ success: true, status: 0, output: "" }));
-    const successfulStore = await makeStore({ persisted, runMasCommand: successfulMas });
+    const successfulStore = await makeStore({
+      persisted,
+      runMasCommand: successfulMas,
+      clients: {
+        scanner: { scanApplications: async () => [{ ...app, localVersion: version("2.0.0") }] }
+      }
+    });
 
     await successfulStore.performAppUpdate(app.id);
 
@@ -4907,7 +4913,10 @@ describe("update store helpers", () => {
           }
         ]
       },
-      profileStatsIntegrity
+      profileStatsIntegrity,
+      clients: {
+        scanner: { scanApplications: async () => [{ ...app, localVersion: version("2.0.0") }] }
+      }
     });
 
     const firstInstall = store.installHomebrewItem({
