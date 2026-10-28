@@ -42,6 +42,14 @@ Baseline scans installed apps from system, user, and custom app directories, the
 
 When the required local tooling is available, Baseline can run update and install actions through Homebrew or `mas`. When that tooling is unavailable, it provides external fallback links.
 
+## Command line
+
+The bundled `baseline` command supports update checks, installed-app and package
+listings, exact-target update plans, controlled Homebrew updates, and explicit
+app handoffs. It offers versioned JSON and operation IDs for scripts and agents,
+using the same backend as the app. See the [CLI guide](docs/CLI.md) for setup,
+commands, exit codes and retry behavior.
+
 ## Features
 
 - Detects updates from App Store lookup, Sparkle and DevMate appcasts, and Homebrew metadata

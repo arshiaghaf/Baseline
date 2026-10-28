@@ -1071,6 +1071,26 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     await this.routeExternalUpdate(appRecord, update);
   }
 
+  /** Explicit CLI handoff only: never runs mas, installs Sparkle, or reports an
+   * opened app/URL as an installed update. The GUI retains its existing routes. */
+  async performCLIAppHandoff(appID: string): Promise<void> {
+    this.requireOpen();
+    const app = this.state.apps.find((candidate) => candidate.id === appID);
+    const update = this.state.updates.find((candidate) => candidate.appID === appID);
+    if (
+      !app ||
+      !update ||
+      this.isSelfApp(app) ||
+      isMacOSManagedApp(app) ||
+      this.state.ignoredIDs.includes(appID)
+    ) {
+      throw new Error("The app handoff is no longer available.");
+    }
+    const action = externalAppUpdateAction(update);
+    if (action.kind !== "app" && (await this.openExternal(action.url))) return;
+    await this.openAppBundle(app.bundlePath);
+  }
+
   async performHomebrewUpdate(itemID: string): Promise<void> {
     this.beginUserMutation();
     await this.homebrewOperations.performHomebrewUpdate(itemID);

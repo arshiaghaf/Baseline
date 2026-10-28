@@ -57,6 +57,7 @@ jobs:
 
       - name: Lint shell scripts
         run: |
+          bash -n scripts/baseline
           bash -n scripts/create-unsigned-dmg.sh
           bash -n scripts/check-release-assets.sh
           bash -n scripts/prepare-unsigned-release.sh

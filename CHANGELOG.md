@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- A bundled command line interface for checks, installed targets, update plans, controlled Homebrew updates, explicit app handoffs, diagnostics, versioned JSON and operation tracking, sharing the app's backend and protections.
+
 ## 0.10.0 — 2026-10-25
 
 ### Highlights
