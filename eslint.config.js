@@ -33,5 +33,10 @@ module.exports = [
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-non-null-assertion": "off"
     }
+  },
+  {
+    files: ["build-support/**/*.cjs"],
+    languageOptions: { sourceType: "commonjs" },
+    rules: { "@typescript-eslint/no-require-imports": "off" }
   }
 ];

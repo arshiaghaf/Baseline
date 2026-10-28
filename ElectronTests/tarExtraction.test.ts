@@ -6,6 +6,7 @@ import { mkdtemp, readFile, readlink, rm, stat, writeFile } from "node:fs/promis
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { brotliCompressSync, gzipSync } from "node:zlib";
 import { Header, Pax, type HeaderData } from "tar";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -62,6 +63,76 @@ async function extractInChild(archive: Buffer, options: { strict: boolean; sync:
 }
 
 describe("tooling tar extraction", () => {
+  it.each(["gzip", "brotli"])(
+    "bounds %s decompression before resource exhaustion",
+    async (kind) => {
+      const dir = await mkdtemp(path.join(os.tmpdir(), "baseline-tar-ratio-"));
+      tempDirs.push(dir);
+      const archive = Buffer.concat([
+        entry({ path: "payload", type: "File" }, "\0".repeat(8 * 1024 * 1024)),
+        Buffer.alloc(1024)
+      ]);
+      const file = path.join(dir, kind === "gzip" ? "fixture.tgz" : "fixture.tar.br");
+      await writeFile(file, kind === "gzip" ? gzipSync(archive) : brotliCompressSync(archive));
+      const child = spawnSync(
+        process.execPath,
+        [
+          "-e",
+          `
+          const assert = require('node:assert/strict');
+          let rejected = false;
+          process.on('beforeExit', () => assert.ok(rejected, 'must reject excessive expansion'));
+          require(process.argv[1]).list({file: process.argv[2]}).then(
+            () => { throw new Error('accepted excessive expansion'); },
+            error => { assert.match(error.message, /max decompression ratio exceeded/); rejected = true; }
+          ).catch(error => { console.error(error); process.exitCode = 1; });
+        `,
+          require.resolve("tar"),
+          file
+        ],
+        { encoding: "utf8", timeout: 10000 }
+      );
+      expect(child.error).toBeUndefined();
+      expect(child.status, child.stderr).toBe(0);
+    }
+  );
+
+  it("filters a deeply nested PAX path without overflowing the stack", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "baseline-tar-selection-"));
+    tempDirs.push(dir);
+    const file = path.join(dir, "fixture.tar");
+    await writeFile(
+      file,
+      Buffer.concat([
+        entry({ path: "placeholder", type: "File" }, "", { path: `${"a/".repeat(20000)}leaf` }),
+        entry({ path: "selected", type: "File" }, "ordinary payload"),
+        Buffer.alloc(1024)
+      ])
+    );
+    const child = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
+          const assert = require('node:assert/strict');
+          const seen = [];
+          let settled = false;
+          process.on('beforeExit', () => assert.ok(settled));
+          require(process.argv[1]).list({
+            file: process.argv[2], onReadEntry: entry => seen.push(entry.path)
+          }, ['selected']).then(() => {
+            assert.deepEqual(seen, ['selected']); settled = true;
+          }).catch(error => { console.error(error); process.exitCode = 1; });
+        `,
+        require.resolve("tar"),
+        file
+      ],
+      { encoding: "utf8", timeout: 10000 }
+    );
+    expect(child.error).toBeUndefined();
+    expect(child.status, child.stderr).toBe(0);
+  });
+
   for (const strict of [false, true]) {
     for (const sync of [false, true]) {
       it(`preserves numeric PAX paths and link targets (strict=${strict}, sync=${sync})`, async () => {

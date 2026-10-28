@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "test:electron": "playwright test",
     "lint": "eslint .",
-    "format": "prettier --check \"src/**/*.{ts,tsx,css}\" \"ElectronTests/**/*.{ts,tsx}\" \"e2e/**/*.ts\" \"*.{json,ts,mts,js,cjs}\""
+    "format": "prettier --check \"src/**/*.{ts,tsx,css}\" \"ElectronTests/**/*.{ts,tsx}\" \"e2e/**/*.ts\" \"*.{json,ts,mts,js,cjs}\" \"build-support/**/*.{json,cjs}\""
   },
   "keywords": [
     "macos",
@@ -37,10 +37,16 @@
   "overrides": {
     "@tootallnate/once": "^3.0.1",
     "extract-zip": "npm:@electron-internal/extract-zip@1.0.5",
-    "tar": "^7.5.18",
+    "tar": "^7.5.22",
     "tmp": "^0.2.6",
     "global-agent": {
-      "roarr": "6.0.0"
+      "roarr": {
+        ".": "6.0.0",
+        "fast-json-stringify": "5.16.1"
+      }
+    },
+    "appdmg": {
+      "image-size": "$image-size"
     }
   },
   "devDependencies": {
@@ -72,6 +78,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.0",
     "vite": "^8.3.5",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.0",
+    "image-size": "file:build-support/image-size-compat"
   }
 }
