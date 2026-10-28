@@ -35,6 +35,7 @@ function human(response: CLIResponse): string {
     lastExplicitCheckAt?: string | null;
     lastRefreshAt?: string | null;
     homebrewCheckStatus?: string;
+    appDiscoveryComplete?: boolean;
     freshForUpdates?: boolean;
     notices?: string[];
   };
@@ -48,7 +49,7 @@ function human(response: CLIResponse): string {
   }
   if (data?.diagnostics) return `${data.diagnostics.split("\n").map(clean).join("\n")}\n`;
   if (data?.version)
-    return `Baseline ${clean(data.version)}\nLast explicit check: ${clean(data.lastExplicitCheckAt ?? "Never")}\nLast scan: ${clean(data.lastRefreshAt ?? "Never")}\nHomebrew check: ${clean(data.homebrewCheckStatus ?? "unknown")}\n${data.freshForUpdates ? "A recent explicit check is available; individual target protections still apply." : "Run baseline check before updating."}\n${(data.notices ?? []).map((notice) => `${clean(notice)}\n`).join("")}`;
+    return `Baseline ${clean(data.version)}\nLast explicit check: ${clean(data.lastExplicitCheckAt ?? "Never")}\nLast scan: ${clean(data.lastRefreshAt ?? "Never")}\nApp discovery: ${data.appDiscoveryComplete ? "complete" : "not complete"}\nHomebrew check: ${clean(data.homebrewCheckStatus ?? "unknown")}\n${data.freshForUpdates ? "A recent explicit check is available; individual target protections still apply." : "Run baseline check before updating."}\n${(data.notices ?? []).map((notice) => `${clean(notice)}\n`).join("")}`;
   return `${JSON.stringify(response.data, null, 2)}\n`;
 }
 

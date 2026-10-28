@@ -711,12 +711,19 @@ it("does not attribute an app-folder warning to Homebrew", async () => {
   });
   await fixture.service.compute(false, 1, {}, new AbortController().signal);
   expect(fixture.state).toMatchObject({
+    appDiscoveryComplete: false,
     homebrewCheckStatus: "complete",
     homebrewCheckNoticeMessage: undefined
   });
   expect(
     fixture.patches.some((patch) => patch.lastRefreshNoticeMessage?.includes("Some app folders"))
   ).toBe(true);
+  fixture.scanner.scanApplications.mockResolvedValue([]);
+  await fixture.service.compute(false, 2, {}, new AbortController().signal);
+  expect(fixture.state).toMatchObject({
+    appDiscoveryComplete: true,
+    lastRefreshNoticeMessage: undefined
+  });
 });
 
 it.each([

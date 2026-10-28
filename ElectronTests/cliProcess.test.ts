@@ -56,6 +56,7 @@ it.each(["timeout", "SIGINT", "SIGTERM"] as const)(
     const snapshot = {
       ...defaultPersistedSnapshot(),
       isRefreshing: false,
+      appDiscoveryComplete: true,
       defaultScanDirectories: []
     } as unknown as BaselineSnapshot;
     let release!: () => void;

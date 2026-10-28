@@ -186,6 +186,7 @@ export class CLIService {
       refreshing: s.isRefreshing,
       refreshFailed: s.refreshCheckFailed === true,
       homebrewCheckStatus: s.homebrewCheckStatus ?? "unknown",
+      appDiscoveryComplete: s.appDiscoveryComplete === true,
       notices: [
         s.refreshErrorMessage,
         s.lastRefreshNoticeMessage,
@@ -199,6 +200,7 @@ export class CLIService {
     const elapsed = this.now() - (this.explicitCheckAtMS ?? NaN);
     return (
       this.explicitCheckAtMS !== undefined &&
+      s.appDiscoveryComplete === true &&
       !s.isRefreshing &&
       !s.refreshCheckFailed &&
       Number.isFinite(elapsed) &&
@@ -374,6 +376,7 @@ export class CLIService {
         const s = this.store.getSnapshot();
         if (
           !s.refreshCheckFailed &&
+          s.appDiscoveryComplete === true &&
           !s.isRefreshing &&
           Date.parse(s.lastRefreshDate ?? "") >= startedAtMS
         )

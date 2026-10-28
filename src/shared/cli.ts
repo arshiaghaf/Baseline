@@ -100,9 +100,8 @@ export function validateCLIRequest(value: unknown): CLIRequest {
   if (
     Object.keys(r).some((key) => !allowed.includes(key)) ||
     r.schemaVersion !== 1 ||
-    !["status", "list", "inspect", "check", "update", "operation", "doctor"].includes(
-      String(r.command)
-    )
+    typeof r.command !== "string" ||
+    !["status", "list", "inspect", "check", "update", "operation", "doctor"].includes(r.command)
   )
     throw new CLIError("invalid-request", "Unsupported command or schema version.", cliExit.usage);
   if (
@@ -133,6 +132,7 @@ export function validateCLIRequest(value: unknown): CLIRequest {
     throw new CLIError("invalid-plan", "Expected the plan ID from a dry run.", cliExit.usage);
   const command = r.command;
   if (
+    (command !== "update" && command !== "inspect" && r.ids !== undefined) ||
     (command === "update" || command === "inspect") !==
       (Array.isArray(r.ids) && r.ids.length > 0) ||
     (command === "inspect" && (r.ids as unknown[]).length !== 1)

@@ -55,6 +55,9 @@ Individual source timestamps remain distinct from overall scan completion.
 `list --json` exposes each target's `checkedAt` and `checkStatus`, plus overall
 refresh health and notices. An unresolved source is not proof that an app is
 current. A successful check does not imply every app has an available update.
+The runtime `appDiscoveryComplete` field reports whether all app discovery
+completed; unreadable folders or app records make the check partial and do not
+establish CLI update freshness. A later complete check restores admission.
 
 `update --dry-run` is read-only. It returns the selected targets, protections,
 effects and a `planID`. For scripts that require the preview to match:

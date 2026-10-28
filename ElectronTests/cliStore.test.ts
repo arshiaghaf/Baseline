@@ -42,6 +42,7 @@ async function storeFixture(persisted = defaultPersistedSnapshot()) {
     }
   };
   const installed = [item];
+  let discoveryComplete = true;
   const command = vi.fn<
     (args: string[]) => Promise<{ success: boolean; status: number; output: string }>
   >(async () => ({ success: true, status: 0, output: "" }));
@@ -66,7 +67,16 @@ async function storeFixture(persisted = defaultPersistedSnapshot()) {
       seal: async (stats) => ({ ...stats, signature: "fixture" })
     },
     clients: {
-      scanner: { scanApplications: async () => persisted.apps },
+      scanner: {
+        scanApplications: async (directories, options) => {
+          if (!discoveryComplete)
+            options?.onRootRead?.({
+              directory: directories[0] ?? "/Applications",
+              complete: false
+            });
+          return persisted.apps;
+        }
+      },
       appStore: { lookupOutcome: async () => ({ type: "completed" }) },
       sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
       homebrew: {
@@ -109,9 +119,49 @@ async function storeFixture(persisted = defaultPersistedSnapshot()) {
     command,
     mas,
     openURL,
-    openApp
+    openApp,
+    setDiscoveryComplete: (complete: boolean) => {
+      discoveryComplete = complete;
+    }
   };
 }
+
+it("reports a cold incomplete app scan as partial even with healthy Homebrew, then recovers", async () => {
+  const f = await storeFixture();
+  f.setDiscoveryComplete(false);
+  expect(
+    await terminal(f.service, await f.service.handle({ schemaVersion: 1, command: "check" }))
+  ).toMatchObject({ state: "partial", exitCode: 1 });
+  expect(f.store.getSnapshot()).toMatchObject({
+    appDiscoveryComplete: false,
+    refreshCheckFailed: false,
+    homebrewCheckStatus: "complete",
+    apps: []
+  });
+  expect(await f.service.handle({ schemaVersion: 1, command: "status" })).toMatchObject({
+    data: { appDiscoveryComplete: false, freshForUpdates: false }
+  });
+  expect(
+    await terminal(
+      f.service,
+      await f.service.handle({
+        schemaVersion: 1,
+        command: "update",
+        ids: ["brew:formula:example-tool"],
+        yes: true
+      })
+    )
+  ).toMatchObject({ results: [{ status: "blocked" }] });
+  expect(f.command.mock.calls.some(([args]) => args[0] === "upgrade")).toBe(false);
+  f.setDiscoveryComplete(true);
+  expect(
+    await terminal(f.service, await f.service.handle({ schemaVersion: 1, command: "check" }))
+  ).toMatchObject({ state: "succeeded", exitCode: 0 });
+  expect(await f.service.handle({ schemaVersion: 1, command: "status" })).toMatchObject({
+    data: { appDiscoveryComplete: true, freshForUpdates: true }
+  });
+  expect(f.store.getSnapshot().lastRefreshNoticeMessage ?? "").not.toContain("Some app folders");
+});
 async function terminal(service: CLIService, response: CLIResponse): Promise<CLIOperation> {
   expect(response.ok, JSON.stringify(response)).toBe(true);
   const id = (response.data as { operation: CLIOperation }).operation.id;

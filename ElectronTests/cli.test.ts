@@ -79,6 +79,7 @@ function fixture() {
     ],
     homebrewItems: [item],
     isRefreshing: false,
+    appDiscoveryComplete: true,
     isHomebrewInstalled: true,
     homebrewCheckStatus: "complete",
     defaultScanDirectories: [],
@@ -190,6 +191,8 @@ describe("CLI admission and output contract", () => {
     [],
     {},
     { schemaVersion: 2, command: "list" },
+    { schemaVersion: 1, command: ["list"] },
+    { schemaVersion: 1, command: "status", ids: [] },
     { schemaVersion: 1, command: "update", ids: ["x"], yes: "true" },
     { schemaVersion: 1, command: "list", shell: "run" },
     { schemaVersion: 1, command: "update", ids: Array.from({ length: 51 }, (_, i) => String(i)) }
