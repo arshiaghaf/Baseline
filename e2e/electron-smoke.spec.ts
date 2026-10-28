@@ -1137,7 +1137,10 @@ test("shows saved Homebrew version history in Installed after relaunch", async (
     );
     await expect(card).toContainText("Updated today");
     await expect(card.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(660, 620));
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]!.setContentSize(660, 620)
+    );
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(660);
     const line = card.locator(".installed-version-history");
     await expect(line).toHaveCSS("white-space", "normal");
     expect(await line.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
