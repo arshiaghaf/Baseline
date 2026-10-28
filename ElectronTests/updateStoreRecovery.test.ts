@@ -282,3 +282,40 @@ describe("Discover install recovery", () => {
     expect(store.getSnapshot().isHomebrewCommandLocked).toBe(false);
   });
 });
+
+it("persists a confirmed single upgrade separately from its later command failure", async () => {
+  const runBrewCommand = vi.fn(async () => ({
+    success: false,
+    status: 1,
+    output: "🍺  /opt/homebrew/Cellar/managed-tool/2.0: 10 files, 1MB\nError: cleanup failed",
+    outputTail: "Error: cleanup failed"
+  }));
+  const { store, persistence } = await fixture({ runBrewCommand });
+  try {
+    await store.refresh(false);
+    await store.performHomebrewUpdate(formula.id);
+    expect(runBrewCommand).toHaveBeenCalledExactlyOnceWith(
+      ["upgrade", "managed-tool"],
+      expect.any(Function),
+      expect.any(Object)
+    );
+    const snapshot = store.getSnapshot();
+    expect(snapshot.profileStats.events).toMatchObject([
+      { type: "homebrewUpdate", targetID: formula.id }
+    ]);
+    expect(snapshot.operationFailures).toMatchObject([
+      { entityID: "homebrew:maintenance", operation: "update" }
+    ]);
+    expect(snapshot.operationFailureDetails["update:homebrew:maintenance"]?.outputTail).toBe(
+      "Error: cleanup failed"
+    );
+    expect(snapshot.homebrewBatchFailedItemIDs).not.toContain(formula.id);
+    expect(snapshot.homebrewUpdatingItemIDs).toEqual([]);
+    expect(snapshot.isHomebrewCommandLocked).toBe(false);
+    const saved = await persistence.load();
+    expect(saved.profileStats.events).toHaveLength(1);
+    expect(saved.operationFailures).toMatchObject([{ entityID: "homebrew:maintenance" }]);
+  } finally {
+    await store.prepareToQuit();
+  }
+});

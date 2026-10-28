@@ -326,17 +326,42 @@ export class HomebrewOperationsService {
         this.applyOperationNotice(statsNotice);
       }
     } else {
-      await this.recordOperationFailure(itemID, "update", commandResult);
+      // Installation may complete before a later command step fails. Preserve
+      // the same explicit completion evidence as batch and cancellation paths.
+      const completed = completedItemIDs.has(itemID);
+      const statsNotice = completed
+        ? await this.recordCompletedUpdateHistory([
+            profileStatsEvent ??
+              homebrewUpdateProfileStatsEvent({ item, occurredAt: new Date().toISOString() })
+          ])
+        : undefined;
+      if (completed) this.clearOperationFailure("homebrew:maintenance", "update");
+      await this.recordOperationFailure(
+        completed ? "homebrew:maintenance" : itemID,
+        "update",
+        commandResult
+      );
       this.patch({
-        refreshErrorMessage: `Homebrew update failed for ${item.name}.`,
-        homebrewBatchFailedItemIDs: addToArray(this.state.homebrewBatchFailedItemIDs, itemID),
+        refreshErrorMessage: completed
+          ? `Homebrew updated ${item.name}, but a later step failed.`
+          : `Homebrew update failed for ${item.name}.`,
+        homebrewBatchFailedItemIDs: completed
+          ? removeFromArray(this.state.homebrewBatchFailedItemIDs, itemID)
+          : addToArray(this.state.homebrewBatchFailedItemIDs, itemID),
+        homebrewUpdatedPendingRefreshItemIDs: completed
+          ? addToArray(this.state.homebrewUpdatedPendingRefreshItemIDs, itemID)
+          : this.state.homebrewUpdatedPendingRefreshItemIDs,
         homebrewBatchProgressByItemID: {
           ...this.state.homebrewBatchProgressByItemID,
           [itemID]: 1
         }
       });
-      this.scheduleHomebrewBatchFailureClear([itemID]);
-      await this.refresh(true);
+      if (!completed) this.scheduleHomebrewBatchFailureClear([itemID]);
+      try {
+        await this.refresh(true);
+      } finally {
+        this.applyOperationNotice(statsNotice);
+      }
     }
   }
 
