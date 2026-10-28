@@ -2,8 +2,6 @@
 
 ## 0.11.0 — 2026-10-28
 
-Requires an Apple Silicon Mac (M1 or later) running macOS 15 or later. Intel Macs are not supported.
-
 ### Highlights
 
 - **Update Baseline without leaving the app.** After one manual installation of 0.11.0, existing 0.10.0 users can use the native update window for future updates on eligible direct installations. ([#367](https://github.com/arshiaghaf/baseline/pull/367))

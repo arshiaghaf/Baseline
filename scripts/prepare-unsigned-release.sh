@@ -117,7 +117,7 @@ if (releaseNoteLines.length === 0) {
 
 fs.writeFileSync(
   outputPath,
-  `Requires an Apple Silicon Mac (M1 or later) running macOS 15 or later. Intel Macs are not supported.\n\n${releaseNoteLines.join("\n")}\n`,
+  `${releaseNoteLines.join("\n")}\n`,
 );
 NODE
 
