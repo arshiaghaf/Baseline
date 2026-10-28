@@ -1,10 +1,50 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 — 2026-10-28
+
+Requires an Apple Silicon Mac (M1 or later) running macOS 15 or later. Intel Macs are not supported.
+
+### Highlights
+
+- **Update Baseline without leaving the app.** After one manual installation of 0.11.0, existing 0.10.0 users can use the native update window for future updates on eligible direct installations. ([#367](https://github.com/arshiaghaf/baseline/pull/367))
+- **Use Baseline from the command line.** The bundled `baseline` command shares the app's checks and protections, with update plans, controlled Homebrew updates, diagnostics, and JSON output. ([#369](https://github.com/arshiaghaf/baseline/pull/369))
+- **Get updates suited to your Mac.** App update checks respect release channels and macOS compatibility while keeping valid download options available. ([#354](https://github.com/arshiaghaf/baseline/pull/354))
+- **Keep update totals accurate.** Homebrew actions that leave software unchanged no longer count as completed updates. ([#360](https://github.com/arshiaghaf/baseline/pull/360))
+- **Keep the menu bar window on screen.** It fits smaller work areas and readjusts when display geometry changes. ([#368](https://github.com/arshiaghaf/baseline/pull/368))
 
 ### Added
 
-- A bundled command line interface for checks, installed targets, update plans, controlled Homebrew updates, explicit app handoffs, diagnostics, versioned JSON and operation tracking, sharing the app's backend and protections.
+- Eligible direct installations use upstream Sparkle's native download, authenticated archive verification, installation, and relaunch flow with a pinned publisher key and fixed HTTPS feed. Existing 0.10.0 clients must manually install 0.11.0 once to enable future in-app updates; ad-hoc bundle signing does not provide Developer ID signing or notarization, and macOS permission checks remain authoritative. ([#367](https://github.com/arshiaghaf/baseline/pull/367))
+- Baseline availability checks run independently of app scans at startup, hourly, on wake, and on activation after inactivity. Toolbar, tray, and Settings actions use fresh checks with shared request ordering so superseded results cannot replace a newer result or manual destination. ([#367](https://github.com/arshiaghaf/baseline/pull/367)), ([#357](https://github.com/arshiaghaf/baseline/pull/357))
+- Publisher signing preparation uses the existing local Keychain key for signed update archives and feeds, with pinned upstream framework preparation and authenticated disposable lifecycle fixtures; no private key is exported to builds or CI. ([#367](https://github.com/arshiaghaf/baseline/pull/367))
+- The bundled `baseline` CLI uses the existing Electron runtime and shared backend through bounded, owner-checked local IPC. It supports status, installed-target lists, inspection, forced checks, dry-run plans, controlled exact-target Homebrew updates, diagnostics, versioned JSON, and operation IDs, with documented setup, exit codes, and capability limits. ([#369](https://github.com/arshiaghaf/baseline/pull/369))
+- CLI updates require explicit confirmation, recent session checks, complete app discovery, current installed identity, and verifiable version increases while respecting pins, ignores, quarantine, locks, GUI work, and self-update ownership. Casks require interactive consent; app updates return `requires-user-action` handoffs. Package installation/removal, global cleanup, direct App Store helper updates, and third-party native Sparkle installation remain outside the CLI. ([#369](https://github.com/arshiaghaf/baseline/pull/369))
+- CLI sessions can start without a window and later activate the GUI. Interruptions stop observation while accepted work continues; retry deduplication retains 128 operations within the current app session, with restart or eviction leaving outcomes unknown. Moving the app requires recreating its optional PATH symlink, and older running copies must be quit before using a CLI-enabled build. ([#369](https://github.com/arshiaghaf/baseline/pull/369))
+
+### Fixed
+
+- Native self-update eligibility checks fresh installed-cask evidence and resolved app paths under the Homebrew reservation, then rechecks before quit. Canonical direct installs remain eligible when Homebrew manages other apps; managed, incomplete, changing, or ambiguous ownership retains the manual route. ([#367](https://github.com/arshiaghaf/baseline/pull/367))
+- Native update installation waits for the real durable-save barrier and cancels staged installation after a save refusal instead of racing an independent helper timeout. A staged authenticated update can still finish after a host crash. ([#367](https://github.com/arshiaghaf/baseline/pull/367))
+- Homebrew app routes and startup uninstall controls require matching canonical installed target paths. Contradictory saved links cannot override fresh evidence, unavailable copies retain ambiguity evidence, and distinct apps in the same cask keep their valid routes. Saved app IDs and Ignore preferences remain compatible. ([#359](https://github.com/arshiaghaf/baseline/pull/359))
+- `version :latest` casks retain Homebrew's greedy outdated result while displaying the app's numeric marketing version and keeping raw package-version evidence separately; obsolete numeric package updates remain suppressed after an app self-update. ([#359](https://github.com/arshiaghaf/baseline/pull/359))
+- Explicit up-to-date, already-installed, skipped-upgrade, and unchanged-download outcomes no longer add history, lifetime totals, or pending Updated state across single, queued, bulk, and app-routed Homebrew updates. Genuine same-version installation completions and mixed-batch successes remain recorded, with inventory reconciliation preserved after history-save failures. ([#360](https://github.com/arshiaghaf/baseline/pull/360))
+- Sparkle release eligibility is filtered before version ranking using explicit channel opt-in, inclusive macOS limits, and platform metadata. Unknown host versions and malformed or blank constraints cannot authorize a constrained release; compatible fallbacks and shared feed reuse remain intact. ([#354](https://github.com/arshiaghaf/baseline/pull/354))
+- Same-version Sparkle enclosure ties prefer a usable download so invalid sibling URLs cannot hide it through shared release notes, while newer notes-only releases retain their existing handoff behavior. ([#354](https://github.com/arshiaghaf/baseline/pull/354))
+- Ignored apps remain searchable through explicitly linked installed Homebrew token, name, or version matches, with Unignore available in main and compact Search while update sections continue to suppress ignored updates. ([#358](https://github.com/arshiaghaf/baseline/pull/358))
+- Recently updated labels and Profile day counts use local calendar dates across midnight and daylight-saving transitions, preserving invalid-date fallbacks and future-date clamping. ([#358](https://github.com/arshiaghaf/baseline/pull/358))
+- Required app metadata failures are isolated to the unreadable entry so healthy siblings continue scanning and only the affected entry retains prior evidence. Directory enumeration failures retain root-wide handling, and caller cancellation still stops scanning. ([#355](https://github.com/arshiaghaf/baseline/pull/355))
+- Scanning recognizes mixed-case app package suffixes in directories, aliases, and wrapped iOS apps, plus Safari extension metadata, while keeping nested helpers inside their containing app and consistently removing suffixes from fallback names. ([#355](https://github.com/arshiaghaf/baseline/pull/355))
+- Failed Open actions and app-opening update fallbacks show bounded visible error feedback for rejected launches and nonempty operating-system failure results. Successful retries clear only the matching notice without exposing raw OS details or removing unrelated errors. ([#355](https://github.com/arshiaghaf/baseline/pull/355))
+- Outstanding source-search and metadata freshness intent carries into replacement refreshes, including folder changes and cleanup reconciliation; completed requests no longer strengthen later scans. ([#357](https://github.com/arshiaghaf/baseline/pull/357))
+- Activation is registered before startup tool probes finish, and rejected probes cannot make the main window unreachable. ([#357](https://github.com/arshiaghaf/baseline/pull/357))
+- Unrelated or unchanged preference saves preserve automatic-refresh deadlines; only enablement or normalized interval changes reset the timer. ([#357](https://github.com/arshiaghaf/baseline/pull/357))
+- The main window starts at 1042 × 759 logical points while retaining native resizing and the existing minimum size, without adding geometry persistence or changing fullscreen policy. ([#368](https://github.com/arshiaghaf/baseline/pull/368))
+- Dashboard and Settings content, headings, and notices share an 840px cap beside the unchanged sidebar, retaining three columns down to a 720px container and existing narrow-window behavior, typography, and controls. ([#368](https://github.com/arshiaghaf/baseline/pull/368))
+- The compact menu bar window fits all work-area edges, shrinks on small displays, refits after display changes, and restores its preferred 440 × 560 size when space returns. ([#368](https://github.com/arshiaghaf/baseline/pull/368))
+- Vulnerable deepmerge is removed from Electron download logging through a scoped serializer override while preserving proxy behavior and TLS option forwarding. ([#370](https://github.com/arshiaghaf/baseline/pull/370))
+- Updated tar handling bounds compressed archive expansion and long-path member-selection recursion. ([#370](https://github.com/arshiaghaf/baseline/pull/370))
+- Updated IPv6 parsing prevents adversarial zone strings from stalling build tooling. ([#370](https://github.com/arshiaghaf/baseline/pull/370))
+- DMG generation uses a patched image-size parser through a script-free compatibility adapter, rejecting malformed ICNS and invalid dimensions while preserving both packaging paths and layout without broader Forge or signing API upgrades. ([#370](https://github.com/arshiaghaf/baseline/pull/370))
 
 ## 0.10.0 — 2026-10-25
 
