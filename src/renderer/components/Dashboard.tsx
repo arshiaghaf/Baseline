@@ -20,6 +20,7 @@ import { RefreshFeedback, RefreshControl, UpdateCheckStatus } from "./RefreshFee
 import { selectedTabTitle } from "../helpers/labels";
 import { ActionConfirmationContext, ActionConfirmationOverlay } from "./ActionConfirmation";
 import { SelfUpdateButton } from "./SelfUpdateButton";
+import { dismissReleaseNotesPreviews } from "./ReleaseNotesPreview";
 
 export function Dashboard({
   snapshot,
@@ -80,6 +81,9 @@ export function Dashboard({
   );
   const derived = compact && searchActive ? searchDerived : sidebarDerived;
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation>();
+  useEffect(() => {
+    dismissReleaseNotesPreviews();
+  }, [selectedTab, searchActive, actionConfirmation]);
   const actionSurfaceRef = useRef<HTMLDivElement>(null);
   const keyboardFocusRef = useRef(false);
   const lastKeyboardControlRef = useRef<HTMLElement | null>(null);

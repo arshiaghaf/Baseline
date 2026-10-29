@@ -104,14 +104,34 @@ export function trapFocusWithin(
   const floatingMenus = includeSearchMenus
     ? Array.from(document.querySelectorAll<HTMLElement>(searchPaletteFloatingRowMenuSelector))
     : [];
-  let hasFloatingMenu = false;
+  let hasFloatingContent = false;
   for (const menu of floatingMenus) {
     const triggerIndex = focusableElements.findIndex(
       (element) => element.getAttribute("aria-controls") === menu.id
     );
     if (triggerIndex < 0) continue;
     focusableElements.splice(triggerIndex + 1, 0, ...focusableElementsIn(menu));
-    hasFloatingMenu = true;
+    hasFloatingContent = true;
+  }
+  if (includeSearchMenus) {
+    for (const { owner, panel } of ownedReleaseNotesPanels(container)) {
+      const triggerIndex = focusableElements.findIndex(
+        (element) => element.getAttribute("aria-controls") === panel.id
+      );
+      // A confirmed missing result removes its trigger while the panel remains
+      // readable. Keep its controls at the retained owning row's position.
+      const followingIndex = focusableElements.findIndex(
+        (element) => compareDocumentOrder(owner, element) < 0 && !owner.contains(element)
+      );
+      const insertionIndex =
+        triggerIndex >= 0
+          ? triggerIndex + 1
+          : followingIndex >= 0
+            ? followingIndex
+            : focusableElements.length;
+      focusableElements.splice(insertionIndex, 0, ...focusableElementsIn(panel));
+      hasFloatingContent = true;
+    }
   }
   if (focusableElements.length === 0) {
     event.preventDefault();
@@ -124,7 +144,7 @@ export function trapFocusWithin(
   const activeElement = document.activeElement;
   // A portal has a different DOM tab order. Keep it next to its owning trigger,
   // and handle traversal explicitly while it is part of this modal scope.
-  if (hasFloatingMenu) {
+  if (hasFloatingContent) {
     event.preventDefault();
     const index = focusableElements.indexOf(activeElement as HTMLElement);
     const next =
@@ -153,9 +173,24 @@ export function trapFocusWithin(
 export const searchPaletteFloatingRowMenuSelector =
   "[data-search-palette-floating-row-menu='true'][role='menu']";
 
+function ownedReleaseNotesPanels(container: HTMLElement | null) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll<HTMLElement>("[data-release-notes-dialog]"))
+    .map((owner) => ({
+      owner,
+      panel: document.getElementById(owner.dataset.releaseNotesDialog ?? "")
+    }))
+    .filter(
+      (entry): entry is { owner: HTMLElement; panel: HTMLElement } =>
+        entry.panel instanceof HTMLElement &&
+        entry.panel.matches(".release-notes-panel[role='dialog']")
+    );
+}
+
 export function hasOpenNestedMenu(container: HTMLElement | null): boolean {
   return Boolean(
     container?.querySelector("[role='menu']") ||
-    document.querySelector(searchPaletteFloatingRowMenuSelector)
+    document.querySelector(searchPaletteFloatingRowMenuSelector) ||
+    ownedReleaseNotesPanels(container).length > 0
   );
 }
