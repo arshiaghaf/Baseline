@@ -924,3 +924,90 @@ describe("HomebrewOperationsService", () => {
     }
   });
 });
+
+describe("single Homebrew completion followed by command failure", () => {
+  it.each([
+    ["formula", "single", true, true],
+    ["cask", "single", false, true],
+    ["formula", "queued", false, true],
+    ["cask", "queued", true, true],
+    ["formula", "single", true, false],
+    ["cask", "queued", false, false]
+  ] as const)(
+    "preserves only proven %s completion (%s, streamed %s, completed %s)",
+    async (kind, scenario, streamed, completed) => {
+      const item = formula({
+        id: `${kind}:example`,
+        kind,
+        latestVersion: version("1.0"),
+        ...(kind === "cask"
+          ? { formulaIdentity: undefined, fullToken: "example", tap: "homebrew/cask" }
+          : {})
+      });
+      const completion =
+        kind === "cask"
+          ? "Cask example was successfully installed!"
+          : "🍺  /opt/homebrew/Cellar/example/1.0: 10 files, 1MB";
+      const output = `${completed ? completion + "\n" : ""}Error: later step failed`;
+      const result: CommandResult = { success: false, status: 1, output: streamed ? "" : output };
+      const h = harness(async (_args, onLine) => {
+        if (streamed) output.split("\n").forEach((line) => onLine?.(line));
+        return result;
+      });
+      h.setState({ homebrewItems: [item] });
+      try {
+        if (scenario === "queued") h.lock.beginRefresh(18);
+        const pending = h.service.performHomebrewUpdate(item.id);
+        if (scenario === "queued") {
+          expect(h.runCommand).not.toHaveBeenCalled();
+          h.lock.endRefresh(18);
+          await h.service.processHomebrewUpdateQueue();
+        }
+        await pending;
+        expect(h.runCommand).toHaveBeenCalledOnce();
+        expect(h.stats).toHaveBeenCalledTimes(completed ? 1 : 0);
+        expect(h.failure).toHaveBeenCalledWith(
+          completed ? "homebrew:maintenance" : item.id,
+          "update",
+          expect.objectContaining({ status: 1 })
+        );
+        expect(h.state.homebrewBatchFailedItemIDs).toEqual(completed ? [] : [item.id]);
+        expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual(completed ? [item.id] : []);
+        expect(h.refresh).toHaveBeenCalledOnce();
+        expect(h.lock.activeCommandCount).toBe(0);
+      } finally {
+        h.service.dispose();
+      }
+    }
+  );
+
+  it.each(["history", "refresh", "both"] as const)(
+    "still settles confirmed completion when %s bookkeeping fails",
+    async (failure) => {
+      const h = harness(async () => ({
+        success: false,
+        status: 1,
+        output: "🍺  /opt/homebrew/Cellar/example/1.0: 10 files, 1MB\nError: cleanup failed"
+      }));
+      if (failure !== "refresh")
+        h.stats.mockRejectedValue(new Error("fixture history unavailable"));
+      if (failure !== "history")
+        h.refresh.mockRejectedValue(new Error("fixture refresh unavailable"));
+      try {
+        const pending = h.service.performHomebrewUpdate("formula:example");
+        if (failure === "history") await pending;
+        else await expect(pending).rejects.toThrow("fixture refresh unavailable");
+        expect(h.stats).toHaveBeenCalledOnce();
+        expect(h.refresh).toHaveBeenCalledOnce();
+        expect(h.state.homebrewUpdatedPendingRefreshItemIDs).toEqual(["formula:example"]);
+        expect(h.state.homebrewBatchFailedItemIDs).toEqual([]);
+        expect(h.state.homebrewUpdatingItemIDs).toEqual([]);
+        expect(h.lock.activeCommandCount).toBe(0);
+        if (failure !== "refresh")
+          expect(h.state.lastRefreshNoticeMessage).toContain("could not be saved to history");
+      } finally {
+        h.service.dispose();
+      }
+    }
+  );
+});
