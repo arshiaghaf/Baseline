@@ -14,10 +14,13 @@ import type { SnapshotProgressEvent } from "./domain";
 import type { AppMetadata } from "./appMetadata";
 import type { HomebrewDiagnosticsRequest, HomebrewDiagnosticsReport } from "./homebrewDiagnostics";
 import type { HomebrewInstalledContext } from "./homebrewInstalledContext";
+import type { ReleaseNotesRequest, ReleaseNotesResult } from "./releaseNotes";
 
 export const ipcChannels = {
   permissionGuide: "baseline:permissionGuide",
   getSnapshot: "baseline:getSnapshot",
+  getReleaseNotes: "baseline:getReleaseNotes",
+  cancelReleaseNotes: "baseline:cancelReleaseNotes",
   getAppMetadata: "baseline:getAppMetadata",
   checkForBaselineUpdates: "baseline:checkForBaselineUpdates",
   getDiagnostics: "baseline:getDiagnostics",
@@ -66,6 +69,8 @@ export type PreferencePatch = Partial<{
 export type BaselineAPI = {
   permissionGuide(action: PermissionGuideAction): Promise<PermissionGuideInfo>;
   getSnapshot(): Promise<BaselineSnapshot>;
+  getReleaseNotes(request: ReleaseNotesRequest): Promise<ReleaseNotesResult>;
+  cancelReleaseNotes(requestID: string): Promise<void>;
   getAppMetadata(): Promise<AppMetadata>;
   checkForBaselineUpdates(): Promise<void>;
   getDiagnostics(): Promise<string>;

@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "fast-xml-parser": "^5.11.2",
+    "htmlparser2": "12.0.0",
     "lucide-react": "^1.61.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
@@ -70,6 +71,7 @@
     "electron": "^44.9.2",
     "electron-installer-dmg": "^5.0.1",
     "eslint": "^10.13.0",
+    "image-size": "file:build-support/image-size-compat",
     "jsdom": "^30.1.3",
     "postcss": "^8.5.31",
     "prettier": "^3.9.10",
@@ -78,7 +80,6 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.0",
     "vite": "^8.3.5",
-    "vitest": "^5.0.0",
-    "image-size": "file:build-support/image-size-compat"
+    "vitest": "^5.0.0"
   }
 }

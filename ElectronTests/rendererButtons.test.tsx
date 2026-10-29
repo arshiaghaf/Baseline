@@ -107,6 +107,12 @@ function installBaselineMock() {
     checkForBaselineUpdates: vi.fn(async () => undefined),
     permissionGuide: vi.fn(async () => ({})),
     getSnapshot: vi.fn(),
+    getReleaseNotes: vi.fn(async () => ({
+      status: "unavailable" as const,
+      title: "Release notes",
+      version: ""
+    })),
+    cancelReleaseNotes: vi.fn(async () => undefined),
     getAppMetadata: vi.fn(() =>
       Promise.resolve({
         version: "0.1.0",

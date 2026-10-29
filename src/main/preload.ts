@@ -17,6 +17,8 @@ const api: BaselineAPI = {
     return () => ipcRenderer.off(ipcChannels.snapshotProgress, listener);
   },
   getSnapshot: () => ipcRenderer.invoke(ipcChannels.getSnapshot),
+  getReleaseNotes: (request) => ipcRenderer.invoke(ipcChannels.getReleaseNotes, request),
+  cancelReleaseNotes: (requestID) => ipcRenderer.invoke(ipcChannels.cancelReleaseNotes, requestID),
   getAppMetadata: () => ipcRenderer.invoke(ipcChannels.getAppMetadata),
   checkForBaselineUpdates: () => ipcRenderer.invoke(ipcChannels.checkForBaselineUpdates),
   getDiagnostics: () => ipcRenderer.invoke(ipcChannels.getDiagnostics),

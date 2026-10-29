@@ -334,6 +334,8 @@ export async function lookupAppUpdates(
             updateURL: outcome.value.updateURL,
             updateURLKind: outcome.value.updateURLKind,
             releaseNotesURL: outcome.value.releaseNotesURL,
+            releaseNotesContent: outcome.value.releaseNotesContent,
+            releaseNotesFormat: outcome.value.releaseNotesFormat,
             releaseDate: outcome.value.releaseDate,
             checkedAt: outcome.checkedAt ?? input.now
           };
