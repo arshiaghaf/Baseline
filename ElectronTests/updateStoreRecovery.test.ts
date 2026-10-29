@@ -306,7 +306,7 @@ it("persists a confirmed single upgrade separately from its later command failur
     expect(snapshot.operationFailures).toMatchObject([
       { entityID: "homebrew:maintenance", operation: "update" }
     ]);
-    expect(snapshot.operationFailureDetails["update:homebrew:maintenance"]?.outputTail).toBe(
+    expect(snapshot.operationFailureDetails?.["update:homebrew:maintenance"]?.outputTail).toBe(
       "Error: cleanup failed"
     );
     expect(snapshot.homebrewBatchFailedItemIDs).not.toContain(formula.id);
