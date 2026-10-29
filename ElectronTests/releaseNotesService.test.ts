@@ -392,7 +392,7 @@ describe("release notes service", () => {
       }
     };
     const feed =
-      "<rss><channel><item><sparkle:shortVersionString>3.0</sparkle:shortVersionString><sparkle:version>30</sparkle:version><description><![CDATA[<p>Too new</p>]]></description></item><item><sparkle:shortVersionString>2.0</sparkle:shortVersionString><sparkle:version>20</sparkle:version><description><![CDATA[<p>Correct release</p>]]></description></item></channel></rss>";
+      "<rss><channel><item><sparkle:shortVersionString>3.0</sparkle:shortVersionString><sparkle:version>30</sparkle:version><description><![CDATA[<p>Too new</p>]]></description></item><item><sparkle:shortVersionString>2.0 (20)</sparkle:shortVersionString><sparkle:version>20</sparkle:version><description><![CDATA[<p>Correct release</p>]]></description></item></channel></rss>";
     const fetch = vi.fn<ReleaseNotesFetcher>(async (url) =>
       response(url, feed, 200, "application/rss+xml")
     );
@@ -411,6 +411,25 @@ describe("release notes service", () => {
 });
 
 describe("source fidelity", () => {
+  it.each([
+    { marketing: "2.0 (20)", machine: "20", requestedBuild: undefined, matches: true },
+    { marketing: "2.0 (20)", machine: "20", requestedBuild: "20", matches: true },
+    { marketing: "2.0 (20)", machine: "20", requestedBuild: "21", matches: false },
+    { marketing: "2.0 (21)", machine: "20", requestedBuild: undefined, matches: false },
+    { marketing: "2.0 (20)", machine: undefined, requestedBuild: undefined, matches: false }
+  ])(
+    "normalizes only corroborated marketing annotations and retains exact build matching: %j",
+    ({ marketing, machine, requestedBuild, matches }) => {
+      const xml = `<rss><channel><item><sparkle:shortVersionString>${marketing}</sparkle:shortVersionString>${machine ? `<sparkle:version>${machine}</sparkle:version>` : ""}<description>Exact release notes</description></item></channel></rss>`;
+      const result = exactSparkleReleaseNotes(Buffer.from(xml), "2.0", requestedBuild, {
+        platform: "darwin",
+        systemVersion: "26.0"
+      });
+      if (matches) expect(result).toMatchObject({ content: "Exact release notes" });
+      else expect(result).toBeUndefined();
+    }
+  );
+
   it("preserves inline Sparkle formats without promoting notes-only items into update actions", () => {
     const xml =
       '<rss><channel><item><sparkle:version>2.0</sparkle:version><description sparkle:format="plain-text">New &amp; improved</description></item></channel></rss>';

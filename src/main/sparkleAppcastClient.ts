@@ -363,7 +363,10 @@ export function exactSparkleReleaseNotes(
   const matches = entries.filter(
     (item) =>
       isEligible(item, host, {}) &&
-      (item.shortVersionString ?? item.buildVersion) === targetVersion &&
+      sparkleMarketingVersion(
+        version(item.shortVersionString ?? item.buildVersion ?? ""),
+        item.buildVersion ? version(item.buildVersion) : undefined
+      ).raw === targetVersion &&
       (targetBuildVersion === undefined || item.buildVersion === targetBuildVersion)
   );
   // Distinct machine builds sharing one marketing version are ambiguous without a build target.
