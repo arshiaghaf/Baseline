@@ -70,6 +70,8 @@ export type SparkleLookupResult = {
   // Provider metadata identifies an installer/archive enclosure, independently of its URL shape.
   updateURLKind?: "download";
   releaseNotesURL?: string;
+  releaseNotesContent?: string;
+  releaseNotesFormat?: import("./releaseNotes").ReleaseNotesFormat;
   releaseDate?: string;
 };
 
@@ -137,6 +139,8 @@ export type UpdateRecord = {
   homebrewToken?: string;
   releaseNotesURL?: string;
   releaseNotesSummary?: string;
+  releaseNotesContent?: string;
+  releaseNotesFormat?: import("./releaseNotes").ReleaseNotesFormat;
   releaseDate?: string;
   checkedAt: string;
 };

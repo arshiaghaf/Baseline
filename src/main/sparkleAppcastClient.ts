@@ -8,12 +8,15 @@ import { compareVersions, isVersionEmpty, type VersionValue, version } from "../
 import type { LookupOutcome } from "./appStoreLookupClient";
 import { LookupCache, type LookupRequestOptions } from "./lookupCache";
 import { isSparkleVersionNewer, sparkleMarketingVersion } from "../shared/sparkleVersion";
+import type { ReleaseNotesFormat } from "../shared/releaseNotes";
 
 type AppcastItem = {
   shortVersionString?: string;
   buildVersion?: string;
   enclosureURL?: string;
   releaseNotesURL?: string;
+  releaseNotesContent?: string;
+  releaseNotesFormat?: ReleaseNotesFormat;
   publicationDate?: string;
   channel?: string;
   minimumSystemVersion?: string;
@@ -212,6 +215,12 @@ function selectUpdate(
     updateURL: best.updateURL,
     updateURLKind: best.updateURL ? "download" : undefined,
     releaseNotesURL: best.releaseNotesURL,
+    ...(best.item.releaseNotesContent
+      ? {
+          releaseNotesContent: best.item.releaseNotesContent,
+          releaseNotesFormat: best.item.releaseNotesFormat
+        }
+      : {}),
     releaseDate: best.item.publicationDate
   };
 }
@@ -316,6 +325,7 @@ function normalizeItem(item: any): AppcastItem[] {
       enclosureURL: enclosure?.["@_url"],
       releaseNotesURL:
         stringText(item?.["sparkle:releaseNotesLink"]) ?? stringText(item?.releaseNotesLink),
+      ...inlineReleaseNotes(item),
       publicationDate: stringText(item?.pubDate),
       channel,
       minimumSystemVersion,
@@ -326,6 +336,49 @@ function normalizeItem(item: any): AppcastItem[] {
       )
     };
   });
+}
+
+function inlineReleaseNotes(
+  item: any
+): Pick<AppcastItem, "releaseNotesContent" | "releaseNotesFormat"> {
+  const description = item?.description;
+  const format = description?.["@_sparkle:format"] ?? "html";
+  const content = stringText(description);
+  return content && content.length <= 64_000 && ["html", "plain-text", "markdown"].includes(format)
+    ? { releaseNotesContent: content, releaseNotesFormat: format }
+    : {};
+}
+
+/** Note lookup is exact and read-only; it never creates an actionable update candidate. */
+export function exactSparkleReleaseNotes(
+  data: Buffer,
+  targetVersion: string,
+  targetBuildVersion?: string,
+  host: SparkleHost = { platform: process.platform, systemVersion: process.getSystemVersion?.() }
+): { content?: string; format?: ReleaseNotesFormat; url?: string } | undefined {
+  if (data.byteLength > byteLimits.sparkleAppcastMaxBytes) return undefined;
+  const parsed = parser.parse(data.toString("utf8"));
+  const raw = parsed?.rss?.channel?.item;
+  const entries = (Array.isArray(raw) ? raw : raw ? [raw] : []).flatMap(normalizeItem);
+  const matches = entries.filter(
+    (item) =>
+      isEligible(item, host, {}) &&
+      sparkleMarketingVersion(
+        version(item.shortVersionString ?? item.buildVersion ?? ""),
+        item.buildVersion ? version(item.buildVersion) : undefined
+      ).raw === targetVersion &&
+      (targetBuildVersion === undefined || item.buildVersion === targetBuildVersion)
+  );
+  // Distinct machine builds sharing one marketing version are ambiguous without a build target.
+  if (new Set(matches.map((item) => item.buildVersion)).size > 1) return undefined;
+  const match = matches[0];
+  return match
+    ? {
+        content: match.releaseNotesContent,
+        format: match.releaseNotesFormat,
+        url: sanitizeExternalURL(match.releaseNotesURL)
+      }
+    : undefined;
 }
 
 function firstVersionText(...values: unknown[]): string | undefined {

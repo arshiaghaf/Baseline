@@ -45,6 +45,8 @@ import { SelfUpdateScheduler } from "./selfUpdateScheduler";
 import { SignedSelfUpdater } from "./signedSelfUpdater";
 import { CLIService } from "./cliService";
 import { startCLIServer } from "./cliServer";
+import { ReleaseNotesService } from "./releaseNotesService";
+import { ReleaseNotesRequests } from "./releaseNotesRequests";
 
 declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
 declare const MAIN_WINDOW_VITE_NAME: string;
@@ -57,6 +59,9 @@ let tray: Tray | undefined;
 let trayBaseIcon: Electron.NativeImage | undefined;
 let trayRefreshIcon: Electron.NativeImage | undefined;
 let store: UpdateStore;
+const releaseNotesRequests = new ReleaseNotesRequests(
+  new ReleaseNotesService({ getSnapshot: () => store.getSnapshot() })
+);
 let isQuitting = false;
 let quitTask: Promise<void> | undefined;
 let quitNoticeOpen = false;
@@ -291,6 +296,8 @@ function createMainWindow(route: "main" | "settings"): BrowserWindow {
   });
 
   mainWindow.on("close", handleMainWindowClose);
+  const notesSenderID = mainWindow.webContents.id;
+  mainWindow.webContents.once("destroyed", () => releaseNotesRequests.close(notesSenderID));
   mainWindow.on("closed", () => {
     mainWindow = undefined;
     mainWindowRoute = undefined;
@@ -435,6 +442,8 @@ function createMenuWindow(): BrowserWindow {
   });
 
   menuWindow.on("blur", hideMenuWindowForNativeDismissal);
+  const notesSenderID = menuWindow.webContents.id;
+  menuWindow.webContents.once("destroyed", () => releaseNotesRequests.close(notesSenderID));
   screen.on("display-metrics-changed", fitMenuWindow);
   screen.on("display-removed", fitMenuWindow);
   menuWindow.on("closed", () => {
@@ -748,6 +757,10 @@ function wireIpc(): void {
     })
   );
   handle("getSnapshot", () => store.getSnapshot());
+  handle("getReleaseNotes", (event, request) => releaseNotesRequests.get(event.sender.id, request));
+  handle("cancelReleaseNotes", (event, requestID) =>
+    releaseNotesRequests.cancel(event.sender.id, requestID)
+  );
   handle("getAppMetadata", () => metadata);
   handle("checkForBaselineUpdates", () => checkForBaselineUpdates());
   handle(

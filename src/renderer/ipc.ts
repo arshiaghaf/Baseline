@@ -15,6 +15,8 @@ export const baseline: Pick<
   | "checkForBaselineUpdates"
   | "permissionGuide"
   | "getSnapshot"
+  | "getReleaseNotes"
+  | "cancelReleaseNotes"
   | "installHomebrewItem"
   | "onSnapshotChanged"
   | "onSnapshotProgress"
@@ -45,6 +47,8 @@ export const baseline: Pick<
   checkForBaselineUpdates: (...args) => window.baseline.checkForBaselineUpdates(...args),
   permissionGuide: (...args) => window.baseline.permissionGuide(...args),
   getSnapshot: (...args) => window.baseline.getSnapshot(...args),
+  getReleaseNotes: (...args) => window.baseline.getReleaseNotes(...args),
+  cancelReleaseNotes: (...args) => window.baseline.cancelReleaseNotes(...args),
   installHomebrewItem: (...args) => window.baseline.installHomebrewItem(...args),
   onSnapshotChanged: (...args) => window.baseline.onSnapshotChanged(...args),
   onSnapshotProgress: (...args) => window.baseline.onSnapshotProgress(...args),

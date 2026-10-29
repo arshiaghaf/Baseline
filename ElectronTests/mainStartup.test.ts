@@ -97,6 +97,8 @@ describe("main startup activation", () => {
         "node:url": { pathToFileURL },
         "./appOpener": {},
         "./cliService": { CLIService: class {} },
+        "./releaseNotesService": { ReleaseNotesService: class {} },
+        "./releaseNotesRequests": { ReleaseNotesRequests: class {} },
         "./cliServer": { startCLIServer: async () => async () => undefined },
         "./signedSelfUpdater": { SignedSelfUpdater: class {} },
         "./selfUpdateScheduler": {

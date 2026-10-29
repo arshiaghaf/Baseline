@@ -20,6 +20,10 @@ const item = {
 const validArguments = {
   permissionGuide: ["info"],
   getSnapshot: [],
+  getReleaseNotes: [
+    { requestID: "notes:1", target: { kind: "app", id: "app:example", version: "2.0" } }
+  ],
+  cancelReleaseNotes: ["notes:1"],
   getAppMetadata: [],
   checkForBaselineUpdates: [],
   getDiagnostics: [],
@@ -115,6 +119,7 @@ beforeEach(async () => {
     "BrowserWindow",
     "confirmHomebrewCleanup",
     "checkForBaselineUpdates",
+    "releaseNotesRequests",
     `${js}\nwireIpc();`
   )(
     { handle: (channel: string, handler: Handler) => handlers.set(channel, handler) },
@@ -139,7 +144,13 @@ beforeEach(async () => {
     showMain,
     { fromWebContents: effect() },
     effect(),
-    effect(Promise.resolve())
+    effect(Promise.resolve()),
+    {
+      get: effect(
+        Promise.resolve({ status: "unavailable", title: "Release notes", version: "2.0" })
+      ),
+      cancel: effect()
+    }
   );
 });
 
@@ -220,6 +231,8 @@ it.each(Object.keys(validArguments) as Method[])(
       ![
         "permissionGuide",
         "getAppMetadata",
+        "getReleaseNotes",
+        "cancelReleaseNotes",
         "checkForBaselineUpdates",
         "getDiagnostics",
         "getToolStatus",
@@ -240,6 +253,25 @@ it.each(Object.keys(validArguments) as Method[])(
 
 it.each([
   ["refresh", ["false"]],
+  [
+    "getReleaseNotes",
+    [
+      {
+        requestID: "notes:1",
+        target: { kind: "app", id: "example", version: "2", url: "https://example.com" }
+      }
+    ]
+  ],
+  [
+    "getReleaseNotes",
+    [{ requestID: "notes:1", target: { kind: "app", id: "example", version: "2" }, force: "true" }]
+  ],
+  [
+    "getReleaseNotes",
+    [{ requestID: "notes:1", target: { kind: "unknown", id: "example", version: "2" } }]
+  ],
+  ["cancelReleaseNotes", [""]],
+  ["cancelReleaseNotes", ["x".repeat(257)]],
   ["refresh", [false, 1]],
   ["performHomebrewUpdateAll", ["cask:example"]],
   ["performHomebrewUpdateAll", [["cask:example", 1]]],

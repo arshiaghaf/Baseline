@@ -19,6 +19,12 @@ const optional =
   (value) =>
     value === undefined || validate(value);
 
+const notesString: ValueValidator = (value) =>
+  typeof value === "string" &&
+  value.length > 0 &&
+  value.length <= 256 &&
+  ![...value].some((character) => character.charCodeAt(0) < 32);
+
 function record(fields: Record<string, ValueValidator>): ValueValidator {
   return (value) =>
     isPlainRecord(value) &&
@@ -46,6 +52,19 @@ const argumentValidators: Record<InvokeMethod, ValueValidator[]> = {
       typeof value === "string" && (permissionGuideActions as readonly string[]).includes(value)
   ],
   getSnapshot: [],
+  getReleaseNotes: [
+    record({
+      requestID: notesString,
+      target: record({
+        kind: (value) => value === "app" || value === "homebrew",
+        id: notesString,
+        version: notesString,
+        buildVersion: optional(notesString)
+      }),
+      force: optional(isBoolean)
+    })
+  ],
+  cancelReleaseNotes: [notesString],
   getAppMetadata: [],
   checkForBaselineUpdates: [],
   getDiagnostics: [],
