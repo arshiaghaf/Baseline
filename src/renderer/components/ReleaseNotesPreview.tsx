@@ -283,6 +283,7 @@ function AvailableReleaseNotesPreview({
   return (
     <div
       className="release-notes-anchor"
+      data-release-notes-dialog={state ? dialogID : undefined}
       ref={anchor}
       tabIndex={-1}
       onPointerEnter={(event) => {

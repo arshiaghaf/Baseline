@@ -200,6 +200,43 @@ test("verifies release-note hovering, cancellation, keyboard, navigation and lon
     await expect(page.getByRole("button", { name: "Close release notes" })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(store).toBeFocused();
+
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    const search = page.getByRole("dialog", { name: "Search", exact: true });
+    await search.getByPlaceholder("Search", { exact: true }).fill("Store");
+    const searchNotes = search.getByRole("button", {
+      name: "Release notes for Store Sample",
+      exact: true
+    });
+    await searchNotes.click();
+    await expect(page.getByRole("button", { name: "Close release notes" })).toBeFocused();
+    await page.keyboard.press("Tab");
+    const notesContent = page.getByLabel("Release notes content", { exact: true });
+    await expect(notesContent).toBeFocused();
+    await page.keyboard.press("PageDown");
+    await expect.poll(() => notesContent.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    await page.keyboard.press("Shift+Tab");
+    await expect(page.getByRole("button", { name: "Close release notes" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(search).toBeVisible();
+    await expect(searchNotes).toBeFocused();
+    await search.getByPlaceholder("Search", { exact: true }).fill("Offline");
+    await search
+      .getByRole("button", { name: "Release notes for Offline Sample", exact: true })
+      .click();
+    await expect(page.getByText("Couldn’t load release notes", { exact: true })).toBeVisible();
+    await page.keyboard.press("Tab");
+    await expect(notesContent).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "Try again", exact: true })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(notesContent).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(search).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(search).toHaveCount(0);
+    await page.evaluate(() => window.baseline.setSearchText(""));
+
     await publisherAnchor.hover();
     await expect(page.getByText("Loading release notes…")).toBeVisible({ timeout: 3000 });
     await page.getByRole("button", { name: "Release notes for Offline Sample" }).click();

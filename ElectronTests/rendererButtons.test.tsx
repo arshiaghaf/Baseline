@@ -1265,6 +1265,78 @@ describe("renderer button parity", () => {
     }
   });
 
+  it("keeps Search release notes in the keyboard scope through scrolling and retry", async () => {
+    vi.mocked(window.baseline.getReleaseNotes)
+      .mockResolvedValueOnce({
+        status: "error",
+        title: "Example",
+        version: "2.0.0",
+        message: "Offline"
+      })
+      .mockResolvedValueOnce({
+        status: "available",
+        title: "Example",
+        version: "2.0.0",
+        source: "App Store",
+        blocks: [{ type: "paragraph", text: "Published changes. ".repeat(100) }]
+      });
+    render(
+      <Dashboard
+        compact={false}
+        onOpenSettings={() => undefined}
+        snapshot={snapshot({
+          selectedTab: "apps",
+          searchText: "example",
+          updates: [{ ...update, source: "appStore", releaseNotesSummary: "Published changes" }]
+        })}
+      />
+    );
+    const searchButton = screen.getByRole("button", { name: "Search" });
+    fireEvent.click(searchButton);
+    // Opening Search also navigates to /main; let that navigation settle.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    const searchDialog = screen.getByRole("dialog", { name: "Search" });
+    const trigger = within(searchDialog).getByRole("button", { name: "Release notes for Example" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const close = await screen.findByRole("button", { name: "Close release notes" });
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    const content = screen.getByLabelText("Release notes content");
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab" });
+    expect(content).toHaveFocus();
+    fireEvent.scroll(content);
+    expect(close).toBeInTheDocument();
+    fireEvent.keyDown(content, { key: "Tab" });
+    expect(retry).toHaveFocus();
+    fireEvent.keyDown(retry, { key: "Tab", shiftKey: true });
+    expect(content).toHaveFocus();
+    fireEvent.keyDown(content, { key: "Tab", shiftKey: true });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    expect(trigger).toHaveFocus();
+    fireEvent.keyDown(trigger, { key: "Tab" });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab" });
+    fireEvent.keyDown(content, { key: "Tab" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(content).toHaveTextContent("Published changes."));
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(close, { key: "Tab" });
+    expect(content).toHaveFocus();
+    expect(window.baseline.getReleaseNotes).toHaveBeenLastCalledWith(
+      expect.objectContaining({ force: true })
+    );
+    fireEvent.scroll(content);
+    fireEvent.keyDown(content, { key: "Escape" });
+    expect(screen.queryByRole("button", { name: "Close release notes" })).not.toBeInTheDocument();
+    expect(searchDialog).toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Search" })).not.toBeInTheDocument();
+    expect(searchButton).toHaveFocus();
+  });
+
   it("closes search mode on backdrop clicks without clearing the saved query", async () => {
     const formula: HomebrewManagedItem = {
       id: "formula:obsidian-cli",
