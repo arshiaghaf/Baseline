@@ -66,6 +66,33 @@ const update: UpdateRecord = {
   checkedAt: "2026-04-30T12:00:00.000Z"
 };
 
+it("hides App Store notes controls for missing summaries and places present notes after the target version", () => {
+  const storeUpdate = { ...update, source: "appStore" as const, releaseNotesSummary: "  " };
+  const view = render(<AppUpdateCard app={app} snapshot={snapshot({ updates: [storeUpdate] })} />);
+  expect(
+    screen.queryByRole("button", { name: "Release notes for Example" })
+  ).not.toBeInTheDocument();
+  view.rerender(
+    <AppUpdateCard
+      app={app}
+      snapshot={snapshot({
+        updates: [{ ...storeUpdate, releaseNotesSummary: "Published changes" }]
+      })}
+    />
+  );
+  const trigger = screen.getByRole("button", { name: "Release notes for Example" });
+  expect(trigger.parentElement).toHaveClass("release-notes-version-line");
+  expect(trigger.previousElementSibling).toHaveTextContent("2.0.0");
+});
+
+it("omits unsupported Homebrew source controls before any notes lookup", () => {
+  const item = { ...cask, tap: "example/custom" };
+  render(<HomebrewUpdateCard item={item} snapshot={snapshot({ homebrewItems: [item] })} />);
+  expect(
+    screen.queryByRole("button", { name: "Release notes for Example" })
+  ).not.toBeInTheDocument();
+});
+
 function snapshot(patch: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
   return {
     ...defaultPersistedSnapshot(),
