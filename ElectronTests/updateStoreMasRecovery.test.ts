@@ -8,6 +8,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { LookupOutcome } from "../src/main/appStoreLookupClient";
 import type { CommandResult } from "../src/main/commandRunner";
 import { SnapshotPersistence } from "../src/main/persistence";
 import { ProfileStatsIntegrityService } from "../src/main/profileStatsIntegrityService";
@@ -16,7 +17,8 @@ import {
   defaultPersistedSnapshot,
   emptyHomebrewCaskIndex,
   emptyHomebrewFormulaIndex,
-  type AppRecord
+  type AppRecord,
+  type AppStoreLookupResult
 } from "../src/shared/domain";
 import { version } from "../src/shared/version";
 
@@ -42,10 +44,13 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-async function fixture({ inventoryWarning = true } = {}) {
+async function fixture({ inventoryWarning = true, initialApp = app } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "baseline-mas-recovery-"));
   dirs.push(dir);
   const persistence = new SnapshotPersistence(dir);
+  const apple = vi.fn(async (): Promise<LookupOutcome<AppStoreLookupResult>> => ({
+    type: "completed"
+  }));
   const scan = vi.fn(async () => [{ ...app, localVersion: version("2") }]);
   const mas = vi.fn<(args: string[]) => Promise<CommandResult>>(async () => available);
   const external = vi.fn(async () => true);
@@ -55,13 +60,14 @@ async function fixture({ inventoryWarning = true } = {}) {
     persisted: {
       ...defaultPersistedSnapshot(),
       autoRefreshEnabled: false,
-      apps: [app],
+      apps: [initialApp],
       updates: [
         {
           id: app.id,
           appID: app.id,
           source: "appStore",
-          localVersion: version("1"),
+          localVersion: initialApp.localVersion,
+          localBuildVersion: initialApp.bundleVersion,
           remoteVersion: version("2"),
           appStoreItemID: 123,
           updateURL: "https://apps.apple.com/app/example",
@@ -78,7 +84,7 @@ async function fixture({ inventoryWarning = true } = {}) {
     runMasCommand: mas,
     clients: {
       scanner: { scanApplications: scan },
-      appStore: { lookupOutcome: async () => ({ type: "completed" }) },
+      appStore: { lookupOutcome: apple },
       sparkle: { lookupOutcome: async () => ({ type: "completed" }) },
       homebrew: {
         fetchIndex: async () => emptyHomebrewCaskIndex,
@@ -109,23 +115,131 @@ async function fixture({ inventoryWarning = true } = {}) {
     }
   });
   stores.push(store);
-  return { store, persistence, scan, mas, external, openApp };
+  return { store, persistence, scan, mas, external, openApp, apple };
 }
 
 describe("App Store update recovery", () => {
+  it.each(["", "Nothing to upgrade"])(
+    "never counts successful no-op retries (%j)",
+    async (output) => {
+      const initialApp = { ...app, bundleIdentifier: "org.example.utility" };
+      const { store, scan, mas, apple, persistence } = await fixture({
+        inventoryWarning: false,
+        initialApp
+      });
+      scan.mockResolvedValue([initialApp]);
+      mas.mockResolvedValue({ ...available, output });
+      apple.mockResolvedValue({
+        type: "completed",
+        value: { remoteVersion: version("2"), appStoreItemID: 123 }
+      });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await store.performAppUpdate(app.id);
+        expect(store.getSnapshot().updates).toHaveLength(1);
+        expect(store.getSnapshot().profileStats.events).toEqual([]);
+        expect(store.getSnapshot().appUpdatedPendingRefreshIDs).toEqual([]);
+        expect((await persistence.load()).profileStats.events).toEqual([]);
+      }
+      expect(mas).toHaveBeenCalledTimes(2);
+    }
+  );
+
+  it.each([
+    ["unchanged", "1", "10", "1", "10", false],
+    ["equivalent", "1.0", "10", "1.0.0", "10", false],
+    ["marketing", "1", "10", "2", "1", true],
+    ["build", "1", "10", "1", "11", true],
+    ["downgrade", "2", "10", "1", "11", false],
+    ["missing build", "1", "", "1", "11", false],
+    ["missing version", "1", "10", "", "11", false]
+  ] as const)(
+    "records only observed installation advancement: %s",
+    async (_label, before, beforeBuild, after, afterBuild, changed) => {
+      const { store, scan, persistence, mas } = await fixture({
+        inventoryWarning: false,
+        initialApp: { ...app, localVersion: version(before), bundleVersion: version(beforeBuild) }
+      });
+      scan.mockResolvedValue([
+        { ...app, localVersion: version(after), bundleVersion: version(afterBuild) }
+      ]);
+      await store.performAppUpdate(app.id);
+      expect(mas).toHaveBeenCalledOnce();
+      expect(store.getSnapshot().profileStats.events).toHaveLength(changed ? 1 : 0);
+      expect((await persistence.load()).profileStats.events).toHaveLength(changed ? 1 : 0);
+      expect(store.getSnapshot().appUpdatedPendingRefreshIDs).toEqual([]);
+      if (!changed)
+        expect(store.getSnapshot().lastRefreshNoticeMessage).toContain("could not be confirmed");
+    }
+  );
+
+  it.each(["absent", "replaced", "unreadable"] as const)(
+    "does not count a zero exit when the app is %s after the command",
+    async (outcome) => {
+      const { store, scan, external, openApp } = await fixture({ inventoryWarning: false });
+      if (outcome === "unreadable") scan.mockRejectedValue(new Error("fixture scan unavailable"));
+      else
+        scan.mockResolvedValue(
+          outcome === "absent"
+            ? []
+            : [{ ...app, localVersion: version("2"), bundleIdentifier: "org.example.replacement" }]
+        );
+      await store.performAppUpdate(app.id);
+      expect(store.getSnapshot().profileStats.events).toEqual([]);
+      expect(store.getSnapshot().appUpdatedPendingRefreshIDs).toEqual([]);
+      expect(store.getSnapshot().lastRefreshNoticeMessage).toContain("could not be confirmed");
+      expect(external).not.toHaveBeenCalled();
+      expect(openApp).not.toHaveBeenCalled();
+    }
+  );
+
+  it("keeps no-ops uncounted and coalesces overlapping actions through reconciliation", async () => {
+    const { store, scan, mas } = await fixture({ inventoryWarning: false });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    scan.mockImplementation(async () => {
+      await gate;
+      return [app];
+    });
+    const first = store.performAppUpdate(app.id);
+    try {
+      await vi.waitFor(() => expect(scan).toHaveBeenCalledOnce());
+      expect(store.getSnapshot().appUpdatedPendingRefreshIDs).toEqual([]);
+      expect(store.getSnapshot().profileStats.events).toEqual([]);
+      await store.performAppUpdate(app.id);
+      expect(mas).toHaveBeenCalledOnce();
+      expect(await store.prepareToQuit()).toBe(false);
+    } finally {
+      release();
+      await first;
+    }
+    expect(store.getSnapshot().profileStats.events).toEqual([]);
+  });
+
   it.each([false, true])(
     "reconciles command success despite history save rejection (continued write failure: %s)",
     async (continuedFailure) => {
       const { store, persistence, scan, mas, external } = await fixture();
       scan.mockImplementation(async () => {
         expect(store.getSnapshot().appUpdatingIDs).toEqual([app.id]);
-        expect(store.getSnapshot().appUpdatedPendingRefreshIDs).toEqual([app.id]);
+        expect(store.getSnapshot().appUpdatedPendingRefreshIDs).toEqual([]);
         expect(store.hasActiveUpdateOperation()).toBe(true);
         return [{ ...app, localVersion: version("2") }];
       });
+      const originalSave = persistence.save.bind(persistence);
       const save = vi.spyOn(persistence, "save");
       if (continuedFailure) save.mockRejectedValue(new Error("fixture storage unavailable"));
-      else save.mockRejectedValueOnce(new Error("fixture storage unavailable"));
+      else {
+        let rejected = false;
+        save.mockImplementation(async (snapshot) => {
+          if (!rejected && snapshot.profileStats.events.length > 0) {
+            rejected = true;
+            throw new Error("fixture storage unavailable");
+          }
+          await originalSave(snapshot);
+        });
+      }
       try {
         if (continuedFailure)
           await expect(store.performAppUpdate(app.id)).rejects.toThrow(
@@ -148,6 +262,8 @@ describe("App Store update recovery", () => {
         else {
           expect(snapshot.refreshErrorMessage).toBeUndefined();
           expect((await persistence.load()).apps[0]!.localVersion.raw).toBe("2");
+          expect((await persistence.load()).profileStats.events).toHaveLength(0);
+          await store.refresh(false);
           expect((await persistence.load()).profileStats.events).toHaveLength(1);
         }
         expect(snapshot.profileStats.events).toHaveLength(1);
@@ -345,9 +461,11 @@ it.each([false, true])(
   "keeps a successful Homebrew check separate from an actual history-save failure (compact=%s)",
   async (compact) => {
     const { store, persistence } = await fixture({ inventoryWarning: false });
-    const save = vi
-      .spyOn(persistence, "save")
-      .mockRejectedValueOnce(new Error("Fixture history write failure"));
+    const originalSave = persistence.save.bind(persistence);
+    const save = vi.spyOn(persistence, "save").mockImplementation(async (snapshot) => {
+      if (snapshot.profileStats.events.length > 0) throw new Error("Fixture history write failure");
+      await originalSave(snapshot);
+    });
     try {
       await store.performAppUpdate(app.id);
       const snapshot = store.getSnapshot();

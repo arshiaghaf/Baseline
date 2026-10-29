@@ -28,7 +28,13 @@ import { homebrewCommandToken, installedCaskEntry } from "../shared/homebrewIden
 import type { PreferencePatch } from "../shared/ipc";
 import { validatedPreferencePatch } from "./preferenceValidation";
 import { isAllowedExternalURL, isValidHomebrewToken } from "../shared/security";
-import { isVersionEmpty, version, type VersionValue } from "../shared/version";
+import {
+  compareVersions,
+  isVersionEmpty,
+  isVersionGreater,
+  version,
+  type VersionValue
+} from "../shared/version";
 import { AppStoreLookupClient } from "./appStoreLookupClient";
 import { BundleScannerClient } from "./bundleScanner";
 import {
@@ -1006,25 +1012,33 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
         const result = await this.runMasCommand(["upgrade", String(update.appStoreItemID)]);
         this.toolStatus.recordMasCommandResult(result);
         if (result.success) {
-          this.patch({
-            appUpdatedPendingRefreshIDs: addToArray(this.state.appUpdatedPendingRefreshIDs, appID)
-          });
-          let statsNotice: string | undefined;
+          // A zero exit may mean mas found nothing outdated. Reconcile first;
+          // only observed installation changes authorize completed-update history.
           try {
-            await this.profileStatsService.recordEvents([
-              appUpdateProfileStatsEvent({
-                appRecord,
-                update,
-                occurredAt: new Date().toISOString()
-              })
-            ]);
-          } catch {
-            statsNotice = "App update completed, but local update history could not be saved.";
-          }
-          try {
-            await this.holdSuccessfulUpdate();
             await this.refresh(false, { forceMetadata: false });
           } finally {
+            const installed = this.state.apps.find((app) => app.id === appID);
+            let statsNotice: string | undefined;
+            if (installed && appInstallationAdvanced(appRecord, installed)) {
+              try {
+                await this.profileStatsService.recordEvents([
+                  appUpdateProfileStatsEvent({
+                    appRecord,
+                    update: {
+                      ...update,
+                      remoteVersion: installed.localVersion,
+                      remoteBuildVersion: installed.bundleVersion
+                    },
+                    occurredAt: new Date().toISOString()
+                  })
+                ]);
+              } catch {
+                statsNotice = "App update completed, but local update history could not be saved.";
+              }
+            } else {
+              statsNotice =
+                "The App Store check finished, but an installed update could not be confirmed. Refresh to check again.";
+            }
             if (statsNotice) {
               this.patch({
                 lastRefreshNoticeMessage: [this.state.lastRefreshNoticeMessage, statsNotice]
@@ -1540,13 +1554,6 @@ export class UpdateStore extends EventEmitter<StoreEvents> {
     }
   }
 
-  private async holdSuccessfulUpdate(): Promise<void> {
-    if (this.successRefreshDelayMS <= 0) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, this.successRefreshDelayMS));
-  }
-
   private restartAutoRefreshLoop(): void {
     this.refreshLifecycle.restartAutoRefreshLoop(
       !this.closing && this.state.autoRefreshEnabled,
@@ -1728,4 +1735,22 @@ function addToArray<T>(values: T[], value: T): T[] {
 
 function removeFromArray<T>(values: T[], value: T): T[] {
   return values.filter((candidate) => candidate !== value);
+}
+
+function appInstallationAdvanced(previous: AppRecord, installed: AppRecord): boolean {
+  if (
+    previous.bundlePath !== installed.bundlePath ||
+    previous.bundleIdentifier !== installed.bundleIdentifier ||
+    isVersionEmpty(previous.localVersion) ||
+    isVersionEmpty(installed.localVersion)
+  )
+    return false;
+  const marketingChange = compareVersions(installed.localVersion, previous.localVersion);
+  return (
+    marketingChange > 0 ||
+    (marketingChange === 0 &&
+      !isVersionEmpty(previous.bundleVersion) &&
+      !isVersionEmpty(installed.bundleVersion) &&
+      isVersionGreater(installed.bundleVersion!, previous.bundleVersion!))
+  );
 }
