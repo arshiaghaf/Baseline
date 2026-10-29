@@ -250,6 +250,11 @@
   font-size: 14px;
 }
 
+.item-card .row-main p.installed-version-history {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .row {
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr) auto;

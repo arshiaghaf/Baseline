@@ -451,14 +451,29 @@ export function DiscoverRow({
 
 export function HomebrewUpdateCard({
   item,
-  snapshot
+  snapshot,
+  showUpdateHistory = false
 }: {
   item: HomebrewManagedItem;
   snapshot: BaselineSnapshot;
+  showUpdateHistory?: boolean;
 }) {
   const requestActionConfirmation = React.useContext(ActionConfirmationContext);
   const { isUpdating, isUninstalling, isIgnored, updateState, homebrewUninstallBlocked } =
     homebrewControlState(item, snapshot);
+  const history =
+    showUpdateHistory && !item.isOutdated
+      ? snapshot.homebrewRecentlyUpdated.find(
+          (record) =>
+            record.itemID === item.id &&
+            record.kind === item.kind &&
+            [record.fromVersion, record.toVersion].every(
+              ({ raw }) => raw.trim().length > 0 && raw.trim().toLowerCase() !== "latest"
+            ) &&
+            record.toVersion.raw === item.installedVersion.raw
+        )
+      : undefined;
+  const versionChanged = history && history.fromVersion.raw !== history.toVersion.raw;
 
   return (
     <article className={isIgnored ? "item-card update-card ignored-row" : "item-card update-card"}>
@@ -492,8 +507,20 @@ export function HomebrewUpdateCard({
           )}
           <span>{homebrewPresentationLabel(item.kind, item.presentation)}</span>
         </div>
-        <p>
-          {item.latestVersion ? (
+        <p
+          className={versionChanged ? "installed-version-history" : undefined}
+          title={
+            versionChanged
+              ? `Updated from ${history.fromVersion.raw} → ${history.toVersion.raw}`
+              : undefined
+          }
+        >
+          {versionChanged ? (
+            <>
+              Updated from{" "}
+              <VersionChange from={history.fromVersion.raw} to={history.toVersion.raw} />
+            </>
+          ) : item.isOutdated && item.latestVersion ? (
             <VersionChange
               from={item.installedVersion.raw || "unknown"}
               to={item.latestVersion.raw}
@@ -503,6 +530,17 @@ export function HomebrewUpdateCard({
             item.installedVersion.raw || "unknown"
           )}
         </p>
+        {history && (
+          <p>
+            {!versionChanged && (
+              <>
+                <span>Version unchanged</span>
+                {" · "}
+              </>
+            )}
+            {updatedRelativeLabel(history.updatedAt)}
+          </p>
+        )}
         <AdminPasswordStatus snapshot={snapshot} itemID={item.id} />
       </div>
     </article>

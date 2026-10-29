@@ -1093,6 +1093,61 @@ test("renders long update versions inside Electron update cards", async () => {
   await closeApp(app);
 });
 
+test("shows saved Homebrew version history in Installed after relaunch", async () => {
+  const userData = await mkdtemp(path.join(os.tmpdir(), "baseline-e2e-"));
+  const now = new Date().toISOString();
+  const item = {
+    id: "formula:example-tool",
+    token: "example-tool",
+    name: "Example Tool",
+    kind: "formula" as const,
+    installedVersion: version("2026.1028.12345678901234567890_2"),
+    latestVersion: version("2026.1028.12345678901234567890_2"),
+    isOutdated: false
+  };
+  const previousVersion = version("2026.1020.12345678901234567890_1");
+  await writeFile(
+    path.join(userData, "baseline-snapshot.json"),
+    JSON.stringify({
+      ...defaultPersistedSnapshot(now),
+      homebrewItems: [item],
+      homebrewRecentlyUpdated: [
+        {
+          id: item.id,
+          itemID: item.id,
+          token: item.token,
+          displayName: item.name,
+          kind: item.kind,
+          fromVersion: previousVersion,
+          toVersion: item.installedVersion,
+          updatedAt: now
+        }
+      ],
+      showMenuBarIcon: false
+    })
+  );
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const app = await launchBaseline({ userData });
+    const page = await app.firstWindow();
+    await page.getByRole("button", { name: "Installed", exact: true }).click();
+    const card = page.locator(".item-card").filter({ hasText: item.name });
+    await expect(card).toContainText(
+      `Updated from ${previousVersion.raw}→${item.installedVersion.raw}`
+    );
+    await expect(card).toContainText("Updated today");
+    await expect(card.getByRole("button", { name: "Update", exact: true })).toHaveCount(0);
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0]!.setContentSize(660, 620)
+    );
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBe(660);
+    const line = card.locator(".installed-version-history");
+    await expect(line).toHaveCSS("white-space", "normal");
+    expect(await line.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await closeApp(app);
+  }
+});
+
 test("launches the packaged Electron app after build", async () => {
   const app = await launchBaseline({ packaged: true });
   const page = await app.firstWindow();
