@@ -209,6 +209,7 @@ test("verifies release-note hovering, cancellation, keyboard, navigation and lon
       exact: true
     });
     await searchNotes.click();
+    await expect(page.getByText("Published changes", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Close release notes" })).toBeFocused();
     await page.keyboard.press("Tab");
     const notesContent = page.getByLabel("Release notes content", { exact: true });
