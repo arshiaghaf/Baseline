@@ -8,7 +8,7 @@ Intel application packages are no longer supported.
 
 The CI workflow:
 
-- Uses Node.js 24 and installs dependencies with `npm ci`.
+- Uses Node.js 24.22.2, matching `.node-version`, and installs dependencies with `npm ci`.
 - Prepares the checksum-pinned upstream Sparkle framework without accessing keys.
 - Lints release scripts with `bash -n`.
 - Typechecks the Electron main/preload/renderer TypeScript.
